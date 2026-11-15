@@ -277,3 +277,47 @@ def test_unspaced_ascii_arrow_with_hyphenated_names():
     # flagd is never matched inside flagd-config, nor checkout inside checkout-7f9.
     assert "otel-demo/Service/flagd" not in names(out)
     assert names(out).count("otel-demo/Service/checkout") == 1
+
+
+def test_namespace_name_is_never_an_entity_even_when_in_vocabulary():
+    # #638: an object named like the namespace (the otel-demo ServiceAccount)
+    # puts "otel-demo" in the vocabulary; "otel-demo/frontend-proxy" in a
+    # summary must name frontend-proxy, not the namespace.
+    vocab = ["otel-demo", "frontend-proxy", "checkout", "Otel-Demo"]
+    rep = report(
+        "otel-demo/frontend-proxy returns 503s; checkout in otel-demo is affected.",
+        [
+            claim("fact", "otel-demo/frontend-proxy error rate rose", ("ev-1",)),
+            claim("fact", "OTEL-DEMO namespace events show restarts", ("ev-2",)),
+        ],
+    )
+    evidence = [
+        ev(
+            "ev-1",
+            "kubernetes_jq_query",
+            {"kind": "pods", "namespace": "otel-demo", "expr": "frontend-proxy"},
+        ),
+        ev(
+            "ev-2",
+            "kubernetes_jq_query",
+            {"kind": "serviceaccounts", "namespace": "otel-demo"},
+        ),
+    ]
+    result = answer.convert(rep, evidence, vocab)
+    out = result.agent_output
+    assert names(out) == ["otel-demo/Pod/frontend-proxy", "otel-demo/Service/checkout"]
+    assert all(not n.endswith("/otel-demo") for n in names(out))
+    assert result.meta["root_cause_entity"] == "otel-demo/Pod/frontend-proxy"
+    assert result.meta["excluded_namespace"] == "otel-demo"
+    assert out["propagations"] == []
+
+
+def test_excluded_name_follows_the_namespace_argument():
+    vocab = ["shop", "otel-demo", "payment"]
+    rep = report(
+        "shop/payment failed; otel-demo is a ServiceAccount here.", [claim("fact", "x")]
+    )
+    out = answer.convert(
+        rep, [ev("ev-1", "m", {})], vocab, namespace="shop"
+    ).agent_output
+    assert names(out) == ["shop/Service/payment", "shop/Service/otel-demo"]

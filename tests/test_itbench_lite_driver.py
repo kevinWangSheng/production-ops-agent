@@ -920,3 +920,134 @@ def test_bad_scores_file_counts_as_a_failed_judge_try(env, tmp_path, content):
     assert len(h.judge_calls) == driver.JUDGE_TRIES
     # No marker: a later run finishes the judging without a new Run.
     assert driver.trial_state(cfg, "S16", "Scenario-16", 1) == "judge"
+
+
+def test_rescore_reconverts_frozen_runs_into_a_new_round_and_judges_there(
+    env, tmp_path, capsys
+):
+    # #638: a round converted with the namespace name as an entity is
+    # re-converted offline from its frozen summaries; the source is untouched.
+    cfg, _ = env
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("otel-demo\ncheckout\n")
+    h = Harness(tmp_path)
+    h.report = {**valid_report(), "summary": "otel-demo/checkout fails."}
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab_dir / "S16.txt", [1])
+    source_trial = cfg.round_dir / "S16" / "trial-1"
+    before = {p: p.read_bytes() for p in sorted(source_trial.rglob("*")) if p.is_file()}
+    summary_before = (
+        cfg.evidence_dir / "S16" / "trial-1" / "summary.json"
+    ).read_bytes()
+    common = [
+        "--round", "t604", "--into", "t604-r638",
+        "--vocabulary-dir", str(vocab_dir),
+        "--tmp-root", str(cfg.tmp_root), "--evidence-root", str(cfg.evidence_root),
+    ]  # fmt: skip
+    assert driver.main(["rescore", *common]) == 0
+    rows = [json.loads(x) for x in capsys.readouterr().out.splitlines()]
+    assert rows == [
+        {
+            "trial": "S16/trial-1",
+            "status": "converted",
+            "reason": None,
+            "root_cause_entity": "otel-demo/Service/checkout",
+            "entity_count": 1,
+        }
+    ]
+    target = cfg.tmp_root / "t604-r638" / "S16" / "trial-1"
+    meta = json.loads(
+        (target / "outputs" / "Scenario-16" / "1" / "conversion_meta.json").read_text()
+    )
+    assert meta["root_cause_entity"] == "otel-demo/Service/checkout"
+    assert json.loads((target / driver.RESCORE_FILE).read_text())["source_round"] == (
+        "t604"
+    )
+    # The source round and its frozen summary are byte-for-byte unchanged.
+    assert {
+        p: p.read_bytes() for p in sorted(source_trial.rglob("*")) if p.is_file()
+    } == before
+    assert (
+        cfg.evidence_dir / "S16" / "trial-1" / "summary.json"
+    ).read_bytes() == summary_before
+    # A second rescore into the same round is refused, never overwrites.
+    assert driver.main(["rescore", *common]) == 2
+    capsys.readouterr()
+    # The existing judge command scores the new round.
+    h2 = Harness(tmp_path)
+    code = driver.main(
+        [
+            "judge", "--round", "t604-r638", "--ground-truth", str(cfg.dataset),
+            "--tmp-root", str(cfg.tmp_root),
+        ],
+        backends=h2.backends(),
+    )  # fmt: skip
+    assert code == 0
+    assert h2.judge_calls[0]["outputs"] == target / "outputs"
+    assert (target / "scores.json").is_file() and (target / driver.MARKER).is_file()
+
+
+def test_rescore_refuses_the_source_round_as_target(env, tmp_path, capsys):
+    cfg, _ = env
+    code = driver.main(
+        [
+            "rescore", "--round", "t604", "--into", "t604",
+            "--vocabulary-dir", str(tmp_path), "--tmp-root", str(cfg.tmp_root),
+            "--evidence-root", str(cfg.evidence_root),
+        ]
+    )  # fmt: skip
+    assert code == 2
+
+
+def test_rescore_refuses_a_target_inside_the_source_round(env, tmp_path, capsys):
+    cfg, _ = env
+    h = Harness(tmp_path)
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab_dir / "S16.txt", [1])
+    before = sorted(p for p in cfg.round_dir.rglob("*"))
+    for inside in (cfg.round_dir / "S16", cfg.evidence_dir):
+        code = driver.main(
+            [
+                "rescore", "--round", "t604", "--into", "nested",
+                "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+                "--evidence-root", str(cfg.evidence_root),
+                "--into-tmp-root", str(inside),
+            ]
+        )  # fmt: skip
+        assert code == 2
+    assert sorted(p for p in cfg.round_dir.rglob("*")) == before
+    assert not (cfg.evidence_dir / "nested").exists()
+
+
+def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
+    env, tmp_path, capsys
+):
+    # The answer-named vocabulary belongs to the scenario converted last, so
+    # the refusal must come before the first scenario is written.
+    cfg, vocab = env
+    make_scenario(cfg.dataset, "Scenario-7")
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    driver.run_scenario(cfg, h.backends(), "Scenario-7", vocab, [1])
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
+    answer_file = tmp_path / "assertion.json"
+    answer_file.write_text("{}")
+    answer_file.chmod(0o000)  # opening it would fail the test
+    (vocab_dir / "S7.txt").symlink_to(answer_file)
+    code = driver.main(
+        [
+            "rescore", "--round", "t604", "--into", "t604-r638",
+            "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+            "--evidence-root", str(cfg.evidence_root),
+        ]
+    )  # fmt: skip
+    answer_file.chmod(0o600)
+    assert code == 2
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["code"] == (
+        "ANSWER_FILE_AS_INPUT"
+    )
+    assert not (cfg.tmp_root / "t604-r638").exists()  # nothing partial left

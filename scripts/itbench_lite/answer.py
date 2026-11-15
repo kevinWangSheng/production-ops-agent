@@ -6,7 +6,11 @@ The rules are decision table r4 L1-L5 (docs/tasks/2026-11-12-tool-expansion-cont
 * L1 entities: a caller-supplied vocabulary (snapshot object names plus service
   names) is matched in the report ``summary`` and claim texts on name
   boundaries (case-insensitive, a boundary is any character outside
-  ``[A-Za-z0-9_-]``; overlapping hits keep the longest name).  ``Kind`` comes
+  ``[A-Za-z0-9_-]``; overlapping hits keep the longest name).  The
+  namespace name the conversion files entities under (``namespace``, by
+  default ``DEFAULT_NAMESPACE``) is never a candidate, even when an object of
+  that name is in the vocabulary (#638: the ``otel-demo`` ServiceAccount made
+  ``otel-demo/<service>`` read as the entity ``otel-demo``).  ``Kind`` comes
   from the tool parameters of evidence cited by the claims that mention the
   entity (see ``_resolve_kind``), otherwise ``Service``.
 * L2 root cause: the first entity mentioned in ``summary`` is the only
@@ -334,7 +338,12 @@ def convert(
     if report is None:
         return Conversion(empty_output(), _meta(False, entity_count=0))
     parsed = ReportV2.model_validate(dict(report))
-    matcher = _Matcher(vocabulary)
+    excluded = namespace.strip().casefold()
+    matcher = _Matcher(
+        name
+        for name in vocabulary
+        if not (isinstance(name, str) and name.strip().casefold() == excluded)
+    )
     index = _evidence_index(evidence)
 
     claim_names = [matcher.names_in(claim.text) for claim in parsed.claims]
@@ -414,6 +423,7 @@ def convert(
             root_cause_entity=full.get(root) if root else None,
             kind_rules=kind_rules,
             unresolved_evidence_ids=unresolved,
+            excluded_namespace=namespace,
         ),
     )
 

@@ -28,6 +28,8 @@ Usage (repository root, see the rental runbook stage 4)::
         --round 20261120 --vocabulary-dir <dir> [--scenarios 16,23] [--trials 3]
     python3 -m scripts.itbench_lite.driver judge --round 20261120 --ground-truth <root>
     python3 -m scripts.itbench_lite.driver scores --round 20261120 --out <scores.json>
+    python3 -m scripts.itbench_lite.driver rescore --round 20261120 \\
+        --into 20261120-r2 --vocabulary-dir <dir>   # then judge --round 20261120-r2
 
 Paths: evidence ``docs/evidence/itbench-lite-sre-<round>/S<id>/trial-<n>/summary.json``;
 everything else under ``tmp/itbench-lite/<round>/`` (git-ignored, L-D16).
@@ -980,18 +982,24 @@ class Attempt:
     def _convert(
         self, run_block: Mapping[str, Any]
     ) -> tuple[answer.Conversion, str | None]:
-        report = run_block.get("report")
-        evidence = run_freeze.flat_evidence(run_block)
-        if not isinstance(report, Mapping):
-            return answer.convert(None, [], self.vocabulary), (
-                None if report is None else "REPORT_INVALID_FOR_CONVERSION"
-            )
-        try:
-            return answer.convert(report, evidence, self.vocabulary), None
-        except ValueError:
-            return answer.convert(
-                None, [], self.vocabulary
-            ), "REPORT_INVALID_FOR_CONVERSION"
+        return convert_run(run_block, self.vocabulary)
+
+
+def convert_run(
+    run_block: Mapping[str, Any], vocabulary: Sequence[str]
+) -> tuple[answer.Conversion, str | None]:
+    """A frozen Run block's report and evidence through ``answer.convert``;
+    the second value is the reason a present report counted as reportless."""
+    report = run_block.get("report")
+    evidence = run_freeze.flat_evidence(run_block)
+    if not isinstance(report, Mapping):
+        return answer.convert(None, [], vocabulary), (
+            None if report is None else "REPORT_INVALID_FOR_CONVERSION"
+        )
+    try:
+        return answer.convert(report, evidence, vocabulary), None
+    except ValueError:
+        return answer.convert(None, [], vocabulary), "REPORT_INVALID_FOR_CONVERSION"
 
 
 # -- trials, rounds, judging --------------------------------------------------------
@@ -1301,6 +1309,96 @@ def aggregate_scores(cfg: Config) -> dict[str, list[dict[str, float]]]:
     return table
 
 
+RESCORE_FILE = "rescore.json"
+
+
+def rescore_round(
+    source: Config,
+    target: Config,
+    vocabulary_dir: Path,
+    only: str | None = None,
+) -> list[dict[str, Any]]:
+    """Re-convert a finished round's frozen Runs into a new round (#638).
+
+    Reads each trial's frozen ``summary.json`` (its ``run`` block holds the
+    report and evidence), converts it again with the current ``answer``
+    rules and the scenario's vocabulary, and writes the evaluator outputs
+    under ``target.round_dir``; ``driver judge --round <target>`` then scores
+    them.  No model call, no service start; the source round is only read.
+    A trial that did not complete is left out, as it has no scores there.
+    """
+    into = target.round_dir.resolve()
+    for kept in (source.round_dir.resolve(), source.evidence_dir.resolve()):
+        if into == kept or kept in into.parents or into in kept.parents:
+            raise ValueError("target round must not overlap the source round")
+    if target.round_dir.exists():
+        raise ValueError(f"target round already exists: {target.round_dir}")
+    if not source.evidence_dir.is_dir():
+        raise ValueError(f"no evidence for round {source.round}")
+    wanted = None if not only else {scenario_key(x) for x in only.split(",")}
+    summaries = [
+        path
+        for path in sorted(source.evidence_dir.glob("S*/trial-*/summary.json"))
+        if wanted is None or scenario_key(path.parent.parent.name) in wanted
+    ]
+    # Every vocabulary is checked before anything is written: an abort never
+    # leaves a partial target round behind (RoundAbort, the file is not read).
+    for path in summaries:
+        key = scenario_key(path.parent.parent.name)
+        check_input_file(vocabulary_dir / f"S{key}.txt", "vocabulary")
+    rows: list[dict[str, Any]] = []
+    for path in summaries:
+        label, trial_name = path.parent.parent.name, path.parent.name
+        key = scenario_key(label)
+        trial = int(trial_name.split("-")[1])
+        row: dict[str, Any] = {"trial": f"{label}/{trial_name}"}
+        rows.append(row)
+        summary = _read_json(path)
+        if not isinstance(summary, Mapping) or summary.get("status") != "completed":
+            row["status"] = "skipped_not_completed"
+            continue
+        source_outputs = source.round_dir / label / trial_name / "outputs"
+        dirs = (
+            [p.name for p in source_outputs.iterdir() if p.is_dir()]
+            if source_outputs.is_dir()
+            else []
+        )
+        if len(dirs) != 1:
+            row["status"] = "skipped_no_scenario_dir"
+            continue
+        vocabulary_file = vocabulary_dir / f"S{key}.txt"
+        if not vocabulary_file.is_file():
+            row["status"] = "skipped_no_vocabulary"
+            continue
+        run_block = summary.get("run")
+        conversion, reason = convert_run(
+            run_block if isinstance(run_block, Mapping) else {},
+            vocabulary_file.read_text().splitlines(),
+        )
+        trial_dir = target.round_dir / label / trial_name
+        answer.write_trial(trial_dir / "outputs", dirs[0], trial, conversion)
+        (trial_dir / RESCORE_FILE).write_text(
+            json.dumps(
+                {
+                    "source_round": source.round,
+                    "source_summary": str(path),
+                    "vocabulary": str(vocabulary_file),
+                    "reason": reason,
+                    "rescored_at": datetime.now(UTC).isoformat(),
+                },
+                indent=1,
+            )
+            + "\n"
+        )
+        row.update(
+            status="converted",
+            reason=reason,
+            root_cause_entity=conversion.meta.get("root_cause_entity"),
+            entity_count=conversion.meta.get("entity_count"),
+        )
+    return rows
+
+
 def git_state(allow_dirty: bool) -> dict[str, Any]:
     """L-D18: tracked changes outside this round's evidence count as dirty."""
 
@@ -1436,8 +1534,57 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
     scores.add_argument("--round", required=True)
     scores.add_argument("--out", required=True, type=Path)
     scores.add_argument("--tmp-root", type=Path, default=TMP_ROOT)
+    again = sub.add_parser(
+        "rescore", help="re-convert a finished round's frozen Runs into a new round"
+    )
+    again.add_argument("--round", required=True, help="source round, only read")
+    again.add_argument("--into", required=True, help="new round label")
+    again.add_argument(
+        "--vocabulary-dir", type=Path, required=True, help="S<id>.txt files"
+    )
+    again.add_argument("--scenarios", help="comma-separated ids, default all")
+    again.add_argument("--tmp-root", type=Path, default=TMP_ROOT)
+    again.add_argument("--evidence-root", type=Path, default=EVIDENCE_ROOT)
+    again.add_argument(
+        "--into-tmp-root",
+        type=Path,
+        help="where the new round goes, default --tmp-root",
+    )
     args = parser.parse_args(argv)
     backends = backends or Backends()
+
+    if args.command == "rescore":
+        if not _ROUND.match(args.into):
+            print(json.dumps({"status": "aborted", "code": "BAD_ROUND"}))
+            return 2
+        source = Config(
+            round=args.round,
+            dataset=Path(),
+            ground_truth=Path(),
+            tmp_root=args.tmp_root.resolve(),
+            evidence_root=args.evidence_root.resolve(),
+        )
+        target = Config(
+            round=args.into,
+            dataset=Path(),
+            ground_truth=Path(),
+            tmp_root=(args.into_tmp_root or args.tmp_root).resolve(),
+        )
+        try:
+            rows = rescore_round(source, target, args.vocabulary_dir, args.scenarios)
+        except ValueError as error:
+            print(json.dumps({"status": "aborted", "detail": str(error)}))
+            return 2
+        except RoundAbort as error:
+            print(
+                json.dumps(
+                    {"status": "aborted", "code": error.code, "detail": error.detail}
+                )
+            )
+            return 2
+        for row in rows:
+            print(json.dumps(row), flush=True)
+        return 0 if any(r["status"] == "converted" for r in rows) else 1
 
     if args.command in ("judge", "scores"):
         cfg = Config(
