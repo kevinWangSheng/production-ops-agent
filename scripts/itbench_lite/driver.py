@@ -1327,8 +1327,10 @@ def rescore_round(
     them.  No model call, no service start; the source round is only read.
     A trial that did not complete is left out, as it has no scores there.
     """
-    if target.round_dir.resolve() == source.round_dir.resolve():
-        raise ValueError("target round must differ from the source round")
+    into = target.round_dir.resolve()
+    for kept in (source.round_dir.resolve(), source.evidence_dir.resolve()):
+        if into == kept or kept in into.parents or into in kept.parents:
+            raise ValueError("target round must not overlap the source round")
     if target.round_dir.exists():
         raise ValueError(f"target round already exists: {target.round_dir}")
     if not source.evidence_dir.is_dir():
@@ -1357,6 +1359,7 @@ def rescore_round(
             row["status"] = "skipped_no_scenario_dir"
             continue
         vocabulary_file = vocabulary_dir / f"S{key}.txt"
+        check_input_file(vocabulary_file, "vocabulary")  # RoundAbort, never read
         if not vocabulary_file.is_file():
             row["status"] = "skipped_no_vocabulary"
             continue
@@ -1564,6 +1567,13 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
             rows = rescore_round(source, target, args.vocabulary_dir, args.scenarios)
         except ValueError as error:
             print(json.dumps({"status": "aborted", "detail": str(error)}))
+            return 2
+        except RoundAbort as error:
+            print(
+                json.dumps(
+                    {"status": "aborted", "code": error.code, "detail": error.detail}
+                )
+            )
             return 2
         for row in rows:
             print(json.dumps(row), flush=True)

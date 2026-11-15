@@ -997,3 +997,51 @@ def test_rescore_refuses_the_source_round_as_target(env, tmp_path, capsys):
         ]
     )  # fmt: skip
     assert code == 2
+
+
+def test_rescore_refuses_a_target_inside_the_source_round(env, tmp_path, capsys):
+    cfg, _ = env
+    h = Harness(tmp_path)
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab_dir / "S16.txt", [1])
+    before = sorted(p for p in cfg.round_dir.rglob("*"))
+    for inside in (cfg.round_dir / "S16", cfg.evidence_dir):
+        code = driver.main(
+            [
+                "rescore", "--round", "t604", "--into", "nested",
+                "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+                "--evidence-root", str(cfg.evidence_root),
+                "--into-tmp-root", str(inside),
+            ]
+        )  # fmt: skip
+        assert code == 2
+    assert sorted(p for p in cfg.round_dir.rglob("*")) == before
+    assert not (cfg.evidence_dir / "nested").exists()
+
+
+def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
+    env, tmp_path, capsys
+):
+    cfg, _ = env
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", tmp_path / "S16.txt", [1])
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    answer_file = tmp_path / "assertion.json"
+    answer_file.write_text("{}")
+    answer_file.chmod(0o000)  # opening it would fail the test
+    (vocab_dir / "S16.txt").symlink_to(answer_file)
+    code = driver.main(
+        [
+            "rescore", "--round", "t604", "--into", "t604-r638",
+            "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+            "--evidence-root", str(cfg.evidence_root),
+        ]
+    )  # fmt: skip
+    assert code == 2
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["code"] == (
+        "ANSWER_FILE_AS_INPUT"
+    )
+    answer_file.chmod(0o600)
