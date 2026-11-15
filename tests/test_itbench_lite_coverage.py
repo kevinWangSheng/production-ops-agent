@@ -95,7 +95,7 @@ def test_trial_with_a_report_but_without_the_metric_is_refused_not_zeroed(metric
 
 def test_reportless_and_missing_trials_still_count_zero():
     ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
-    reportless = {"trial": 2.0, "report_present": 0.0}
+    reportless = {"trial": 2.0, "report_present": 0.0, "root_cause_entity_f1": 1.0}
     table = coverage.build_table(
         ids,
         {"S33": [{"root_cause_entity_f1": 1.0, "trial": 1.0}, reportless]},

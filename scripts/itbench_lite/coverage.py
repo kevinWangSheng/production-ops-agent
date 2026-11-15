@@ -116,10 +116,12 @@ def _value(trial: Mapping[str, Any], metric: str, where: str = "") -> float:
     is an incomplete judge result, not a 0 (#641).  A reportless trial (L5,
     ``report_present`` 0) and a missing trial (no row, ``where`` empty)
     count 0."""
+    if _number(trial.get(REPORT_KEY)) == 0.0:
+        return 0.0  # reportless: 0 on every metric, whatever the row holds (L5)
     value = _number(trial.get(metric))
     if value is not None:
         return value
-    if where and _number(trial.get(REPORT_KEY)) != 0.0:
+    if where:
         raise ValueError(f"{where} has a report but no {metric!r}; judge it again")
     return 0.0
 
