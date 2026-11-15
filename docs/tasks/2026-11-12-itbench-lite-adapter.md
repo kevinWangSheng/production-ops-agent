@@ -204,6 +204,7 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 独立审查（Codex gpt-6-astra）一条发现已修：`driver judge` 重判缺键的旧结果前，把原 `scores.json` 逐字节复制到 `trial-<n>/superseded/<时间戳>-scores.json`（独占创建，不覆盖），满足「原始结果保留」；分数表只读 `scores.json`。
 - 范围扩大（2026-11-15 用户裁决，见 #641 评论）：`coverage` 出表时，已有分数行缺主指标（`MAIN_METRICS`：`root_cause_entity_f1`、`root_cause_entity_pass`）就报错，不再补 0；没有分数行的缺失 trial 仍计 0、留在分母，无报告的 trial 本来就写显式 0（L5）。其他指标缺值仍按 0。重判按 L-D9 只重跑判分，最多 2 次（`JUDGE_TRIES = 3`）；用尽仍缺的记缺失、计 0、留在分母，在 run.md 单独列出。
 - 独立审查第二轮（Codex gpt-6-astra）三条发现已修：驱动自己核对主指标（子进程退出 0 但缺键也算一次失败的尝试，`OFFICIAL_KEYS_MISSING`）；判分用尽仍缺时 `aggregate_scores` 把该 trial 的官方分记为缺失、计 0、留在分母，`driver scores` 输出 `official_missing` 列表供 run.md 单列（完成标记里 `judge.status: failed` 才算用尽；其他缺键行出表时仍报错）；任何路径重判前都先把已有 `scores.json` 复制到 `superseded/`（含续跑补判）。可选项采纳一条：`coverage` 的主指标遇 NaN/inf 也报错。
+- 出表检查放宽到所选的每个 `--metric`（lead 2026-11-15 按裁决补充）：`driver scores` 的每行带 `trial` 与 `report_present`；有报告、但缺所选指标（或值非有限）的 trial，`coverage` 退出码 2，报错写明哪题哪个 trial 缺哪个键（如 `S38 trial-2 has a report but no 'root_cause_entity_f1'`）；无报告的 trial（`report_present` 为 0，L5）与没有分数行的缺失 trial 照旧计 0；判分用尽的 trial 已由 `aggregate_scores` 写成显式 0。不带 `report_present` 的旧分数行按有报告处理。
 
 ## 缺陷修复（#645：驱动给产品已拒收的报告打分）
 

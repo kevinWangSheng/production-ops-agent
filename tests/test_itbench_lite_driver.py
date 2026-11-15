@@ -645,8 +645,9 @@ def test_scores_aggregate_for_coverage(env, tmp_path):
     h = Harness(tmp_path)
     driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1, 2])
     table = driver.aggregate_scores(cfg)
+    base = {"det_f1": 1.0, "det_pass": 1.0, "root_cause_entity_f1": 0.5}
     assert table == {
-        "16": [{"det_f1": 1.0, "det_pass": 1.0, "root_cause_entity_f1": 0.5}] * 2
+        "16": [base | {"trial": float(n), "report_present": 1.0} for n in (1, 2)]
     }
 
 
