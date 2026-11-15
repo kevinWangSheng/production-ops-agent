@@ -185,3 +185,11 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 作废线已按 r4 原文改为灌完即投。代价：快照末尾早于投递约「60 s + 灌入耗时」；灌入超过约 4 分钟时，以查询窗终点为时刻的即时查询可能落在数据之后（已知风险 1 的 5 分钟线），冒烟看 `data_end_to_delivery_seconds`。
 - 入口告警没有 `service_name` 时按 lead 定的回退跑，产物里 `target_fallback: true`；S12 这类题调查对象可能是基础设施噪声（预审风险 1），是否改入口选择规则待定。
 - Ubuntu 上 PostgreSQL 17 的 `initdb`、`pg_ctl` 需在 PATH 上（`LocalPgLauncher` 用 `shutil.which`）。
+
+## 缺陷修复（#638：命名空间名被当成根因实体）
+
+状态：进行中。worktree `../poa-638-fix`，分支 `fix/638-namespace-root`。
+
+- 原因（主机快照核对）：`otel-demo` 进词表不是生成器漏掉了 Namespace 对象，而是快照里有一个同名 ServiceAccount（`serviceaccounts`，命名空间 `otel-demo`），按 L-V6 被正当收进对象名。报告总结常写 `otel-demo/<服务>`，换算先命中它当根因。
+- 修在换算侧：`answer.convert` 不把 `namespace` 参数（默认 `DEFAULT_NAMESPACE`，即驱动的部署命名空间）当实体候选，大小写不敏感；`conversion_meta.json` 记 `excluded_namespace`。理由：歧义发生在「文本里的命名空间前缀」这一步，与词表来源无关；改换算后已生成的词表文件原样可用，离线重算不用重生成词表，也不改用户裁决过的 L-V6/L-V7。代价：与命名空间同名的对象（这个 ServiceAccount）永远不会成为实体。证据里模型传的 `namespace` 值不排除：模型可能传错，排除它会误删真实服务名。
+- 离线重算：`driver rescore --round <原轮次> --into <新轮次> --vocabulary-dir <词表目录>` 读冻结的 `docs/evidence/itbench-lite-sre-<原轮次>/S*/trial-*/summary.json`（`run` 块含报告与证据），用当前换算规则写到 `tmp/itbench-lite/<新轮次>/`，再用已有的 `driver judge --round <新轮次>` 判分、`driver scores` 汇总。不调模型、不起服务，原轮次只读，新轮次已存在就拒绝。
