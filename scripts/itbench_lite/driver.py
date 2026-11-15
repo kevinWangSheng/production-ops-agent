@@ -1336,12 +1336,20 @@ def rescore_round(
     if not source.evidence_dir.is_dir():
         raise ValueError(f"no evidence for round {source.round}")
     wanted = None if not only else {scenario_key(x) for x in only.split(",")}
+    summaries = [
+        path
+        for path in sorted(source.evidence_dir.glob("S*/trial-*/summary.json"))
+        if wanted is None or scenario_key(path.parent.parent.name) in wanted
+    ]
+    # Every vocabulary is checked before anything is written: an abort never
+    # leaves a partial target round behind (RoundAbort, the file is not read).
+    for path in summaries:
+        key = scenario_key(path.parent.parent.name)
+        check_input_file(vocabulary_dir / f"S{key}.txt", "vocabulary")
     rows: list[dict[str, Any]] = []
-    for path in sorted(source.evidence_dir.glob("S*/trial-*/summary.json")):
+    for path in summaries:
         label, trial_name = path.parent.parent.name, path.parent.name
         key = scenario_key(label)
-        if wanted is not None and key not in wanted:
-            continue
         trial = int(trial_name.split("-")[1])
         row: dict[str, Any] = {"trial": f"{label}/{trial_name}"}
         rows.append(row)
@@ -1359,7 +1367,6 @@ def rescore_round(
             row["status"] = "skipped_no_scenario_dir"
             continue
         vocabulary_file = vocabulary_dir / f"S{key}.txt"
-        check_input_file(vocabulary_file, "vocabulary")  # RoundAbort, never read
         if not vocabulary_file.is_file():
             row["status"] = "skipped_no_vocabulary"
             continue

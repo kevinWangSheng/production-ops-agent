@@ -1024,15 +1024,20 @@ def test_rescore_refuses_a_target_inside_the_source_round(env, tmp_path, capsys)
 def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
     env, tmp_path, capsys
 ):
-    cfg, _ = env
+    # The answer-named vocabulary belongs to the scenario converted last, so
+    # the refusal must come before the first scenario is written.
+    cfg, vocab = env
+    make_scenario(cfg.dataset, "Scenario-7")
     h = Harness(tmp_path)
-    driver.run_scenario(cfg, h.backends(), "Scenario-16", tmp_path / "S16.txt", [1])
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    driver.run_scenario(cfg, h.backends(), "Scenario-7", vocab, [1])
     vocab_dir = tmp_path / "vocab"
     vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
     answer_file = tmp_path / "assertion.json"
     answer_file.write_text("{}")
     answer_file.chmod(0o000)  # opening it would fail the test
-    (vocab_dir / "S16.txt").symlink_to(answer_file)
+    (vocab_dir / "S7.txt").symlink_to(answer_file)
     code = driver.main(
         [
             "rescore", "--round", "t604", "--into", "t604-r638",
@@ -1040,8 +1045,9 @@ def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
             "--evidence-root", str(cfg.evidence_root),
         ]
     )  # fmt: skip
+    answer_file.chmod(0o600)
     assert code == 2
     assert json.loads(capsys.readouterr().out.splitlines()[-1])["code"] == (
         "ANSWER_FILE_AS_INPUT"
     )
-    answer_file.chmod(0o600)
+    assert not (cfg.tmp_root / "t604-r638").exists()  # nothing partial left
