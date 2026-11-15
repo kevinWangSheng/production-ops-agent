@@ -284,3 +284,36 @@ def test_deliver_refuses_non_loopback(bad):
 
     with pytest.raises(ValueError):
         driver.deliver(f"http://{bad}:29180/intake/alertmanager", "t", {})
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"root_cause_entity_precision": 1.0, "root_cause_entity_recall": 1.0},
+        {},
+        {"root_cause_entity_f1": float("nan")},
+    ],
+)
+def test_judge_result_without_required_official_key_is_a_failed_judge(
+    tmp_path, monkeypatch, row
+):
+    # #641: a judged trial whose evaluator row lacks root_cause_entity_f1 is
+    # not a 0 (L5 zeroes only reportless trials); it fails like a judge call.
+    from scripts.itbench_lite import official_eval
+
+    gt_root, outputs = _trial(tmp_path, _report("checkout is failing"))
+
+    def fake_run(directory, ground_truth, outputs_root, work_dir, config):
+        work_dir.mkdir(parents=True)
+        scores = work_dir / "trial_scores.json"
+        scores.write_text(json.dumps({"7": [row]}))
+        return scores
+
+    monkeypatch.setattr(official_eval, "run", fake_run)
+    monkeypatch.setenv("ITBENCH_EVALUATIONS_DIR", str(tmp_path))
+    code, scores = _run(tmp_path, gt_root, outputs, "--judge")
+    assert code == 3
+    assert scores["judged"] is False and scores["official"] is None
+    assert scores["judge_error"] == "OFFICIAL_KEYS_MISSING"
+    assert scores["det"]["det_f1"] == 1.0  # still written
+    assert not (tmp_path / "work").exists()
