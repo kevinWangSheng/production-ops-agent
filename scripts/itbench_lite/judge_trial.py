@@ -16,7 +16,9 @@ prediction hit) is never written, and the evaluator's work directory (its
 staged outputs and judge results, which carry answer-derived judge text) is
 removed once the numeric row is read. Nothing answer-derived is printed; the
 driver also discards this process's output. Exit status 0 on success, 3 when
-the judge call failed; the deterministic score is written either way.
+the judge call failed or its result lacks a required official key
+(``official_eval.REQUIRED_OFFICIAL_KEYS``, #641); the deterministic score is
+written either way.
 
     python -m scripts.itbench_lite.judge_trial --ground-truth <root> \\
         --scenario-dir <name> --outputs <outputs root> --trial <n> \\
@@ -110,6 +112,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 official = official_row(scores_file, args.scenario_dir, args.trial)
                 labels = config.labels()
+                if official_eval.missing_official_keys(official):
+                    # Treated as a failed judge call, retried by the driver (#641).
+                    judge_error, official, labels = "OFFICIAL_KEYS_MISSING", None, None
             except Exception as error:  # noqa: BLE001 - the driver retries
                 judge_error = type(error).__name__
             finally:

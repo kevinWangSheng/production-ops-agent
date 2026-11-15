@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -64,6 +65,26 @@ _VALUE_KEYS = {
     "calculation_recall": "_recall",
     "calculation_f1": "_f1",
 }
+#: Official keys a judged trial must carry; the main score (L-D15) is built
+#: from ``root_cause_entity_f1``.  A judge result without them is a failed
+#: judge call, not a 0 (#641; L5 zeroes only reportless trials).
+REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)
+
+
+def missing_official_keys(official: object) -> list[str]:
+    """Required official keys absent from ``official`` or not a finite number."""
+    values = official if isinstance(official, Mapping) else {}
+    return [key for key in REQUIRED_OFFICIAL_KEYS if not _finite(values.get(key))]
+
+
+def _finite(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
 METRIC_KEYS = (
     "root_cause_entity_precision",
     "root_cause_entity_recall",
@@ -319,7 +340,7 @@ def trial_scores(
     """Per-scenario trial scores for ``coverage.build_table``.
 
     Judged trials take the evaluator's flattened scores (a failed judge call
-    leaves them empty, which the table counts as 0).  Reportless trials get 0
+    leaves them empty; ``judge_trial`` then reports a failed judge, #641).  Reportless trials get 0
     on every metric whatever the evaluator said (L5).
     """
 

@@ -185,6 +185,8 @@ class Harness:
                 "run_id": run_id,
                 "report": self.report,
                 "report_present": self.report is not None,
+                # As run_freeze.collect freezes it: the product accepted the report.
+                "outcome": {"report_available": self.report is not None},
                 "observations": [
                     {
                         "evidence_id": "ev-1",
@@ -204,7 +206,12 @@ class Harness:
                         {
                             "judged": job["judge"] and self.judge_status == 0,
                             "det": {"det_f1": 1.0, "det_pass": 1.0, "note": "x"},
-                            "official": None,
+                            # A completed judge result carries the main metric.
+                            "official": (
+                                {"root_cause_entity_f1": 0.5}
+                                if job["judge"] and self.judge_status == 0
+                                else None
+                            ),
                         }
                     )
                 )
@@ -638,7 +645,10 @@ def test_scores_aggregate_for_coverage(env, tmp_path):
     h = Harness(tmp_path)
     driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1, 2])
     table = driver.aggregate_scores(cfg)
-    assert table == {"16": [{"det_f1": 1.0, "det_pass": 1.0}] * 2}
+    base = {"det_f1": 1.0, "det_pass": 1.0, "root_cause_entity_f1": 0.5}
+    assert table == {
+        "16": [base | {"trial": float(n), "report_present": 1.0} for n in (1, 2)]
+    }
 
 
 def test_vocabulary_missing_is_deterministic(env, tmp_path):
@@ -1051,3 +1061,153 @@ def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
         "ANSWER_FILE_AS_INPUT"
     )
     assert not (cfg.tmp_root / "t604-r638").exists()  # nothing partial left
+
+
+def test_judge_command_rejudges_a_judged_result_missing_a_required_key(
+    env, tmp_path, capsys
+):
+    # #641: a scores file marked judged but without root_cause_entity_f1 (as
+    # written before the fix) is judged again; a complete one is skipped.
+    cfg, vocab = env
+    make_scenario(cfg.dataset, "Scenario-7")
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    driver.run_scenario(cfg, h.backends(), "Scenario-7", vocab, [1])
+    complete = {"judged": True, "det": {"det_f1": 0.0},
+                "official": {"root_cause_entity_f1": 0.5}}  # fmt: skip
+    lacking = {"judged": True, "det": {"det_f1": 0.0},
+               "official": {"root_cause_entity_precision": 0.5}}  # fmt: skip
+    (cfg.round_dir / "S16" / "trial-1" / "scores.json").write_text(json.dumps(complete))
+    (cfg.round_dir / "S7" / "trial-1" / "scores.json").write_text(json.dumps(lacking))
+    h2 = Harness(tmp_path)
+    code = driver.main(
+        [
+            "judge", "--round", cfg.round, "--ground-truth", str(cfg.dataset),
+            "--tmp-root", str(cfg.tmp_root),
+        ],
+        backends=h2.backends(),
+    )  # fmt: skip
+    assert code == 0
+    assert [c["outputs"] for c in h2.judge_calls] == [
+        cfg.round_dir / "S7" / "trial-1" / "outputs"
+    ]
+    # The original result is kept byte for byte; the complete one is untouched.
+    kept = list((cfg.round_dir / "S7" / "trial-1" / driver.SUPERSEDED_DIR).iterdir())
+    assert [json.loads(p.read_text()) for p in kept] == [lacking]
+    assert not (cfg.round_dir / "S16" / "trial-1" / driver.SUPERSEDED_DIR).exists()
+    assert (
+        json.loads((cfg.round_dir / "S16" / "trial-1" / "scores.json").read_text())
+        == complete
+    )
+
+
+def test_judge_exit_0_without_the_main_metric_is_a_failed_try_then_missing(
+    env, tmp_path, capsys
+):
+    # #641: the driver checks the main official metric itself; judging that
+    # never yields it uses every try (L-D9) and the trial's official scores are
+    # recorded as missing: 0, in the denominator, listed by ``scores``.
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    backends = h.backends()
+
+    def judge(job):
+        h.judge_calls.append(dict(job))
+        Path(job["out"]).write_text(
+            json.dumps(
+                {
+                    "judged": True,
+                    "det": {"det_f1": 1.0},
+                    "official": {"root_cause_entity_precision": 1.0},
+                }
+            )
+        )
+        return 0
+
+    backends.judge = judge
+    out = driver.run_scenario(cfg, backends, "Scenario-16", vocab, [1])
+    assert out["trials"][1]["judge"] == {
+        "status": "failed",
+        "tries": driver.JUDGE_TRIES,
+        "exit": "OFFICIAL_KEYS_MISSING",
+    }
+    assert len(h.judge_calls) == driver.JUDGE_TRIES
+    missing: list[str] = []
+    table = driver.aggregate_scores(cfg, missing)
+    assert missing == ["S16/trial-1"]
+    row = table["16"][0]
+    assert row["det_f1"] == 1.0
+    assert row["root_cause_entity_f1"] == row["root_cause_entity_pass"] == 0.0
+    scores = tmp_path / "scores.json"
+    assert driver.main(
+        ["scores", "--round", cfg.round, "--tmp-root", str(cfg.tmp_root),
+         "--out", str(scores)]
+    ) == 0  # fmt: skip
+    assert json.loads(capsys.readouterr().out)["official_missing"] == ["S16/trial-1"]
+
+
+def test_resume_judging_keeps_the_earlier_scores_file(env, tmp_path):
+    # #641: a scores file left by a crash before the marker is kept when the
+    # resumed run judges the trial again.
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    trial_dir = cfg.round_dir / "S16" / "trial-1"
+    (trial_dir / driver.MARKER).unlink()
+    earlier = {"judged": True, "det": {"det_f1": 0.25},
+               "official": {"root_cause_entity_precision": 1.0}}  # fmt: skip
+    (trial_dir / "scores.json").write_text(json.dumps(earlier))
+    out = driver.run_scenario(
+        cfg, Harness(tmp_path).backends(), "Scenario-16", vocab, [1]
+    )
+    assert out["trials"][1]["resumed"] == "judge"
+    kept = list((trial_dir / driver.SUPERSEDED_DIR).iterdir())
+    assert [json.loads(p.read_text()) for p in kept] == [earlier]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"final_state": "failed", "report_available": False,
+         "handoff_reasons": ["REPORT_INVALID"]},
+        {"available": False, "reason": "UNKNOWN_DURABLE_STATE"},
+        None,
+    ],
+)  # fmt: skip
+def test_report_rejected_by_the_product_counts_as_no_report(outcome):
+    # #645: a schema-valid report that the product did not accept is not
+    # converted: empty output, not judged (report_present false), 0.
+    block = {"report": valid_report(), "observations": [{"evidence_id": "ev-1"}]}
+    if outcome is not None:
+        block["outcome"] = outcome
+    conversion, reason = driver.convert_run(block, ["checkout"])
+    assert reason == "REPORT_REJECTED_BY_PRODUCT"
+    assert conversion.agent_output == {
+        "entities": [], "propagations": [], "alerts_explained": []
+    }  # fmt: skip
+    assert conversion.meta["report_present"] is False
+    accepted, reason = driver.convert_run(
+        {**block, "outcome": {"report_available": True}}, ["checkout"]
+    )
+    assert reason is None and accepted.meta["report_present"] is True
+
+
+def test_rescore_applies_the_product_rejection_to_a_frozen_round(env, tmp_path, capsys):
+    cfg, _ = env
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
+    driver.run_scenario(cfg, Harness(tmp_path).backends(), "Scenario-16",
+                        vocab_dir / "S16.txt", [1])  # fmt: skip
+    summary_path = cfg.evidence_dir / "S16" / "trial-1" / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["run"]["outcome"] = {"report_available": False}
+    summary_path.write_text(json.dumps(summary))
+    assert driver.main(
+        ["rescore", "--round", cfg.round, "--into", "t604-r645",
+         "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+         "--evidence-root", str(cfg.evidence_root)]
+    ) == 0  # fmt: skip
+    row = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert row["reason"] == "REPORT_REJECTED_BY_PRODUCT"
+    assert row["root_cause_entity"] is None and row["entity_count"] == 0

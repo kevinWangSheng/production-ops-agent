@@ -75,3 +75,59 @@ def test_scenario_key_forms():
     } == {"38"}
     with pytest.raises(ValueError):
         coverage.scenario_key("abc")
+
+
+@pytest.mark.parametrize(
+    "metric", ["root_cause_entity_f1", "root_cause_entity_pass", "propagation_chain"]
+)
+def test_trial_with_a_report_but_without_the_metric_is_refused_not_zeroed(metric):
+    # #641: a scored trial that had a report but lacks a selected metric is an
+    # incomplete judge result; the error names the trial and the key.
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    complete = {metric: 1.0, "trial": 1.0, "report_present": 1.0}
+    lacking = {"root_cause_entity_precision": 1.0, "trial": 2.0, "report_present": 1.0}
+    with pytest.raises(ValueError, match=f"S33 trial-2 has a report but no '{metric}'"):
+        coverage.build_table(ids, {"S33": [complete, lacking]}, [metric])
+    # A row without report_present (older scores files) counts as having one.
+    with pytest.raises(ValueError, match="S33 trial row 1"):
+        coverage.build_table(ids, {"S33": [{}]}, [metric])
+
+
+def test_reportless_and_missing_trials_still_count_zero():
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    reportless = {"trial": 2.0, "report_present": 0.0, "root_cause_entity_f1": 1.0}
+    table = coverage.build_table(
+        ids,
+        {"S33": [{"root_cause_entity_f1": 1.0, "trial": 1.0}, reportless]},
+        ["root_cause_entity_f1"],
+    )
+    row = next(r for r in table["scenarios"] if r["scenario"] == "33")
+    assert row["means"]["root_cause_entity_f1"] == pytest.approx(1 / 3)
+    assert row["trials_missing"] == 1  # the absent third trial counts 0
+
+
+def test_cli_exits_2_naming_the_trial_and_key(tmp_path, capsys):
+    tiers_file = tmp_path / "tiers.json"
+    tiers_file.write_text(__import__("json").dumps({f"S{i}": "T" for i in IDS}))
+    scores_file = tmp_path / "scores.json"
+    scores_file.write_text(
+        __import__("json").dumps({"38": [{"trial": 2.0, "report_present": 1.0}]})
+    )
+    code = coverage.main(
+        ["--tiers", str(tiers_file), "--scores", str(scores_file),
+         "--metric", "root_cause_entity_f1"]
+    )  # fmt: skip
+    assert code == 2
+    assert "S38 trial-2 has a report but no 'root_cause_entity_f1'" in (
+        capsys.readouterr().err
+    )
+
+
+def test_non_finite_main_metric_is_refused():
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    with pytest.raises(ValueError, match="root_cause_entity_f1"):
+        coverage.build_table(
+            ids,
+            {"S1": [{"root_cause_entity_f1": float("nan")}]},
+            ["root_cause_entity_f1"],
+        )
