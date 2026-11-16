@@ -1,6 +1,6 @@
 # 网页工作台 UI 重做
 
-- 状态：已完成。实现已合并；钉页面的验收在本机 PG 实跑通过。另发现 2 个与 UI 无关的既有验收失败（`test_f2_alert_correlation.py` 的 schema 降级读回，#672）与 CI 不跑多数 PG 验收的缺口（#673），均转 issue，见「进展」2026-11-16 末条
+- 状态：实现已合并，可用于演示；完成条件尚有 3 项未满足：`tests/acceptance/` 有 2 个与 UI 无关的既有失败（`test_f2_alert_correlation.py` 降级读回，#672）、`test_393_live` 需 live 环境未实跑（只用 grep 核对锚点）、最终截图为真实记录离线渲染而非运行中的工作台。CI 不跑多数 PG 验收见 #673。见「进展」2026-11-16 末条
 - 更新日期：2026-11-16
 - 依据：GitHub issue #572；[设计说明](../design/web-ui-design-spec-2026-11-15.md)；[合同决定表 r2](2026-11-15-web-ui-redesign-contract.md)
 - 工作区：设计说明 PR #636、#637；合同 PR #654。静态稿保存在仓库外 `~/.agent/diagrams/`。实现各 PR 见「实现计划」，worktree 均已移除
