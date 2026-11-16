@@ -157,6 +157,15 @@
 {%- endfor %}{% endfor -%}
 {%- for s in code_sections %}{% set ns.code = ns.code + (s.conclusions | length) %}{% endfor -%}
 {%- set reviewable = sm.actions | length > 0 -%}
+{#- approvable: the page offers approve or supersede (summary.approve_action);
+    a disputed or citation-failed version under review is only returned or
+    rejected, so nothing on the page may say approval would publish. -#}
+{%- set approvable = sm.approve_action is not none -%}
+{%- if approvable -%}{% set no_approval = none %}
+{%- elif reviewable -%}{% set no_approval = "a statement is under dispute" if sm.disputes else "the citation check failed" %}
+{%- elif v.state == "approved" -%}{% set no_approval = "version " ~ v.version ~ " is already approved" %}
+{%- else -%}{% set no_approval = "version " ~ v.version ~ " is " ~ v.state ~ ", not under review" %}
+{%- endif -%}
 {%- set state_pill = {
   "under_review": "Waiting for your review", "approved": "Approved", "rejected": "Rejected",
   "returned": "Returned for revision", "stale": "Stale, not reviewable",
@@ -231,9 +240,10 @@
     {{ ui.source("code", "Stored records") }}
   </div>
   <div>
-    <div class="k">{% if reviewable %}Approval would publish{% else %}Proposed knowledge{% endif %}</div>
+    <div class="k">{% if approvable %}Approval would publish{% else %}Proposed knowledge{% endif %}</div>
     <p class="a">{{ sm.proposals }} knowledge entr{{ "y" if sm.proposals == 1 else "ies" }}{% if sm.replaces %}, {{ sm.replaces }} replacing an existing one{% endif %}</p>
-    <p class="s">Read by later investigations as hints · no change to any production system</p>
+    {% if approvable %}<p class="s">Read by later investigations as hints · no change to any production system</p>
+    {% else %}<p class="s">Approval is not available: {{ no_approval }}.</p>{% endif %}
     {{ ui.source("agent", "Proposed by Model (postmortem worker)") }}
   </div>
 </div>
@@ -249,7 +259,7 @@
 <p class="counts"><b>{{ ns.supported }}</b> supported fact{{ "" if ns.supported == 1 else "s" }} · <b>{{ ns.uncertain }}</b> uncertain · <b>{{ sm.disputes | length }}</b> under dispute</p>
 
 {% if ns.flagged %}
-<h3>{% if reviewable %}Check before approving{% else %}Flagged statements{% endif %} ({{ ns.flagged | length }})</h3>
+<h3>{% if approvable %}Check before approving{% else %}Flagged statements{% endif %} ({{ ns.flagged | length }})</h3>
 <p class="small">Every statement whose certainty is not &ldquo;supported&rdquo;, whose citations are invalid, or that is under dispute.{% if ns.model > ns.flagged | length %} The other {{ ns.model - ns.flagged | length }} are supported facts.{% endif %}</p>
 <ul class="chk">
   {% for section, c in ns.flagged %}
@@ -309,7 +319,7 @@
 {% endfor %}
 {% if not model_sections %}<p class="small">{{ ui.missing("no model statements") }} this version carries no statement by the model.</p>{% endif %}
 
-<h3>Entries approval would publish ({{ v.proposals | length }}) <span class="q">proposed by Model (postmortem worker)</span></h3>
+<h3>{% if approvable %}Entries approval would publish{% else %}Proposed knowledge entries{% endif %} ({{ v.proposals | length }}) <span class="q">proposed by Model (postmortem worker)</span></h3>
 {% if v.proposals %}
 <ul class="props" id="proposals">
   {% for p in v.proposals %}

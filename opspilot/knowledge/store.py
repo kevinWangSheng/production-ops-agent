@@ -1126,23 +1126,8 @@ class KnowledgeStore(_StoreBase):
                 (incident_id,),
             ).fetchone()
             snapshot = None if head is None else self._postmortem_snapshot(conn, head)
-            job = conn.execute(
-                "SELECT * FROM opspilot_postmortem_generation_jobs WHERE incident_id=%s",
-                (incident_id,),
-            ).fetchone()
-            attempts = conn.execute(
-                "SELECT attempt_id, incident_id, status, error_code, revises_version, "
-                "version, model_requests, max_model_requests, started_at, finished_at, "
-                "model_calls FROM opspilot_postmortem_generation_attempts "
-                "WHERE incident_id=%s "
-                "ORDER BY started_at DESC, attempt_id LIMIT %s",
-                (incident_id, ATTEMPTS_SHOWN),
-            ).fetchall()
-        lease_active = bool(
-            job is not None
-            and job["lease_until"] is not None
-            and job["lease_until"] > now
-        )
+            job, attempts = self._job_and_attempts(conn, incident_id)
+        lease_active = _schedule_view(job, now)["lease_active"]
         latest = snapshot["versions"][-1] if snapshot and snapshot["versions"] else None
         status: str = "not_generated"
         if lease_active and attempts and attempts[0]["status"] == "running":
@@ -1161,19 +1146,41 @@ class KnowledgeStore(_StoreBase):
             "incident_id": incident_id,
             "status": status,
             "postmortem": snapshot,
-            "schedule": {
-                "pending_regeneration_version": None
-                if job is None
-                else job["pending_regeneration_version"],
-                "lease_active": lease_active,
-                "consecutive_failures": 0
-                if job is None
-                else job["consecutive_failures"],
-                "next_attempt_at": None if job is None else job["next_attempt_at"],
-                "last_error_code": None if job is None else job["last_error_code"],
-            },
+            "schedule": _schedule_view(job, now),
             "attempts": attempts,
         }
+
+    def generation_attempts(self, incident_id: UUID) -> dict[str, Any]:
+        """The worker's schedule and the latest ``ATTEMPTS_SHOWN`` generation
+        attempts of one incident, as ``incident_postmortem`` reports them,
+        without reading the postmortem itself (the version page already has
+        it; UI redesign 3.3)."""
+        _require_uuid(incident_id)
+        with self.transaction(snapshot=True) as conn:
+            now = self._db_now(conn)
+            job, attempts = self._job_and_attempts(conn, incident_id)
+        return {
+            "schedule": _schedule_view(job, now),
+            "attempts": attempts,
+        }
+
+    @staticmethod
+    def _job_and_attempts(
+        conn: Any, incident_id: UUID
+    ) -> tuple[Mapping[str, Any] | None, list[Any]]:
+        job = conn.execute(
+            "SELECT * FROM opspilot_postmortem_generation_jobs WHERE incident_id=%s",
+            (incident_id,),
+        ).fetchone()
+        attempts = conn.execute(
+            "SELECT attempt_id, incident_id, status, error_code, revises_version, "
+            "version, model_requests, max_model_requests, started_at, finished_at, "
+            "model_calls FROM opspilot_postmortem_generation_attempts "
+            "WHERE incident_id=%s "
+            "ORDER BY started_at DESC, attempt_id LIMIT %s",
+            (incident_id, ATTEMPTS_SHOWN),
+        ).fetchall()
+        return job, list(attempts)
 
     def postmortem(self, postmortem_id: UUID) -> dict[str, Any]:
         with self.transaction(snapshot=True) as conn:
@@ -1671,3 +1678,20 @@ class KnowledgeStore(_StoreBase):
             ]
             version["proposals"] = [p for p in proposals if p["version"] == number]
         return {**head, "versions": versions}
+
+
+def _schedule_view(job: Mapping[str, Any] | None, now: Any) -> dict[str, Any]:
+    """``ScheduleView`` of a generation job row (``None``: no job yet)."""
+    return {
+        "pending_regeneration_version": None
+        if job is None
+        else job["pending_regeneration_version"],
+        "lease_active": bool(
+            job is not None
+            and job["lease_until"] is not None
+            and job["lease_until"] > now
+        ),
+        "consecutive_failures": 0 if job is None else job["consecutive_failures"],
+        "next_attempt_at": None if job is None else job["next_attempt_at"],
+        "last_error_code": None if job is None else job["last_error_code"],
+    }

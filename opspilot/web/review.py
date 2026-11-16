@@ -71,6 +71,8 @@ class KnowledgeReview(Protocol):
 
     def incident_postmortem(self, incident_id: UUID) -> dict[str, Any]: ...
 
+    def generation_attempts(self, incident_id: UUID) -> dict[str, Any]: ...
+
     def postmortem(self, postmortem_id: UUID) -> dict[str, Any]: ...
 
     def knowledge_history(self, entry_id: UUID) -> dict[str, Any]: ...
@@ -251,12 +253,11 @@ class PostmortemReview:
             )
             if item.get("version") == version
         ]
+        from_postmortem = self._read(
+            self.knowledge.knowledge_from_postmortem, postmortem_id
+        )
         published = [
-            item
-            for item in self._read(
-                self.knowledge.knowledge_from_postmortem, postmortem_id
-            )
-            if item["source_version"] == version
+            item for item in from_postmortem if item["source_version"] == version
         ]
         sections = []
         for name in (*CODE_SECTIONS, *MODEL_SECTIONS):
@@ -268,11 +269,16 @@ class PostmortemReview:
         if other:
             sections.append({"section": "other", "conclusions": other})
         incident_id = snapshot["incident_id"]
-        overview = self._read(self.knowledge.incident_postmortem, incident_id)
+        # schedule and the bounded attempts only: the snapshot above already
+        # holds every version, so the full incident view is not read again
+        overview = self._read(self.knowledge.generation_attempts, incident_id)
         versions = [_version_summary(v) for v in reversed(snapshot["versions"])]
         latest_sequence = self.events.latest(incident_id)
         events, events_more = self._postmortem_events(
-            incident_id, postmortem_id, latest_sequence
+            incident_id,
+            postmortem_id,
+            {(str(item["entry_id"]), item["revision"]) for item in from_postmortem},
+            latest_sequence,
         )
         return {
             "incident_id": incident_id,
@@ -304,11 +310,18 @@ class PostmortemReview:
         }
 
     def _postmortem_events(
-        self, incident_id: UUID, postmortem_id: UUID, latest: int
+        self,
+        incident_id: UUID,
+        postmortem_id: UUID,
+        revisions: set[tuple[str, Any]],
+        latest: int,
     ) -> tuple[list[dict[str, Any]], bool]:
         """This postmortem's events among the incident's latest
         ``EVENTS_WINDOW`` events, newest first, at most ``EVENTS_SHOWN``;
-        the flag says more matched than are shown."""
+        the flag says more matched than are shown. An event belongs here
+        only by an explicit link: its ``postmortem_id``, or (knowledge
+        changes) an entry revision published from this postmortem. A generation
+        failure names no postmortem and is left to the attempts table."""
         cursor = max(0, latest - EVENTS_WINDOW)
         try:
             rows = self.events.read_after(incident_id, cursor, limit=EVENTS_WINDOW)
@@ -338,7 +351,11 @@ class PostmortemReview:
             }
             for e in rows
             if e.kind in EVENT_KINDS
-            and str(e.payload.get("postmortem_id", mine)) == mine
+            and (
+                str(e.payload.get("postmortem_id")) == mine
+                or (str(e.payload.get("entry_id")), e.payload.get("revision"))
+                in revisions
+            )
         ]
         matched.reverse()
         return matched[:EVENTS_SHOWN], len(matched) > EVENTS_SHOWN
