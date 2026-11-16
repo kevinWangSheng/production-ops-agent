@@ -188,16 +188,17 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 
 ## 缺陷修复（#638：命名空间名被当成根因实体）
 
-状态：进行中。worktree `../poa-638-fix`，分支 `fix/638-namespace-root`。
+状态：已完成（#639 合并为 `a720b9d8`；全量重算见 [证据](../evidence/itbench-lite-sre-lite-full-1114/run.md)）。
 
 - 原因（主机快照核对）：`otel-demo` 进词表不是生成器漏掉了 Namespace 对象，而是快照里有一个同名 ServiceAccount（`serviceaccounts`，命名空间 `otel-demo`），按 L-V6 被正当收进对象名。报告总结常写 `otel-demo/<服务>`，换算先命中它当根因。
 - 修在换算侧：`answer.convert` 不把 `namespace` 参数（默认 `DEFAULT_NAMESPACE`，即驱动的部署命名空间）当实体候选，大小写不敏感；`conversion_meta.json` 记 `excluded_namespace`。理由：歧义发生在「文本里的命名空间前缀」这一步，与词表来源无关；改换算后已生成的词表文件原样可用，离线重算不用重生成词表，也不改用户裁决过的 L-V6/L-V7。代价：与命名空间同名的对象（这个 ServiceAccount）永远不会成为实体。证据里模型传的 `namespace` 值不排除：模型可能传错，排除它会误删真实服务名。
 - 离线重算：`driver rescore --round <原轮次> --into <新轮次> --vocabulary-dir <词表目录>` 读冻结的 `docs/evidence/itbench-lite-sre-<原轮次>/S*/trial-*/summary.json`（`run` 块含报告与证据），用当前换算规则写到 `tmp/itbench-lite/<新轮次>/`，再用已有的 `driver judge --round <新轮次>` 判分、`driver scores` 汇总。不调模型、不起服务，原轮次只读，新轮次已存在就拒绝。
 - 独立审查（Codex gpt-6-astra）两条发现已修：rescore 的目标目录不得与源轮次或其证据目录互相包含；词表文件先过 `check_input_file`（名字或链接目标是答案名就停），与 `round` 路径一致；全部词表在写任何文件前先查完，中止不留半个目标轮次（机器人分诊）。
+- 裁决（2026-11-15 用户；起因是全局审查发现 F1 指出这条规则不在原决定表里）：保留 #638 的做法。L-V7 澄清（2026-11-15）：namespace 名按名字字符串排除，不论对象类型。#639 是让实现对齐 L-V7 原题「namespace 名……进不进词表 → 不进」（[决定表 r6 L-V7](2026-11-12-tool-expansion-contract.md)，该文件第 252 行），可以回溯。落实方式：从换算用的词表里去掉与部署命名空间同名的裸名，带 Kind 和对象名的实体照常参与。已知代价：同名 ServiceAccount 永远不会成为实体。L2 不动，等完整分数出来后单独找用户裁决。词表侧泛化到所有命名空间留给下一轮，见 #647。
 
 ## 缺陷修复（#641：判分结果缺官方核心指标仍记为已判分）
 
-状态：进行中。worktree `../poa-641-fix`，分支 `fix/641-judge-required-keys`。
+状态：已完成（#644 `1a59a918`、#649 `d7466652`；两个轮次缺键扫描与 4 个重判见 [证据](../evidence/itbench-lite-sre-lite-full-1114/run.md)）。
 
 - 裁决（2026-11-15 用户，F3）：判分结果缺官方核心指标时当成判分失败处理，再离线重判；原始结果保留，重判结果另存。
 - 做法：`official_eval.REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)`，L-D15 的主分只由它算出（`root_cause_entity_pass` 由它导出）。`judge_trial` 拿到的官方行缺这个键时记 `judge_error: OFFICIAL_KEYS_MISSING`、`judged: false`、`official: null`、退出码 3，和 judge 调用失败同样处理（驱动重试，确定性分照写）。`driver judge` 补判时，已标 `judged: true` 但缺必需键的旧结果也重新判。理由：必需键只取主分依赖的那一个，precision/recall 不参与主分，缺了不判失败，避免把可用的结果判废。
@@ -208,7 +209,7 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 
 ## 缺陷修复（#645：驱动给产品已拒收的报告打分）
 
-状态：进行中。worktree `../poa-645-fix`，分支 `fix/645-rejected-report`。
+状态：已完成（#650 `a95805b0`；S23 trial-1 回溯见 [证据](../evidence/itbench-lite-sre-lite-full-1114/run.md)）。
 
 - 裁决（2026-11-15 用户）：`convert_run` 在 `run.outcome.report_available` 不为 true 时按没有报告处理：空输出、不送 judge、计 0，原因记 `REPORT_REJECTED_BY_PRODUCT`；依据 L-D9「报告校验不过按没有报告处理」，产品自己的校验是权威校验。不改产品，不改 `run_freeze`（冻结的原始报告保留）。两个轮次回溯，原始轮次官方 pass@1 正式口径 6/105。
 - 自定细节：`outcome` 缺失或不可用（如 `{"available": false, …}`）也按「不为 true」处理，照裁决原文；判断顺序是先看报告对象（不是 mapping 仍记 `REPORT_INVALID_FOR_CONVERSION`），再看产品是否接收，最后做结构校验。
