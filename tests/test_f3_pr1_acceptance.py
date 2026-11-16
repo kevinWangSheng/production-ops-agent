@@ -380,7 +380,7 @@ def test_the_step_table_shows_why_each_non_ok_tool_result_failed(five_class_run)
     # R7 + point 5: the operator tells the four classes apart on the
     # workbench step table, not only by the bare status badge.
     steps = _section(
-        five_class_run["page"], "<h2>Steps</h2>", "<h2>Investigation history</h2>"
+        five_class_run["page"], '<details class="how" id="how">', "</details>"
     )
     lines = _text(steps).split("metrics.range_query")[1:]
     assert len(lines) == len(EXPRS), _text(steps)
@@ -408,7 +408,7 @@ def test_each_committed_observation_resolves_with_its_provenance(five_class_run)
     # Step 1 on the workbench surface (R1: ok and no_data are observations).
     app, incident = five_class_run["app"], five_class_run["incident"]
     steps = _section(
-        five_class_run["page"], "<h2>Steps</h2>", "<h2>Investigation history</h2>"
+        five_class_run["page"], '<details class="how" id="how">', "</details>"
     )
     evidence_ids = re.findall(rf"/incidents/{incident}/evidence/([^\"<>]+)\"", steps)
     assert len(evidence_ids) == 2, evidence_ids  # ok + no_data only
