@@ -65,7 +65,7 @@ Agent 自定（按预审推荐，各一行理由）：
 ## 执行进展与证据
 
 - 2026-11-15：任务记录建立；worktree 起于 `e974a744`。
-- 2026-11-15：PR-A 草稿 #653（`1285184d`）。新 `prompt_revision` 为 `prompt-replay-candidate-e09085d30341`（ext `prompt-replay-candidate-k8s-1e7089ef0aee`）。定向测试除 F3 证据型验收 3 条外全过；冻结 eval summary 实为 40 份（预审写 100），全部可加载。
+- 2026-11-15：PR-A 草稿 #653（`1285184d`）。新 `prompt_revision` 为 `prompt-replay-candidate-a6b4dfd02030`（ext `prompt-replay-candidate-k8s-d387f77762f5`；审查 P2 把 kind 措辞改为「是 Kubernetes 对象时写 Kind，否则写证据里的简短类型」后的值）。定向测试除 F3 证据型验收 3 条外全过；冻结 eval summary 实为 40 份（预审写 100），全部可加载。
 - 2026-11-15：PR-B 在本地分支 `feature/646-eval-root-cause`，起于 PR-A head，未推送；等 PR-A 合并后 `git merge origin/main` 再开 PR。内容：`answer.convert` 结构化路径（C1–C3，`method=structured|heuristic`、`root_cause_in_vocabulary`）；`normalise_kind`（大小写、单复数、`RESOURCE_KINDS` 两个方向，未知照写）；集群级 Kind 始终不带命名空间；C4 旁路 `S<id>.kinds.json`（`vocabulary --kinds-out`，名字 → `[Kind, namespace]`；只有一个 Kind 就用它，命名空间也唯一时一并用；旁路文件不存在就走原规则，旧轮次 rescore 结果不变）；#647 词表按字符串排除 Namespace 对象名 ∪ `metadata.namespace` 值；`driver scores` 输出 `conversion_methods` 计数；选题命令 `python -m scripts.itbench_lite.select_batch <tiers.json> --salt 646: --per-tier 4` 输出与上节题单一致（`12,5,14,34,2,8,105,22`）。35 份词表与旁路文件要在主机上重新生成（数据集只在租机上）。
 - 实施中冒出的合同问题（待裁决）：F3 第 5 步两次真实 Run 与第 3 步 D9 重跑绑定当前提示词版本（`tests/acceptance/test_f3_step5_real_runs.py`），L2 一改即失败。选项：重跑 F3 实验，或改验收口径。已报 lead。
 

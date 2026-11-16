@@ -96,8 +96,9 @@ REPORT_CONTRACT = (
     '"COPY_OBJECT_NAME","evidence_ids":["REPLACE_WITH_COMPLETE_VISIBLE_'
     'EVIDENCE_ID"]}. It names the single object where the fault originates, '
     "not merely where symptoms or alerts appear: kind is its Kubernetes kind "
-    "(for example Deployment, Pod, Service, ConfigMap or Node), namespace is "
-    "its namespace or null for a cluster-scoped object, name is the exact "
+    "when it is a Kubernetes object (for example Deployment, Pod, Service, "
+    "ConfigMap or Node), otherwise a short type as written in the evidence; "
+    "namespace is its namespace or null when it has none, name is the exact "
     "object name as written in the evidence, and evidence_ids lists at least "
     "one complete evidence_id actually supplied in this Run that supports it. "
     "When conclusion is supported or partial and the evidence points to one "
