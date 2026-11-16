@@ -269,6 +269,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     docs/tasks/2026-10-22-310-investigation-method-contract.md）的有意变化：
     候选臂在报告契约前新增 :data:`d.INVESTIGATION_METHOD`（8 句）与
     :data:`d.IMPACT_SCOPE`（9 句）；两个 baseline 变体不变。
+
+    30 → 31 是 #676 D9 的有意变化：:data:`d.INVESTIGATION_METHOD` 加一句
+    「告警是入口不是范围」（8 → 9 句）；两个 baseline 变体不变。
     """
 
     def sentences(text: str) -> int:
@@ -283,8 +286,8 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 30
-    assert sentences(d.INVESTIGATION_METHOD) == 8
+    assert variant_sentences("replay-candidate") == 31
+    assert sentences(d.INVESTIGATION_METHOD) == 9
     assert sentences(d.IMPACT_SCOPE) == 9
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)

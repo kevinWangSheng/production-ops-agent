@@ -1241,6 +1241,14 @@ _COMMON_DESCRIPTION = (
     "More than 4 MiB of objects, or more than 2 MiB of jq output, refuses the "
     "whole call with RESULT_TOO_LARGE and no partial result; narrow it with "
     "namespace, label_selector or field_selector. "
+    "Events are the exception: omit namespace and do not filter by type, "
+    "since the events that explain a fault are often Normal and recorded in "
+    "another namespace. Group them by involvedObject.kind, "
+    "involvedObject.namespace and reason first, e.g. .items | map({kind: "
+    ".involvedObject.kind, namespace: .involvedObject.namespace, reason}) | "
+    "group_by(.) | .[] | .[0] + {count: length}. If that is still too large, "
+    "filter with field_selector on involvedObject fields, e.g. "
+    "involvedObject.kind=Pod, instead of narrowing to one namespace. "
     "HTTP 401/403 from the cluster is denied with SOURCE_FORBIDDEN."
 )
 

@@ -102,8 +102,11 @@ REPORT_CONTRACT = (
     "object name as written in the evidence, and evidence_ids lists at least "
     "one complete evidence_id actually supplied in this Run that supports it. "
     "When conclusion is supported or partial and the evidence points to one "
-    "object, set root_cause to it; otherwise set root_cause to null. Do not "
-    "invent a supported cause to fill the format. json example: "
+    "object, set root_cause to it; otherwise set root_cause to null. When the "
+    "claim that names that object as the cause is a hypothesis, conclusion "
+    "is partial, not supported. The summary states as fact only what fact "
+    "claims support; word hypotheses as hypotheses and recommendations as "
+    "advice. Do not invent a supported cause to fill the format. json example: "
     + json.dumps(_REPORT_EXAMPLE, ensure_ascii=False, separators=(",", ":"))
 )
 

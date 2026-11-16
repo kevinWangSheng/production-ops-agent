@@ -442,6 +442,12 @@ _DESCRIPTION = (
     "labels of the resources you need, pass namespace, label_selector and/or "
     "field_selector so filtering happens server-side; unscoped queries read "
     "the whole cluster and may hit the 4 MiB read limit. "
+    "Events are the exception: omit namespace, do not filter by type, and "
+    "include the involved object, e.g. KIND:.involvedObject.kind,"
+    "NAMESPACE:.involvedObject.namespace,NAME:.involvedObject.name,"
+    "REASON:.reason; if that is too large, group them with kubernetes_jq_query "
+    "or filter with field_selector on involvedObject fields, e.g. "
+    "involvedObject.kind=Pod, instead of narrowing to one namespace. "
     + _COLUMNS_TEXT
     + " Optional filter_pattern is a case-sensitive regular expression "
     "(Python re, like grep -E) matched against each row's cells joined by "
