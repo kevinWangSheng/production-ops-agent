@@ -92,6 +92,7 @@ S23 trial-1 的报告被产品拒收（`report_available: false`、`REPORT_INVAL
 - DeepSeek（调查）：105 个 Run 冻结 summary 的 `run.tokens` 合计：缓存命中 126,003,840、未命中 11,591,095、输出 4,205,704（2,225 个带用量的模型轮次）。全程在北京时间 2026-11-15（周日）10:13–22:12，全部闲时。单价取仓库已有记录 [soak 费用主数](../m3-soak-2026-11-07/cost-primary.json)（`deepseek-flash` 官方价格页，2026-11-07 读取，闲时每百万 token 命中 0.02 / 未命中 1 / 输出 4 CNY；本轮当天没有重新读取）。合计 **CNY 30.93**（命中 2.52 + 未命中 11.59 + 输出 16.82）；按高峰价算的上限 CNY 61.87。
 - Z.ai judge：评测器输出不带用量，未计价。调用次数：原始轮次每 trial 至少 1 次（105 次，含重试未统计），#638 重算轮次 105 次，#641 重判 4 次；#645 回溯的 S23 trial-1 不送 judge。
 - 重算不调 DeepSeek。
+- 主机：Vultr 在线约 38.5 小时，单价未确认，以 Vultr 账单为准（见 [租机记录](../rental-2026-11/run.md)）。
 
 ## 已知限制
 
@@ -105,4 +106,4 @@ S23 trial-1 的报告被产品拒收（`report_available: false`、`REPORT_INVAL
 
 ## 入库与核对
 
-入库：105 个 `S<id>/trial-<n>/summary.json`、四套各 4 张分数表、`tiers.json` 与 `tiers_detail.json`、本文件。不入库：`tmp/itbench-lite/` 下的答案输出、`conversion_meta.json`、分数文件、评测器工作目录、原始 ledger；任何答案文件。复制前在主机上对 k8s token 与 `~/rental-private/known-secrets.txt` 的 11 个值逐个原文搜索（共 12 个值），0 命中；同一脚本放入一个已知值做正对照，1 命中；#641 与 #645 后的两套表复制前同样搜索，0 命中。本地解包后 sha256 与主机清单逐个比对，139 个文件全部一致。主机未销毁。
+入库：105 个 `S<id>/trial-<n>/summary.json`、四套各 4 张分数表、`tiers.json` 与 `tiers_detail.json`、本文件。不入库：`tmp/itbench-lite/` 下的答案输出、`conversion_meta.json`、分数文件、评测器工作目录、原始 ledger；任何答案文件。复制前在主机上对 k8s token 与 `~/rental-private/known-secrets.txt` 的 11 个值逐个原文搜索（共 12 个值），0 命中；同一脚本放入一个已知值做正对照，1 命中；#641 与 #645 后的两套表复制前同样搜索，0 命中。本地解包后 sha256 与主机清单逐个比对，139 个文件全部一致。主机已于 2026-11-15 由用户销毁（见 [租机记录](../rental-2026-11/run.md) 未执行一节）。
