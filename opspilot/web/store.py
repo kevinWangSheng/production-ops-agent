@@ -914,6 +914,21 @@ class DurableIncidentStore:
             for row in rows
         )
 
+    def control_log(self, incident_id: UUID, limit: int) -> list[dict[str, Any]]:
+        """The latest ``limit`` committed ``opspilot_controls`` rows with their
+        database time, oldest first: the incident page's decision log (#572),
+        which shows system rows (``auto_authorize_observation``) next to
+        human decisions. Bounded read (PRODUCT-CONSTRAINTS: result volume
+        is constrained even for read-only operations); callers ask for one
+        row more than they show to learn that older rows exist.
+        ``control_audit`` keeps its shape."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT action,actor,expected_generation,resulting_generation,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at DESC, resulting_generation DESC LIMIT %s",
+                (incident_id, limit),
+            ).fetchall()
+        return list(reversed(rows))
+
     def now(self) -> datetime:
         return self._clock.now()
 

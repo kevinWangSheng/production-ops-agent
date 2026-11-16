@@ -45,10 +45,14 @@ LABEL_LIMIT = 80
 
 _WIDTH, _HEIGHT = 720, 260
 _LEFT, _RIGHT, _TOP, _BOTTOM = 64, _WIDTH - 12, 12, _HEIGHT - 32
+#: Neutral series colours (#572 D9, design spec "颜色"): the ink ramp and the
+#: one accent, never red, since a series' meaning (error or not) is not known
+#: here. Order keeps neighbours apart in lightness.
 _COLORS = (
-    "#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e",
-    "#17becf", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22",
+    "#1d1e21", "#0d6b61", "#7d8088", "#5c6068", "#3f8f86",
+    "#a9abb1", "#4d5057", "#0a4f48", "#8f9198", "#2c2e33",
 )  # fmt: skip
+_AXIS = "#a9abb1"
 _NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
 
 
@@ -272,8 +276,8 @@ def _figure(
             singles.append(f"{escape(label)} = {_num(points[0][1])}")
     axis = (
         f'<line x1="{_LEFT}" y1="{_BOTTOM}" x2="{_RIGHT}" y2="{_BOTTOM}" '
-        'stroke="#888"/>'
-        f'<line x1="{_LEFT}" y1="{_TOP}" x2="{_LEFT}" y2="{_BOTTOM}" stroke="#888"/>'
+        f'stroke="{_AXIS}"/>'
+        f'<line x1="{_LEFT}" y1="{_TOP}" x2="{_LEFT}" y2="{_BOTTOM}" stroke="{_AXIS}"/>'
         f'<text x="{_LEFT - 4}" y="{_TOP + 4}" text-anchor="end" font-size="11">'
         f"{_num(high)}</text>"
         f'<text x="{_LEFT - 4}" y="{_BOTTOM}" text-anchor="end" font-size="11">'

@@ -169,8 +169,8 @@ def _context_messages(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _steps_section(page: str) -> str:
-    start = page.index("<h2>Steps</h2>")
-    return page[start : page.index("</table>", start)]
+    start = page.index('<details class="how" id="how">')
+    return page[start : page.index("</details>", start)]
 
 
 def _labels(entry: Any) -> list[str]:

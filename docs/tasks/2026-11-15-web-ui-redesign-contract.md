@@ -170,6 +170,7 @@ U1–U4 与 U5 用户未逐项答复，按推荐（协调者依用户 2026-11-16
 | r2：`test_m1_04_alert_intake.py:241-242,261-263,357-359,415` | 事故页有指纹、`otel-demo`、`checkout`；注解转义后显示；**列表页**与事故页都显示转人工原因码和完整事故 id；事故页有 `resolved` | 已抽查 |
 | r2：`test_f11_step1_rollout_trigger.py:229` | 事故页含版本变更详情链接 | 已抽查 |
 | r2：`test_245_merge_into.py:366,368` | 两向的 `/incidents/{id}` 链接 | 已抽查 |
+| PR2 探针：`test_f3_step3_coverage.py:124` | 覆盖区的图例与 not-integrated 行须放在表格之前，否则其文本串进最后一行的状态判定（按 `<tr>`/`<li>` 切到区块末尾） | CI 实测（#659） |
 
 ### 5.2 文件名含 acceptance、不在验收目录（按普通测试，独立测试作者可改）
 
