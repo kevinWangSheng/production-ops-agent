@@ -151,7 +151,9 @@ class RootCauseV3(DTO):
     """
 
     kind: Text
-    namespace: Text | None = None
+    #: Empty string is accepted and means the same as null (no namespace):
+    #: one more way to write "cluster-scoped" must not void the report (R8).
+    namespace: str | None = None
     name: Text
     evidence_ids: list[Text] = Field(min_length=1)
 

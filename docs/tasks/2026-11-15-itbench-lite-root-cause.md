@@ -43,6 +43,7 @@ Agent 自定（按预审推荐，各一行理由）：
   - 重试反馈：根因引用未交付 id 时单列一行 `root_cause: unknown_evidence_id (evidence_id: …)`，原因名沿用 `unknown_evidence_id`；结构错误走已有 `root_cause.<字段>: schema_error`。
   - eval 加载器：写入照旧 `model_dump`（新 summary 带 `root_cause`）；读取接受两种键集，保存时无该键且重新解析的根因为 null 时，按无该键的形状逐字节比对。
   - web「无法解析」提示改为「m0-report-v2 或 m0-report-v3」。
+  - `root_cause.namespace` 接受空字符串，与 null 同义。理由：集群级对象的另一种写法不应让整份报告作废（R8）；PR-B 合同测试用空字符串表示集群级。
 
 ## lead 的三条判断
 
