@@ -220,16 +220,30 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
         None,
     )
     detail = None
+    integrity = list(replay.get("integrity") or [])
+    verified = bool(replay.get("recovery_confirmed") and replay.get("consistent"))
     if view.get("recovery_statement"):
         headline = view["recovery_statement"]
         headline = headline[0].upper() + headline[1:]
-    elif replay.get("recovery_confirmed") and snapshot["incident"].lifecycle in (
+    elif (
+        view.get("state") != "authorized"
+        and not replay.get("consistent")
+        and (integrity or replay.get("available") is False)
+    ):
+        # The verdict block's own words: the stored verdict is not repeated
+        # when the offline replay cannot confirm it (contract 3.1, rule 3).
+        if "STORED_OBSERVATION_DATA_CLEANED" in integrity:
+            headline = "Raw data cleaned, cannot be re-verified"
+        else:
+            headline = "Integrity mismatch"
+        detail = "the stored verdict is not repeated"
+    elif verified and snapshot["incident"].lifecycle in (
         "resolved",
         "closed",
     ):
         when = clock(confirmed_at, day)
         headline = "Recovery confirmed" + (f" {when}" if when else "")
-    elif replay.get("recovery_confirmed"):
+    elif verified:
         # The incident moved on (reopened or renewed) after this watch ended:
         # the confirmation is history, not the current state (the same
         # lifecycle guard as ``_with_recovery_status``).
@@ -247,7 +261,7 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
         detail = " · ".join(
             str(v) for v in (view.get("state"), view.get("ended_reason")) if v
         )
-    if replay.get("recovery_confirmed") and detail is None:
+    if verified and detail is None:
         detail = f"healthy window {replay.get('healthy_window_seconds')} s"
     max_samples = int(session.get("max_samples") or 0) or len(samples) or 1
     ongoing = view.get("state") == "authorized"
@@ -478,7 +492,10 @@ def _timeline(
             "Recovery watch authorized" + ("" if automatic else " (after remediation)"),
         )
     for view in snapshot.get("recovery") or []:
-        verified = (view.get("replay") or {}).get("recovery_confirmed")
+        replay_view = view.get("replay") or {}
+        verified = replay_view.get("recovery_confirmed") and replay_view.get(
+            "consistent"
+        )
         for sample in view.get("samples") or []:
             if sample.get("transition") == "recovery_confirmed":
                 add(
