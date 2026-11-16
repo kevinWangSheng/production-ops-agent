@@ -901,6 +901,19 @@ class DurableIncidentStore:
             for row in rows
         )
 
+    def control_log(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Every committed ``opspilot_controls`` row with its database time,
+        in commit order: the incident page's decision log (#572), which
+        shows system rows (``auto_authorize_observation``) next to human
+        decisions. Read-only; ``control_audit`` keeps its shape."""
+        with self._store.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT action,actor,expected_generation,resulting_generation,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at, resulting_generation",
+                    (incident_id,),
+                ).fetchall()
+            )
+
     def now(self) -> datetime:
         return self._clock.now()
 

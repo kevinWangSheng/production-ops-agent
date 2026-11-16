@@ -52,7 +52,7 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 | 顺序 | PR | 范围 | 类别 | 估时 | 分支 / worktree |
 |---|---|---|---|---|---|
 | 1 | 公共外壳 | `base.html` 取值、顶栏、导航加 Suspension、只读声明、系统字体；`_ui.html` 宏（来源记号、药丸、缺失斜纹、键值表、折叠）。其他页套新外壳、保留旧正文；不改后端。约束（r2）：不加 `<h2>`/`<th>`，不放每次请求都变的内容，页眉文字不含 state、queued、running、closed | `chore` | 0.5 + 0.2 + 0.2 | `chore/572-ui-shell` / `../poa-572-shell` |
-| 2 | 事故详情 | `incident.html`、`incident_handoff.html`、`_alert.html`；`_step_view` 加 `observed_at`；`_stored_alert` 加 alertname；决策日志合并系统行；`charts.py` 中性配色；抽屉与筛选 JS | `feat`，功能 PR | 3 + 0.75 + 0.75 | 待填 |
+| 2 | 事故详情 | `incident.html`、`incident_handoff.html`、`_alert.html`；`_step_view` 加 `observed_at`；`_stored_alert` 加 alertname；决策日志合并系统行；`charts.py` 中性配色；抽屉与筛选 JS | `feat`，功能 PR | 3 + 0.75 + 0.75 | `feature/572-ui-incident` / `../poa-572-incident` |
 | 3 | 事故列表 | `index.html`；列表查询加目标、告警名或问题、结论等级与首句；Recovery 列与复盘待办（LATERAL，r2）；状态映射表（D11）；人工提问表单（U6，路由加注册表 key，幂等键浏览器端生成）；三处列表测试按 U5 改写 | `feat`，功能 PR | 1 + 0.5 + 0.5 | 待填 |
 | 4 | 复盘审核 | `postmortem.html`；`version_page` 加事故上下文、版本表、生成尝试、Postmortem events（r2） | `feat`，功能 PR | 1.5 + 0.5 + 0.5 | 待填 |
 
@@ -69,6 +69,7 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 - 2026-11-16：PR 1 公共外壳实现（`base.html` 取值、顶栏、导航加 Suspension、只读声明；新增 `_ui.html` 宏）。本机 swap 紧，验收探针未在本地跑 PG 部分，依赖 CI；web 定向普通测试 320 项与不需 PG 的页面验收 32 项本地通过。
 - 2026-11-16：用户裁决目的、基线、范围、表单呈现与模型安排；U1–U5 按推荐代定。合同 r1、设计说明修订入库（PR #654）。
 - 2026-11-16：独立审查（全新上下文，只读）提出必须处理 M1–M6，均只改文档；协调者按「验收测试不改、够用就行、不为边角加后端」定，合同升 r2。
+- 2026-11-16：PR 2 事故详情实现（基线 c4 黑白灰版）：页头、摘要带五格、时间线、结论、依据、可见性、调查轮次（筛选与证据抽屉）、恢复与人工控制侧栏、复盘折叠块、原始记录；派生逻辑放新模块 `opspilot/web/incident_view.py`，决策日志经只读 `control_log` 合并系统行。本机 swap 紧，验收探针未在本地跑，依赖 CI；`test_393_live` 锚点用真实记录渲染后 grep 自查通过。普通测试 3 项按设计冲突失败，交独立测试作者（见 PR）。
 
 ## 已知限制
 

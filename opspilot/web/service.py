@@ -2291,6 +2291,44 @@ class Workbench:
         rows.sort(key=lambda item: item["generation"])
         return rows
 
+    def _decision_log(
+        self, incident_id: UUID, controls: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Every committed control row with its database time (#572 decision
+        log): the human decisions above, with their text and actor, plus the
+        rows no human made. A store without ``control_log`` shows the human
+        decisions only."""
+        reader = getattr(self.incidents, "control_log", None)
+        human = [dict(row, system=False) for row in controls]
+        if reader is None:
+            return human
+        by_key = {(row.get("action"), row["generation"]): row for row in human}
+        log = []
+        for row in reader(incident_id):
+            key = (row["action"], int(row["resulting_generation"]))
+            decided_at = (
+                None
+                if row["created_at"] is None
+                else row["created_at"].astimezone(timezone.utc).isoformat()
+            )
+            if key in by_key:
+                log.append(dict(by_key.pop(key), decided_at=decided_at))
+                continue
+            log.append(
+                {
+                    "action": row["action"],
+                    "actor_id": row["actor"],
+                    "expected_generation": int(row["expected_generation"]),
+                    "generation": int(row["resulting_generation"]),
+                    "decided_at": decided_at,
+                    "text": None,
+                    "system": row["actor"] == "system",
+                }
+            )
+        # Ledger rows the table does not hold (not expected) stay visible.
+        log.extend(by_key.values())
+        return log
+
     def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
         rows = self.incidents.investigation_history(incident_id)
         # Scan all retained pages: an old Run's completion may precede the
@@ -2366,6 +2404,7 @@ class Workbench:
             events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
+        controls = self._controls(incident_id)
         knowledge_view = None
         input_snapshot = run.get("input") or {}
         not_integrated = _not_integrated(input_snapshot)
@@ -2421,7 +2460,10 @@ class Workbench:
             "handoff_report": handoff_report,
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
-            "controls": self._controls(incident_id),
+            "controls": controls,
+            # #572: human decisions and system rows (``actor`` ``system``,
+            # e.g. ``auto_authorize_observation``) in commit order.
+            "decision_log": self._decision_log(incident_id, controls),
             "history": self._history(incident_id, run["run_id"]),
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
@@ -2960,18 +3002,28 @@ def _stored_alert(row: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "annotations": None,
             "ends_at": None,
+            "alertname": None,
             "record_text": None,
             "cleaned": row.get("payload_state") == "cleaned",
         }
     try:
         stored = json.loads(alert_json)
     except ValueError:
-        return {"annotations": None, "ends_at": None, "record_text": alert_json}
+        return {
+            "annotations": None,
+            "ends_at": None,
+            "alertname": None,
+            "record_text": alert_json,
+        }
     annotations = stored.get("annotations") if isinstance(stored, dict) else None
     ends_at = stored.get("endsAt") if isinstance(stored, dict) else None
+    labels = stored.get("labels") if isinstance(stored, dict) else None
+    alertname = labels.get("alertname") if isinstance(labels, dict) else None
     return {
         "annotations": annotations if isinstance(annotations, dict) else None,
         "ends_at": ends_at if isinstance(ends_at, str) else None,
+        # #572: the page subtitle; untrusted alert text like the annotations.
+        "alertname": alertname if isinstance(alertname, str) else None,
         "record_text": None,
     }
 
@@ -3290,7 +3342,16 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         "planned_tools": len(planned) if isinstance(planned, list) else 0,
         "tools": tools,
         "history_only": step["status"] == "late_result",
+        # #572 U1 6: when the round's model reply was committed (column
+        # default ``clock_timestamp()``), UTC ISO text; ``None`` if absent.
+        "observed_at": _observed_at(step.get("observed_at")),
     }
+
+
+def _observed_at(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return _utc(value).isoformat()
+    return value if isinstance(value, str) else None
 
 
 def _recovery_basis_only(history: Mapping[str, Any]) -> dict[str, Any]:
