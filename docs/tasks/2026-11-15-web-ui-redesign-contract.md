@@ -8,7 +8,7 @@
 ## 0. 范围（用户裁决，2026-11-15 至 11-16）
 
 - 目的：面试演示用，做到「相对不错」即可，不追细节，设计稿不再细化。
-- 设计基线（黑白灰分组版，均在 `~/.agent/diagrams/`）：事故列表 `opspilot-ui-index-2026-11-15-r2.html`、事故详情 `opspilot-ui-incident-2026-11-15-c4.html`、复盘审核 `opspilot-ui-postmortem-2026-11-15-r2.html`。五色状态标记版（列表 r3、详情 c5、复盘 r3）作废；「全部八张稿连通」一轮已叫停，产物不作依据。
+- 设计基线（黑白灰分组版，均在 `~/.agent/diagrams/`）：事故列表 `opspilot-ui-index-2026-11-15-r2.html`、事故详情 `opspilot-ui-incident-2026-11-15-c4.html`、复盘审核 `opspilot-ui-postmortem-2026-11-15-r2.html`。五色状态标记版（列表 r3、详情 c5、复盘 r3）作废；「全部八张稿连通」一轮在叫停指令送达前已做完，产物不作实现依据，其中核实到的代码事实保留使用。
 - 实现范围：公共外壳（`base.html` 与新增 `_ui.html`）加主路径三页（事故列表、事故详情含转人工与告警片段、复盘审核）。其余五页（证据、知识、版本变更列表与详情、暂停控制）只继承外壳的字体、间距与基础样式，不单独重做，不新增内容。
 - 注意：预审的逐页对照（第 3 节）是对着更早的稿（事故详情 c3、列表与复盘的首版）做的；与基线稿 c4、r2、r2 之间的差异预审未覆盖，实现时以基线稿为准，冒出的新项按任务记录「修订」规则追加。
 
@@ -23,7 +23,7 @@ U1–U4 与 U5 用户未逐项答复，按推荐（协调者依用户 2026-11-16
 | U3 | 验收测试锚点 | 新页面保留 `tests/acceptance/` 断言用到的 id、class 与固定措辞，验收测试一行不改；非验收目录的普通测试由独立测试作者按新页面改 | 全部模板（外壳改动波及其余五页，锚点同样要保留）；第 5 节清单 | `tests/acceptance/test_245_rebind_target.py:339-344`、`test_f13_postmortem.py:271-277`、`test_f11_step4_verdicts_no_gate.py:161,170`、`test_f2_alert_correlation.py:586-596` |
 | U4 | 评审暴露的 6 处后端现有行为：① 运行中仍给 resume；② 归人工后仍给 takeover；③ 被全局或目标暂停压住与人工暂停都显示 paused；④ 恢复观察中接管后生命周期仍显示 observing_recovery；⑤ 运行中登记处置后 Run 仍可发布结论；⑥ resume 后上一代际未完成的工具调用不重放 | 都不改、不开 issue，页面如实显示；后果说明照实写 | 事故详情控制区文案；不改后端 | ① `service.py:268-319`、`persistence/controls.py:703-707`；② `persistence/controls.py:500-516`；⑤ `opspilot/observation/store.py:1266-1279`；⑥ `persistence/incidents.py:249-253`。③④ 按稿注引用，未确认 |
 | U5 | 事故列表合同（[2026-10-01 列表合同](2026-10-01-m1-01-list-run-state.md)「合同」1–4） | 语义保留：每行仍显示 Run、Control、Lifecycle、Concluded 的存储原词；列顺序、表头清单与第一格内容随新设计变化。三处按固定表头清单、固定列序、第一格含完整事故编号取值的测试改为按表头名取值，由独立测试作者改：`tests/test_m1_incident_control_contract.py:106-116`（已改正：表头逐字断言在 106-113，114-116 是 `list_row` 取行）、`tests/integration/test_m1_list_run_state_postgres.py:161`、`tests/m1_incident_control_support.py:129-134` 的 `list_row`。Generation 不再单独成列（三个测试文件没有读它的行值，只在 `test_m1_incident_control_contract.py:110` 的表头清单里） | 事故列表；三处普通测试 | 基线稿 r2 已含这四列（表头 Status、Incident、Agent conclusion、Recovery、Run、Control、Lifecycle、Concluded、Opened） |
-| U6 | 列表页人工提问表单（现名 Submit an incident） | 保留能力，接口 `POST /intake/ui` 与字段名 `target_id`、`question`、`idempotency_key` 不变。呈现：改名「Ask OpsPilot to investigate」，默认收起，放在列表下方，页面标题右侧一个次要按钮跳到并展开；说明写「事故通常由告警自动进来，这里用于没有告警时主动提问」；幂等键由页面预填一个生成值，不要求人编（仍可改）。目标改下拉取决于产品有没有可读的已知目标列表：实现时核实，做不了就保留文本框 | 事故列表 | [技术方案](../design/technical-proposal-2026-09-07.md)第 9–12 行批准的「人工请求」入口；现表单 `templates/index.html:8-14`。下拉的可行迹象：`service.py:690-691` 用 `self.targets.keys()` 列出已注册目标，事故页改绑已用 `<select name="to_target">`（`incident.html:62`）；它们与 intake 的 `target_id` 是否同一取值，未确认 |
+| U6 | 列表页人工提问表单（现名 Submit an incident） | 保留能力，接口 `POST /intake/ui` 与字段名 `target_id`、`question`、`idempotency_key` 不变。呈现：改名「Ask OpsPilot to investigate」，默认收起，放在列表下方，页面标题右侧一个次要按钮跳到并展开；说明写「事故通常由告警自动进来，这里用于没有告警时主动提问」。**Target 改成下拉**，候选取目标注册表的 key；注册表为空时回退为文本框。**幂等键**由列表页路由新增 `form_nonce`，生成隐藏字段值，字段名不变。这两处属「代码里已有、改视图即可」。不做（人工介入的边角，按范围裁决）：并入事故的候选列表、登记处置 revision 的候选、编号复制按钮、页内目录 | 事故列表；`app.py` 列表页路由、`index.html` | [技术方案](../design/technical-proposal-2026-09-07.md)第 9–12 行批准的「人工请求」入口；现表单 `templates/index.html:8-14`。受理时未登记的目标不拒绝而是新建：`opspilot/web/service.py:470` 调 `register_target`，`opspilot/persistence/incidents.py:154-181` 已存在返回旧行、否则插入（`tests/integration/test_m1_otel_demo_target_fence_postgres.py:128-139`），所以文本框手误会静默新建一个空目标，这是改下拉的理由；之后调查对这种目标会怎样未确认（`service.py:459-461` 注释：工具网关按自己的注册表鉴权）。已知目标列表：`_registry_keys()`（`service.py:1144-1149`，来自 `OPSPILOT_TARGET_IDENTITIES`），目前只在详情页作 `rebind_targets`（`service.py:2455-2457`）；列表页路由只传 incidents（`app.py:365-369`）；`form_nonce` 的同样做法见暂停控制页 `app.py:380`。并入规则备查：`opspilot/persistence/controls.py:780-793`、`service.py:283-290` |
 
 ## 2. 可逆默认（Agent 自定）
 
@@ -92,7 +92,7 @@ U1–U4 与 U5 用户未逐项答复，按推荐（协调者依用户 2026-11-16
 | 结论等级与摘要首句 | `opspilot_incidents.conclusion` | 视图 + 派生 | 做，约 2h |
 | Run 转人工原因、观察事实、最近一次人工动作 | 事件、观察会话、`opspilot_controls` | 视图 | 不做（边角） |
 | 加载时间 | — | 模板 | 做（D13） |
-| 人工提问表单 | `index.html:8-14` | 模板 | 做，按 U6 |
+| 人工提问表单 | `index.html:8-14`；注册表 `_registry_keys()`（`service.py:1144-1149`） | 视图 | 做，按 U6（Target 下拉、预填幂等键） |
 
 ### 3.3 复盘审核（预审对照首版；基线 r2）
 
@@ -192,6 +192,6 @@ U1–U4 与 U5 用户未逐项答复，按推荐（协调者依用户 2026-11-16
 - 按钮文字是否被测试钉住（D7）。
 - 整页相等断言与加载时间（第 6 节末条）。
 - U4 的 ③ ④ 行号；复盘页版本表的数据来源（3.3）。
-- U6 目标下拉：注册目标键与 intake `target_id` 是否同一取值。
+- U6：手误新建的空目标之后调查会怎样（改下拉后只在注册表为空、回退文本框时可能发生）。
 - 预审对照稿与基线稿（c4、r2、r2）之间的差异。
 - 子 Agent 清单覆盖面：约 60 个文件未逐个读完，5.3 末行未逐一复核。
