@@ -11,6 +11,7 @@ state, generation or conclusion.
 from __future__ import annotations
 
 import inspect
+import json
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -829,10 +830,22 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,i.merged_into_incident_id FROM opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                f"SELECT {_LIST_COLUMNS} FROM {_LIST_FROM} ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
+
+    def list_incident_items(self, *, limit: int = 50) -> tuple[IncidentListItem, ...]:
+        """The list page's rows (UI redesign 3.2): ``list_incidents`` plus the
+        row's subject, raw conclusion, latest recovery session and the
+        postmortem version waiting for review, all in one statement so the
+        query count does not grow with the row count (list contract 3)."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(_item(row) for row in rows)
 
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
@@ -922,6 +935,103 @@ _REFIRED = (
     "WHERE e.incident_id=i.incident_id AND e.lifecycle_after='resolved'), "
     "'-infinity'::timestamptz))) AS refired_after_resolved"
 )
+_LIST_COLUMNS = (
+    "i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,"
+    "i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,"
+    f"i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,"
+    f"i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,"
+    "i.merged_into_incident_id"
+)
+_LIST_FROM = (
+    "opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id"
+    " LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id"
+    " LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id"
+)
+#: UI redesign 3.2 / section 6. The question is the intake envelope the web
+#: ledger keeps under the incident's own key (``Workbench.submit`` writes
+#: namespace ``intake``, key ``intake:{idempotency_key}``, which is also the
+#: incident's ``intake_key``). The alert text is the latest delivery's stored
+#: (redacted, bounded) record, parsed in Python because a record cut at its
+#: byte bound is not JSON. Recovery is the newest incident-recovery session;
+#: the postmortem is the version under review when one is, else the newest.
+_ITEM_COLUMNS = (
+    "i.conclusion AS conclusion,wl.value #>> '{envelope,request,question}' AS question,"
+    "a.namespace AS alert_namespace,a.workload AS alert_workload,ld.alert_json,"
+    "o.state AS recovery_state,o.ended_reason AS recovery_ended_reason,"
+    "o.adopted_count AS recovery_samples,o.ended_at AS recovery_ended_at,"
+    "pm.postmortem_id,pm.version AS postmortem_version,pm.state AS postmortem_state"
+)
+_ITEM_JOINS = (
+    "LEFT JOIN opspilot_web_ledger wl ON wl.namespace='intake' AND wl.key=i.intake_key"
+    " LEFT JOIN LATERAL (SELECT d.alert_json FROM opspilot_alert_deliveries d"
+    " WHERE d.incident_id=i.incident_id ORDER BY d.delivery_id DESC LIMIT 1) ld ON true"
+    " LEFT JOIN LATERAL (SELECT s.state,s.ended_reason,s.adopted_count,"
+    "(SELECT max(e.recorded_at) FROM opspilot_observation_endings e"
+    " WHERE e.session_id=s.session_id) AS ended_at"
+    " FROM opspilot_observation_sessions s WHERE s.incident_id=i.incident_id"
+    " AND s.purpose='incident_recovery'"
+    " ORDER BY s.authorized_at DESC,s.session_id DESC LIMIT 1) o ON true"
+    " LEFT JOIN LATERAL (SELECT p.postmortem_id,v.version,v.state"
+    " FROM opspilot_postmortems p JOIN opspilot_postmortem_versions v"
+    " ON v.postmortem_id=p.postmortem_id WHERE p.incident_id=i.incident_id"
+    " ORDER BY (v.state='under_review') DESC,v.version DESC LIMIT 1) pm ON true"
+)
+
+
+@dataclass(frozen=True, eq=False)
+class IncidentListItem:
+    """One list-page row: the summary plus what only the list shows. Every
+    extra is ``None`` when the store has no such record."""
+
+    summary: IncidentSummary
+    #: The committed conclusion payload (``opspilot_incidents.conclusion``);
+    #: the view parses it with the incident page's ``_report_view``.
+    conclusion: Mapping[str, Any] | None = None
+    question: str | None = None
+    alert_name: str | None = None
+    alert_namespace: str | None = None
+    alert_workload: str | None = None
+    recovery_state: str | None = None
+    recovery_ended_reason: str | None = None
+    recovery_samples: int | None = None
+    recovery_ended_at: datetime | None = None
+    postmortem_id: UUID | None = None
+    postmortem_version: int | None = None
+    postmortem_state: str | None = None
+
+
+def _alert_name(alert_json: str | None) -> str | None:
+    if alert_json is None:
+        return None
+    try:
+        alert = json.loads(alert_json)
+    except ValueError:
+        return None
+    labels = alert.get("labels") if isinstance(alert, dict) else None
+    name = labels.get("alertname") if isinstance(labels, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
+def _item(row: Mapping[str, Any]) -> IncidentListItem:
+    conclusion = row.get("conclusion")
+    samples = row.get("recovery_samples")
+    version = row.get("postmortem_version")
+    question = row.get("question")
+    return IncidentListItem(
+        summary=_summary(row),
+        conclusion=conclusion if isinstance(conclusion, Mapping) else None,
+        question=question if isinstance(question, str) else None,
+        alert_name=_alert_name(row.get("alert_json")),
+        alert_namespace=row.get("alert_namespace"),
+        alert_workload=row.get("alert_workload"),
+        recovery_state=row.get("recovery_state"),
+        recovery_ended_reason=row.get("recovery_ended_reason"),
+        recovery_samples=None if samples is None else int(samples),
+        recovery_ended_at=row.get("recovery_ended_at"),
+        postmortem_id=row.get("postmortem_id"),
+        postmortem_version=None if version is None else int(version),
+        postmortem_state=row.get("postmortem_state"),
+    )
 
 
 def _summary(row: Mapping[str, Any]) -> IncidentSummary:
