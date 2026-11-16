@@ -676,9 +676,11 @@ class Attempt:
         chance: int,
         vocabulary: list[str],
         history: list[dict[str, Any]],
+        kinds: Kinds | None = None,
     ) -> None:
         self.cfg, self.b, self.s = cfg, backends, scenario
         self.trial, self.chance, self.vocabulary = trial, chance, vocabulary
+        self.kinds = kinds
         self.history = history
         self.dir = (
             cfg.round_dir / scenario.label / f"trial-{trial}" / f"chance-{chance}"
@@ -982,14 +984,53 @@ class Attempt:
     def _convert(
         self, run_block: Mapping[str, Any]
     ) -> tuple[answer.Conversion, str | None]:
-        return convert_run(run_block, self.vocabulary)
+        return convert_run(run_block, self.vocabulary, self.kinds)
 
 
 REPORT_REJECTED_BY_PRODUCT = "REPORT_REJECTED_BY_PRODUCT"
 
+#: #646 C4 kind index (``vocabulary.build_kinds``): name casefold ->
+#: ``[Kind, namespace]`` pairs.
+Kinds = Mapping[str, Sequence[Sequence[str | None]]]
+KINDS_SUFFIX = ".kinds.json"
+
+
+def kinds_file(vocabulary_file: Path) -> Path:
+    """The C4 sidecar beside a vocabulary file: ``S16.txt`` -> ``S16.kinds.json``."""
+    return vocabulary_file.with_name(vocabulary_file.stem + KINDS_SUFFIX)
+
+
+def load_kinds(vocabulary_file: Path) -> Kinds | None:
+    """The sidecar when present (``None`` otherwise: rounds before #646)."""
+    path = kinds_file(vocabulary_file)
+    check_input_file(path, "kinds")
+    if not path.is_file():
+        return None
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f"{path.name}: not a JSON object")
+    return value
+
+
+def conversion_methods(cfg: Config) -> dict[str, int]:
+    """Count of ``conversion_meta.json`` ``method`` values in a round (#646 C3)."""
+    counts: dict[str, int] = {}
+    if not cfg.round_dir.is_dir():
+        return counts
+    for path in sorted(
+        cfg.round_dir.glob("S*/trial-*/outputs/*/*/conversion_meta.json")
+    ):
+        meta = _read_json(path)
+        method = meta.get("method") if isinstance(meta, Mapping) else None
+        key = method if isinstance(method, str) else "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
 
 def convert_run(
-    run_block: Mapping[str, Any], vocabulary: Sequence[str]
+    run_block: Mapping[str, Any],
+    vocabulary: Sequence[str],
+    kinds: Kinds | None = None,
 ) -> tuple[answer.Conversion, str | None]:
     """A frozen Run block's report and evidence through ``answer.convert``;
     the second value is the reason a present report counted as reportless.
@@ -1011,7 +1052,7 @@ def convert_run(
     if available is not True:
         return answer.convert(None, [], vocabulary), REPORT_REJECTED_BY_PRODUCT
     try:
-        return answer.convert(report, evidence, vocabulary), None
+        return answer.convert(report, evidence, vocabulary, kinds=kinds), None
     except ValueError:
         return answer.convert(None, [], vocabulary), "REPORT_INVALID_FOR_CONVERSION"
 
@@ -1219,12 +1260,15 @@ def run_trial(
     scenario: Scenario,
     trial: int,
     vocabulary: list[str],
+    kinds: Kinds | None = None,
 ) -> dict[str, Any]:
     """Up to ``CHANCES`` attempts; returns a small record for the caller."""
     history: list[dict[str, Any]] = []
     evidence = cfg.evidence_dir / scenario.label / f"trial-{trial}"
     for chance in range(1, CHANCES + 1):
-        attempt = Attempt(cfg, backends, scenario, trial, chance, vocabulary, history)
+        attempt = Attempt(
+            cfg, backends, scenario, trial, chance, vocabulary, history, kinds
+        )
         try:
             result = attempt.run()
         except (VoidAttempt, InfraFailure) as error:
@@ -1294,13 +1338,16 @@ def run_scenario(
         if not vocabulary_file.is_file():
             raise DeterministicError("VOCABULARY_MISSING", str(vocabulary_file.name))
         vocabulary = vocabulary_file.read_text().splitlines()
+        kinds = load_kinds(vocabulary_file)
         scenario = prepare_scenario(cfg.dataset, dir_name, cfg.round_dir)
     except DeterministicError as error:
         missing = _all_missing(cfg, label, key, pending, error)
         return {"scenario": key, "trials": {**records, **missing["trials"]}}
     for trial in pending:
         try:
-            records[trial] = run_trial(cfg, backends, scenario, trial, vocabulary)
+            records[trial] = run_trial(
+                cfg, backends, scenario, trial, vocabulary, kinds
+            )
         except DeterministicError as error:
             remaining = [t for t in pending if t not in records]
             records.update(_all_missing(cfg, label, key, remaining, error)["trials"])
@@ -1416,6 +1463,7 @@ def rescore_round(
     for path in summaries:
         key = scenario_key(path.parent.parent.name)
         check_input_file(vocabulary_dir / f"S{key}.txt", "vocabulary")
+        check_input_file(kinds_file(vocabulary_dir / f"S{key}.txt"), "kinds")
     rows: list[dict[str, Any]] = []
     for path in summaries:
         label, trial_name = path.parent.parent.name, path.parent.name
@@ -1444,6 +1492,7 @@ def rescore_round(
         conversion, reason = convert_run(
             run_block if isinstance(run_block, Mapping) else {},
             vocabulary_file.read_text().splitlines(),
+            load_kinds(vocabulary_file),
         )
         trial_dir = target.round_dir / label / trial_name
         answer.write_trial(trial_dir / "outputs", dirs[0], trial, conversion)
@@ -1674,6 +1723,7 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
                         "out": str(args.out),
                         "scenarios": len(table),
                         "official_missing": missing,
+                        "conversion_methods": conversion_methods(cfg),
                     }
                 )
             )

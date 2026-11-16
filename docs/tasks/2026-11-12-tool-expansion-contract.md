@@ -249,7 +249,7 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 | L-V4 | 两档：「指标+trace」与「故障窗无 trace」；每类覆盖另写进明细 | 默认（可逆） |
 | L-V5 | 输出 `{"<id>": "<档位>"}`（正好 35 个 ID）与 `tiers_detail.json`，都入库 | 默认 |
 | L-V6 | 词表收全量里出现过的 `metadata.name`（`answer.RESOURCE_KINDS` 内的资源类，去掉 secrets 与官方排除 namespace 的对象），加三处服务名并集 | 默认 |
-| L-V7 | namespace 名与通用词（`kubernetes`、`default`）进不进词表：推荐去掉 Namespace 对象名并用固定停用表，规则在看答案前写死 | **用户裁决（2026-11-13）：按推荐**，去掉 Namespace 对象名并用固定停用表 |
+| L-V7 | namespace 名与通用词（`kubernetes`、`default`）进不进词表：推荐去掉 Namespace 对象名并用固定停用表，规则在看答案前写死 | **用户裁决（2026-11-13）：按推荐**，去掉 Namespace 对象名并用固定停用表；2026-11-15 澄清：namespace 名按名字字符串排除，不论对象类型（#647 落实：Namespace 对象名 ∪ 各对象的 `metadata.namespace` 值，见 [#646 任务记录](2026-11-15-itbench-lite-root-cause.md)） |
 | L-V8 | 每行一个名字，不区分大小写去重并排序；每题生成一次，放忽略目录 | 默认 |
 | L-V9 | CLI：`python -m scripts.itbench_lite.vocabulary <干净副本> --out <文件>`；`python -m scripts.itbench_lite.tiers <副本根目录> --out tiers.json --detail tiers_detail.json` | 默认 |
 | L-V10 | 流式读，不做缓存 | 默认 |
