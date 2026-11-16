@@ -14,6 +14,14 @@ fixed before any answer was looked at and not tuned on scores:
   is every name in ``STOPWORDS`` (case-insensitive).
 * L-V8 one name per line, de-duplicated case-insensitively (the
   ``answer._Matcher`` rule) and sorted.
+* #647 (L-V7 clarified 2026-11-15, decision C5 = a): every namespace name --
+  each Namespace object's ``metadata.name`` and each object row's
+  ``metadata.namespace`` value, any resource class -- is removed from the
+  vocabulary as a string, whatever the source of the name (object, trace or
+  log).  ``answer.convert``'s own namespace exclusion stays as a backstop.
+* #646 C4 kind index (``build_kinds``, ``--kinds-out``): name (casefold) ->
+  sorted distinct ``[Kind, namespace]`` pairs of the kept object rows, a JSON
+  sidecar ``answer.convert`` uses to pick a Kind.
 
 Data comes only through the whitelist loader (``snapshot.load_snapshot``);
 every TSV is streamed row by row.
@@ -57,8 +65,8 @@ def _literal(text: str | None, where: str) -> dict[str, Any]:
     return value
 
 
-def object_names(snapshot: Snapshot) -> Iterator[str]:
-    """``metadata.name`` of every kept object row (L-V6, L-V7).
+def _object_rows(snapshot: Snapshot) -> Iterator[tuple[str, dict[str, Any]]]:
+    """``(plural, metadata)`` of every object row, any resource class.
 
     The resource class is the row's ``LogAttributes`` ``k8s.resource.name``;
     a row without one is malformed and raises, as in the fake API server
@@ -72,8 +80,6 @@ def object_names(snapshot: Snapshot) -> Iterator[str]:
         plural = _literal(row.get("LogAttributes"), where).get("k8s.resource.name")
         if not (isinstance(plural, str) and plural):
             raise ValueError(f"{where}: no k8s.resource.name")
-        if plural not in OBJECT_PLURALS:
-            continue
         try:
             body = json.loads(row.get("Body") or "")
         except (ValueError, RecursionError):
@@ -81,11 +87,56 @@ def object_names(snapshot: Snapshot) -> Iterator[str]:
         metadata = body.get("metadata") if isinstance(body, dict) else None
         if not isinstance(metadata, dict):
             raise ValueError(f"{where}: object has no metadata")
+        yield plural, metadata
+
+
+def _kept_objects(snapshot: Snapshot) -> Iterator[tuple[str, dict[str, Any]]]:
+    for plural, metadata in _object_rows(snapshot):
+        if plural not in OBJECT_PLURALS:
+            continue
         if metadata.get("namespace") in DEFAULT_EXCLUDED_NAMESPACES:
             continue
+        yield plural, metadata
+
+
+def object_names(snapshot: Snapshot) -> Iterator[str]:
+    """``metadata.name`` of every kept object row (L-V6, L-V7)."""
+    for _plural, metadata in _kept_objects(snapshot):
         name = metadata.get("name")
         if isinstance(name, str):
             yield name
+
+
+def namespace_names(snapshot: Snapshot) -> set[str]:
+    """#647: casefolded Namespace object names and ``metadata.namespace`` values."""
+    found: set[str] = set()
+    for plural, metadata in _object_rows(snapshot):
+        if plural == "namespaces":
+            name = metadata.get("name")
+            if isinstance(name, str) and name.strip():
+                found.add(name.strip().casefold())
+        value = metadata.get("namespace")
+        if isinstance(value, str) and value.strip():
+            found.add(value.strip().casefold())
+    return found
+
+
+def build_kinds(snapshot: Snapshot) -> dict[str, list[list[str | None]]]:
+    """#646 C4: name (casefold) -> sorted distinct ``[Kind, namespace]`` pairs."""
+    pairs: dict[str, set[tuple[str, str | None]]] = {}
+    for plural, metadata in _kept_objects(snapshot):
+        name = metadata.get("name")
+        if not (isinstance(name, str) and name.strip()):
+            continue
+        value = metadata.get("namespace")
+        namespace = value if isinstance(value, str) and value else None
+        pairs.setdefault(name.strip().casefold(), set()).add(
+            (RESOURCE_KINDS[plural], namespace)
+        )
+    return {
+        key: [list(pair) for pair in sorted(found, key=lambda p: (p[0], p[1] or ""))]
+        for key, found in sorted(pairs.items())
+    }
 
 
 def trace_service_names(snapshot: Snapshot) -> Iterator[str]:
@@ -110,19 +161,21 @@ def log_service_names(snapshot: Snapshot) -> Iterator[str]:
             yield value
 
 
-def normalise(names: Iterable[str]) -> list[str]:
+def normalise(names: Iterable[str], excluded: Iterable[str] = ()) -> list[str]:
     """L-V7 stop words out, L-V8 case-insensitive de-duplication and sort.
 
     Of several spellings of one name the smallest is kept, so the result does
-    not depend on row order.
+    not depend on row order.  ``excluded`` (casefolded names, #647) are
+    dropped like stop words.
     """
+    dropped = STOPWORDS | frozenset(excluded)
     kept: dict[str, str] = {}
     for raw in names:
         name = raw.strip() if isinstance(raw, str) else ""
         if not name or "\n" in name or "\r" in name:
             continue
         key = name.casefold()
-        if key in STOPWORDS:
+        if key in dropped:
             continue
         if key not in kept or name < kept[key]:
             kept[key] = name
@@ -136,7 +189,8 @@ def build(snapshot: Snapshot) -> list[str]:
             object_names(snapshot),
             trace_service_names(snapshot),
             log_service_names(snapshot),
-        )
+        ),
+        namespace_names(snapshot),
     )
 
 
@@ -148,9 +202,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("snapshot", help="clean copy of one scenario directory")
     parser.add_argument("--out", required=True, help="vocabulary text file")
+    parser.add_argument(
+        "--kinds-out", help="C4 kind index JSON (S<id>.kinds.json beside --out)"
+    )
     args = parser.parse_args(argv)
-    names = build(load_snapshot(args.snapshot))
-    Path(args.out).write_text(render(names), encoding="utf-8")
+    snapshot = load_snapshot(args.snapshot)
+    Path(args.out).write_text(render(build(snapshot)), encoding="utf-8")
+    if args.kinds_out:
+        Path(args.kinds_out).write_text(
+            json.dumps(build_kinds(snapshot), ensure_ascii=False, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
     return 0
 
 

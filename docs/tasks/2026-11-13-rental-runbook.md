@@ -76,8 +76,8 @@ for d in <数据集根>/*/; do
   k=$(.venv/bin/python -c 'import sys; from scripts.itbench_lite.coverage import scenario_key; print(scenario_key(sys.argv[1]))' "$n") || continue
   .venv/bin/python -c 'import sys; from pathlib import Path; from scripts.itbench_lite.driver import copy_whitelisted; copy_whitelisted(Path(sys.argv[1]), Path(sys.argv[2]))' "$d" "tmp/itbench-lite/<冒烟轮次>/S$k/snapshot"
 done
-# 词表，每题一份
-.venv/bin/python -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt
+# 词表，每题一份；#646 起同时写 kind 旁路文件（驱动按词表同名 .kinds.json 读取）
+.venv/bin/python -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt --kinds-out <词表目录>/S<id>.kinds.json
 # 分档，全量一次
 .venv/bin/python -m scripts.itbench_lite.tiers tmp/itbench-lite/<冒烟轮次> --out <分档目录>/tiers.json --detail <分档目录>/tiers_detail.json
 ```
