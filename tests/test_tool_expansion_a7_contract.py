@@ -38,12 +38,12 @@ from opspilot.investigation.loop import investigation_versions
 from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
 
-PROMPT_REVISION = "prompt-replay-candidate-bef70649a3a8"
+PROMPT_REVISION = "prompt-replay-candidate-a6b4dfd02030"
 DISCIPLINE_REVISION = "l1a-replay-candidate-9a45deb526fe"
 BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
 EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-d467c4b436b0"
 REPLAY_RENDER_SHA256 = (
-    "f38c56abc2d6745b7195e35c46d51b6b1e28d115fbb8639db92a8e1627a5c6b9"
+    "b8853face56bc4c5ab0743ecdbe0db9c51d5c17ae7f645b036644b86c5a8b8ad"
 )
 
 

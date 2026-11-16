@@ -43,7 +43,7 @@ SEGMENT_SHA256 = {
     "missing_series": "3d436dc2c53a61b6215370ec965a285e1bbd6b2c4e8e7a35d08490ba00034ac9",
 }
 REPORT_CONTRACT_SHA256 = (
-    "98b0a4f6a5426ed151b90af54ccd3d3d844e525693b217f123915f1037fe456a"
+    "f8b9baa45b98623f28ed1312de1c0228e90ed74e2c32b0419359b48bc0195c2c"
 )
 BASELINE_DISCIPLINE_REVISIONS = {
     "baseline-multi-step": "l1a-baseline-multi-step-1a7fad1f7bf9",
@@ -54,16 +54,16 @@ SERVICES = ("cartservice", "checkoutservice")
 # authorized_services=...)) on main.
 BASELINE_RENDER_SHA256 = {
     ("baseline-multi-step", 7, ()): (
-        "203af214ac12701c1ecf01b8673f2c7925e5cdaeee648005d06049518c84b137"
+        "16dc65d13ea3480e685efe2419fdfc9b9d64b702d201d928a4f704b22cda46e7"
     ),
     ("baseline-multi-step", 7, SERVICES): (
-        "f886bb4ce5e3c3e2a21798e0df909f74c5e655e961e402b776d6f013051a8fa0"
+        "6e9aacdd6c3229ef647849e86e72503eb066a95999770e15ff00bff7a4a4fdf4"
     ),
     ("baseline-final-report", 1, ()): (
-        "2fdaa4cbf2f71dbc0559f330054340c4abddedbc3295118561fe4b6dd6452c83"
+        "3e25e41b138c6589568a2c59f448b5fae199d27a6a8d081f2dedb80f5baae808"
     ),
     ("baseline-final-report", 1, SERVICES): (
-        "2cb2e4e54fbab92e948e22bea3ea0320ae4431722361237ad8ecec2e587b6194"
+        "d676c5677044754da4c686ef52755e69d2035c54636eb3fb4f332bcbb70ab445"
     ),
 }
 
@@ -228,7 +228,7 @@ def test_item4_baseline_variants_render_the_same_bytes(
 
 def test_item4_report_contract_schema_and_context_policy_are_unchanged():
     assert _sha(REPORT_CONTRACT) == REPORT_CONTRACT_SHA256
-    assert REPORT_SCHEMA_VERSION == "m0-report-v2"
+    assert REPORT_SCHEMA_VERSION == "m0-report-v3"
     assert investigation_versions()["context_policy_revision"] == (
         CONTEXT_POLICY_REVISION
     )
