@@ -289,3 +289,37 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 - K7（:69）Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own.
 - K8（:56）Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing.
 - K9（:58）A running or ready pod can still be failing; read its application logs before calling it healthy.
+
+## r8（2026-11-16）：B/C 批次与评测
+
+用户 2026-11-16 逐条裁决（grilling 两轮；预审材料在仓库外，见 [B/C 批次记录](2026-11-16-tool-expansion-bc.md)）。r1–r7 的 Q1–Q8、D1–D3、N4 继续有效，本节只修改 Q6、Q7/N4 两处（见 R8-18、R8-19）。
+
+| 编号 | 问题 | 裁决 |
+|---|---|---|
+| R8-0 | 验收题从哪来、在哪跑 | 用现成公开基准，不自己出计分题；直接在租用服务器上搭题目环境（需要 K8s 时起 kind，照上游 CI 版本），不复用 otel-demo kind lab |
+| R8-1 | 结果怎么对外说 | 两轨、分数不合并：中立第三方（ITBench-Lite、SREGym）与竞品自评集（「HolmesGPT 公开评测集」，写明为对方自出题）；跑题发现的评测缺陷单独记录，对外提 issue 另需授权 |
+| R8-2 | 题目入口 | 题面原文经网页人工提问，不编告警 |
+| R8-3 | 判分 | 上游 judge 提示词原样，judge 用已有接收方，二值，注明 judge 与上游不同 |
+| R8-4 | Holmes 对照 | 同题同模型，只在最后一次集中跑时做 |
+| R8-5 | 遍数 | 每题 3 遍，摇摆的题单独补跑 |
+| R8-6 | 防照答案调 | 写工具与提示词的 Agent 不读预期结论；跑完后 lead 在隔离上下文分析；只靠规则约束 |
+| R8-7 | 部署权限 | 题目环境由评测脚本用工程师凭据部署；产品只持只读身份 |
+| R8-8 | 数据流 | 租机上由公开基准夹具搭的环境按合成 lab 处理，新数据源在任务记录登记；不新增接收方 |
+| R8-9 | 工具完成标准 | 代码与合同测试通过、独立审查；真实 Run 调用了工具且报告引用其证据；通过率照实报告，无分数门槛 |
+| R8-10 | 档位 | 全部进扩展档位，`otel-demo` 字节不变 |
+| R8-11 | 租机 | 与 #646 后的提示词改动、F3 重跑（#664）合并一次租机；提示词改动很急时先单独租 |
+| R8-12 | B1 后端 | 正式评测 Elasticsearch 8，工具只用两家共有读接口（搜索、映射、索引列表）；OpenSearch 冒烟 2 题 |
+| R8-13 | SuggestSkills 硬断言（6 题） | 去掉该断言只判主回答并披露；Holmes 对照同口径 |
+| R8-14 | C2 知识入库 | 走现有审核流程，来源标「HolmesGPT 评测夹具」 |
+| R8-15 | Holmes 工具面 | 官方原样配置，结果页一行说明其工具更多 |
+| R8-16 | C6 | 做；评测时给题目数据库加只读账号 |
+| R8-17 | 中立第三方现场题 | SREGym Lite 17 题，只跑诊断段，用其自带判分、judge 指向已有接收方；OpsPilot 只用自己的只读工具 |
+| R8-18 | B4 Helm（改 Q7/N4） | 做。扩展档位、合成环境内可读 `type=helm.sh/release.v1` 的 Secret；在工具内解码，只返回发布历史元数据（revision、状态、chart、版本、时间、说明），values 与 manifest 不出工具；其他 Secret 照旧不可读，网关照旧拒绝 |
+| R8-19 | C4 ArgoCD（改 Q6） | 做。扩展档位只读 `argoproj.io` 的 Application 类资源；其他自定义资源照旧不授权 |
+| R8-20 | C3 Kafka | 做，自建功能验收（不计分），SREGym Kafka 题照常计分；lab Kafka 不可用时在租机上自装 |
+| R8-21 | B3 | 做，SREGym 相关题加直接取样验收 |
+| R8-22 | 顺序 | B1 → C5 → B3 → C2 → C1 → C6 → C3 → B4 → C4；一工具一 PR，全部合并后集中租机（#669） |
+| R8-23 | ITBench-AA | 这一批不跑；下次跑 ITBench-Lite 时核实判分并补多出的 5 题 |
+| R8-24 | 无公开题的项 | 自建场景排队尾，不推迟，issue 保持开启 |
+
+Agent 自定（可逆）：去掉每 Run 工具调用次数旧上限（#500）；核实 worker 并行 Run；题目分诊、端口冲突分批、相对时间题每轮重新部署；通用 target 登记方式；报告转文本规则。
