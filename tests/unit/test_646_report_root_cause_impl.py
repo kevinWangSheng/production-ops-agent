@@ -99,10 +99,12 @@ def test_namespace_may_be_null_or_omitted() -> None:
     for rc in (
         {**ROOT_CAUSE, "namespace": None},
         {k: v for k, v in ROOT_CAUSE.items() if k != "namespace"},
+        {**ROOT_CAUSE, "namespace": ""},
     ):
         report, reason = _parse(_report(root_cause=rc))
         assert reason == "" and report is not None
-        assert report.root_cause is not None and report.root_cause.namespace is None
+        assert report.root_cause is not None
+        assert not report.root_cause.namespace
 
 
 @pytest.mark.parametrize(
