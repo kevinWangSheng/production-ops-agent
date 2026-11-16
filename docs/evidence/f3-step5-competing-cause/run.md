@@ -27,4 +27,14 @@
 
 - `run-1/summary.json` 对应 Run `e6fa260e`（事故 `eeceb91c`），`run-2/summary.json` 对应 Run `33922153`（事故 `2e351ada`）。两份都是收集脚本 `collect.py` 在 UI `close` 之后，用只读角色、只读快照事务生成的。`run_versions` 取自 Run 行，等于当前代码的 `otel_demo_versions()`，所以本目录的 `v11-equivalence.json` 不参与判定。`lab_readings` 是每分钟一次的连续读数（`continuous_monitoring: true`），与 10-24 只有点读数不同。
 - 确定性判定：`tests/acceptance/test_f3_step5_real_runs.py` 15 条全过。
-- **审查者判定（rubric 5–8、第 2 步 summary 一致性）：未做。** 这两次 Run 需要两名全新上下文审查者按冻结 rubric 重新判（U3-a）；10-24 的结论不能沿用到新 Run 上。供审查者注意的事实：两次 `root_cause` 分别写 FeatureFlag `paymentFailure` 和 Deployment `flagd`；两次的 24 小时授权窗里都有更早的 checkout 发布（lab 安装、失败尝试；Run 2 还包含 Run 1 那次发布和故障）；Run 1 晚领取约 19 分钟（授权窗终点早于晚领取）。
+- **审查者判定（2026-11-16）**：两名全新上下文审查者按冻结 rubric（`b58974b2…1d956`）独立判定，审查者 B 使用另一模型。
+
+  | Run | 审查者 | rubric 1–8 | 第 2 步 summary 一致性 | 记录的弱点（不作门槛） |
+  |---|---|---|---|---|
+  | Run 1 `e6fa260e` | A | PASS（8/8） | 一致 | — |
+  | Run 1 `e6fa260e` | B | PASS（8/8） | 一致 | summary 用 “Best-supported cause”、“is not what broke this path”，与分组一致；flag 变更对象、操作者和精确时刻未知；trace 为偏样本（gaps 记 12/120） |
+  | Run 2 `33922153` | A | PASS（8/8） | 一致 | — |
+  | Run 2 `33922153` | B | PASS（8/8） | **不一致** | summary 写 “The trigger is visible” 与 “this is a flag configuration value being served at 100% fault rate”，把 hypothesis claim 13/14 的解释写成确定事实；`root_cause` 写 `Deployment/flagd`，而 claim 14 与 gaps 承认实际 flag 配置对象和变更者未知 |
+
+  审查者 A 只回报了结论，全文未留存。合计：第 5 步 2/2；第 2 步 Run 2 审查者分歧。用户 2026-11-16 裁决按不一致处理：F3 第 2 步在当前提示词下未达成，`passes` 改为 false，不挑样重跑（U-A），跟踪 #664。
+- 当时供审查者注意的事实：两次 `root_cause` 分别写 FeatureFlag `paymentFailure` 和 Deployment `flagd`；两次的 24 小时授权窗里都有更早的 checkout 发布（lab 安装、失败尝试；Run 2 还包含 Run 1 那次发布和故障）；Run 1 晚领取约 19 分钟（授权窗终点早于晚领取）。
