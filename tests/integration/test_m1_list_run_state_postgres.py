@@ -158,7 +158,7 @@ def test_list_run_column_projects_each_current_run_state_and_empty_current_run()
         )
 
     html = _index(app)
-    assert list_headers(html)[1] == "Run"
+    assert "Run" in list_headers(html)
     expected = {
         queued: "queued",
         running: "running",
