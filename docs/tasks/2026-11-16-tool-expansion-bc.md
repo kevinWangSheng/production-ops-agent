@@ -71,7 +71,7 @@
 
 | 序 | 项 | issue | 验收题来源 | 分支 / worktree |
 |---|---|---|---|---|
-| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 开工时填 |
+| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 预审与裁决完成（r9，[B1 记录](2026-11-16-tool-expansion-b1.md)），待开工 |
 | 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | |
 | 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | |
 | 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
