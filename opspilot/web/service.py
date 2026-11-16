@@ -106,8 +106,10 @@ from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
+from opspilot.web.incident_list import list_page
 from opspilot.web.store import (
     ControlAudit,
+    IncidentListItem,
     IncidentStore,
     IncidentSummary,
     TargetIdentity,
@@ -2149,6 +2151,24 @@ class Workbench:
 
     def list_incidents(self) -> tuple[IncidentSummary, ...]:
         return self.incidents.list_incidents()
+
+    def registry_keys(self) -> tuple[str, ...]:
+        """The configured target keys the list page's intake form offers
+        (UI redesign U6); empty without a registry that lists keys."""
+        return self._registry_keys()
+
+    def incident_list(self) -> dict[str, Any]:
+        """The list page (UI redesign 3.2): one store query, the stored
+        conclusion parsed here with the incident page's ``_report_view``. A
+        store without the list-page read (the in-memory test store) shows the
+        summaries alone."""
+        reader = getattr(self.incidents, "list_incident_items", None)
+        items = (
+            reader()
+            if reader is not None
+            else tuple(IncidentListItem(s) for s in self.incidents.list_incidents())
+        )
+        return list_page(items, report_of=_report_view, targets=self.registry_keys())
 
     def reconcile(self, incident_id: UUID) -> None:
         """Repair projections from the authoritative rows (idempotent).

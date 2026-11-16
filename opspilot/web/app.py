@@ -366,8 +366,8 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> Response:
         principal = await ui(request)
-        incidents = await in_thread(workbench.list_incidents)
-        return render("index.html", principal=principal, incidents=incidents)
+        listing = await in_thread(workbench.incident_list)
+        return render("index.html", principal=principal, listing=listing)
 
     @app.get("/controls")
     async def controls_page(request: Request) -> Response:
