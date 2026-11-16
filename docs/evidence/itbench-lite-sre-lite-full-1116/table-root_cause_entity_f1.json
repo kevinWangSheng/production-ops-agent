@@ -1,0 +1,391 @@
+{
+  "metrics": [
+    "root_cause_entity_f1"
+  ],
+  "expected_trials": 3,
+  "scenarios": [
+    {
+      "scenario": "1",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "2",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "4",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "5",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "6",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "7",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "8",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "9",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "11",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "12",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "13",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "14",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "15",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "16",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "17",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "18",
+      "tier": "故障窗无 trace",
+      "data_incomplete": true,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "19",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "20",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "21",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "22",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "23",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "24",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "25",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "29",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "31",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "33",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "34",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.6666666666666666
+      }
+    },
+    {
+      "scenario": "35",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "38",
+      "tier": "故障窗无 trace",
+      "data_incomplete": true,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "80",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "81",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.3333333333333333
+      }
+    },
+    {
+      "scenario": "83",
+      "tier": "指标+trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "91",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 0.0
+      }
+    },
+    {
+      "scenario": "102",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    },
+    {
+      "scenario": "105",
+      "tier": "故障窗无 trace",
+      "data_incomplete": false,
+      "trials_scored": 3,
+      "trials_missing": 0,
+      "means": {
+        "root_cause_entity_f1": 1.0
+      }
+    }
+  ],
+  "tiers": [
+    {
+      "tier": "指标+trace",
+      "scenarios": 14,
+      "data_incomplete": [],
+      "means": {
+        "root_cause_entity_f1": 0.2619047619047619
+      }
+    },
+    {
+      "tier": "故障窗无 trace",
+      "scenarios": 21,
+      "data_incomplete": [
+        "18",
+        "38"
+      ],
+      "means": {
+        "root_cause_entity_f1": 0.20634920634920634
+      }
+    }
+  ],
+  "overall": {
+    "scenarios": 35,
+    "means": {
+      "root_cause_entity_f1": 0.22857142857142856
+    }
+  },
+  "notes": [
+    "根因实体由评测侧确定性转换得到，「是否根因」为启发式（决定表 L2）。",
+    "传播链只抽报告总结里的显式箭头，相关分数受转换限制（L3）。",
+    "没有报告或缺失的 Run 计 0 分并留在分母（L5）；全部场景都在分母里。",
+    "S38、S18 快照数据残缺，照常计入分母并单独标出。"
+  ]
+}

@@ -1,7 +1,7 @@
 # ITBench-Lite 根因改为结构化输出（#646、#647）
 
-- 状态：进行中
-- 更新日期：2026-11-15
+- 状态：实现与全量完成（PR-A #653 `1dfb8a59`、PR-B #662 `d7372417` 已合并；全量 `lite-full-1116` 证据入库）；F3 第 5 步 rubric 第 2 步分歧待用户裁决
+- 更新日期：2026-11-16
 - 依据：issue #646（根因改结构化）、#647（词表排除命名空间名）；[ITBench-Lite 适配任务记录](2026-11-12-itbench-lite-adapter.md)；C3 L2 报告合同（[技术方案](../design/technical-proposal-2026-09-07.md) 第 173–177 行）；开工前合同预审（仓库外，lead 会话 scratchpad `prereview-646.md`，决定表 R1–R9、C1–C5、B1–B6）；用户裁决 2026-11-15。
 - 工作区：`/Users/shenghuikevin/dev/AI/poa-646-report`，分支 `feature/646-report-root-cause`，起于 `origin/main` `e974a744`。
 
@@ -75,6 +75,7 @@ Agent 自定（按预审推荐，各一行理由）：
 - 实施中冒出的合同问题（已裁决：重跑 F3，见 r2）：F3 第 5 步两次真实 Run 与第 3 步 D9 重跑绑定当前提示词版本（`tests/acceptance/test_f3_step5_real_runs.py`），L2 一改即失败。选项：重跑 F3 实验，或改验收口径。已报 lead。
 - 2026-11-16（租机，Vultr，代码 `c772eae7`）：F3 证据（用户裁决 A）已在新提示词下重跑，并提交进 PR-A（`8ae5149a`）。第 3 步 D9 场景 A：Run `e6fa7e0b`，partial，U6 通过。第 5 步两次 kind Run：`e6fa260e`、`33922153`，都是 completed/supported，确定性判定全过。`test_f3_step5_real_runs.py` 15/15 通过，其中原先失败的 3 条已转绿。F3 第 5 步 rubric：A 8/8+8/8；B 8/8+8/8，Run 2 第 2 步 A 一致/B 不一致，待用户裁决。偏离与失败尝试见 [F3 live 记录](../evidence/f3-acceptance-live/run.md)「#646 重跑」。
 - 2026-11-16 集成批 `lite-batch-646`（[记录](../evidence/itbench-lite-sre-lite-batch-646/run.md)）：16/16 completed，四道门都过。① `REPORT_INVALID` 0/16；② 13/15 = 86.7%；③ 没有命名空间名，`reason` 全空；④ supported 占 80%（基线同 8 题 71%），root_cause_entity_pass 3/16（基线同 8 题 0/24）。提示词没有修订。PR-A #653 squash 合并为 `1dfb8a59`。S34 trial-2 以 `MODEL_UNAVAILABLE` 交接，没有报告。S12 两次根因为 null（根因是缺失的 Alertmanager 实例）。
+- 2026-11-16 全量 `lite-full-1116`（[记录](../evidence/itbench-lite-sre-lite-full-1116/run.md)，F = `d7372417`，两个 driver 进程并行）：105/105 completed，没有作废。产品拒收 3/105；根因非 null 95/102 = 93.1%；结论 supported 63、partial 39、inconclusive 0（61.8%，基线 66.7%）；root_cause_entity_pass 0.229（24/105，基线 ③ 口径 0.029）。集成批 8 题单列为 0.208（5/24，基线 0/24）。DeepSeek 约 CNY 33.8。
 
 ## 下一步与交接
 
