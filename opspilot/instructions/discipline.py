@@ -134,7 +134,7 @@ KUBERNETES_GUIDANCE: Final = (
     " When a restart leaves the pod template unchanged, the restart is a mechanism, not the cause; read the workload's and its dependencies' ConfigMaps for what triggered it."
     " List as candidates the settings whose names or values show that they inject faults, errors, delays or failures."
     " Name such a setting as the root cause only when the fault it declares matches the failure path you observed; otherwise keep it as a hypothesis."
-    " When events are the only evidence for the cause, set the conclusion to partial."
+    " When the investigation is complete and events are the only evidence for the cause, set the conclusion to partial."
     " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
     " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
     " A running or ready pod can still be failing; read its application logs before calling it healthy."
