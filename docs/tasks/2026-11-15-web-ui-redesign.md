@@ -1,6 +1,6 @@
 # 网页工作台 UI 重做
 
-- 状态：已完成（按下列依据）。四个实现 PR 与两个测试 PR 已合并，每个经独立审查；`tests/acceptance/` 未改动，在各 PR 与 `main` 74e5a847 的 CI（`make check` 加 m0-postgres）中通过，需环境开关的验收（含 `test_393_live`）CI 跳过、只做过 grep 自查；最终截图核验通过，但用的是离线渲染（见「进展」2026-11-16 末条）
+- 状态：实现已合并，验收待修 2 项（`test_f2_alert_correlation.py` 两个 schema 降级测试，与 UI 无关，见「进展」2026-11-16 末条）
 - 更新日期：2026-11-16
 - 依据：GitHub issue #572；[设计说明](../design/web-ui-design-spec-2026-11-15.md)；[合同决定表 r2](2026-11-15-web-ui-redesign-contract.md)
 - 工作区：设计说明 PR #636、#637；合同 PR #654。静态稿保存在仓库外 `~/.agent/diagrams/`。实现各 PR 见「实现计划」，worktree 均已移除
@@ -74,6 +74,7 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 - 2026-11-16：PR 4 复盘审核实现：页面按基线 r2 重排（任务句、三格摘要带、待核清单、按节陈述、右栏决定与审核历史）；`version_page` 加版本表（最多 20 个）、生成尝试与调度（复用 `incident_postmortem`，store 上限 10 条）、Postmortem events（取事故最近 200 条事件按 `EVENT_KINDS` 与本复盘过滤，最多显示 20 条）；事故上下文（告警名、服务、问题、目标）由 Workbench 新方法按列表页同一查询取单行。偏离基线：水位保持验收句式收进折叠块；结论行只写例外（citations invalid / disputed / not citable as fact）；争议与引用失败列表保留（验收锚点）。本机 swap 余量约 1.0G，验收探针与 PG 测试未在本地跑，依赖 CI；截图用按真实记录（run e6058448）构造的离线渲染，1440、1100、400 页面不横向滚动。
 - 2026-11-16：四个实现 PR（#656、#658、#659、#661）与测试 PR #657、#660 合入 `main`；`tests/acceptance/` 在这些 PR 里没有改动。
 - 2026-11-16：最终截图核验（`main` 74e5a847）。本机 swap 余量不足 1G，未起 PG 与工作台服务，改用离线渲染：真实模板经视图层（`incident_list.list_page`、`incident_view.page_view`、`PostmortemReview.version_page`）渲染，数据取自真实记录——列表 8 行取自 F9 第 2–4 步、F9 final2 与 #243 证据里的事故（含已结论已关闭 3c6deab1、等待人工 65b0490a、无 Run 交接 ff2d3a9b），因来自不同环境，不是同一个库的一次查询；详情用 Run 3c6deab1 的工作台快照加 F9 第 2 步 DB 转储重建；复盘用 run e6058448 的正文记录。三页在 1440、1100、400 下 `scrollWidth` 均等于 `clientWidth`；400 下证据图表在自身容器内横向滚动。颜色只有黑白灰、链接强调色和设计说明允许的错误色。截图不入库。
+- 2026-11-16：完成条件逐项。四个 PR 合并：是。三页三宽度截图：是，用真实记录离线渲染，未经运行中的工作台。`tests/acceptance/` 未改动：是。本地 PG 实跑（PG 17，端口 55476，`main` 74e5a847 加本记录提交，逐文件串行，CI 同款 `M1_DURABLE_POSTGRES=1`、`M0_B_POSTGRES=1`）：25 个需 PG 或环境开关的验收文件中 24 个全过；钉页面的九个文件里 8 个全过，`test_f2_alert_correlation.py` 17 过 2 失败——`test_downgrade_refused_when_attached_rows_exist`、`test_downgrade_refused_when_relations_exist` 部分降级后，`opspilot/acceptance_alert.py` 查询 0023 才加的 `payload_state` 列而报 `UndefinedColumn`。该路径 10-28 后未改，UI PR 未触及，是 CI 一直跳过而未暴露的旧失败；`test_399_isolation` 跳过 1 项（需 Docker/kind live 开关）。`test_393_live` 只做 grep 核对。普通测试由未参与实现的测试作者改写：是。每个功能 PR 经 Codex 独立审查：是。
 
 ### 列表状态映射（D11，自上而下第一条命中）
 
@@ -99,7 +100,7 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 
 - 复盘审核基线稿的草稿正文是缺失占位，另有真实正文示例状态（`?state=realtext`）。
 - 本机无 IBM Plex，版式按后备系统字体验证，实现也只用后备字体。
-- 验收只由 CI 跑过（本机内存不足，未在本地跑）；需环境开关的验收（如 `test_393_live`）CI 跳过，只用 grep 自查锚点，没有真实运行。
+- CI 的 `checks` 不设 `M1_DURABLE_POSTGRES`，`m0-postgres` 只跑三个验收文件，其余需 PG 的验收在 CI 里一直跳过；本轮在本机补跑（见「进展」）。`test_393_live` 需 live 环境，只用 grep 核对锚点，没有真实运行。
 - 预审的逐页对照对着更早的稿（详情 c3、列表与复盘首版）做；r2 补了审查发现的四块，基线稿各状态未逐一通读；其余未确认项见决定表第 7 节。
 - 本轮未做：详情页的轮次概览条与逐状态手写文案；事故页不显示结构化根因（#652）；post_remediation 会话措辞按机器人停机规则未改。
 - 测试缺口：列表页的告警名、Recovery 列与复盘待办只有 CI 里的 PG 测试覆盖，没有内存测试；浏览器端幂等键生成只在真实浏览器里验证过。
