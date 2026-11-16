@@ -314,7 +314,7 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 | R8-15 | Holmes 工具面 | 官方原样配置，结果页一行说明其工具更多 |
 | R8-16 | C6 | 做；评测时给题目数据库加只读账号 |
 | R8-17 | 中立第三方现场题 | SREGym Lite 17 题，只跑诊断段，用其自带判分、judge 指向已有接收方；OpsPilot 只用自己的只读工具 |
-| R8-18 | B4 Helm（改 Q7/N4） | 做。扩展档位、合成环境内可读 `type=helm.sh/release.v1` 的 Secret；在工具内解码，只返回发布历史元数据（revision、状态、chart、版本、时间、说明），values 与 manifest 不出工具；其他 Secret 照旧不可读，网关照旧拒绝 |
+| R8-18 | B4 Helm（改 Q7/N4） | 做。扩展档位、合成环境内可读 `type=helm.sh/release.v1` 的 Secret；在工具内解码，只返回发布历史元数据（revision、状态、chart、版本、时间、说明），values 与 manifest 不出工具；RBAC 不能按类型授权，故身份加 `secrets` 的 `list`（无 `get`、`watch`），网关只放行带 `fieldSelector=type=helm.sh/release.v1` 的 `list`，其余 Secret 请求照旧拒绝且不发请求；残余风险（身份可列全部 Secret，只靠网关）在 B4 记录与宣称里写明 |
 | R8-19 | C4 ArgoCD（改 Q6） | 做。扩展档位只读 `argoproj.io` 的 Application 类资源；其他自定义资源照旧不授权 |
 | R8-20 | C3 Kafka | 做，自建功能验收（不计分），SREGym Kafka 题照常计分；lab Kafka 不可用时在租机上自装 |
 | R8-21 | B3 | 做，SREGym 相关题加直接取样验收 |
