@@ -1,7 +1,8 @@
 """Deterministic OpsPilot report to ITBench ``agent_output.json`` conversion (#582).
 
-Evaluation-side only: no model call, the product report format is unchanged.
-The rules are decision table r4 L1-L5 (docs/tasks/2026-11-12-tool-expansion-contract.md):
+Evaluation-side only: no model call.
+The rules are decision table r4 L1-L5 (docs/tasks/2026-11-12-tool-expansion-contract.md),
+with #646 C1-C4 (docs/tasks/2026-11-15-itbench-lite-root-cause.md) on top:
 
 * L1 entities: a caller-supplied vocabulary (snapshot object names plus service
   names) is matched in the report ``summary`` and claim texts on name
@@ -26,6 +27,25 @@ The rules are decision table r4 L1-L5 (docs/tasks/2026-11-12-tool-expansion-cont
   cut to 2000 characters.
 * L5 a Run without a report yields the valid empty result.
 
+#646 structured root cause (``m0-report-v3``):
+
+* C3: a report whose original JSON has a ``root_cause`` key (null included)
+  takes its root cause from that field only (``method: structured``); L2 is
+  not used as a fallback.  A report without the key (rounds frozen before
+  v3) keeps L2 (``method: heuristic``).  ``inconclusive`` ignores the field.
+* C1: the root cause is its own entity, first in the list; L1 entities whose
+  bare name equals it (case-insensitively) are dropped, every other L1
+  entity is ``contributing_factor: false``.
+* C2: a name outside the vocabulary is still written
+  (``root_cause_in_vocabulary: false``); the namespace exclusion of L1 does
+  not apply to it.  An empty namespace leaves the segment out for a
+  cluster-scoped Kind and uses the default namespace otherwise.  The Kind is
+  normalised (``normalise_kind``) or kept as written.
+* C4: when the scenario's snapshot kind index (``vocabulary.build_kinds``)
+  lists exactly one Kind for an L1 name, that Kind is used (rule
+  ``snapshot``), with the namespace when it is also unique; otherwise rules
+  a-d below apply.
+
 ``alerts_explained`` is always empty: L1-L5 define no rule for it and the
 pinned judge prompts do not score it.
 """
@@ -43,7 +63,10 @@ from typing import Any
 from opspilot.investigation.reports import ReportV2
 
 METHOD = "heuristic"
+STRUCTURED_METHOD = "structured"
 RULES = "r4 L1-L5"
+STRUCTURED_RULES = "r4 L1,L3-L5 + #646 C1-C4"
+STRUCTURED_ROOT_CAUSE_LABEL = "结构化"
 MAX_FIELD_CHARS = 2000
 DEFAULT_NAMESPACE = "otel-demo"
 PROPAGATION_LABEL = "受转换限制"
@@ -77,6 +100,43 @@ RESOURCE_KINDS: Mapping[str, str] = {
     "horizontalpodautoscalers": "HorizontalPodAutoscaler",
     "poddisruptionbudgets": "PodDisruptionBudget",
 }
+
+#: Kinds without a namespace (C2): an empty namespace leaves the segment out.
+CLUSTER_SCOPED_KINDS = frozenset(
+    {
+        "Node",
+        "Namespace",
+        "PersistentVolume",
+        "StorageClass",
+        "ClusterRole",
+        "ClusterRoleBinding",
+        "CustomResourceDefinition",
+        "PriorityClass",
+    }
+)
+_KIND_BY_FOLDED: Mapping[str, str] = {
+    **{kind.casefold(): kind for kind in RESOURCE_KINDS.values()},
+    **{kind.casefold(): kind for kind in CLUSTER_SCOPED_KINDS},
+    **RESOURCE_KINDS,
+}
+
+
+def normalise_kind(raw: str) -> str:
+    """Free-text Kind to its Kubernetes spelling, else the stripped text.
+
+    Case-insensitive; the plural resource name (``deployments``) and the
+    singular Kind (``deployment``) both map, and so does a plural formed by
+    appending ``s`` to a Kind (``clusterroles``).
+    """
+
+    text = raw.strip()
+    folded = text.casefold()
+    if folded in _KIND_BY_FOLDED:
+        return _KIND_BY_FOLDED[folded]
+    if folded.endswith("s") and folded[:-1] in _KIND_BY_FOLDED:
+        return _KIND_BY_FOLDED[folded[:-1]]
+    return text
+
 
 _NAME_CHAR = r"A-Za-z0-9_\-"
 _ARROW = re.compile(r"(?:->|→|⟶)")
@@ -233,6 +293,7 @@ def _resolve_kind(
     cited: Sequence[tuple[_Evidence, bool]],
     matcher: _Matcher,
     default_namespace: str,
+    kinds: Mapping[str, Sequence[Sequence[str | None]]] | None = None,
 ) -> tuple[str, str, str]:
     """Return ``(namespace, Kind, rule)`` for ``name``.
 
@@ -248,9 +309,25 @@ def _resolve_kind(
     d. fallback: the first evidence with a known ``kind`` cited by a claim that
        mentions only ``name``;
     otherwise ``Service`` in the default namespace.
+
+    C4 (#646) comes first: ``kinds`` (name casefold -> ``[Kind, namespace]``
+    pairs seen in the snapshot) with exactly one Kind decides the Kind, and
+    the namespace when that is unique too (rule ``snapshot``).
     """
 
     folded = name.casefold()
+    seen = (kinds or {}).get(folded) or ()
+    seen_kinds = {pair[0] for pair in seen if pair and pair[0]}
+    if len(seen_kinds) == 1:
+        (only,) = seen_kinds
+        namespaces = {pair[1] for pair in seen if len(pair) > 1}
+        if only in CLUSTER_SCOPED_KINDS:
+            return "", only, "snapshot"
+        if len(namespaces) == 1:
+            (ns,) = namespaces
+            if isinstance(ns, str) and ns:
+                return ns, only, "snapshot"
+        return default_namespace, only, "snapshot"
     label = _service_label(name)
     for item, _ in cited:
         query = item.query
@@ -310,15 +387,21 @@ def _propagations(
     return edges
 
 
-def _meta(report_present: bool, **extra: Any) -> dict[str, Any]:
+def _meta(
+    report_present: bool, *, structured: bool = False, **extra: Any
+) -> dict[str, Any]:
     return {
-        "method": METHOD,
-        "rules": RULES,
+        "method": STRUCTURED_METHOD if structured else METHOD,
+        "rules": STRUCTURED_RULES if structured else RULES,
         "report_present": report_present,
-        "root_cause": ROOT_CAUSE_LABEL,
+        "root_cause": STRUCTURED_ROOT_CAUSE_LABEL if structured else ROOT_CAUSE_LABEL,
         "propagation_chain": PROPAGATION_LABEL,
         **extra,
     }
+
+
+def _entity_name(namespace: str, kind: str, name: str) -> str:
+    return f"{namespace}/{kind}/{name}" if namespace else f"{kind}/{name}"
 
 
 def convert(
@@ -327,37 +410,34 @@ def convert(
     vocabulary: Iterable[str],
     *,
     namespace: str = DEFAULT_NAMESPACE,
+    kinds: Mapping[str, Sequence[Sequence[str | None]]] | None = None,
 ) -> Conversion:
     """Convert one Run's report and evidence into ``agent_output.json``.
 
-    ``report`` is the ``m0-report-v2`` JSON object or ``None`` when the Run
-    ended without a report (L5).  A present but invalid report raises
-    ``ValueError``; the caller decides whether that Run counts as reportless.
+    ``report`` is the ``m0-report-v2``/``m0-report-v3`` JSON object or
+    ``None`` when the Run ended without a report (L5).  A present but invalid
+    report raises ``ValueError``; the caller decides whether that Run counts
+    as reportless.  ``kinds`` is the scenario's C4 kind index (optional).
     """
 
     if report is None:
         return Conversion(empty_output(), _meta(False, entity_count=0))
+    structured = "root_cause" in report
     parsed = ReportV2.model_validate(dict(report))
+    vocabulary = [name for name in vocabulary if isinstance(name, str)]
     excluded = namespace.strip().casefold()
     matcher = _Matcher(
-        name
-        for name in vocabulary
-        if not (isinstance(name, str) and name.strip().casefold() == excluded)
+        name for name in vocabulary if name.strip().casefold() != excluded
     )
     index = _evidence_index(evidence)
-
-    claim_names = [matcher.names_in(claim.text) for claim in parsed.claims]
-    order = matcher.names_in(parsed.summary)
-    for names in claim_names:
-        for name in names:
-            if name not in order:
-                order.append(name)
+    if structured:
+        return _convert_structured(parsed, index, matcher, vocabulary, namespace, kinds)
 
     rejected = {
         name
-        for claim, names in zip(parsed.claims, claim_names, strict=True)
+        for claim in parsed.claims
         if claim.kind == "rejected_hypothesis"
-        for name in names
+        for name in matcher.names_in(claim.text)
     }
     summary_names = matcher.names_in(parsed.summary)
     root = (
@@ -367,12 +447,59 @@ def convert(
         and summary_names[0] not in rejected
         else None
     )
+    entities, full, kind_rules, unresolved = _l1_entities(
+        parsed, index, matcher, namespace, kinds, None
+    )
+    if root is not None:
+        for entity in entities:
+            if entity["name"] == full[root]:
+                entity["contributing_factor"] = True
 
+    output = {
+        "entities": entities,
+        "propagations": _propagations(parsed.summary, matcher, full),
+        "alerts_explained": [],
+    }
+    return Conversion(
+        output,
+        _meta(
+            True,
+            entity_count=len(entities),
+            root_cause_entity=full.get(root) if root else None,
+            kind_rules=kind_rules,
+            unresolved_evidence_ids=unresolved,
+            excluded_namespace=namespace,
+        ),
+    )
+
+
+def _l1_entities(
+    parsed: ReportV2,
+    index: Mapping[str, _Evidence],
+    matcher: _Matcher,
+    namespace: str,
+    kinds: Mapping[str, Sequence[Sequence[str | None]]] | None,
+    skip: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, str], list[str]]:
+    """L1/L4 entities, all ``contributing_factor: false`` (C1).
+
+    ``skip`` is the structured root cause's bare name (casefold): an L1
+    entity of that name is left out, the root cause entity replaces it.
+    """
+
+    claim_names = [matcher.names_in(claim.text) for claim in parsed.claims]
+    order = matcher.names_in(parsed.summary)
+    for names in claim_names:
+        for name in names:
+            if name not in order:
+                order.append(name)
     unresolved: list[str] = []
     entities: list[dict[str, Any]] = []
     full: dict[str, str] = {}
     kind_rules: dict[str, str] = {}
     for name in order:
+        if skip is not None and name.casefold() == skip:
+            continue
         mentioning = [
             (claim, names)
             for claim, names in zip(parsed.claims, claim_names, strict=True)
@@ -390,8 +517,10 @@ def convert(
                 cited.append((item, names == [name]))
                 if evidence_id not in cited_ids:
                     cited_ids.append(evidence_id)
-        entity_namespace, kind, rule = _resolve_kind(name, cited, matcher, namespace)
-        entity_name = f"{entity_namespace}/{kind}/{name}"
+        entity_namespace, kind, rule = _resolve_kind(
+            name, cited, matcher, namespace, kinds
+        )
+        entity_name = _entity_name(entity_namespace, kind, name)
         full[name] = entity_name
         kind_rules[entity_name] = rule
         if any(entity["name"] == entity_name for entity in entities):
@@ -399,7 +528,7 @@ def convert(
         entities.append(
             {
                 "name": entity_name,
-                "contributing_factor": name == root,
+                "contributing_factor": False,
                 "reasoning": _cut("\n".join(claim.text for claim, _ in mentioning)),
                 "evidence": _cut(
                     "; ".join(
@@ -409,7 +538,64 @@ def convert(
                 ),
             }
         )
+    return entities, full, kind_rules, unresolved
 
+
+def _convert_structured(
+    parsed: ReportV2,
+    index: Mapping[str, _Evidence],
+    matcher: _Matcher,
+    vocabulary: Sequence[str],
+    namespace: str,
+    kinds: Mapping[str, Sequence[Sequence[str | None]]] | None,
+) -> Conversion:
+    """C1-C3: the root cause comes from ``root_cause`` only."""
+
+    root = parsed.root_cause if parsed.conclusion != "inconclusive" else None
+    skip = root.name.strip().casefold() if root is not None else None
+    entities, full, kind_rules, unresolved = _l1_entities(
+        parsed, index, matcher, namespace, kinds, skip
+    )
+    root_entity: str | None = None
+    in_vocabulary: bool | None = None
+    if root is not None:
+        name = root.name.strip()
+        kind = normalise_kind(root.kind)
+        root_namespace = (root.namespace or "").strip()
+        if kind in CLUSTER_SCOPED_KINDS:
+            root_namespace = ""
+        elif not root_namespace:
+            root_namespace = namespace
+        root_entity = _entity_name(root_namespace, kind, name)
+        in_vocabulary = any(v.strip().casefold() == skip for v in vocabulary)
+        cited_ids = list(dict.fromkeys(root.evidence_ids))
+        for evidence_id in cited_ids:
+            if evidence_id not in index and evidence_id not in unresolved:
+                unresolved.append(evidence_id)
+        supporting = [
+            claim.text
+            for claim in parsed.claims
+            if set(claim.evidence_ids) & set(cited_ids)
+        ]
+        entities.insert(
+            0,
+            {
+                "name": root_entity,
+                "contributing_factor": True,
+                "reasoning": _cut("\n".join(supporting)),
+                "evidence": _cut(
+                    "; ".join(
+                        f"{index[eid].tool} {index[eid].query_text}".strip()
+                        for eid in cited_ids
+                        if eid in index
+                    )
+                ),
+            },
+        )
+        # Propagation ends that name the root cause point at its entity.
+        for bare in matcher.names:
+            if bare.casefold() == skip:
+                full[bare] = root_entity
     output = {
         "entities": entities,
         "propagations": _propagations(parsed.summary, matcher, full),
@@ -419,8 +605,10 @@ def convert(
         output,
         _meta(
             True,
+            structured=True,
             entity_count=len(entities),
-            root_cause_entity=full.get(root) if root else None,
+            root_cause_entity=root_entity,
+            root_cause_in_vocabulary=in_vocabulary,
             kind_rules=kind_rules,
             unresolved_evidence_ids=unresolved,
             excluded_namespace=namespace,
