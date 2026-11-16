@@ -2293,18 +2293,26 @@ class Workbench:
 
     def _decision_log(
         self, incident_id: UUID, controls: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        """Every committed control row with its database time (#572 decision
-        log): the human decisions above, with their text and actor, plus the
-        rows no human made. A store without ``control_log`` shows the human
-        decisions only."""
+    ) -> dict[str, Any]:
+        """The latest ``_DECISION_LOG`` committed control rows with their
+        database time (#572 decision log): the human decisions above, with
+        their text and actor, plus the rows no human made. Bounded like the
+        page's event list; ``decision_log_truncated`` says older rows exist.
+        A store without ``control_log`` shows the human decisions only,
+        under the same bound."""
         reader = getattr(self.incidents, "control_log", None)
         human = [dict(row, system=False) for row in controls]
         if reader is None:
-            return human
+            return {
+                "decision_log": human[-_DECISION_LOG:],
+                "decision_log_truncated": len(human) > _DECISION_LOG,
+            }
+        rows = reader(incident_id, _DECISION_LOG + 1)
+        truncated = len(rows) > _DECISION_LOG
+        rows = rows[-_DECISION_LOG:]
         by_key = {(row.get("action"), row["generation"]): row for row in human}
         log = []
-        for row in reader(incident_id):
+        for row in rows:
             key = (row["action"], int(row["resulting_generation"]))
             decided_at = (
                 None
@@ -2325,9 +2333,10 @@ class Workbench:
                     "system": row["actor"] == "system",
                 }
             )
-        # Ledger rows the table does not hold (not expected) stay visible.
-        log.extend(by_key.values())
-        return log
+        if not truncated:
+            # Ledger rows the table does not hold (not expected) stay visible.
+            log.extend(by_key.values())
+        return {"decision_log": log, "decision_log_truncated": truncated}
 
     def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
         rows = self.incidents.investigation_history(incident_id)
@@ -2463,7 +2472,7 @@ class Workbench:
             "controls": controls,
             # #572: human decisions and system rows (``actor`` ``system``,
             # e.g. ``auto_authorize_observation``) in commit order.
-            "decision_log": self._decision_log(incident_id, controls),
+            **self._decision_log(incident_id, controls),
             "history": self._history(incident_id, run["run_id"]),
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
@@ -3346,6 +3355,11 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         # default ``clock_timestamp()``), UTC ISO text; ``None`` if absent.
         "observed_at": _observed_at(step.get("observed_at")),
     }
+
+
+#: Decision-log rows read for one page (#572): the same bound as the page's
+#: event list (``events[-50:]``).
+_DECISION_LOG = 50
 
 
 def _observed_at(value: Any) -> str | None:

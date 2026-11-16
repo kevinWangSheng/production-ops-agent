@@ -74,7 +74,7 @@
     {% if view.blind.note %}<div class="sb">{{ view.blind.note }}</div>{% endif %}
     <div class="who"><i class="m m-code" aria-hidden="true"></i>Counted from tool results (code)</div>
   </a>
-  <a href="#recovery">
+  <a href="#recovery-verdict">
     <div class="q">Recovery watch</div>
     <div class="a">{{ rec.headline }}</div>
     <div class="who"><i class="m m-code" aria-hidden="true"></i>Observer (code, no model)</div>
@@ -106,69 +106,8 @@
 
 <div class="grid">
 
-<section class="s first" id="conclusion" aria-labelledby="investigation-report">
-  <div class="s-h"><h2 id="investigation-report">{{ c.heading }}</h2><span class="sub">the investigator's causal conclusion; it does not certify recovery</span></div>
-  {% set report = snapshot.report %}
-  {% if report is none %}
-    <div class="prov">{{ ui.source("agent", "Agent (model)") }}<span>Run {{ run.state }} · epoch {{ run.epoch }}</span></div>
-    <p class="lede quiet" id="report-missing">No published conclusion yet.
-    {% if snapshot.outcome %}Last attempt: <code>{{ snapshot.outcome.execution }}</code>
-      {% if snapshot.outcome.reasons %}
-        handoff <code>{{ snapshot.outcome.reasons | join(", ") }}</code>
-      {% endif %}
-    {% endif %}</p>
-    {% if run.state == "waiting_human" %}<p class="small">A human decides what happens next; the actions the server offers now are under <a href="#control">Human control</a>.</p>{% endif %}
-    {% if snapshot.handoff_report and snapshot.handoff_report.parsed %}
-      {% set report = snapshot.handoff_report %}
-      <p id="handoff-report"><strong>Unpublished handoff report</strong> (not the incident conclusion; human follow-up remains open).</p>
-    {% endif %}
-  {% endif %}
-  {% if report is none %}
-  {% elif not report.parsed %}
-    <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
-  {% else %}
-    <p class="prov" id="report-status">{{ ui.source("agent", "Agent (model)") }}
-      <span>Assessment <span class="badge">{{ report.assessment_status }}</span>
-      · conclusion <span class="badge">{{ report.conclusion }}</span></span>
-      {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
-      <span>· content sha256 <code>{{ report.content_sha256 }}</code></span>
-    </p>
-    {% if snapshot.collection_truncated %}
-    <p class="flag" id="collection-truncated"><strong>Collection was truncated at the model-request limit</strong>: the investigator was made to report on its last request, so evidence it might still have gathered is missing.</p>
-    {% endif %}
-    {% set lede = (c.lede if snapshot.report is not none else none) %}
-    <p class="lede">{{ lede or report.summary }}</p>
-    {% if lede and lede != report.summary %}
-    <details class="more"><summary>Full summary</summary><p>{{ report.summary }}</p></details>
-    {% endif %}
-    <div class="counts">
-      {%- for g in view.claims.groups if g.key != "recommendations" %}
-      <a href="#ev-{{ g.key }}" data-open="ev-{{ g.key }}"><b>{{ g["items"] | length }}</b> {{ g.title | lower }}</a> <span class="dot">·</span>
-      {%- endfor %}
-      <a href="#ev-unknown" data-open="ev-unknown"><b>{{ report.unknown | length }}</b> gaps</a>
-    </div>
-  {% endif %}
-
-  {% if snapshot.charts %}
-  <section id="evidence-charts">
-    <h3>Key evidence</h3>
-    <p class="small">Drawn from the stored view of metrics evidence the report cites; gaps are left as gaps.</p>
-    {% for item in snapshot.charts["items"] %}{{ item }}{% endfor %}
-    {% if snapshot.charts["overflow"] %}<p class="small">{{ snapshot.charts["overflow"] }} more cited metrics evidence not charted; see the evidence links above.</p>{% endif %}
-  </section>
-  {% endif %}
-
-  {% if live %}
-  <h3 id="live">Live progress</h3>
-  <p class="small">Persistent sequence, newest last; resumes from {{ snapshot.latest_sequence }}. The page reloads itself when the Run completes or hands off, or when a control is applied.</p>
-  {% include "_incident_progress.html" %}
-  {% endif %}
-
-  <p class="disclaim">{% if snapshot.report is not none %}This is the investigator's causal conclusion. It does not certify recovery;{% else %}Nothing is concluded yet. A published report would be the investigator's causal conclusion and would not certify recovery either;{% endif %} the recovery verdict comes from the Recovery watch, run by the Observer (code, no model). Advisory only: OpsPilot has no right to change the investigated system{% if how.total %}, and this Run's {{ how.total }} queries went only through registered read-only tools{% endif %}.</p>
-</section>
-
 <aside class="rail" aria-label="Recovery, human control and postmortem">
-  <section class="blk" id="recovery" aria-labelledby="h-rec">
+  <section class="blk" id="recovery-verdict" aria-labelledby="h-rec">
     <div class="blk-h"><h2 id="h-rec">Recovery watch</h2>{{ ui.source("code", "Observer (code, no model)") }}</div>
     <div class="big">{{ rec.headline }}{% if rec.detail %}<small>{{ rec.detail }}</small>{% endif %}</div>
     {% if rec.session is none %}
@@ -188,6 +127,26 @@
       <dt>Samples</dt><dd>{{ rec.session.adopted_count }} of {{ rec.session.max_samples }} adopted</dd>
       <dt>Replay</dt><dd>{{ rec.replay or ui.missing("not recomputed") }}</dd>
     </dl>
+    <details class="sub-d"><summary>Verdict per session (independent observation; not the investigation's conclusion)</summary>
+    {% for r in snapshot.recovery %}
+    <div class="recovery-session">
+      <p class="small">
+        session <code>{{ r.session_id }}</code> · source <span class="badge authorization-source">{{ r.authorization_source or "none" }}</span> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
+        {% if r.recovery_statement %}· <strong class="recovery-statement" data-status="{{ r.recovery_status }}">{{ r.recovery_statement }}</strong>{% endif %}
+        · verdict <span class="badge">{{ r.replay.recovery_verdict }}</span>
+        {% if r.replay.recovery_confirmed %}<strong>recovery confirmed</strong>{% else %}<span class="muted">not confirmed</span>{% endif %}
+        · healthy window {{ r.replay.healthy_window_seconds }} s
+        · profile <code>{{ r.health_profile_revision or "none" }}</code>
+        · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
+        · offline replay:
+        {% if "STORED_OBSERVATION_DATA_CLEANED" in r.replay.integrity %}<strong class="recovery-data-cleaned">raw data cleaned, cannot be re-verified</strong> <code>STORED_OBSERVATION_DATA_CLEANED</code> <span class="muted">(removed by the retention cleanup after the incident closed; the stored verdict is not repeated)</span>{% endif %}
+        {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% elif r.replay.integrity | reject("equalto", "STORED_OBSERVATION_DATA_CLEANED") | list %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
+        {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
+        {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
+      </p>
+    </div>
+    {% endfor %}
+    </details>
     <a class="rail-link" href="#recwatch" data-open="rw">Every sample and signal reading ↓</a>
     {% endif %}
   </section>
@@ -234,9 +193,9 @@
     {% else %}
     <p class="small">The server offers no action in this state of the record.</p>
     {% endif %}
-    {% set log = snapshot.decision_log or snapshot.controls %}
+    {% set log = snapshot.decision_log or [] %}
     <details class="sub-d">
-      <summary>Human decisions and system rows ({{ log | length }})</summary>
+      <summary>Human decisions and system rows ({% if snapshot.decision_log_truncated %}showing latest {{ log | length }}{% else %}{{ log | length }}{% endif %})</summary>
       {% if log %}
       <div class="tw"><table class="dlog">
         <tbody>
@@ -342,6 +301,68 @@
   {% endif %}
 </aside>
 
+<section class="s first" id="conclusion" aria-labelledby="investigation-report">
+  <div class="s-h"><h2 id="investigation-report">{{ c.heading }}</h2><span class="sub">the investigator's causal conclusion; it does not certify recovery</span></div>
+  {% set report = snapshot.report %}
+  {% if report is none %}
+    <div class="prov">{{ ui.source("agent", "Agent (model)") }}<span>Run {{ run.state }} · epoch {{ run.epoch }}</span></div>
+    <p class="lede quiet" id="report-missing">No published conclusion yet.
+    {% if snapshot.outcome %}Last attempt: <code>{{ snapshot.outcome.execution }}</code>
+      {% if snapshot.outcome.reasons %}
+        handoff <code>{{ snapshot.outcome.reasons | join(", ") }}</code>
+      {% endif %}
+    {% endif %}</p>
+    {% if run.state == "waiting_human" %}<p class="small">A human decides what happens next; the actions the server offers now are under <a href="#control">Human control</a>.</p>{% endif %}
+    {% if snapshot.handoff_report and snapshot.handoff_report.parsed %}
+      {% set report = snapshot.handoff_report %}
+      <p id="handoff-report"><strong>Unpublished handoff report</strong> (not the incident conclusion; human follow-up remains open).</p>
+    {% endif %}
+  {% endif %}
+  {% if report is none %}
+  {% elif not report.parsed %}
+    <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
+  {% else %}
+    <p class="prov" id="report-status">{{ ui.source("agent", "Agent (model)") }}
+      <span>Assessment <span class="badge">{{ report.assessment_status }}</span>
+      · conclusion <span class="badge">{{ report.conclusion }}</span></span>
+      {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
+      <span>· content sha256 <code>{{ report.content_sha256 }}</code></span>
+    </p>
+    {% if snapshot.collection_truncated %}
+    <p class="flag" id="collection-truncated"><strong>Collection was truncated at the model-request limit</strong>: the investigator was made to report on its last request, so evidence it might still have gathered is missing.</p>
+    {% endif %}
+    {% set lede = (c.lede if snapshot.report is not none else none) %}
+    <p class="lede">{{ lede or report.summary }}</p>
+    {% if lede and lede != report.summary %}
+    <details class="more"><summary>Full summary</summary><p>{{ report.summary }}</p></details>
+    {% endif %}
+    <div class="counts">
+      {%- for g in view.claims.groups if g.key != "recommendations" %}
+      <a href="#ev-{{ g.key }}" data-open="ev-{{ g.key }}"><b>{{ g["items"] | length }}</b> {{ g.title | lower }}</a> <span class="dot">·</span>
+      {%- endfor %}
+      <a href="#ev-unknown" data-open="ev-unknown"><b>{{ report.unknown | length }}</b> gaps</a>
+    </div>
+  {% endif %}
+
+  {% if snapshot.charts %}
+  <section id="evidence-charts">
+    <h3>Key evidence</h3>
+    <p class="small">Drawn from the stored view of metrics evidence the report cites; gaps are left as gaps.</p>
+    {% for item in snapshot.charts["items"] %}{{ item }}{% endfor %}
+    {% if snapshot.charts["overflow"] %}<p class="small">{{ snapshot.charts["overflow"] }} more cited metrics evidence not charted; see the evidence links above.</p>{% endif %}
+  </section>
+  {% endif %}
+
+  {% if live %}
+  <h3 id="live">Live progress</h3>
+  <p class="small">Persistent sequence, newest last; resumes from {{ snapshot.latest_sequence }}. The page reloads itself when the Run completes or hands off, or when a control is applied.</p>
+  {% include "_incident_progress.html" %}
+  {% endif %}
+
+  <p class="disclaim">{% if snapshot.report is not none %}This is the investigator's causal conclusion. It does not certify recovery;{% else %}Nothing is concluded yet. A published report would be the investigator's causal conclusion and would not certify recovery either;{% endif %} the recovery verdict comes from the Recovery watch, run by the Observer (code, no model). Advisory only: OpsPilot has no right to change the investigated system{% if how.total %}, and this Run's {{ how.total }} queries went only through registered read-only tools{% endif %}.</p>
+</section>
+
+
 <section class="s" id="why" aria-labelledby="h-why">
   <div class="s-h"><h2 id="h-why">Why the agent believes this</h2><span class="sub">Each statement links to the query result it cites. Facts, hypotheses, counter-evidence and gaps stay separate.</span></div>
   {% set report = snapshot.report if snapshot.report is not none else (snapshot.handoff_report if snapshot.handoff_report and snapshot.handoff_report.parsed else none) %}
@@ -389,6 +410,12 @@
 
 <section class="s" id="coverage-gaps" aria-labelledby="h-vis">
   <div class="s-h"><h2 id="h-vis">What the agent could and could not see</h2>{{ ui.source("code", "Counted from this Run's committed tool results, not written by the agent") }}</div>
+  {% if snapshot.not_integrated %}
+  <p class="small" id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if snapshot.coverage %}
+  {% if snapshot.coverage.duplicates_skipped %}<p class="small" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
+  {% endif %}
   {% if snapshot.coverage %}
   {% set labels = {
     "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
@@ -402,6 +429,7 @@
   } %}
   {% if not snapshot.coverage.sources_recorded %}<p class="small" id="coverage-sources-unrecorded">Source list not recorded for this Run; counted per tool.</p>{% endif %}
   {% if snapshot.coverage.sources %}
+  <div class="vkey"><span><i style="background:var(--acc)"></i>ok</span><span><i style="background:var(--ink4)"></i>no data</span><span><i style="background:var(--err)"></i>not ok</span><span><i style="background:var(--hatch);box-shadow:inset 0 0 0 1px var(--ink4)"></i>not integrated: nothing was visible</span></div>
   <div class="tw"><table class="cov">
     <thead><tr><th>Source</th><th>State</th><th>ok</th><th>no data</th><th>not ok</th><th>Reasons</th></tr></thead>
     <tbody>
@@ -419,13 +447,8 @@
     {% endfor %}
     </tbody>
   </table></div>
-  <div class="vkey"><span><i style="background:var(--acc)"></i>ok</span><span><i style="background:var(--ink4)"></i>no data</span><span><i style="background:var(--err)"></i>not ok</span><span><i style="background:var(--hatch);box-shadow:inset 0 0 0 1px var(--ink4)"></i>not integrated: nothing was visible</span></div>
   {% else %}<p class="small">No tool results committed yet.</p>{% endif %}
-  {% if snapshot.coverage.duplicates_skipped %}<p class="small" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
   {% else %}<p class="small">{{ ui.missing("per-source counts: no data") }} No tool results are recorded for this Run.</p>{% endif %}
-  {% if snapshot.not_integrated %}
-  <p class="small" id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-  {% endif %}
 </section>
 
 <section class="s" id="how-sec">
@@ -470,6 +493,7 @@
 <section class="s" id="runs" aria-labelledby="h-runs">
   <div class="s-h"><h2 id="h-runs">Runs and knowledge input</h2>{{ ui.source("code", "Recorded by code") }}</div>
   <div class="runrow"><code>{{ run.run_id }}</code><span>{{ run.state }} · epoch {{ run.epoch }} · {{ run.budget_spent }} of {{ run.budget_limit }} model requests · the Run on this page</span></div>
+  <h3>Investigation history</h3>
   {% for entry in snapshot.history %}
   <section class="investigation-history">
     <h3>Run <code>{{ entry.run_id }}</code></h3>
@@ -534,24 +558,10 @@
       </tbody>
     </table></div>
     <p class="small">Independent deterministic checks own the recovery verdict; the investigation report does not certify recovery.</p>
-    <section id="recovery-verdict">
-    <h3>Recovery verdict <span class="muted">(independent observation; not the investigation's conclusion)</span></h3>
+    <h3>Samples and readings per session</h3>
     {% for r in snapshot.recovery %}
     <div class="recovery-session">
-      <p class="small">
-        session <code>{{ r.session_id }}</code> · source <span class="badge authorization-source">{{ r.authorization_source or "none" }}</span> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
-        {% if r.recovery_statement %}· <strong class="recovery-statement" data-status="{{ r.recovery_status }}">{{ r.recovery_statement }}</strong>{% endif %}
-        · verdict <span class="badge">{{ r.replay.recovery_verdict }}</span>
-        {% if r.replay.recovery_confirmed %}<strong>recovery confirmed</strong>{% else %}<span class="muted">not confirmed</span>{% endif %}
-        · healthy window {{ r.replay.healthy_window_seconds }} s
-        · profile <code>{{ r.health_profile_revision or "none" }}</code>
-        · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
-        · offline replay:
-        {% if "STORED_OBSERVATION_DATA_CLEANED" in r.replay.integrity %}<strong class="recovery-data-cleaned">raw data cleaned, cannot be re-verified</strong> <code>STORED_OBSERVATION_DATA_CLEANED</code> <span class="muted">(removed by the retention cleanup after the incident closed; the stored verdict is not repeated)</span>{% endif %}
-        {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% elif r.replay.integrity | reject("equalto", "STORED_OBSERVATION_DATA_CLEANED") | list %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
-        {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
-        {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
-      </p>
+      <p class="small">session <code>{{ r.session_id }}</code></p>
       {% if r.samples %}
       <div class="tw"><table class="recovery-basis"{% if loop.first %} id="recovery-basis"{% endif %}>
         <thead><tr><th>#</th><th>Window</th><th>Outcome stored → replayed</th><th>Decision stored</th><th>Replay</th></tr></thead>
@@ -596,7 +606,6 @@
       {% else %}<p class="small">no samples stored yet</p>{% endif %}
     </div>
     {% endfor %}
-    </section>
   </details>
 </section>
 {% endif %}

@@ -271,7 +271,7 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
 
 def _human(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
     incident = snapshot["incident"]
-    log = snapshot.get("decision_log") or snapshot.get("controls") or []
+    log = snapshot.get("decision_log") or []
     humans = [row for row in log if not row.get("system")]
     if humans:
         last = humans[-1]
@@ -400,13 +400,29 @@ def _timeline(
 
     incident = snapshot["incident"]
     alert = snapshot.get("alert")
-    add(
-        incident.created_at,
-        "alert" if alert else "human",
-        "Alert received, incident opened"
-        if alert
-        else "Question received, incident opened",
-    )
+    if alert:
+        # The first delivery's database receipt time; the incident row's
+        # creation follows it within the same intake.
+        outcome = alert.get("outcome")
+        deliveries = getattr(outcome, "deliveries", None) or ()
+        received = (
+            getattr(deliveries[0], "received_at", None)
+            if deliveries
+            else (alert.get("latest") or {}).get("received_at")
+        )
+        add(received or incident.created_at, "alert", "Alert received, incident opened")
+    else:
+        intake = next(
+            (
+                e.get("recorded_at")
+                for e in snapshot.get("events") or []
+                if e.get("kind") == "intake_accepted"
+            ),
+            None,
+        )
+        add(
+            intake or incident.created_at, "human", "Question received, incident opened"
+        )
     steps = [s for s in snapshot.get("steps") or [] if not s.get("history_only")]
     stamped = [s for s in steps if _dt(s.get("observed_at"))]
     if stamped:
@@ -429,7 +445,7 @@ def _timeline(
                 "code",
                 f"Run claimed again (epoch {payload.get('epoch')})",
             )
-    for row in snapshot.get("decision_log") or snapshot.get("controls") or []:
+    for row in snapshot.get("decision_log") or []:
         add(
             row.get("decided_at"),
             "code" if row.get("system") else "human",
