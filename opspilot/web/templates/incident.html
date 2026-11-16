@@ -274,7 +274,7 @@
 {% endif %}
 {% if report is none %}
 {% elif not report.parsed %}
-  <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
+  <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> or <code>m0-report-v3</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
 {% else %}
   <p id="report-status">
     Assessment <span class="badge">{{ report.assessment_status }}</span>

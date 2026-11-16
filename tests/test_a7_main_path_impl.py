@@ -312,7 +312,7 @@ def _pair() -> tuple[dict, list[dict]]:
 
 def test_expected_versions_are_the_pinned_code_values() -> None:
     before, after = a7.expected_versions("before"), a7.expected_versions("after")
-    assert before["prompt_revision"] == "prompt-replay-candidate-bef70649a3a8"
+    assert before["prompt_revision"] == "prompt-replay-candidate-a6b4dfd02030"
     assert before["discipline_revision"] == "l1a-replay-candidate-9a45deb526fe"
     assert before["variant_id"] == "replay-candidate"
     assert after["variant_id"] == "replay-candidate-k8s"
