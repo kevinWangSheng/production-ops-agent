@@ -60,7 +60,7 @@ from opspilot.evaluation.rounds import (
     validate_manifest,
 )
 from opspilot.evaluation.runs import evaluate
-from opspilot.investigation.reports import ClaimV2, ReportV2
+from opspilot.investigation.reports import ClaimV2, ReportV2, RootCauseV3
 
 
 @dataclass(frozen=True)
@@ -427,6 +427,13 @@ def _capture(capture: EvaluationCapture, manifest: Manifest) -> RunEvaluation:
     raise StorageError("SCHEMA_INVALID") from None
 
 
+#: #646 R7: the two key sets a saved ``report_parsed`` may have -- the current
+#: one (written by ``write_summary``) or the pre-v3 one without ``root_cause``
+#: (summaries frozen before v3, e.g. ``docs/evidence/eval``).
+_REPORT_KEYS = frozenset(ReportV2.model_fields)
+_REPORT_KEYS_WITHOUT_ROOT_CAUSE = _REPORT_KEYS - {"root_cause"}
+
+
 def _report_fields(capture: EvaluationCapture) -> tuple[Any, str | None]:
     raw = capture.report.raw if capture.report is not None else None
     parsed = parsed_report(capture.report)
@@ -498,11 +505,17 @@ def _load_summary(
         raise StorageError("HASH_MISMATCH")
     saved_report = obj["report_parsed"]
     if saved_report is not None:
-        exact(saved_report, set(ReportV2.model_fields))
+        if type(saved_report) is not dict or set(saved_report) not in (
+            _REPORT_KEYS,
+            _REPORT_KEYS_WITHOUT_ROOT_CAUSE,
+        ):
+            invalid()
         if type(saved_report["claims"]) is not list:
             invalid()
         for claim in saved_report["claims"]:
             exact(claim, set(ClaimV2.model_fields))
+        if saved_report.get("root_cause") is not None:
+            exact(saved_report["root_cause"], set(RootCauseV3.model_fields))
         report_valid = True
         try:
             ReportV2.model_validate(saved_report, strict=True)
@@ -510,6 +523,15 @@ def _load_summary(
             report_valid = False
         if not report_valid:
             raise StorageError("SCHEMA_INVALID") from None
+    if (
+        saved_report is not None
+        and parsed is not None
+        and set(saved_report) == _REPORT_KEYS_WITHOUT_ROOT_CAUSE
+        and parsed.get("root_cause") is None
+    ):
+        # #646 R7: a summary saved before v3 has no ``root_cause`` key; it
+        # is compared on the key set it was saved with.
+        parsed = {key: value for key, value in parsed.items() if key != "root_cause"}
     if stored != result or canonical_bytes(obj["report_parsed"]) != canonical_bytes(
         parsed
     ):
