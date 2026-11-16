@@ -1,0 +1,41 @@
+{#- Shared page parts for the workbench (design spec 2026-11-15, "部件").
+    Import with: {% import "_ui.html" as ui %}
+    Styles live in base.html. None of these emit <h2>, <th> or a "badge" class. -#}
+
+{#- Provenance mark: shape plus text, never colour alone.
+    kind: alert (hollow diamond), agent (dot), code (square), human (triangle).
+    Pass the label as `text`, or use {% call ui.source("agent") %}...{% endcall %}
+    when the label mixes text and markup. -#}
+{% macro source(kind, text=none) -%}
+<span class="who"><i class="m m-{{ kind }}" aria-hidden="true"></i><span class="wt">{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span></span>
+{%- endmacro %}
+
+{#- Pill. Plain pill marks a state; todo=true is the ink pill for "a human needs to
+    do one thing now" (at most one per row or page title). href makes it a link. -#}
+{% macro pill(text, todo=false, href=none) -%}
+{%- if href -%}
+<a class="pill{% if todo %} todo{% endif %}" href="{{ href }}">{{ text }}</a>
+{%- else -%}
+<span class="pill{% if todo %} todo{% endif %}">{{ text }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{#- Missing data: hatched box with a short caption. Never leave a value blank. -#}
+{% macro missing(text="no data") -%}
+<span class="nd">{{ text }}</span>
+{%- endmacro %}
+
+{#- Key/value table. rows: iterable of (label, value) pairs; a value of none or ""
+    renders as missing data. -#}
+{% macro kv(rows, missing_text="no data") -%}
+<dl class="kv">
+{%- for label, value in rows %}
+  <dt>{{ label }}</dt><dd>{% if value is none or value == "" %}{{ missing(missing_text) }}{% else %}{{ value }}{% endif %}</dd>
+{%- endfor %}
+</dl>
+{%- endmacro %}
+
+{#- Collapsible block: {% call ui.fold("Show raw records") %}...{% endcall %} -#}
+{% macro fold(summary, open=false, id=none) -%}
+<details class="fold"{% if id %} id="{{ id }}"{% endif %}{% if open %} open{% endif %}><summary>{{ summary }}</summary><div class="fold-body">{{ caller() }}</div></details>
+{%- endmacro %}
