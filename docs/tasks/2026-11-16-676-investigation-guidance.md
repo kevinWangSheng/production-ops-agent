@@ -34,7 +34,7 @@
 ## 进展
 
 - 2026-11-16：独立失败分类、范围决策、合同预审完成；开实现与测试 worktree。
-- 2026-11-16：实现提交。base `prompt-replay-candidate-14eb2a0a6afd`（原 a6b4dfd02030），ext `prompt-replay-candidate-k8s-f09a033198ca`，ext tool_schema `otel-demo-ext-aa0912ba49a1`（原 d467c4b436b0），base tool_schema `otel-demo-a3a95a0f888e` 不变；实现期间新冒出的合同问题 0。自定一项：D9 第 5 项在 INVESTIGATION_METHOD「无关错误」句后另起一句，不拉长原句（句短便于匹配）。本机 swap 紧，全量 acceptance 探针跑到约 460/3876 条后停（慢在无关评测测试），改跑引用 revision/报告契约/K8s 工具的 134 个测试文件。
+- 2026-11-16：实现提交。base `prompt-replay-candidate-14eb2a0a6afd`（原 a6b4dfd02030），ext `prompt-replay-candidate-k8s-f09a033198ca`，ext tool_schema `otel-demo-ext-c63f058afb18`（原 d467c4b436b0），base tool_schema `otel-demo-a3a95a0f888e` 不变；实现期间新冒出的合同问题 0。自定一项：D9 第 5 项在 INVESTIGATION_METHOD「无关错误」句后另起一句，不拉长原句（句短便于匹配）。本机 swap 紧，全量 acceptance 探针跑到约 460/3876 条后停（慢在无关评测测试），改跑引用 revision/报告契约/K8s 工具的 134 个测试文件。
 
 ## 待决
 
