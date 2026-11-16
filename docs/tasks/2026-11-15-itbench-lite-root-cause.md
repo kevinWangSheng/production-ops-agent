@@ -64,6 +64,8 @@ Agent 自定（按预审推荐，各一行理由）：
 ## 执行进展与证据
 
 - 2026-11-15：任务记录建立；worktree 起于 `e974a744`。
+- 2026-11-15：PR-A 草稿 #653（`1285184d`）。新 `prompt_revision` 为 `prompt-replay-candidate-e09085d30341`（ext `prompt-replay-candidate-k8s-1e7089ef0aee`）。定向测试除 F3 证据型验收 3 条外全过；冻结 eval summary 实为 40 份（预审写 100），全部可加载。
+- 实施中冒出的合同问题（待裁决）：F3 第 5 步两次真实 Run 与第 3 步 D9 重跑绑定当前提示词版本（`tests/acceptance/test_f3_step5_real_runs.py`），L2 一改即失败。选项：重跑 F3 实验，或改验收口径。已报 lead。
 
 ## 下一步与交接
 
