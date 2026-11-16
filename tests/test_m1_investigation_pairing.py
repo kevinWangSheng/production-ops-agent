@@ -119,5 +119,5 @@ def test_loop_pairs_executor_views_into_the_next_model_request():
 
 def test_report_contract_contains_the_vendor_required_json_example():
     assert "json" in REPORT_CONTRACT
-    assert "m0-report-v2" in REPORT_CONTRACT
+    assert "m0-report-v3" in REPORT_CONTRACT
     assert "schema_version" in REPORT_CONTRACT

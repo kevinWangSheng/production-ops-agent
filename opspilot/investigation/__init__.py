@@ -45,7 +45,9 @@ from .reports import (
     FINAL_REPORT_INSTRUCTION,
     REPORT_CONTRACT,
     REPORT_SCHEMA_VERSION,
+    REPORT_SCHEMA_VERSIONS,
     ReportV2,
+    RootCauseV3,
     parse_report,
 )
 from .runner import InvestigationRunner, RunnerOutcome
@@ -75,6 +77,7 @@ __all__ = [
     "MODEL_REQUEST_TIMEOUT_SECONDS",
     "REPORT_CONTRACT",
     "REPORT_SCHEMA_VERSION",
+    "REPORT_SCHEMA_VERSIONS",
     "RUN_WALL_SECONDS",
     "DeepSeekClient",
     "DurableStepStore",
@@ -88,6 +91,7 @@ __all__ = [
     "ModelReply",
     "PairingError",
     "ReportV2",
+    "RootCauseV3",
     "StepCommitter",
     "StepStoreError",
     "pair_tool_results",

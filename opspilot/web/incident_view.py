@@ -451,7 +451,10 @@ def _timeline(
         payload = event.get("payload") or {}
         if kind == "run_completed" and payload.get("published"):
             add(event.get("recorded_at"), "agent", "Report published")
-        elif kind == "run_handoff":
+        elif kind == "run_handoff" and payload.get("parked") is not False:
+            # ``parked: false`` is an attempt fenced by human control or a
+            # crash: the Run was not parked for a human (``_select_snapshot_outcome``
+            # excludes it the same way), so the timeline does not claim it.
             add(event.get("recorded_at"), "code", "Handed to a human")
         elif kind == "run_claimed" and int(payload.get("epoch") or 1) > 1:
             add(

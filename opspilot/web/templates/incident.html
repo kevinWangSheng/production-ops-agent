@@ -198,6 +198,7 @@
       <summary>Human decisions and system rows ({% if snapshot.decision_log_truncated %}showing latest {{ log | length }}{% else %}{{ log | length }}{% endif %})</summary>
       {% if log %}
       <div class="tw"><table class="dlog">
+        <thead><tr><th>Time (UTC)</th><th>Action</th><th>Actor</th><th>Generation</th><th>Text</th></tr></thead>
         <tbody>
         {% for item in log %}
         <tr{% if item.system %} class="sys"{% endif %}><td>{% if item.decided_at %}<time datetime="{{ item.decided_at }}">{{ view.clock(item.decided_at) }}</time>{% else %}unknown{% endif %}</td><td><code>{{ item.action }}</code></td><td><code>{{ item.actor_id }}</code>{% if item.system %} (system rule){% endif %}</td><td>{{ item.expected_generation }} → {{ item.generation }}</td><td>{{ item.text or "" }}</td></tr>
@@ -320,7 +321,7 @@
   {% endif %}
   {% if report is none %}
   {% elif not report.parsed %}
-    <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
+    <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> or <code>m0-report-v3</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
   {% else %}
     <p class="prov" id="report-status">{{ ui.source("agent", "Agent (model)") }}
       <span>Assessment <span class="badge">{{ report.assessment_status }}</span>

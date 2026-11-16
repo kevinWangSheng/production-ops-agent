@@ -65,3 +65,14 @@ F3 PR-2 预审 D9-a：PR-3b 开工时 `prompt_revision` 已由 `prompt-replay-ca
 - 与 PR-2 的差异照实记录（不设门）：prometheus 这次没有非 ok，状态从 `partial_failure` 变成 `all_ok`；jaeger 尝试次数从 5 次降到 3 次。
 - 失败轮：无，没有重跑。
 - DeepSeek 余额：16:17:08Z 为 92.59 CNY，16:19:16Z 为 92.59 CNY，差额低于 0.01 CNY（余额只精确到 0.01）。`known_cost_cny_upper` 0.439 CNY，是不计缓存折扣的上界。
+
+## D9 重跑：场景 A（#646，2026-11-16）
+
+#646 把 L2 报告升为 `m0-report-v3`（可选 `root_cause`），基础档位 `prompt_revision` 由 `prompt-replay-candidate-bef70649a3a8` 变为 `prompt-replay-candidate-a6b4dfd02030`（用户裁决 2026-11-15「F3 证据 = A」），所以在新模型可见面上再重跑场景 A 一次。上面各节的冻结 summary 与 `answer.json` 未改。
+
+- 地点：租机主机（Vultr，Ubuntu 24.04），代码 `feature/646-eval-root-cause` `c772eae7`（含 PR-A `fa7c72bf`）。做法同「命令」一节：替身 `m1_otel_stub.py`（29417，延迟 1.0 s）+ 真实 DeepSeek `deepseek-flash` + 一次性 PG 17（端口 56157，schema head `0024_trace_outbox`），Jaeger 指向无监听的 29418，`--model-requests 100 --lab-round f3-646-d9-missing-source --f3-coverage --f3-answer evals/f3/missing-source/answer.json`，输出目录 `missing-source-rerun-a6b4dfd02030`。
+- Run `e6fa7e0b-19bd-42f4-a99f-3d9d5cdc0baf`（06:57:14–06:59:14Z），`published`，12 次 HTTP；报告 `m0-report-v3`，`completed / partial`，`root_cause: null`。
+- [summary](missing-source-rerun-a6b4dfd02030/e6fa7e0b-19bd-42f4-a99f-3d9d5cdc0baf/summary.json) · [LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d00d7e1a-ab45-4f81-a2d3-f8e410f9adea/r/00000000-0000-0000-db1e-8f1fffff3414?poll=true)（回读 `found`，`trace_tier=longlived`）
+- 覆盖节：jaeger `failed`（ok 0 / 非 ok 3，`SOURCE_UNAVAILABLE ×3`）；prometheus `all_ok`（ok 14、no_data 4）；kubernetes_state、pod_logs、change_history 为 `not_integrated`。页面 `#coverage-gaps` 出现（HTTP 200）。
+- U6-a 判定（脚本按冻结答案计算，答案 sha256 不变）：**通过**。报告非 `supported`，jaeger 行 `gap=true`。`tests/acceptance/test_f3_step5_real_runs.py::test_step3_d9_rerun_of_scenario_a_on_the_current_prompt_revision` 读这份 summary 通过。
+- 失败轮：无。费用：`known_cost_cny_upper` 0.531 CNY（不计缓存折扣的上界）；token：prompt 167,235、completion 18,811。
