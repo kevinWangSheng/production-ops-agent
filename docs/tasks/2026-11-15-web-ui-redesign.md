@@ -1,9 +1,9 @@
 # 网页工作台 UI 重做
 
-- 状态：设计定稿，合同 r2（r1 已裁决），待实现
+- 状态：已完成。四个实现 PR 与两个测试 PR 已合并，最终截图核验通过（离线渲染，见「进展」2026-11-16 末条）
 - 更新日期：2026-11-16
 - 依据：GitHub issue #572；[设计说明](../design/web-ui-design-spec-2026-11-15.md)；[合同决定表 r2](2026-11-15-web-ui-redesign-contract.md)
-- 工作区：设计说明 PR #636、#637；本记录与决定表在分支 `chore/ui-redo-contract`。静态稿保存在仓库外 `~/.agent/diagrams/`。实现各 PR 的分支与 worktree 开工时填在「实现计划」
+- 工作区：设计说明 PR #636、#637；合同 PR #654。静态稿保存在仓库外 `~/.agent/diagrams/`。实现各 PR 见「实现计划」，worktree 均已移除
 
 ## 目标与范围
 
@@ -49,12 +49,12 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 
 按 PR 顺序，PR 目标均为 `main`，不做 stacked PR。估时取自预审，单位工作日，依次为实现 + 测试作者 + 审查。分支：外壳 `chore/572-ui-shell`，三页 `feature/572-ui-<页名>`；worktree 为仓库同级 `../poa-572-<页名>`，实际路径开工时填。
 
-| 顺序 | PR | 范围 | 类别 | 估时 | 分支 / worktree |
+| 顺序 | PR | 范围 | 类别 | 估时 | 分支 / 合并 |
 |---|---|---|---|---|---|
-| 1 | 公共外壳 | `base.html` 取值、顶栏、导航加 Suspension、只读声明、系统字体；`_ui.html` 宏（来源记号、药丸、缺失斜纹、键值表、折叠）。其他页套新外壳、保留旧正文；不改后端。约束（r2）：不加 `<h2>`/`<th>`，不放每次请求都变的内容，页眉文字不含 state、queued、running、closed | `chore` | 0.5 + 0.2 + 0.2 | `chore/572-ui-shell` / `../poa-572-shell` |
-| 2 | 事故详情 | `incident.html`、`incident_handoff.html`、`_alert.html`；`_step_view` 加 `observed_at`；`_stored_alert` 加 alertname；决策日志合并系统行；`charts.py` 中性配色；抽屉与筛选 JS | `feat`，功能 PR | 3 + 0.75 + 0.75 | `feature/572-ui-incident` / `../poa-572-incident` |
-| 3 | 事故列表 | `index.html`；列表查询加目标、告警名或问题、结论等级与首句；Recovery 列与复盘待办（LATERAL，r2）；状态映射表（D11）；人工提问表单（U6，路由加注册表 key，幂等键浏览器端生成）；三处列表测试按 U5 改写 | `feat`，功能 PR | 1 + 0.5 + 0.5 | `feature/572-ui-index` / `../poa-572-index` |
-| 4 | 复盘审核 | `postmortem.html`；`version_page` 加事故上下文、版本表、生成尝试、Postmortem events（r2） | `feat`，功能 PR | 1.5 + 0.5 + 0.5 | `feature/572-ui-postmortem` / `../poa-572-postmortem` |
+| 1 | 公共外壳 | `base.html` 取值、顶栏、导航加 Suspension、只读声明、系统字体；`_ui.html` 宏（来源记号、药丸、缺失斜纹、键值表、折叠）。其他页套新外壳、保留旧正文；不改后端。约束（r2）：不加 `<h2>`/`<th>`，不放每次请求都变的内容，页眉文字不含 state、queued、running、closed | `chore` | 0.5 + 0.2 + 0.2 | `chore/572-ui-shell`；#656 已合并 |
+| 2 | 事故详情 | `incident.html`、`incident_handoff.html`、`_alert.html`；`_step_view` 加 `observed_at`；`_stored_alert` 加 alertname；决策日志合并系统行；`charts.py` 中性配色；抽屉与筛选 JS | `feat`，功能 PR | 3 + 0.75 + 0.75 | `feature/572-ui-incident`；#659 已合并 |
+| 3 | 事故列表 | `index.html`；列表查询加目标、告警名或问题、结论等级与首句；Recovery 列与复盘待办（LATERAL，r2）；状态映射表（D11）；人工提问表单（U6，路由加注册表 key，幂等键浏览器端生成）；三处列表测试按 U5 改写 | `feat`，功能 PR | 1 + 0.5 + 0.5 | `feature/572-ui-index`；#658 已合并，测试 PR #657（按表头名取值）、#660（列表合同测试）已合并 |
+| 4 | 复盘审核 | `postmortem.html`；`version_page` 加事故上下文、版本表、生成尝试、Postmortem events（r2） | `feat`，功能 PR | 1.5 + 0.5 + 0.5 | `feature/572-ui-postmortem`；#661 已合并 |
 
 合计约 6 个实现日。PR 1 合并后 2–4 可并行，本机内存紧，最多两条线。PR 2 只换展示、不改报告校验；是否附真实 Run trace 由协调者判断。
 
@@ -72,6 +72,8 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 - 2026-11-16：PR 2 事故详情实现（基线 c4 黑白灰版）：页头、摘要带五格、时间线、结论、依据、可见性、调查轮次（筛选与证据抽屉）、恢复与人工控制侧栏、复盘折叠块、原始记录；派生逻辑放新模块 `opspilot/web/incident_view.py`，决策日志经只读 `control_log` 合并系统行。本机 swap 紧，验收探针未在本地跑，依赖 CI；`test_393_live` 锚点用真实记录渲染后 grep 自查通过。普通测试 3 项按设计冲突失败，交独立测试作者（见 PR）。
 - 2026-11-16：PR 3 事故列表实现：列表一条查询加取问题（按 `intake_key` 联 `opspilot_web_ledger`）、最新投递的告警原文（Python 里取 `labels.alertname`，截断记录不是 JSON）、结论原值、最新恢复会话与待审复盘版本（LATERAL）；视图层 `opspilot/web/incident_list.py` 分组并用 `_report_view` 解析结论；人工提问表单按 U6。本机 swap 余量不足 1.5G，未起 PG，查询数与 SQL 依赖 CI 的 m0-postgres；截图用仿真实记录的离线渲染（1440、1100、400 页面不横向滚动）。
 - 2026-11-16：PR 4 复盘审核实现：页面按基线 r2 重排（任务句、三格摘要带、待核清单、按节陈述、右栏决定与审核历史）；`version_page` 加版本表（最多 20 个）、生成尝试与调度（复用 `incident_postmortem`，store 上限 10 条）、Postmortem events（取事故最近 200 条事件按 `EVENT_KINDS` 与本复盘过滤，最多显示 20 条）；事故上下文（告警名、服务、问题、目标）由 Workbench 新方法按列表页同一查询取单行。偏离基线：水位保持验收句式收进折叠块；结论行只写例外（citations invalid / disputed / not citable as fact）；争议与引用失败列表保留（验收锚点）。本机 swap 余量约 1.0G，验收探针与 PG 测试未在本地跑，依赖 CI；截图用按真实记录（run e6058448）构造的离线渲染，1440、1100、400 页面不横向滚动。
+- 2026-11-16：四个实现 PR（#656、#658、#659、#661）与测试 PR #657、#660 合入 `main`；`tests/acceptance/` 在这些 PR 里没有改动。
+- 2026-11-16：最终截图核验（`main` 74e5a847）。本机 swap 余量不足 1G，未起 PG 与工作台服务，改用离线渲染：真实模板经视图层（`incident_list.list_page`、`incident_view.page_view`、`PostmortemReview.version_page`）渲染，数据取自真实记录——列表 8 行取自 F9 第 2–4 步、F9 final2 与 #243 证据里的事故（含已结论已关闭 3c6deab1、等待人工 65b0490a、无 Run 交接 ff2d3a9b），因来自不同环境，不是同一个库的一次查询；详情用 Run 3c6deab1 的工作台快照加 F9 第 2 步 DB 转储重建；复盘用 run e6058448 的正文记录。三页在 1440、1100、400 下 `scrollWidth` 均等于 `clientWidth`；400 下证据图表在自身容器内横向滚动。颜色只有黑白灰、链接强调色和设计说明允许的错误色。截图不入库。
 
 ### 列表状态映射（D11，自上而下第一条命中）
 
@@ -99,11 +101,13 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 - 本机无 IBM Plex，版式按后备系统字体验证，实现也只用后备字体。
 - 全量验收探针仍未跑，以 grep 清单代替（r2 按审查补了漏项，仍可能有遗漏）。每个实现 PR 开工后第一件事是在该 worktree 跑一次 `tests/acceptance`（本机内存允许时）或依赖 CI，清单外的失败追加进决定表。`test_393_live` 在 CI 里被跳过，实现 PR 用 grep 自查。
 - 预审的逐页对照对着更早的稿（详情 c3、列表与复盘首版）做；r2 补了审查发现的四块，基线稿各状态未逐一通读；其余未确认项见决定表第 7 节。
+- 本轮未做：详情页的轮次概览条与逐状态手写文案；事故页不显示结构化根因（#652）；post_remediation 会话措辞按机器人停机规则未改。
+- 测试缺口：列表页的告警名、Recovery 列与复盘待办没有内存测试覆盖（依赖 PG 测试）；浏览器端幂等键生成只在真实浏览器里验证过。
+- 最终截图是离线渲染，不是从运行中的工作台经 HTTP 取得；列表行合并自多个环境的记录。
 
 ## 下一步
 
-1. 开 PR 1（公共外壳），开工前在本记录填分支与 worktree。
-2. PR 1 合并后按顺序开 PR 2–4；每个功能 PR 由独立测试作者按决定表改普通测试、独立 Agent 审查。
+无。上面的未做项如要做，各开 issue。
 
 ## 待决
 
