@@ -33,7 +33,7 @@
 
 ## 运行情况
 
-- 105/105 `completed`，`history` 全空（没有作废、没有补跑机会），judge 全部 `ok`。
+- 驱动层 105/105 个 trial 记录为 `completed`：trial 跑完并判分，`history` 全空（没有作废、没有补跑机会），judge 全部 `ok`。按产品 Run 状态分：102 个 Run 发布了报告；3 个 Run 因 `REPORT_INVALID` 交接（`waiting_human`），见下一条。
 - `gap_seconds` 最大 5.01（作废线 120），`load_seconds` 最大 83.3（4 分钟风险线以下）。全程 swap 0；结束时磁盘可用 34G。
 - 产品拒收（`REPORT_INVALID`，换算记 `REPORT_REJECTED_BY_PRODUCT`，按 #645 视为无报告）：S22 trial-1、S25 trial-3、S7 trial-2，共 3/105（lite-full-1114 为 1/105，S23 trial-1）。具体校验原因不在冻结 summary 里，原始 ledger 不入库。
 - 没有因模型不可用而交接的 trial。
