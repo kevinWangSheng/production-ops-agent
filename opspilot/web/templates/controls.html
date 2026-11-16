@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set nav = "suspension" %}
 {% block title %}OpsPilot · suspension controls{% endblock %}
 {% macro control_form(scope, target_id, gate, suffix) %}
 <form method="post" action="/controls/suspension">

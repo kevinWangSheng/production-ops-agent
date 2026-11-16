@@ -4,30 +4,128 @@
   <meta charset="utf-8">
   <title>{% block title %}OpsPilot{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {#- Shell rules (UI redesign contract r2, section 6): no <h2> or <th> here, no text
+      that changes per request, and no "state" / "queued" / "running" / "closed" in
+      the header: the incident summary tests read every word before the first <h2>. #}
   <style>
-    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
-    h1, h2, h3 { margin: 0.6em 0 0.3em; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
-    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
-    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
-    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
-    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
-    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
-    .counter { border-left: 4px solid #c52; padding-left: 8px; }
-    .rejected { border-left: 4px solid #999; padding-left: 8px; }
-    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
-    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    :root {
+      --bg: #fbfbfa; --ink: #1d1e21; --ink2: #4d5057; --ink3: #7d8088; --ink4: #a9abb1;
+      --line: #e7e5e0; --line2: #d6d4ce; --tint: #f3f2ef;
+      --acc: #0d6b61; --acc-soft: #e4f0ed; --err: #b23a30;
+      --hatch: repeating-linear-gradient(135deg, #cfcdc6 0 1.5px, transparent 1.5px 5px);
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--ink); font: 14px/1.55 var(--sans); margin: 0; }
+    a { color: var(--acc); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: 2px; }
+    code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+    summary { cursor: pointer; }
+    [hidden] { display: none !important; }
+
+    /* top bar */
+    .top { border-bottom: 1px solid var(--line); background: #fff; padding-inline: 32px; }
+    .top-in { max-width: 1376px; margin: 0 auto; display: flex; align-items: center; gap: 28px; min-height: 52px; flex-wrap: wrap; }
+    .brand { font-weight: 600; display: flex; align-items: center; gap: 8px; font-size: 15px; }
+    .brand i { width: 12px; height: 12px; border-radius: 3px; background: var(--ink); display: inline-block; }
+    .top nav { display: flex; gap: 22px; align-self: stretch; align-items: stretch; }
+    .top nav a { display: flex; align-items: center; color: var(--ink3); line-height: 1; border-bottom: 2px solid transparent; padding-top: 2px; }
+    .top nav a:hover { color: var(--ink); text-decoration: none; }
+    .top nav a[aria-current] { color: var(--ink); border-bottom-color: var(--ink); }
+    .top .sp { flex: 1; }
+    .ro, .user { font-size: 12.5px; color: var(--ink3); }
+    .user code { font-size: 12px; color: var(--ink2); }
+
+    /* page */
+    .wrap { max-width: 1440px; margin: 0 auto; padding-inline: 32px; padding-block: 24px 56px; overflow-wrap: anywhere; }
+    h1, h2, h3 { font-weight: 600; letter-spacing: -.005em; }
+    h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; }
+    h2 { font-size: 17px; line-height: 1.3; margin: 32px 0 12px; padding-top: 28px; border-top: 1px solid var(--line); }
+    h1 + h2, h1 + p + h2 { border-top: 0; padding-top: 0; margin-top: 24px; }
+    h3 { font-size: 14.5px; margin: 20px 0 8px; }
+    p { margin: 8px 0; }
+    .muted { color: var(--ink2); }
+    .small { font-size: 12.5px; color: var(--ink2); }
+
+    table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+    th, td { text-align: left; padding: 8px 16px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-weight: 500; color: var(--ink3); }
+    th:last-child, td:last-child { padding-right: 0; }
+    .tw { overflow-x: auto; }
+    pre { white-space: pre-wrap; word-break: break-all; background: var(--tint); border-radius: 4px; padding: 10px 12px; margin: 8px 0; }
+
+    button, .btn { font: inherit; font-size: 13px; font-weight: 500; color: var(--ink); background: #fff; border: 1px solid var(--line2); border-radius: 5px; padding: 5px 12px; cursor: pointer; }
+    .btn:hover { text-decoration: none; border-color: var(--ink4); }
+    .btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    button[disabled], .btn[disabled] { opacity: .5; cursor: not-allowed; }
+    input, textarea, select { font: inherit; font-size: 13px; color: var(--ink); background: #fff; border: 1px solid var(--line2); border-radius: 5px; padding: 5px 8px; max-width: 100%; }
+    input { font-family: var(--mono); font-size: 12.5px; }
     form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+
+    /* existing pages: neutral grouping, no colour (design spec rule 1) */
+    .badge { display: inline-block; font-size: 11.5px; font-weight: 500; line-height: 1.5; padding: 0 7px; border-radius: 99px; background: var(--tint); color: var(--ink); border: 1px solid var(--ink4); }
+    .facts, .hypotheses, .counter, .rejected, .unknown, .recommend { border-left: 2px solid var(--line2); padding-left: 12px; }
     #progress li { margin: 2px 0; }
-    .muted { color: #666; }
+
+    /* _ui.html parts */
+    .m { display: inline-block; width: 8px; height: 8px; background: var(--ink2); margin-right: 7px; flex: none; }
+    .m-agent { border-radius: 50%; }
+    .m-code { border-radius: 1px; }
+    .m-human { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+    .m-alert { background: none; border: 1.5px solid var(--ink2); transform: rotate(45deg) scale(.85); }
+    .who { font-size: 12.5px; color: var(--ink2); display: inline-flex; align-items: center; }
+    .who > .wt { min-width: 0; }
+    .pill { display: inline-block; font-size: 11.5px; font-weight: 500; line-height: 1.5; padding: 0 7px; border-radius: 99px; background: var(--tint); color: var(--ink); border: 1px solid var(--ink4); white-space: nowrap; }
+    .pill.todo { background: var(--ink); border-color: var(--ink); color: #fff; font-size: 12.5px; padding: 1px 9px; }
+    a.pill.todo:hover { color: #fff; }
+    .nd { display: inline-block; background: var(--hatch); background-color: #fff; border-radius: 2px; padding: 0 6px; font-size: 11.5px; font-weight: 400; line-height: 1.6; color: var(--ink3); font-family: var(--mono); vertical-align: 1px; max-width: 100%; overflow-wrap: anywhere; }
+    dl.kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 13px; }
+    dl.kv dt { color: var(--ink3); }
+    dl.kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+    details.fold > summary { list-style: none; color: var(--acc); font-size: 13px; display: inline-block; }
+    details.fold > summary::-webkit-details-marker { display: none; }
+    details.fold > summary::before { content: "+ "; }
+    details.fold[open] > summary::before { content: "\2212 "; }
+    details.fold > .fold-body { margin-top: 8px; }
+
+    @media (max-width: 720px) {
+      .top { padding-inline: 16px; }
+      .top-in { gap: 4px 16px; padding-top: 8px; }
+      .top nav { order: 3; width: 100%; min-height: 40px; }
+      .top .sp { display: none; }
+      .ro { order: 4; width: 100%; padding-bottom: 8px; }
+      .user { margin-left: auto; }
+      .wrap { padding-inline: 16px; }
+      h1 { font-size: 21px; }
+      /* wide tables on the existing pages scroll inside themselves, never the page */
+      .wrap table { display: block; overflow-x: auto; }
+      .wrap th, .wrap td { overflow-wrap: normal; }
+      dl.kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
+      dl.kv dd { margin-bottom: 6px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <a href="/">Incidents</a> · <a href="/version-changes">Version changes</a>
-    <span class="muted">· signed in as <code>{{ principal.actor_id }}</code> ({{ principal.channel }})</span>
+  {%- set current = nav if nav is defined else "incidents" %}
+  <header class="top">
+    <div class="top-in">
+      <div class="brand"><i aria-hidden="true"></i>OpsPilot</div>
+      <nav aria-label="Primary">
+        <a href="/"{% if current == "incidents" %} aria-current="page"{% endif %}>Incidents</a>
+        <a href="/version-changes"{% if current == "version-changes" %} aria-current="page"{% endif %}>Version changes</a>
+        <a href="/controls"{% if current == "suspension" %} aria-current="page"{% endif %}>Suspension</a>
+      </nav>
+      <div class="sp"></div>
+      <span class="ro">Read-only agent · no production changes</span>
+      <span class="user">signed in as <code>{{ principal.actor_id }}</code> · {{ principal.channel }}</span>
+    </div>
   </header>
+  <main class="wrap">
   {% block body %}{% endblock %}
+  </main>
 </body>
 </html>
