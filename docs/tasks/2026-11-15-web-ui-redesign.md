@@ -53,7 +53,7 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 |---|---|---|---|---|---|
 | 1 | 公共外壳 | `base.html` 取值、顶栏、导航加 Suspension、只读声明、系统字体；`_ui.html` 宏（来源记号、药丸、缺失斜纹、键值表、折叠）。其他页套新外壳、保留旧正文；不改后端。约束（r2）：不加 `<h2>`/`<th>`，不放每次请求都变的内容，页眉文字不含 state、queued、running、closed | `chore` | 0.5 + 0.2 + 0.2 | `chore/572-ui-shell` / `../poa-572-shell` |
 | 2 | 事故详情 | `incident.html`、`incident_handoff.html`、`_alert.html`；`_step_view` 加 `observed_at`；`_stored_alert` 加 alertname；决策日志合并系统行；`charts.py` 中性配色；抽屉与筛选 JS | `feat`，功能 PR | 3 + 0.75 + 0.75 | 待填 |
-| 3 | 事故列表 | `index.html`；列表查询加目标、告警名或问题、结论等级与首句；Recovery 列与复盘待办（LATERAL，r2）；状态映射表（D11）；人工提问表单（U6，路由加注册表 key，幂等键浏览器端生成）；三处列表测试按 U5 改写 | `feat`，功能 PR | 1 + 0.5 + 0.5 | 待填 |
+| 3 | 事故列表 | `index.html`；列表查询加目标、告警名或问题、结论等级与首句；Recovery 列与复盘待办（LATERAL，r2）；状态映射表（D11）；人工提问表单（U6，路由加注册表 key，幂等键浏览器端生成）；三处列表测试按 U5 改写 | `feat`，功能 PR | 1 + 0.5 + 0.5 | `feature/572-ui-index` / `../poa-572-index` |
 | 4 | 复盘审核 | `postmortem.html`；`version_page` 加事故上下文、版本表、生成尝试、Postmortem events（r2） | `feat`，功能 PR | 1.5 + 0.5 + 0.5 | 待填 |
 
 合计约 6 个实现日。PR 1 合并后 2–4 可并行，本机内存紧，最多两条线。PR 2 只换展示、不改报告校验；是否附真实 Run trace 由协调者判断。
@@ -69,6 +69,27 @@ r2：独立审查后由协调者补充，未改用户裁决。完整决定表（
 - 2026-11-16：PR 1 公共外壳实现（`base.html` 取值、顶栏、导航加 Suspension、只读声明；新增 `_ui.html` 宏）。本机 swap 紧，验收探针未在本地跑 PG 部分，依赖 CI；web 定向普通测试 320 项与不需 PG 的页面验收 32 项本地通过。
 - 2026-11-16：用户裁决目的、基线、范围、表单呈现与模型安排；U1–U5 按推荐代定。合同 r1、设计说明修订入库（PR #654）。
 - 2026-11-16：独立审查（全新上下文，只读）提出必须处理 M1–M6，均只改文档；协调者按「验收测试不改、够用就行、不为边角加后端」定，合同升 r2。
+- 2026-11-16：PR 3 事故列表实现：列表一条查询加取问题（按 `intake_key` 联 `opspilot_web_ledger`）、最新投递的告警原文（Python 里取 `labels.alertname`，截断记录不是 JSON）、结论原值、最新恢复会话与待审复盘版本（LATERAL）；视图层 `opspilot/web/incident_list.py` 分组并用 `_report_view` 解析结论；人工提问表单按 U6。本机 swap 余量不足 1.5G，未起 PG，查询数与 SQL 依赖 CI 的 m0-postgres；截图用仿真实记录的离线渲染（1440、1100、400 页面不横向滚动）。
+
+### 列表状态映射（D11，自上而下第一条命中）
+
+| 条件 | 分组 | 待办药丸 | 状态词 |
+|---|---|---|---|
+| lifecycle `closed`，有 `under_review` 复盘版本 | Needs a human | Review postmortem（链到复盘页） | Closed · postmortem version N waits for review |
+| lifecycle `closed` | Closed | — | Closed（合并时加 merged into …） |
+| 有 `handoff_reason`（无 Run） | Needs a human | Handle outside OpsPilot | Handed to a human, no Run · 原因码 |
+| control `paused` 或 Run `paused` | Needs a human | Resume | Paused |
+| Run `blocked` | Needs a human | Cancel or take over | Blocked |
+| mode `human_owned` | Needs a human | Register or close | Taken over |
+| Run `waiting_human` | Needs a human | Ask or take over | Waiting for a human |
+| lifecycle `resolved` | Needs a human | Close or reopen | Recovered（`refired_after_resolved` 时加 re-fired 标记） |
+| lifecycle `observing_recovery` | In progress | — | Watching recovery |
+| Run `queued`/`running` | In progress | — | Investigating |
+| control `cancelled` | Needs a human | New Run or close | Open, Run cancelled |
+| 已有结论 | Needs a human | Close or register | Report published |
+| 其余 | Needs a human | Take over or close | Open |
+
+恢复列：无会话 Not started；`authorized` Watching + 采纳样本数；`recovery_confirmed` 结束 Confirmed + 结束时刻；其他结束 Ended, not confirmed + 结束原因码。结论列：未结论 No conclusion（Run 进行中为 No conclusion yet）；能解析 Supported / Partial / Inconclusive 加固定半句与摘要首句；不能解析 Concluded · level not in the record。
 
 ## 已知限制
 
