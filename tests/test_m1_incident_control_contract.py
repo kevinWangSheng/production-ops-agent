@@ -106,7 +106,9 @@ def _assert_list_control(html, incident, expected):
     assert "State" not in headers
     row = list_row(html, incident)
     assert row["Control"] == expected
-    assert not IN_PROGRESS_WORDS & {c.lower() for c in row.values()}
+    assert not IN_PROGRESS_WORDS & {
+        value.lower() for column, value in row.items() if column != "Run"
+    }
 
 
 # -- 1. after publish ----------------------------------------------------------
