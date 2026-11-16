@@ -90,7 +90,9 @@ def _validated(
             "name",
         ),
         (
-            _report(root_cause={"kind": "service", "name": "payment", "evidence_ids": []}),
+            _report(
+                root_cause={"kind": "service", "name": "payment", "evidence_ids": []}
+            ),
             "evidence_ids",
         ),
     ],
