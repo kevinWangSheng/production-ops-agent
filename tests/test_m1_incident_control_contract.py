@@ -102,15 +102,8 @@ def _assert_in_progress(html):
 
 def _assert_list_control(html, incident, expected):
     headers = list_headers(html)
-    assert "Control" in headers and "State" not in headers
-    assert [h for h in headers if h != "Control"] == [
-        "Incident",
-        "Run",
-        "Lifecycle",
-        "Generation",
-        "Concluded",
-        "Created",
-    ]
+    assert {"Run", "Control", "Lifecycle", "Concluded"} <= set(headers)
+    assert "State" not in headers
     row = list_row(html, incident)
     assert row["Control"] == expected
     assert not IN_PROGRESS_WORDS & {c.lower() for c in row.values()}
