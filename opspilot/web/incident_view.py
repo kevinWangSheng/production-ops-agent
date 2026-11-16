@@ -463,10 +463,19 @@ def _timeline(
                 f"Run claimed again (epoch {payload.get('epoch')})",
             )
     for row in snapshot.get("decision_log") or []:
+        if row.get("action") == "auto_authorize_observation":
+            continue  # shown from the session row below, once per session
         add(
             row.get("decided_at"),
             "code" if row.get("system") else "human",
             DONE.get(row.get("action"), str(row.get("action"))),
+        )
+    for session in snapshot.get("observation_sessions") or []:
+        automatic = session.get("authorization_source") == "automatic"
+        add(
+            session.get("authorized_at"),
+            "code" if automatic else "human",
+            "Recovery watch authorized" + ("" if automatic else " (after remediation)"),
         )
     for view in snapshot.get("recovery") or []:
         verified = (view.get("replay") or {}).get("recovery_confirmed")
