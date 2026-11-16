@@ -19,18 +19,26 @@ class _Page(HTMLParser):
         self.stack: list[dict] = []
         self.by_id: dict[str, list[str]] = {}
         self.badges: list[tuple[str | None, str]] = []
-        self.rows: list[list[str]] = []
+        self.rows: list[dict[str, object]] = []
         self.headers: list[str] = []
         self.summary_nodes: list[tuple[str, tuple[str, ...]]] = []
         self._seen_h2 = False
-        self._row: list[str] | None = None
+        self._first_headers: list[str] | None = None
+        self._thead_headers: list[str] | None = None
+        self._in_thead = 0
+        self._row: list[dict[str, object]] | None = None
+        self._row_in_thead = False
         self._cell: list[str] | None = None
+        self._cell_links: list[str] | None = None
+        self._cell_colspan = 1
         self._cell_is_header = False
 
     def handle_starttag(self, tag, attrs):
         if tag in _VOID:
             return
         a = dict(attrs)
+        if tag == "thead":
+            self._in_thead += 1
         if tag == "h2":
             self._seen_h2 = True
         self.stack.append(
@@ -43,9 +51,17 @@ class _Page(HTMLParser):
         )
         if tag == "tr":
             self._row = []
+            self._row_in_thead = self._in_thead > 0
         if tag in {"td", "th"}:
             self._cell = []
+            self._cell_links = []
+            try:
+                self._cell_colspan = max(1, int(a.get("colspan") or 1))
+            except (TypeError, ValueError):
+                self._cell_colspan = 1
             self._cell_is_header = tag == "th"
+        if tag == "a" and self._cell_links is not None and a.get("href"):
+            self._cell_links.append(a["href"])
 
     def handle_data(self, data):
         for frame in self.stack:
@@ -73,18 +89,34 @@ class _Page(HTMLParser):
             if frame["tag"] == tag:
                 break
         if tag in {"td", "th"} and self._cell is not None and self._row is not None:
-            text = "".join(self._cell).strip()
-            self._row.append(text)
-            if self._cell_is_header:
-                self.headers.append(text)
+            self._row.append(
+                {
+                    "text": "".join(self._cell).strip(),
+                    "links": tuple(self._cell_links or ()),
+                    "colspan": self._cell_colspan,
+                    "is_header": self._cell_is_header,
+                }
+            )
             self._cell = None
+            self._cell_links = None
+            self._cell_colspan = 1
         if tag == "tr" and self._row is not None:
-            if self._row and not self.headers_only(self._row):
-                self.rows.append(self._row)
+            if self._row:
+                self.rows.append(
+                    {"cells": self._row, "in_thead": self._row_in_thead}
+                )
+                row_headers = [
+                    cell["text"] for cell in self._row if cell["is_header"]
+                ]
+                if row_headers:
+                    if self._row_in_thead and self._thead_headers is None:
+                        self._thead_headers = row_headers
+                    elif not self._row_in_thead and self._first_headers is None:
+                        self._first_headers = row_headers
+                    self.headers = self._thead_headers or self._first_headers or []
             self._row = None
-
-    def headers_only(self, row):
-        return row == self.headers[-len(row) :] and bool(self.headers)
+        if tag == "thead":
+            self._in_thead = max(0, self._in_thead - 1)
 
 
 def parse(html: str) -> _Page:
@@ -128,7 +160,24 @@ def list_headers(html: str) -> list[str]:
 
 def list_row(html: str, incident_id: str) -> dict[str, str]:
     page = parse(html)
-    matches = [r for r in page.rows if incident_id in r[0]]
+    href = f"/incidents/{incident_id}"
+    matches = [
+        row
+        for row in page.rows
+        if any(
+            href == link
+            for cell in row["cells"]
+            for link in cell["links"]
+        )
+    ]
     assert len(matches) == 1, f"incident {incident_id} rows: {len(matches)}"
-    assert len(matches[0]) == len(page.headers)
-    return dict(zip(page.headers, matches[0]))
+    assert page.headers, "incident list has no table headers"
+    values: list[str] = []
+    for cell in matches[0]["cells"]:
+        values.append(cell["text"])
+        values.extend([""] * (cell["colspan"] - 1))
+    assert len(values) == len(page.headers), (
+        f"incident {incident_id} cells: {len(values)}, "
+        f"headers: {len(page.headers)}"
+    )
+    return dict(zip(page.headers, values))
