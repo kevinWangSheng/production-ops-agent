@@ -36,7 +36,13 @@ Agent 自定（按预审推荐，各一行理由）：
 - C4 = a：词表加「名字 → 快照中出现过的 kind 集合」旁路文件，唯一 kind 直接用，多个再走现有规则。理由：快照属性开跑前已知、不碰答案；与 #647 同批重生成 35 份词表。
 - C5 = a（#647 一并做）：收 Namespace 对象名 ∪ 所有对象的 `metadata.namespace` 值，从词表按字符串排除，不论类型；换算侧排除保留兜底；显式根因字段不受此排除。理由：只收 Namespace 对象会漏掉快照里无 Namespace 对象但有其下对象的情况。新词表只用于下一轮。
 - R8 = a：`root_cause` 结构错误按现有机制判整份 `REPORT_INVALID`。理由：「报告要么合法要么拒收」是现有合同，R4–R6 的宽松选项已把新增失败面压到键名写错、缺 kind/name、引用未交付 id。
-- 实现细节（PR-A）：v2 报告带 `root_cause` 键不额外拒收（不新增 `REPORT_INVALID` 来源）；eval 冻结 summary 的 `report_parsed` 在原文无 `root_cause` 键时不输出该键，旧 summary 字节不变。
+- 实现细节（PR-A）：
+  - DTO 类名仍为 `ReportV2`（同时承载 v2/v3），新增 `RootCauseV3`；原文是否带键看 `model_fields_set`。理由：改类名波及几十个调用方，与合同无关。
+  - v2 报告带 `root_cause` 键不额外拒收。理由：不新增 `REPORT_INVALID` 来源（R8 的宽松方向）。
+  - L2 示例（结论为 inconclusive）里 `root_cause` 写 null，对象形状用正文内一段小示例给出。理由：示例对象与 inconclusive 自相矛盾。
+  - 重试反馈：根因引用未交付 id 时单列一行 `root_cause: unknown_evidence_id (evidence_id: …)`，原因名沿用 `unknown_evidence_id`；结构错误走已有 `root_cause.<字段>: schema_error`。
+  - eval 加载器：写入照旧 `model_dump`（新 summary 带 `root_cause`）；读取接受两种键集，保存时无该键且重新解析的根因为 null 时，按无该键的形状逐字节比对。
+  - web「无法解析」提示改为「m0-report-v2 或 m0-report-v3」。
 
 ## lead 的三条判断
 
@@ -62,4 +68,4 @@ Agent 自定（按预审推荐，各一行理由）：
 ## 下一步与交接
 
 - PR-A 实现；合同/验收测试由独立 Agent 编写，lead cherry-pick 进本分支，实现者不改其断言。
-- 开 issue：web 事故页显示结构化根因（R9 后续）。
+- web/知识显示结构化根因：#652（R9 后续）。

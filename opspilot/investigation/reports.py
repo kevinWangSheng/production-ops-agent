@@ -22,7 +22,11 @@ from pydantic import Field, ValidationError, model_validator
 
 from opspilot.domain.base import DTO, Text, sanitized_errors
 
-REPORT_SCHEMA_VERSION = "m0-report-v2"
+REPORT_SCHEMA_VERSION = "m0-report-v3"
+#: #646 R7: every report version ``parse_report`` accepts. v2 reports
+#: (already stored by web, knowledge and frozen eval evidence) stay valid;
+#: the L2 contract only asks the model for v3.
+REPORT_SCHEMA_VERSIONS = ("m0-report-v2", "m0-report-v3")
 EVIDENCE_CONTEXT_TYPE = "opspilot-evidence-context-v4"
 #: #311 U5: the one guidance text ``data_sources`` may carry; the projection
 #: drops any other, so a context cannot hand the model its own instructions.
@@ -58,6 +62,7 @@ _REPORT_EXAMPLE: dict[str, object] = {
     ],
     "gaps": ["State the specific missing information, if any."],
     "next_steps": ["An advisory next step, without executing it."],
+    "root_cause": None,
 }
 
 # Stable L2 bytes. Instance values are not interpolated here.
@@ -66,7 +71,7 @@ REPORT_CONTRACT = (
     "final request, return only one json object in the following format; "
     "replace the example values with your actual assessment. Do not emit "
     "DSML, tool invocation markup, Markdown fences or requests for more "
-    "tools. schema_version must be m0-report-v2. assessment_status is "
+    "tools. schema_version must be m0-report-v3. assessment_status is "
     "completed or incomplete; conclusion is supported, partial, or "
     "inconclusive. Incomplete requires inconclusive and nonempty gaps. "
     "Supported requires at least one evidence-backed fact; partial means "
@@ -85,8 +90,19 @@ REPORT_CONTRACT = (
     "instead. Permission to query a target is not observed "
     "evidence. Missing policy or source timing cannot support a current fact; "
     "return explicit gaps and inconclusive or incomplete. Use gaps for missing "
-    "information and next_steps for advisory human follow-up. Do not invent a "
-    "supported cause to fill the format. json example: "
+    "information and next_steps for advisory human follow-up. root_cause is "
+    "null or one object with kind, namespace, name and evidence_ids, for "
+    'example {"kind":"Deployment","namespace":"COPY_NAMESPACE","name":'
+    '"COPY_OBJECT_NAME","evidence_ids":["REPLACE_WITH_COMPLETE_VISIBLE_'
+    'EVIDENCE_ID"]}. It names the single object where the fault originates, '
+    "not merely where symptoms or alerts appear: kind is its Kubernetes kind "
+    "(for example Deployment, Pod, Service, ConfigMap or Node), namespace is "
+    "its namespace or null for a cluster-scoped object, name is the exact "
+    "object name as written in the evidence, and evidence_ids lists at least "
+    "one complete evidence_id actually supplied in this Run that supports it. "
+    "When conclusion is supported or partial and the evidence points to one "
+    "object, set root_cause to it; otherwise set root_cause to null. Do not "
+    "invent a supported cause to fill the format. json example: "
     + json.dumps(_REPORT_EXAMPLE, ensure_ascii=False, separators=(",", ":"))
 )
 
@@ -124,14 +140,37 @@ class ClaimV2(DTO):
         return self
 
 
+class RootCauseV3(DTO):
+    """#646 R2-R6: the one object the report concludes is the root cause.
+
+    ``kind`` is free text (normalized by consumers, never an enum: a typo
+    must not void the whole report); ``namespace`` is null for cluster-scoped
+    objects. ``evidence_ids`` must be nonempty; the citation check only
+    requires each id to have been delivered in this Run (no fact-grade
+    checks, no ``target_refs``).
+    """
+
+    kind: Text
+    namespace: Text | None = None
+    name: Text
+    evidence_ids: list[Text] = Field(min_length=1)
+
+
 class ReportV2(DTO):
-    schema_version: Literal["m0-report-v2"]
+    """The report DTO for both ``m0-report-v2`` and ``m0-report-v3``.
+
+    ``root_cause`` (v3, #646) may be omitted (null). Whether the original
+    reply carried the key at all is ``"root_cause" in model_fields_set``.
+    """
+
+    schema_version: Literal["m0-report-v2", "m0-report-v3"]
     assessment_status: Literal["completed", "incomplete"]
     conclusion: Literal["supported", "partial", "inconclusive"]
     summary: Text
     claims: list[ClaimV2]
     gaps: list[Text]
     next_steps: list[Text]
+    root_cause: RootCauseV3 | None = None
 
     @model_validator(mode="after")
     def coherent(self) -> ReportV2:
@@ -284,6 +323,10 @@ class ClaimCitationFailure:
     claim_index: int
     reason: str
     evidence_ids: tuple[str, ...] = ()
+    #: #646 R6: the failure is about the report's ``root_cause`` object, not
+    #: a claim (``claim_index`` is then -1). Its only check is
+    #: ``unknown_evidence_id``.
+    root_cause: bool = False
 
 
 def _citation_failures(
@@ -365,6 +408,18 @@ def _citation_failures(
         if any(ref not in observed for ref in claim.target_refs):
             failures.append(ClaimCitationFailure(index, TARGET_NOT_OBSERVED_BY_VIEW))
             continue
+    if report.root_cause is not None:
+        # #646 R6: delivered ids only -- no status, citable_as_fact, target
+        # or time checks; a root cause under ``partial`` is a hypothesis.
+        unknown_ids = tuple(
+            eid for eid in report.root_cause.evidence_ids if eid not in by_id
+        )
+        if unknown_ids:
+            failures.append(
+                ClaimCitationFailure(
+                    -1, UNKNOWN_EVIDENCE_ID, unknown_ids, root_cause=True
+                )
+            )
     return failures
 
 
@@ -518,7 +573,8 @@ def _citation_failure_detail(
     """
     failures = _citation_failures(report, views=views, **citation_kwargs)  # type: ignore[arg-type]
     lines = [
-        f"claim {f.claim_index}: {f.reason}"
+        ("root_cause" if f.root_cause else f"claim {f.claim_index}")
+        + f": {f.reason}"
         + (f" (evidence_id: {', '.join(f.evidence_ids)})" if f.evidence_ids else "")
         for f in failures
     ]
