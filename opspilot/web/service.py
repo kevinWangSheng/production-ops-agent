@@ -2170,6 +2170,33 @@ class Workbench:
         )
         return list_page(items, report_of=_report_view, targets=self.registry_keys())
 
+    def incident_subject(self, incident_id: UUID) -> dict[str, Any] | None:
+        """What an incident is about, read like its list row (UI redesign
+        3.3, the postmortem page's heading): alert name, service, question
+        and target from one single-row read; ``None`` when the incident is
+        unknown. A store without that read (the in-memory test store) gives
+        the target alone."""
+        reader = getattr(self.incidents, "incident_item", None)
+        if reader is not None:
+            item = reader(incident_id)
+        else:
+            summary = self.incidents.find_incident(incident_id)
+            item = None if summary is None else IncidentListItem(summary)
+        if item is None:
+            return None
+        service = None
+        if item.alert_namespace and item.alert_workload:
+            service = f"{item.alert_namespace}/{item.alert_workload}"
+        return {
+            "alert_name": item.alert_name,
+            "service": service,
+            "question": None
+            if item.question is None
+            else " ".join(item.question.split()),
+            "target": item.summary.target_uid,
+            "lifecycle": item.summary.lifecycle,
+        }
+
     def reconcile(self, incident_id: UUID) -> None:
         """Repair projections from the authoritative rows (idempotent).
 

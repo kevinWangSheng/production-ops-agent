@@ -847,6 +847,17 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(_item(row) for row in rows)
 
+    def incident_item(self, incident_id: UUID) -> IncidentListItem | None:
+        """One incident's list-page row (UI redesign 3.3): the postmortem
+        page's heading reads the same subject (alert name or question,
+        service) the list shows. At most one row."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+        return None if row is None else _item(row)
+
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(

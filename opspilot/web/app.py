@@ -431,17 +431,21 @@ def create_app(
 
     # -- postmortem review (M1-03 step 3) ----------------------------------
 
-    def render_version(
+    async def render_version(
         principal: Principal,
         page: Mapping[str, Any],
         *,
         error: Any = None,
         status: int = 200,
     ) -> HTMLResponse:
+        # UI redesign 3.3: the heading names what the incident is about, read
+        # like its list row (one single-row query).
+        incident = await in_thread(workbench.incident_subject, page["incident_id"])
         response = render(
             "postmortem.html",
             principal=principal,
             page=page,
+            incident=incident,
             error=error,
             postmortem_kinds=EVENT_KINDS,
             form_nonce=uuid4().hex,
@@ -475,7 +479,7 @@ def create_app(
         principal = await ui(request)
         subject, number = _postmortem_path(postmortem_id, version)
         page = await reviewed(review_of().version_page, subject, number)
-        return render_version(principal, page)
+        return await render_version(principal, page)
 
     @app.get("/knowledge/{entry_id}", response_class=HTMLResponse)
     async def entry_page(request: Request, entry_id: str) -> Response:
@@ -522,7 +526,7 @@ def create_app(
                     _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
                 ) from None
             page = await reviewed(service.version_page, subject, number)
-            return render_version(
+            return await render_version(
                 principal, page, error=exc, status=_REVIEW_STATUS[exc.error_class]
             )
         if wants_html(request):
