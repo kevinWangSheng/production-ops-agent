@@ -223,9 +223,23 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
     if view.get("recovery_statement"):
         headline = view["recovery_statement"]
         headline = headline[0].upper() + headline[1:]
-    elif replay.get("recovery_confirmed"):
+    elif replay.get("recovery_confirmed") and snapshot["incident"].lifecycle in (
+        "resolved",
+        "closed",
+    ):
         when = clock(confirmed_at, day)
         headline = "Recovery confirmed" + (f" {when}" if when else "")
+    elif replay.get("recovery_confirmed"):
+        # The incident moved on (reopened or renewed) after this watch ended:
+        # the confirmation is history, not the current state (the same
+        # lifecycle guard as ``_with_recovery_status``).
+        when = clock(confirmed_at, day)
+        headline = "No current Recovery watch"
+        detail = (
+            "an earlier watch confirmed recovery"
+            + (f" at {when}" if when else "")
+            + "; the incident has been reopened since"
+        )
     elif view.get("state") == "authorized":
         headline = "Observing; recovery not confirmed yet"
     else:
@@ -233,7 +247,7 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
         detail = " · ".join(
             str(v) for v in (view.get("state"), view.get("ended_reason")) if v
         )
-    if replay.get("recovery_confirmed"):
+    if replay.get("recovery_confirmed") and detail is None:
         detail = f"healthy window {replay.get('healthy_window_seconds')} s"
     max_samples = int(session.get("max_samples") or 0) or len(samples) or 1
     ongoing = view.get("state") == "authorized"
@@ -452,12 +466,15 @@ def _timeline(
             DONE.get(row.get("action"), str(row.get("action"))),
         )
     for view in snapshot.get("recovery") or []:
+        verified = (view.get("replay") or {}).get("recovery_confirmed")
         for sample in view.get("samples") or []:
             if sample.get("transition") == "recovery_confirmed":
                 add(
                     sample.get("submitted_at") or sample.get("window_end"),
                     "code",
-                    "Recovery confirmed",
+                    "Recovery confirmed"
+                    if verified
+                    else "Recovery confirmation stored, not re-verified",
                 )
     for row in (alert or {}).get("resolved") or []:
         add(row.get("received_at"), "alert", "Alert resolved (recorded only)")
@@ -486,8 +503,14 @@ def _copy(action: str, snapshot: Mapping[str, Any]) -> str:
     paused = incident.control == "paused"
     concluded = bool(incident.concluded)
     profile = snapshot.get("health_profile_revision")
+    human_owned = incident.mode == "human_owned"
     if action in ("follow_up", "correct"):
         noun = "question" if action == "follow_up" else "correction"
+        if human_owned:
+            return (
+                f"Your {noun} is recorded on the incident only: it is human-owned, "
+                "so no Run is queued or started and the Agent does not answer it."
+            )
         if paused:
             return (
                 f"Your {noun} is recorded as input; the incident stays paused and "
@@ -503,6 +526,16 @@ def _copy(action: str, snapshot: Mapping[str, Any]) -> str:
             f"Your {noun} is recorded as input and the Run is queued again; the "
             "Agent reads it at its next round. Once the Run's deadline has "
             "passed, a new Run is started with your text instead."
+        )
+    if human_owned and action == "pause":
+        return (
+            "Mark this human-owned incident paused and withdraw any Recovery watch "
+            "authorization; the Run stays with the human."
+        )
+    if human_owned and action == "resume":
+        return (
+            "Lift the pause marker on this human-owned incident; the Run stays "
+            "with the human and the Agent does not start again."
         )
     return {
         "pause": "Stop the Agent now: the Run is paused and makes no progress, and "
