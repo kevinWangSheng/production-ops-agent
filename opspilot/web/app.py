@@ -58,6 +58,7 @@ from opspilot.release_intake import (
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
+from opspilot.web.incident_view import handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.service import Workbench, WorkbenchError, available_actions
 
@@ -410,12 +411,16 @@ def create_app(
         snapshot = await in_thread(workbench.snapshot, subject)
         if snapshot.get("handoff_only"):
             return render(
-                "incident_handoff.html", principal=principal, snapshot=snapshot
+                "incident_handoff.html",
+                principal=principal,
+                snapshot=snapshot,
+                view=handoff_view(snapshot),
             )
         postmortem = None
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
         release_links = await in_thread(workbench.release_links_for, subject)
+        actions = available_actions(snapshot)
         return render(
             "incident.html",
             principal=principal,
@@ -423,7 +428,9 @@ def create_app(
             release_links=release_links,
             postmortem=postmortem,
             postmortem_kinds=EVENT_KINDS,
-            actions=available_actions(snapshot),
+            actions=actions,
+            # #572: display-only derivations from the same snapshot.
+            view=page_view(snapshot, postmortem, actions),
             # One fresh key per rendered form: two operators on the same page
             # state must not share an idempotency key.
             form_nonce=uuid4().hex,

@@ -1,0 +1,7 @@
+{#- The persistent event list the SSE script extends (D18: id="progress" and
+    the script are unchanged; rendered exactly once per page). -#}
+<ul id="progress" class="log">
+  {% for event in snapshot.events %}
+  <li data-sequence="{{ event.sequence }}"><span class="tm">{{ view.clock(event.recorded_at) or "" }}</span><code class="sq">{{ event.sequence }}</code> <strong>{{ event.kind }}</strong> <span class="pl">{{ event.payload | tojson }}</span></li>
+  {% endfor %}
+</ul>
