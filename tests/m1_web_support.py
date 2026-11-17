@@ -40,6 +40,7 @@ from opspilot.web import (
     hash_password,
     token_digest,
 )
+from opspilot.web.incident_list import page_of_items
 from opspilot.web.store import ControlAudit, IncidentListItem, IncidentSummary
 from tests.m1_investigation_support import (
     TOOL_SCHEMAS,
@@ -843,6 +844,21 @@ class MemoryIncidentStore:
                 )
             )
         return tuple(items)
+
+    def list_page(
+        self, *, tab="needs_human", service=None, q=None, page=1, per_page=25
+    ):
+        """Mirror ``DurableIncidentStore.list_page`` (web UX spec 3.7): the
+        same tabs, filters, counts and page fallbacks over every incident in
+        memory (``incident_list.page_of_items``), newest first."""
+        return page_of_items(
+            self.list_incident_items(limit=None),
+            tab=tab,
+            service=service,
+            q=q,
+            page=page,
+            per_page=per_page,
+        )
 
     def find_incident(self, incident_id):
         row = self.incidents.get(incident_id)

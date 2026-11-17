@@ -65,6 +65,7 @@ from opspilot.web.auth import (
     AuthError,
 )
 from opspilot.web.events import CursorTooOld
+from opspilot.web.incident_list import parse_query
 from opspilot.web.incident_view import handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.service import Workbench, WorkbenchError, available_actions
@@ -555,7 +556,8 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> Response:
         principal = await ui(request)
-        listing = await in_thread(workbench.incident_list)
+        query = parse_query(request.query_params)
+        listing = await in_thread(workbench.incident_list, **query)
         return render("index.html", principal=principal, listing=listing)
 
     @app.get("/controls")

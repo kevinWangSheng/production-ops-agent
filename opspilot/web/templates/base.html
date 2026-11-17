@@ -101,6 +101,10 @@
     details.fold > summary::before { content: "+ "; }
     details.fold[open] > summary::before { content: "\2212 "; }
     details.fold > .fold-body { margin-top: 8px; }
+    .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .crumbs { font-size: 13px; color: var(--ink2); margin: 0 0 8px; overflow-wrap: anywhere; }
+    .crumbs .cs { color: var(--ink4); }
+    time.rel { white-space: nowrap; }
 
     @media (max-width: 720px) {
       .top { padding-inline: 16px; }

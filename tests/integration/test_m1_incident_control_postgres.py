@@ -78,7 +78,7 @@ def _detail(app, incident):
 
 
 def _index(app):
-    response = call(app, "GET", "/", headers=basic())
+    response = call(app, "GET", "/?tab=all", headers=basic())
     assert response.status == 200
     return response.text
 

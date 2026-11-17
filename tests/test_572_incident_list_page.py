@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.web.store import MappingTargetRegistry
-from tests.m1_incident_control_support import list_row
+from tests.m1_incident_control_support import element_text, list_row
 from tests.m1_web_support import (
     ScriptedInvestigator,
     basic,
@@ -28,7 +28,6 @@ class _ListPage(HTMLParser):
         self._stack: list[str] = []
         self._tbody = False
         self._thead = False
-        self._current_group: str | None = None
         self._row: dict | None = None
         self._cell: dict | None = None
         self.rows: list[dict] = []
@@ -43,7 +42,6 @@ class _ListPage(HTMLParser):
             self._thead = True
         elif tag == "tbody":
             self._tbody = True
-            self._current_group = None
         elif tag == "tr":
             self._row = {
                 "class": set((attributes.get("class") or "").split()),
@@ -89,17 +87,13 @@ class _ListPage(HTMLParser):
             self._cell = None
         elif tag == "tr" and self._row is not None:
             row = self._row
-            row_text = " ".join(cell["text"] for cell in row["cells"]).strip()
-            if "gh" in row["class"]:
-                self._current_group = row_text
-            elif any(cell["tag"] == "th" for cell in row["cells"]):
+            if any(cell["tag"] == "th" for cell in row["cells"]):
                 self.th_rows.append(row)
             elif any(
                 row_link.startswith("/incidents/")
                 for cell in row["cells"]
                 for row_link in cell["links"]
             ):
-                row["group"] = self._current_group
                 self.rows.append(row)
             self._row = None
         elif tag == "thead":
@@ -120,13 +114,13 @@ def _parse(html: str) -> _ListPage:
     return page
 
 
-def _index(app) -> str:
-    response = call(app, "GET", "/", headers=basic())
+def _index(app, path="/") -> str:
+    response = call(app, "GET", path, headers=basic())
     assert response.status == 200
     return response.text
 
 
-def _row_group(html: str, incident_id: str) -> str:
+def _assert_row_present(html: str, incident_id: str) -> None:
     page = _parse(html)
     href = f"/incidents/{incident_id}"
     matches = [
@@ -135,8 +129,12 @@ def _row_group(html: str, incident_id: str) -> str:
         if href in [link for cell in row["cells"] for link in cell["links"]]
     ]
     assert len(matches) == 1
-    assert matches[0]["group"] is not None
-    return " ".join(matches[0]["group"].split()).lower()
+
+
+def _detail(app, incident_id: str) -> str:
+    response = call(app, "GET", f"/incidents/{incident_id}", headers=basic())
+    assert response.status == 200
+    return response.text
 
 
 def _control(app, incident_id: str, action: str, generation: int = 0) -> None:
@@ -160,15 +158,16 @@ def _claim(app_workbench, incident_id: str) -> None:
 
 
 @pytest.mark.parametrize("run_state", ["queued", "running"])
-def test_active_runs_are_in_the_in_progress_group_and_keep_the_raw_run_value(run_state):
-    """D11 maps queued and running Runs to the in-progress group while U5 keeps Run verbatim."""
+def test_active_runs_are_in_the_in_progress_tab_and_keep_the_raw_run_value(run_state):
+    """UX §3.3 maps active Runs to In progress and preserves raw Run cells."""
     app, workbench, _ = build_workbench()
     incident_id = submit_incident(app, key=f"run-{run_state}").json()["incident_id"]
     if run_state == "running":
         _claim(workbench, incident_id)
 
-    html = _index(app)
-    assert "in progress" in _row_group(html, incident_id)
+    html = _index(app, "/?tab=in_progress")
+    _assert_row_present(html, incident_id)
+    assert f'href="/incidents/{incident_id}"' not in _index(app)
     assert list_row(html, incident_id)["Run"] == run_state
 
 
@@ -176,16 +175,16 @@ def test_active_runs_are_in_the_in_progress_group_and_keep_the_raw_run_value(run
 def test_paused_and_cancelled_controls_need_a_human_and_keep_the_raw_control_value(
     control,
 ):
-    """D11 groups paused and cancelled controls under human action while U5 preserves Control verbatim."""
+    """UX §3.3 puts paused/cancelled incidents in Needs a human, preserving Control."""
     app, workbench, _ = build_workbench()
     incident_id = submit_incident(app, key=f"control-{control}").json()["incident_id"]
     if control == "paused":
         _claim(workbench, incident_id)
     _control(app, incident_id, control[:-1] if control == "paused" else "cancel")
 
-    html = _index(app)
-    group = _row_group(html, incident_id)
-    assert "need" in group and "human" in group
+    html = _index(app, "/?tab=needs_human")
+    _assert_row_present(html, incident_id)
+    assert f'href="/incidents/{incident_id}"' not in _index(app, "/?tab=in_progress")
     assert list_row(html, incident_id)["Control"] == control
 
 
@@ -199,9 +198,9 @@ def test_manual_question_is_visible_in_the_incident_row_without_requiring_full_t
         "incident_id"
     ]
 
-    html = _index(app)
+    html = _index(app, "/?tab=all")
     row = list_row(html, incident_id)
-    assert question[:48] in row["Incident"]
+    assert question[:48] in row["Title"]
 
 
 def test_concluded_column_reads_no_when_no_report_was_published():
@@ -209,11 +208,11 @@ def test_concluded_column_reads_no_when_no_report_was_published():
     app, _, _ = build_workbench()
     incident_id = submit_incident(app, key="no-conclusion").json()["incident_id"]
 
-    assert list_row(_index(app), incident_id)["Concluded"] == "no"
+    assert list_row(_index(app, "/?tab=all"), incident_id)["Concluded"] == "no"
 
 
 def test_published_report_shows_its_level_and_first_summary_sentence():
-    """U1 renders the published report's conclusion level and first summary sentence in the row."""
+    """UX §3.2 moves the conclusion level and summary from the list to detail."""
     app, workbench, clock = build_workbench()
     incident_id = submit_incident(app, key="published").json()["incident_id"]
     outcome = workbench.run_once(
@@ -221,35 +220,37 @@ def test_published_report_shows_its_level_and_first_summary_sentence():
     )
     assert outcome is not None and outcome.execution == "completed"
 
-    conclusion = " ".join(
-        list_row(_index(app), incident_id)["Agent conclusion"].split()
-    )
-    assert "Supported" in conclusion
+    conclusion = element_text(_detail(app, incident_id), "conclusion")
+    assert conclusion is not None
+    assert "conclusion supported" in " ".join(conclusion.lower().split())
     assert "Checkout errors increased in the authorized window." in conclusion
 
 
-def test_unparseable_conclusion_reports_that_no_level_is_in_the_record():
+def test_unparseable_conclusion_is_explicit_on_the_detail_page():
     """D11 keeps an unparseable stored conclusion explicit instead of guessing a level."""
     app, workbench, _ = build_workbench()
     incident_id = submit_incident(app, key="bad-conclusion").json()["incident_id"]
     workbench.incidents.incidents[UUID(incident_id)]["conclusion"] = {}
 
-    conclusion = " ".join(
-        list_row(_index(app), incident_id)["Agent conclusion"].split()
-    )
-    assert "Concluded · level not in the record" in conclusion
+    conclusion = " ".join(_detail(app, incident_id).split())
+    assert 'id="concluded">concluded' in conclusion
+    assert 'id="report-unparseable"' in conclusion
+    assert "Published conclusion could not be parsed" in conclusion
 
 
-def test_each_incident_detail_href_occurs_once_and_two_index_gets_match_exactly():
+@pytest.mark.parametrize("path", ["/", "/?tab=all&page=1"])
+def test_each_incident_detail_href_occurs_once_and_two_index_gets_match_exactly(path):
     """U3 keeps one detail link per incident and D13 makes repeated GET / responses byte-identical."""
     app, _, _ = build_workbench()
     incident_ids = [
         submit_incident(app, key=f"href-{index}").json()["incident_id"]
         for index in range(2)
     ]
+    for incident_id in incident_ids:
+        _control(app, incident_id, "pause")
 
-    first = _index(app)
-    second = _index(app)
+    first = _index(app, path)
+    second = _index(app, path)
     assert first == second
     for incident_id in incident_ids:
         assert first.count(f"/incidents/{incident_id}") == 1
@@ -259,8 +260,9 @@ def test_index_form_keeps_the_legacy_post_contract_and_empty_server_idempotency_
     """U6 keeps the POST target and three field names while leaving idempotency generation to the browser."""
     app, _, _ = build_workbench()
     page = _parse(_index(app))
-    assert len(page.forms) == 1
-    form = page.forms[0]
+    intake_forms = [f for f in page.forms if f["attrs"].get("action") == "/intake/ui"]
+    assert len(intake_forms) == 1
+    form = intake_forms[0]
     attrs = form["attrs"]
     assert attrs.get("method") == "post"
     assert attrs.get("action") == "/intake/ui"
@@ -315,9 +317,9 @@ def test_target_control_uses_registered_keys_or_text_fallback(registry):
 
 
 def test_table_headers_are_confined_to_the_single_header_row():
-    """U5 requires group and explanatory rows to use data cells rather than additional th elements."""
+    """UX §3.1 preserves exactly one header row inside thead."""
     app, _, _ = build_workbench()
     submit_incident(app, key="header-row")
-    page = _parse(_index(app))
+    page = _parse(_index(app, "/?tab=all"))
     assert len(page.th_rows) == 1
     assert page.th_rows[0]["in_thead"] is True
