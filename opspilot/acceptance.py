@@ -371,6 +371,7 @@ def outcome_from_durable(
     # conclusion it published (a completed row). An earlier Run's published
     # conclusion beside a parked continuation Run is not this Run's result
     # (review r7 item 2); it only keeps ``report_available`` true.
+    conclusion: Mapping[str, object] | None
     if own is not None:
         conclusion = own
     elif row_state == "completed":
