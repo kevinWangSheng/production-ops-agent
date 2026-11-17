@@ -92,14 +92,12 @@ INVESTIGATION_METHOD: Final = (
     " When the exact entity named has no data but a similarly named one does, report both facts: that nothing was found under the exact name, and what was found for the related entity, labeled as a different entity."
     " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
     " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
-    " An alert is where the investigation starts, not its scope: find when the alerting signal began to deviate, and treat errors stable before the signal deviated as background, neither affected nor the cause."
     " A service that is up or ready can still be failing; check its own error and latency signals before calling it healthy."
 )
-"""调查方法（9 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
+"""调查方法（8 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
 不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。
-#676 D9：在「无关错误」句后加一句「告警是入口不是范围」，信号偏离前已稳定存在的错误
-写成背景，不算受影响也不当原因。"""
+（#676 r1 曾在此加「告警是入口不是范围」一句，r2 D13 移入 ``KUBERNETES_GUIDANCE``。）"""
 
 IMPACT_SCOPE: Final = (
     " Name an entity as affected only when you observed evidence for that entity itself, such as its own error spans, error-rate reading or failed operations, and cite that evidence."
@@ -126,6 +124,7 @@ KUBERNETES_GUIDANCE: Final = (
     " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it."
     " A startup readiness-probe miss on such a pod is part of starting, not impact."
     " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors; when connections between services are refused while their pods are healthy, also check networkpolicies, services, endpoints, resourcequotas."
+    " An alert is where the investigation starts, not its scope: find when the alerting signal began to deviate, and treat errors stable before the signal deviated as background, neither affected nor the cause."
     " Read events across all namespaces first and do not filter by type, since the events that explain a fault are often Normal events recorded in another namespace."
     " Group events by involved object kind, namespace and reason, then look into the groups that matter."
     " Take each event's object kind from the event itself; an object of another kind can share a pod's name."
@@ -146,7 +145,7 @@ KUBERNETES_GUIDANCE: Final = (
 参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。
 末句（#628）：工具报 RESULT_TOO_LARGE 后收窄重试或分页读取，不放弃该类证据；
 RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数名。
-#676（D1–D7、D9）增至 22 句：事件先全集群、不按 type 过滤、按对象种类/命名空间/原因
+#676（D1–D7、D9）增至 22 句，r2 D13 把「告警是入口不是范围」一句从调查方法段移来，共 23 句：事件先全集群、不按 type 过滤、按对象种类/命名空间/原因
 分组，对象种类以事件为准，读不了的对象记缺口；原因对象是施加变更或故障者，模板未变的
 重启是机制，转读工作负载及其依赖的 ConfigMap，配置声明的故障与观测失败路径吻合才作
 原因；只有事件支撑时 partial；连接被拒且 Pod 健康时查网络策略等（扩写 K6 句，保留

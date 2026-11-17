@@ -135,7 +135,7 @@ DeepSeek：两次 Run 的 token 见上表。单价同集成批记录 `docs/evide
 
 ## #676 重跑：第 5 步两次真实 Run（2026-11-16，`prompt-replay-candidate-14eb2a0a6afd`）
 
-#676 改了共用 L2 段（认定原因的 claim 是 hypothesis 时 conclusion 写 partial；summary 措辞）和 INVESTIGATION_METHOD（告警是入口，不是范围），基础档位 `prompt_revision` 由 `a6b4dfd02030` 变为 `14eb2a0a6afd`（[任务记录](../../tasks/2026-11-16-676-investigation-guidance.md) D9）。按 D11，#646 的两份摘要移到 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)，内容未改；`run-{1,2}/summary.json` 现在是本节的两次 Run。
+#676 改了共用 L2 段（认定原因的 claim 是 hypothesis 时 conclusion 写 partial；summary 措辞）和 INVESTIGATION_METHOD（告警是入口，不是范围），基础档位 `prompt_revision` 由 `a6b4dfd02030` 变为 `14eb2a0a6afd`（[任务记录](../../tasks/2026-11-16-676-investigation-guidance.md) D9）。按 D11，#646 的两份摘要移到 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)，内容未改；本节的两次 Run 当时放在 `run-{1,2}/summary.json`，#676 r2（D11）起移到 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)，内容未改。
 
 - 主机与拓扑同上一节（同一台 Vultr 主机；kind lab 由 `kind_lab.py up` 从停止状态重新拉起，health ok，frontend span rate 2.6/s；PG 55431 与只读角色沿用）。代码 `feature/676-investigation-guidance` `e8b98507`（PR #677），运行期间未改代码。版本 `prompt-replay-candidate-14eb2a0a6afd` / `otel-demo-a3a95a0f888e` / `ctx-ctx-policy-v1-a30e65ea52f4`，与当前代码的 `otel_demo_versions()` 三项相同。worker `OPSPILOT_HEALTH_BIND=` 空值；flagd 转发 18013；swap 垫片同上；trace 项目 `opspilot-lab-f3-676-live-20261116`（`longlived`）。收集方式同上一节。
 

@@ -270,9 +270,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     候选臂在报告契约前新增 :data:`d.INVESTIGATION_METHOD`（8 句）与
     :data:`d.IMPACT_SCOPE`（9 句）；两个 baseline 变体不变。
 
-    30 → 31 是 #676 D9 的有意变化：:data:`d.INVESTIGATION_METHOD` 加一句
-    「告警是入口不是范围」（8 → 9 句）；两个 baseline 变体不变。
-    同时钉 :data:`d.KUBERNETES_GUIDANCE` 的句数（#676 起 22 句，只属
+    #676 r1 曾把调查方法段加到 9 句（候选臂 31 句），r2 D13 把那句移入
+    :data:`d.KUBERNETES_GUIDANCE`，候选臂回到 30 句。同时钉
+    :data:`d.KUBERNETES_GUIDANCE` 的句数（#676 r2 起 23 句，只属
     ``replay-candidate-k8s``）。
     """
 
@@ -288,9 +288,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 31
-    assert sentences(d.INVESTIGATION_METHOD) == 9
-    assert sentences(d.KUBERNETES_GUIDANCE) == 22
+    assert variant_sentences("replay-candidate") == 30
+    assert sentences(d.INVESTIGATION_METHOD) == 8
+    assert sentences(d.KUBERNETES_GUIDANCE) == 23
     assert sentences(d.IMPACT_SCOPE) == 9
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)
