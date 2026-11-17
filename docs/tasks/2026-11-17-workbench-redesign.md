@@ -36,13 +36,13 @@
 | A7 | 自动恢复观察判定看「发布当前结论的那个 Run」，不看当前 Run |
 | A8–A9 | 页面与列表共用一条九级状态判定；续接期间显示 Investigating，结果区继续显示上一份报告 |
 | A10 | 接力前把遗留的未结束不活跃 Run 写成 cancelled |
-| A11 | 续接 Run 活跃时 pause/resume/cancel 照常作用在它上面；cancel 只取消续接 Run，结论、lifecycle、观察保留（r4）；有结论时 close 同样只取消续接 Run、不写 cancelled，关闭后仍可只回复（r5） |
+| A11 | 续接 Run 活跃时 `rebind_target` 维持现状（state 写成 cancelled），不在 A11 范围。续接 Run 活跃时 pause/resume/cancel 照常作用在它上面；cancel 只取消续接 Run，结论、lifecycle、观察保留（r4）；有结论时 close 同样只取消续接 Run、不写 cancelled，关闭后仍可只回复（r5） |
 | B1–B7 | 新输入类型 `message`；Run 输入 `scope_facts["conversation"]={floor, mode}`，新消息带 `new: true`；旧类型渲染字节不变；未读 = 序号大于所有 Run 已提交水位最大值；B8 后继输入带上此前通过校验的回复正文（不带 assistant 原文和 reasoning_content），对话跨 Run 连贯（r6） |
 | C1–C3 | 工具轮回复写在可见 content 的 JSON `{note, replies}` 里，解析不出不算错；校验结果另存步骤行顶层字段，`assistant` 字节不动；回复只查证据编号存在，不认识的去掉并标 unsupported |
 | C4–C5 | 回复说明作为独立尾随模板，只在有新消息的轮次发送；**不进 `prompt_revision`，只在步骤行记哈希**（做法③），P1 PR 给 C3 §5 加一句增补并在简报单列 |
 | C6–C9 | 最终输出 `m0-response-v1` 包装，仍接受裸报告；最后一轮才读到的消息由最终输出回答；not answered 读取时计算；P1 不改纪律提示词 |
 | D1–D12 | 状态表：调查中/暂停排队；有结论或观察中开续接；已恢复/已关闭只回复；**已取消、失败、超时禁用输入框，用 Re-investigate**（照 AWS，取代 D13）；**做完但自评不完整（D7a）可以接着聊**（AWS「completed」）；人工接管只记不查；无 Run、已合并拒绝；Re-investigate 在服务层连做取消 + 开新 Run |
-| R1–R5 | 接力条件里的 D7a 判定往回找本事故任一 Run 的通过校验报告，不只看当前 Run（r2）；收下消息按 D 组状态表判定，与接力判定分开（r3）；接力在 web 进程循环和发消息请求里共用一个函数执行，角色 `opspilot_web`，不改授权；Run 编号 `uuid5("{intake_key}:relay:{最大未读序号}")`；不写控制审计、不撤销观察、不改 lifecycle、不清结论 |
+| R1–R5 | （P2 审查，人工控制优先）人工取消或关闭之后，只有该决定之后收下的消息才触发接力，开出的 Run 仍读 floor 以上全部未读消息。接力条件里的 D7a 判定往回找本事故任一 Run 的通过校验报告，不只看当前 Run（r2）；收下消息按 D 组状态表判定，与接力判定分开（r3）；接力在 web 进程循环和发消息请求里共用一个函数执行，角色 `opspilot_web`，不改授权；Run 编号 `uuid5("{intake_key}:relay:{最大未读序号}")`；不写控制审计、不撤销观察、不改 lifecycle、不清结论 |
 | E1–E7 | Chat 面板：两张新表（P7 迁移）；模型调用放 worker（密钥只在 worker）；只读本事故记录，不读 `reasoning_content`，人的话走 `project_input_content` 脱敏；`steer` 只转发用户原句；团队共享、随事故保留；P4 只做面板外壳 |
 | U1–U3 | 首个 Run 无报告时显示「已收集的证据」和「最近一步」；外观以原型 v2 为准、系统字体、不加载外部资源；回复不用展开就能看到且在 Messages 筛选下可见 |
 | O1–O4 | 复盘草稿过期保持现状；`follow_up`/`correct` HTTP 别名保留一版，存储层分支和 `m1_live_runner` 两个开关在 P2 删；反馈每个调查一份（照 AWS，取代 D25）；F7 第 5 步审计重建补输入表来源 |

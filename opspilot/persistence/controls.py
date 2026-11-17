@@ -365,10 +365,13 @@ class _ControlOps(_StoreBase):
                     if row["conclusion"] is None and any(
                         r["run_id"] == row["current_run_id"] for r in cancelled
                     ):
+                        state = "cancelled"
+                    elif row["conclusion"] is not None and state == "paused":
                         # A11 r5: an incident with a published conclusion
                         # keeps it and is not cancelled by closing (a
-                        # continuation Run is only stopped).
-                        state = "cancelled"
+                        # continuation Run is only stopped); a pause it
+                        # leaves behind is lifted, as cancel does.
+                        state = "running"
                 conn.execute(
                     "UPDATE opspilot_incidents SET lifecycle=%s,state=%s WHERE incident_id=%s",
                     ("closed" if action == "close" else "open", state, incident_id),
@@ -1089,6 +1092,19 @@ def _relay_basis_in(
         (incident_id, floor),
     ).fetchone()
     if unread is None or unread["seq"] is None:
+        return None
+    # Human control first (PRODUCT-CONSTRAINTS): after a human cancel or
+    # close, only a message admitted after that decision opens a Run; the Run
+    # it opens still reads every unread message above the floor.
+    if (
+        conn.execute(
+            "SELECT 1 FROM opspilot_inputs m WHERE m.incident_id=%s AND m.kind='message' AND m.sequence>%s "
+            "AND m.received_at>COALESCE((SELECT max(c.created_at) FROM opspilot_controls c "
+            "WHERE c.incident_id=%s AND c.action IN ('cancel','close')),'-infinity'::timestamptz) LIMIT 1",
+            (incident_id, floor, incident_id),
+        ).fetchone()
+        is None
+    ):
         return None
     if not row["concluded"] and not _validated_report_in(conn, incident_id):
         return None

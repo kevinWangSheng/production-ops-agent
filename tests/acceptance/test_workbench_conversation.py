@@ -429,12 +429,36 @@ def test_p2_mid_run_message_reads_next_round_and_continuation_honors_control(
         assert current_run(workbench, incident_id)["run_id"] == continuation["run_id"]
         workbench.run(scenario, [response(replies=[answer(continuation_seq)])])
         assert workbench.terminal(incident_id)["execution"] == "answered"
+        # A11 r5 (review P2-1): closing a paused continuation lifts the pause,
+        # and a later message still gets a reply_only continuation.
+        admitted(workbench.message(incident_id, "再确认一次。"))
+        admitted(workbench.control(incident_id, "pause"))
+        assert workbench.incident(incident_id)["state"] == "paused"
+        admitted(workbench.control(incident_id, "close"))
+        closed = workbench.incident(incident_id)
+        assert closed["state"] not in {"paused", "cancelled"}
+        assert closed["conclusion_bytes"] == before["incident"]["conclusion_bytes"]
+        admitted(workbench.message(incident_id, "关闭后补一句。"))
+        conversation_input(
+            workbench,
+            incident_id,
+            floor=max(row["input_watermark"] for row in workbench.runs(incident_id)),
+            mode="reply_only",
+        )
     else:
         assert after["state"] != "cancelled", "A11: only the continuation is cancelled"
         if continuation_control == "cancel":
             assert workbench.observation(incident_id) == before["observation"], (
                 "A11 r4: cancelling a continuation preserves recovery observation"
             )
+            # Human control first (review P1-2): the message admitted before
+            # the cancel opens nothing; a message after it does.
+            runs_after_cancel = len(workbench.runs(incident_id))
+            workbench.relay()
+            assert len(workbench.runs(incident_id)) == runs_after_cancel
+            admitted(workbench.message(incident_id, "取消后再问一次。"))
+            assert len(workbench.runs(incident_id)) == runs_after_cancel + 1
+            assert current_run(workbench, incident_id)["state"] == "queued"
         assert after["lifecycle"] == (
             "closed"
             if continuation_control == "close"

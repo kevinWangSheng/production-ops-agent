@@ -1253,7 +1253,17 @@ class Workbench:
             raise WorkbenchError(
                 "CONTROL_KEY_CONFLICT" if code == "IDENTITY_CONFLICT" else code
             ) from None
-        run_id = self.relay(incident_id)
+        try:
+            run_id = self.relay(incident_id)
+        except (PersistenceError, ContextError, DatabaseError, OSError) as exc:
+            # The message is committed; the background pass relays it later
+            # (R2). The request reports what was admitted.
+            _log.warning(
+                "relay after message failed incident=%s code=%s",
+                incident_id,
+                _failure_code(exc),
+            )
+            run_id = None
         current = self.incidents.find_incident(incident_id)
         return MessageResult(
             incident_id,
