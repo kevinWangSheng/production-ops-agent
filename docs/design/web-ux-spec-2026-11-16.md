@@ -1,6 +1,6 @@
 # 工作台 UX 规格（2026-11-16）
 
-状态：草案。第 2、3 节（外壳/导航、事故列表）已定稿，可以进入合同预审。第 4 节（其余页面）只有要点，标了 TODO。
+状态：草案 r2。第 2、3 节（外壳/导航、事故列表）已定稿，列表已随 PR #688 上线；§3.8 与第 4 节（事故详情页，布局 B）已经过合同预审（2026-11-16，对照 `main` d9af804d 的代码与测试），可以实施。§4.10 其余页面只有要点。
 
 视觉基线沿用 [#572 设计说明](web-ui-design-spec-2026-11-15.md)：黑白灰、系统字体、英文界面、不用多色状态标记。
 
@@ -8,7 +8,7 @@
 
 | 阶段 | 范围 |
 |---|---|
-| 第一阶段 | 只改展示：每页显示什么、怎么读、数据多了怎么撑住。现有表单的字段与行为不变，只能挪位置或折叠 |
+| 第一阶段 | 只改展示：每页显示什么、怎么读、数据多了怎么撑住。现有表单的字段与行为不变，只能挪位置、折叠或合并到同一个表单（详情页的 follow_up 与 correct，§4.2） |
 | 第二阶段 | 一切提交相关的改动，见第 5 节，只列要点。登录由另一条线负责，本规格不涉及 |
 
 标记：
@@ -186,12 +186,183 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 
 **视图**：`incident_list.list_page()` 不再分组，改为输出 `rows`、`tabs`（标签、计数、href、是否当前）、`pager` 和 `filters`。新增 `title_of(item)`，按 §3.2 的取值顺序；为此要在 `_item()` 里多解析一个 `annotations.summary`，与 `_alert_name` 同一处（`store.py:1034-1043`）。
 
-## 4. 其余页面（第一阶段，只改展示）：TODO，待补全细节
+### 3.8 列表增量（布局 B，2026-11-16 负责人选定）[a]
+
+列表的页签、筛选、搜索、分页（PR #688）不变，只改下面两处。
+
+| 项 | 规格 | 测试影响 |
+|---|---|---|
+| 发起调查 | 标题行右侧按钮文字改为 `New investigation`。仍是 `<details class="askd" id="ask">`，但展开后不再是浮层，而是标题行下方的整行内嵌框：Target 下拉、Question 文本框、`Cancel`（收起 details）与 `Start`（提交）。删掉框里的说明段落和可见的幂等键字段：幂等键沿用 r2-M6 的浏览器端生成，有脚本时字段始终隐藏，无脚本时才显示（否则无法提交）。表单的 `method`、`action`、三个字段名、DOM 中排第一位都不变。不加「默认查最近 1 小时」之类的提示：只有 `metrics_range_query` 有这个默认（`opspilot/tools/otel_demo.py:15-22`），问题类调查没有统一的时间窗 | `tests/test_684_incident_list_query.py:356-369` 原样通过；`tests/test_572_incident_list_page.py:279`（`Ask OpsPilot to investigate`）与 `tests/test_684_incident_list_query.py:328`（空态含 `Ask OpsPilot`）由独立测试作者改为新文字，属普通测试 |
+| 状态单元格 | 第一行是人话状态 `status.words`（加原因码、重复触发标记，同现状），第二行小字：有 `todo` 时显示 `<span class="pill todo">…</span>`（CSS 前缀 `Next: ` 不变），没有时显示 `status.detail`。只调换现在两行的上下顺序，不新增数据 | `tests/test_684_incident_list_query.py:557-561` 原样通过 |
+
+不做：样稿里 In progress 行的 `Run 2 · step 5 · 3m` 需要每行再查当前 Run 的步数，列表查询现在没有这一列，留作以后的 [b]；`Updated` 列仍用 `Age`（`updated_at` 是否随状态更新见 §8）。
+
+## 4. 事故详情页（布局 B）
+
+用户在这一页要完成：(1) 看懂 Agent 现在的结论和依据；(2) 看它正在做什么；(3) 用一句话追问、补充或纠正；(4) 暂停、接管、关闭等控制。负责人 2026-11-16 选定样稿 B（`~/.agent/diagrams/opspilot-agent-ux-b-panel-2026-11-16.html`，仓库外）：左侧结构化主栏，右侧吸顶的 Chat 面板。否决的备选是纯对话线程，理由是纯对话展示不了一次完整的调查。说明性段落一律删去。
+
+本节只改展示与表单的摆放；POST 的路由、字段、语义都不变，后端行为不变，不迁移。
+
+### 4.1 页面结构（DOM 顺序即窄屏阅读顺序）
+
+| # | 区块 | 内容 | 数据来源 |
+|---|---|---|---|
+| 1 | 面包屑与标题 | `Incidents / <短 id>`；`<h1>` 标题取值同列表 `title_of`，限两行；下一行小字 `Alertmanager · <alertname>` 或 `Asked by <actor>`，接 `· <service> · opened <time>` | `view.header`；提问者取自 `intake_accepted` 事件的 `actor_id`，或 intake 账本信封的 `principal`（[b]，§4.3） |
+| 2 | 头部动作 | 标题右侧的按钮行，规则见 §4.4 | `available_actions(snapshot)` |
+| 3 | 状态行 | 一行：`<status.words> · Run N`，后接恢复观察一段，例如 `Watching recovery · 18 of 40 samples healthy · since 10:14` / `Recovered 07:51 · no handling recorded` / `Recovery confirmed`；没有观察就不显示这段 | 人话状态复用 `incident_list.status_of`（用一个从 snapshot 组装的适配对象，列表和详情页的说法因此一致）；恢复段取 `view.recovery` |
+| 4 | `Stored values` | `<details>`，默认收起：现有 `Stored record` 那一行原样放进来（`incident-control`、`incident-lifecycle`、`incident-mode`、`concluded`、`control-generation`、`run-state` 以及 `Run <code>{run_id}</code>`），另加 related/merged/rebind/target request 那几行（`.rel`，原样） | 现状 |
+| 5 | 进行中的 Run（仅 `live` 时） | `<h2>` `Run N`，副标题 `Round k · 3m 10s elapsed`（暂停时为 `Paused at round k`）。下面是本 Run 的轮次时间线，见 §4.5 | `snapshot.steps` + SSE |
+| 6 | 结论 | `<h2 id="investigation-report">`：没有 Run 在跑时标题是 `Conclusion`，有 Run 在跑时是 `Previous conclusion`，并注明 `stays until Run N publishes`。正文见 §4.6 | `snapshot.report`；Run 在跑时取 `snapshot.history` 里最后一个已完成且可解析的报告 |
+| 7 | 依据与盲区 | Key evidence、Hypotheses、Ruled out、Unknown、Could not see、Next steps，见 §4.6 | 报告 + `snapshot.coverage` |
+| 8 | 本 Run 的轮次（非 live 时） | `<details class="how" id="how">`，默认收起，摘要为 `Run N · k rounds · m queries · 3 with a problem` | 同 #5 |
+| 9 | 人工备注（仅 human_owned） | `Notes (n) · recorded, no Run`：接管之后的 follow_up/correct 文字 | `snapshot.controls` 中代际大于 takeover 那行的记录 |
+| 10 | `Investigation history` | `<h2>Investigation history</h2>`，每个历史 Run 一行 `<details>`：`Run k · <run_id 短码> · concluded 09:52 / cancelled / handed off`；被后来的 Run 取代的结论标 `superseded by Run N`。展开后是该 Run 的结论全文与全部陈述（现有 `investigation-history` 的内容，搬进折叠） | `snapshot.history` |
+| 11 | 恢复观察 | `<h2>Recovery watch</h2>`，一句结论加样本条带；会话表、样本、读数都收进现有的 `#recovery-verdict` 与 `#recwatch` 折叠，id 不变 | 现状 |
+| 12 | 复盘 | 有复盘时显示 `<h2>Postmortem</h2>`，第一行是 `Review postmortem` 链接（待审时）；`#postmortem` 内的 id 与文字原样，放进折叠 | 现状 |
+| 13 | `Raw records` | 告警原文（`_alert.html`）、问题原文、标识与完整性、事件日志（非 live 时的 `#progress`）、知识提示 `#knowledge-hints`、`Human control` 小节（见下）。全部折叠 | 现状 |
+| 14 | Chat 面板 | `<aside>`，`<h2>Chat</h2>`。DOM 上排在主栏之后，宽屏时 CSS grid 把它放到右侧并吸顶。见 §4.2、§4.3 | §4.2 |
+
+`Human control` 小节放在 #13 里：`<h3>Human control</h3>`，下面是 `Human decisions and system rows` 表（现有 `table.dlog` 原样，行仍以 `<tr>` 开头）。这几处字面文字和 `Investigation history` 都被 F12 验收按标题定位（§4.8），不能改名。
+
+宽度规则：大于等于 1100px 时两栏，主栏可伸缩，Chat 固定 380px，`position: sticky; top: env(safe-area-inset-top)`，高度 `100vh` 减去顶栏；日志在面板内部滚动，输入框固定在面板底部。小于 1100px 时单栏，Chat 排在主栏之后；有脚本时页面顶部出现 `Investigation · Chat` 两个页签（样稿的移动端做法），没有脚本时两部分上下排列。
+
+### 4.2 Chat 面板
+
+日志在上，输入框在下。日志按时间升序，最新的在底部；加载时滚到底，用户往上翻时新内容不把视图拉回底部。
+
+日志条目，全部在服务端由 snapshot 已有的数据组装（`incident_view.chat_log()`，取代现有的 `_timeline()` 与「What happened」区块）：
+
+| 条目 | 样式 | 来源 |
+|---|---|---|
+| `Alert received from Alertmanager` | 系统行 | 第一次投递的 `received_at`（`_timeline` 现有逻辑） |
+| `Alert fired again` / `Alert resolved (recorded only)` | 系统行 | 后续投递、`alert.resolved`。**不得**出现 `re-fired episode` 字样，见 §4.8 |
+| 提问 | 人的消息（提问者、时间、原文），标签 `started Run 1` | `snapshot.question` + 提问者 |
+| `Run N started` | 系统行 | Run 的 `started_at`（第一步的时间，`opspilot/persistence/runs.py:18`）；当前 Run 取 `steps[0].observed_at` |
+| `Run N concluded` | OpsPilot 消息：结论首句（`opening(summary, 220)`）、结论等级、`View` 链接到 #6 或 #10 中该 Run 的锚点 | `history[].concluded_at/report`；当前 Run 取 `run_completed` 事件时间 |
+| `Run N handed to a human` / `Run N cancelled` | 系统行 | `run_handoff`（`parked` 不为 false）事件；cancel 的决策行 |
+| 人的追问或纠正 | 人的消息：actor、时间、原文（转义；超过 6 行折叠，可展开）；`correct` 带 `Correction` 标签；续开了新 Run 的带 `started Run N` 标签 | `snapshot.controls`（账本，含 text），`run_id` 见 §4.3 |
+| 其他控制动作 | 系统行，`<actor> paused` / `took over` / `closed` / `reopened` / `merged into <短 id>` / `retargeted to <uid>` / `registered remediation <revision>` | `decision_log`，措辞沿用 `DONE` |
+| `Recovery watch started` / `Recovery confirmed` / 观察结束 | 系统行 | `observation_sessions`、`recovery[].samples` 的 transition（`_timeline` 现有逻辑） |
+| `Postmortem vN drafted` | 系统行，链接到复盘页 | `postmortem.versions` |
+
+上限：日志最多渲染最新 200 条，更早的条目折叠成一行 `N earlier entries`（无脚本时是一个指向 `#raw` 的链接）；告警投递只列最近 10 次，其余并入这一行。`decision_log` 本身最多 50 行（`service.py:3424`），超出时在日志顶部注明 `older decisions in Raw records`。
+
+**输入框**：一个 `<form method="post" action="/incidents/{id}/control">`，取代现在分开的 follow_up 和 correct 两个表单。字段：
+- `<textarea name="text" maxlength="8192" required>`，占位符 `Ask, add context, or correct the conclusion`（human_owned 时为 `Add a note`）；
+- 两个单选 `name="action"`：`value="follow_up"`（`Ask or add context`，默认选中）与 `value="correct"`（`Correct the conclusion`）；
+- 隐藏的 `expected_generation`（与其他表单的写法相同，`name` 在前 `value` 在后）；
+- 隐藏的 `idempotency_key`，值为 `msg-{generation}-{form_nonce}`，由服务端每次渲染生成，页面上不显示；
+- 发送按钮 `Send`。
+
+输入框上方一行状态句，按 §4.4 的表格取值。只有 `follow_up` 在 `available_actions` 里时输入框才可用；不可用时禁用文本框，状态句说明原因，若 `reopen` 可用，旁边放一个 `Reopen` 按钮。这个按钮用 HTML 的 `form` 属性提交头部那个 reopen 表单（`<button form="act-reopen">`），不单独新建表单。
+
+### 4.3 数据与视图改动 [b]，无迁移
+
+| 改动 | 位置 | 理由 |
+|---|---|---|
+| `controls` 每行带上 `run_id`：取自账本 `control` 结果里已有的 `run_id`（`service.py:979`，续开时非空） | `Workbench._controls` | 用来给消息打 `started Run N` 标签，不必按时间猜 |
+| snapshot 加 `question_actor`：取 intake 账本信封的 `principal.actor_id`（`_envelope_from_json` 已经解析出来） | `Workbench.snapshot` | 事件列表只保留最新 50 条，`intake_accepted` 可能已滚出 |
+| Run 序号：`history` 加当前 Run，按 `investigation_history` 现有的排序（`started_at NULLS LAST, control_generation, run_id`）从 1 开始编号 | `incident_view` | 页面上的 Run 编号只用于展示；原始 `run_id` 仍在 Stored values 和历史行里 |
+| `chat_log()`、`header_actions()`、`composer()` 三个纯函数 | `incident_view` | 取代 `_timeline`、band、`_copy` 的段落文字 |
+
+不新增路由（`tests/acceptance/test_f7_step1_entry_points.py:68-100` 不用改），不新增 store 方法。人工以外的 `event` 输入（`/intake/events` 附加、合并带来的事件）目前不在 snapshot 里；把它们放进日志需要一次新的有界读取，本步不做，见 §5。
+
+### 4.4 头部动作与各状态下的输入框
+
+头部按钮 = `available_actions` ∩ {`resume`, `pause`, `cancel`, `new_run`, `takeover`, `reopen`, `close`}，按 `ORDER` 排列，主按钮最多 4 个。`register_remediation`、`rebind_target`、`merge_into` 需要额外输入，放进按钮行末尾的 `<details>More</details>` 下拉，字段与现在相同（`name="revision"`、`name="to_target"`、`name="into_incident_id"`、可选 `text`）。每个动作仍是一个独立的 `<form>`，带 `id="act-<action>"`；`follow_up` 与 `correct` 合成 §4.2 的一个表单。
+
+页内确认：`cancel`、`close`、`takeover`、`merge_into`、`rebind_target` 点击后，按钮行原地换成一句确认加两个按钮，例如 `Cancel Run 2? Steps so far are kept.` `[Cancel Run]` `[Keep running]`；`Close this incident? Unfinished Runs are cancelled.`；`Take over? OpsPilot will not start again on this incident.`（接管不可撤回，代码里没有写回 `automatic` 的路径）；`Merge into <id>? This cannot be undone.`。没有脚本时直接提交，与现在一样。确认文字由脚本生成，不出现在服务端 HTML 里。
+
+输入框状态句（与 `controls.py` 的实际分支一致，措辞取自现有 `_copy`，`incident_view.py:528-560`）：
+
+| 事故状态 | 状态句 | 实际行为 |
+|---|---|---|
+| Run queued/running/waiting_human，未过期 | `Sent to Run N. OpsPilot reads it at its next round.` | 同一个 Run 重新排队：持有它的 worker 失去租约，正在进行的那一轮不再提交，Run 被重新领取后在下一轮读到这条输入（`controls.py:708-712`） |
+| 同上但 Run 已过 deadline | 同上句，再加 `If the Run has run out of time, a new Run starts instead.` | 续开新 Run（`controls.py:250-262`）；页面不预判 deadline，与 `_copy` 一致 |
+| 已暂停（事故或范围挂起） | `Recorded. OpsPilot reads it when the Run is resumed.` | 只记录，保持暂停（`controls.py:592-600, 624-628`） |
+| 已有结论或 Run 已取消（open/observing_recovery） | `Starts Run N+1.`；有恢复观察时加 `Ends the current recovery watch.` | 续开：旧结论从事故上清除，观察授权撤销，生命周期回到 open（`controls.py:667-700`）。页面上旧结论作为 `Previous conclusion` 保留 |
+| human_owned（含 resolved/closed） | `Recorded as a note. No Run starts.` | 只记录（`controls.py:639-664`）。`available_actions` 对 human_owned 事故总是给出文字动作，所以已关闭的 human_owned 事故也能记备注，照后端行为显示 |
+| resolved/closed 且已有结论（automatic） | 输入框禁用：`Resolved. Reopen to send messages.` / `Closed. …`，旁边是 `Reopen` | 后端返回 `REOPEN_REQUIRED`（`controls.py:569-580`），`available_actions` 不给文字动作 |
+| 仅交接事故 | 交接页没有输入框 | 不变 |
+
+样稿里的 `Queued until the current step finishes` 与后端行为不符：后端不会等当前这一步做完，而是让这一轮作废、重新领取。所以不用这句。
+
+### 4.5 实时更新
+
+保留现有机制：`EventSource` 订阅 `/incidents/{id}/events`，在 `run_completed`、`run_handoff`、`control_applied`、`reload` 和复盘事件上整页刷新（`incident.html:648-667`）。`#progress` 的 id 与脚本行为不变（D18），非 live 时放在 Raw records 的事件日志里，live 时放在 #5 下方，默认折叠。
+
+新增的三点，都只在浏览器端：
+1. **轮次时间线**：live 时 #5 渲染的就是 `<details class="how" id="how" open>`，每轮一项：`R3 · 10:21:04 · 2 of 2 tools`，下面每个工具一行：`<code>tool</code> → status [reason]`，有 evidence 时是一个证据链接。`step_committed` 到来时追加一个新的轮次项，`tool_committed` 到来时在对应 `step_id` 的轮次项下追加工具行，文字都用 `textContent` 写入。末尾一行 `Waiting for the model…` 带计时。时间线只用事件 payload 里已有的字段（`progress.py:276-288, 473-480`）；样稿里「Queried checkout p99 latency」这类描述数据里不存在，不做。
+2. **草稿保留**：输入框内容在 `input` 时写入 `sessionStorage["draft:" + incident_id]`，加载时恢复（包括单选值），`submit` 时清除。刷新前不需要额外保存，因为每次输入都已写入。
+3. **计时**：`elapsed` 每秒在浏览器端更新。服务端只输出 `<time datetime>`。
+
+日志面板不在浏览器端追加条目：会改变日志的事件都会触发整页刷新。
+
+### 4.6 结论与依据
+
+| 区块 | 内容 | 来源 |
+|---|---|---|
+| 结论一句话 | `opening(summary, 480)`，超出部分放进 `Full summary` 折叠（现状） | `report.summary` |
+| 元信息行 | `<等级> · Run N · 09:52 UTC`，被修订时加 `· revises Run k`。等级用报告自己的值并写成人话：`supported` → `Supported by evidence`，`partial` → `Partly supported`，`inconclusive` → `Inconclusive`；`incomplete` 时加 `Incomplete investigation`。不叫「confidence」，报告里没有置信度字段（`reports.py:177`） | `report.conclusion`、`report.incomplete` |
+| `#report-status` | 现有的 Assessment、conclusion 徽章与 sha256 收进元信息行下的小号 `<code>`，id 保留 | 现状 |
+| Key evidence | `facts` 与 `counter_evidence`，编号排列，每条是一个 `<details id="claim-<id>">`：摘要是陈述原文和来源标签（`R3 · metrics.range_query`）；展开后有脚本时用 `fetch` 取现有的 `GET /incidents/{id}/evidence/{eid}` JSON（不带 `Accept: text/html` 时返回 JSON，`app.py:1073-1133`），显示 `view.query`（有就显示）、状态和 `view` 的前 4 KiB 或前 60 行，接 `Open full evidence`；没有脚本时只显示这个链接。每条陈述引用多个证据时逐个列出。已有的指标图（`#evidence-charts`）放在列表上方 | 报告陈述 + 证据路由 |
+| Hypotheses | 有就显示，标 `Not proven` | 报告 |
+| Ruled out | `rejected_hypotheses`，每条右侧小字写引用的证据标签 | 报告 |
+| Unknown | `report.unknown`，id `claim-G<n>` 不变 | 报告 |
+| Could not see | 由代码统计的盲区：`#coverage-gaps` 小节，先是一行一个盲区源（`not_integrated`、`failed`、`partial_failure`、`not_queried`、`not_authorized`），完整的逐源表格（`tr.coverage-source[data-source][data-state]`）收进折叠；`#not-integrated`、`#coverage-duplicates`、`#collection-truncated` 原样 | `snapshot.coverage`（不是模型写的） |
+| Next steps | `next_steps` 与 `recommendations` 合并，标题后小字 `advisory, OpsPilot will not act` | 报告 |
+
+没有结论时，#6 只有一句：`No conclusion yet.`，或者 `Run N was cancelled.` / `Run N handed this incident to a human.` / `Run N stopped when <actor> took over.`。未发布的交接报告以 `#handoff-report` 显示在这一句下方，标 `Unpublished handoff report, not the conclusion`。
+
+### 4.7 规模
+
+| 场景 | 要求 |
+|---|---|
+| 一个 Run 80 轮、每轮 5 个工具 | `#how` 里完整渲染全部轮次（§4.8 的测试要在其中找到每一行）；默认显示前 3 轮与最后 5 轮，中间折叠为 `Show 72 more rounds`。这里用 CSS 类隐藏，脚本负责展开；不能用嵌套的 `<details>`，因为测试按 `#how` 后的第一个 `</details>` 截取。HTML 不超过 400 KB |
+| 20 个 Run、每个都有结论 | Investigation history 每个 Run 一行，折叠；当前结论只出现一次。每个 Run 的结论全文与陈述在折叠内，留在 DOM 里 |
+| 200 条人工消息 | 日志显示最新 200 条，更早的折叠为一行；单条最长 8192 字，超过 6 行折叠 |
+| 单条证据 1 MB | 页面上只有标签；展开时最多取前 4 KiB 或 60 行，完整内容在证据页 |
+| 30 条 Key evidence | 先显示 8 条，其余放在 `Show 22 more` 后面 |
+| 400px 宽 | 单栏，不横向滚动；头部按钮换行；Chat 在主栏之后，有脚本时用顶部页签切换 |
+
+### 4.8 测试约束：必须保留的字面与结构
+
+`tests/acceptance/` 和其他按验收步骤写的测试（F3、F12）依赖下面这些。本设计全部保留，因此**不需要放宽任何验收断言**。
+
+| 依赖 | 位置 | 本设计如何满足 |
+|---|---|---|
+| `id="run-state">{state}<` 与 `<code>{run_id}</code>` | `tests/acceptance/test_393_live.py:175-188` | Stored values 原样 |
+| `id="<X>">值<`，X 为 incident-control、incident-lifecycle、incident-mode、control-generation、run-state、concluded | `tests/integration/test_f12_acceptance_postgres.py:97-99` | 同上 |
+| `name="action" value="…"` 的集合等于可用动作（`reopen`/`close` 的有无） | 同文件 `:100,635-739` | 每个动作一个表单；composer 的两个单选恰好就是 `follow_up`/`correct`；Reopen 按钮借用 reopen 表单，不重复写 action |
+| 第一个 `name="expected_generation" value="(\d+)"` 是当前代际 | `tests/acceptance/test_m1_04_alert_window.py:259` | 所有表单使用同一代际 |
+| `Human decisions` 到下一个 `<h2` 之间有 `<tr>` 行，含 `<code>{action}</code>`、`→ {generation}<`、`<code>{actor}</code>` 和时间 | F12 `:383-394,569-571,827`，`test_f12_pr1_acceptance_postgres.py:518` | `table.dlog` 原样放在 Raw records 的 `Human control` 小节 |
+| `Human control` 字样存在，到下一个 `<h2` 之间不含未发布的结论 | F12 `:692` | 同上。**注意**：`_section` 取第一次出现的位置，且不区分大小写，所以头部和 Chat 里不能出现 `human control` 字样 |
+| `Investigation history` 到下一个 `<h2` 之间有旧 run_id、旧结论首句、旧假设原文 | F12 `:476-477,565-568`，`test_f12_pr1…:251`，`test_f12_followup_impl_postgres.py:82` | #10 的标题就是这几个字；每个历史 Run 的折叠里用 `<code>` 写完整 run_id，结论与全部陈述也在里面，中间不出现 `<h2` |
+| `history only` | F12 `:693,854` | 轮次行保留 |
+| `<details class="how" id="how">` 到第一个 `</details>` 之间：每个工具行出现一次工具名，含状态与原因码，恰好每个 ok/no_data 证据各一个 `/evidence/` 链接 | `tests/test_f3_pr1_acceptance.py:378-415`，`tests/integration/test_311_source_errors_postgres.py:171-173` | §4.5、§4.7：live 与非 live 共用这一元素；内部不嵌套 `<details>`；Key evidence 里的证据链接放在 `#how` 之外 |
+| `#coverage-gaps`、`data-source="…" data-state="…"`、`#collection-truncated`、`#not-integrated`、duplicate 计数 | `tests/acceptance/test_f3_step3_coverage.py:18-31`，`test_f3_pr2_coverage_impl_postgres.py:179-181` | Could not see 区块 |
+| `re-fired episode` 恰好出现 1 次；`T2`；`id="related-incident"` 链接 | `tests/acceptance/test_f2_alert_correlation.py:545-556` | 投递表在 `_alert.html` 里，原样；Chat 用 `Alert fired again`；`.rel` 在 Stored values 里 |
+| `Merged into`；`<p class="rebind">`、`Rebound from`、`id="current-target"`、`name="to_target"` | `test_245_merge_into.py:365`，`test_245_rebind_target.py:339-344` | `.rel` 原样；`current-target` 放在标题下的小字行；rebind 表单在 More 下拉里（DOM 中存在） |
+| 告警 fingerprint、`otel-demo`、`checkout`、`value changed` 出现在页面上；`<script>` 被转义 | `test_m1_04_alert_intake.py:241-263` | Raw records 中的 `_alert.html` |
+| `postmortem-status`、`postmortem-generation`、`postmortem-latest`、`consecutive failures N`、`generating now`、`regeneration pending` | `tests/acceptance/test_f13_postmortem.py:271-284` | #12 原样 |
+| 版本变更链接 | `test_f11_step1_rollout_trigger.py:228-229` | `.rel` 原样 |
+| 第一个 `<h2>` 之前没有 `state`、`queued`、`running` 字样，除 `run-state` 外没有这些徽章 | `tests/test_m1_incident_control_contract.py:89-100`，`tests/m1_incident_control_support.py:134-151` | #1–#4 都在第一个 `<h2>` 之前，状态句用 `Investigating`、`Paused` 这类词；Chat 和输入框状态句排在主栏之后 |
+
+普通测试（不是用户门，由未参与实现的测试作者改写）：
+- `tests/test_m1_02_recovery_page.py:142`：`text.count("<form") == len(available_actions(snapshot))`。follow_up 和 correct 合成一个表单后，数量变成 `len(actions) - 1`（两者都可用时）。改为「表单数 = 可用动作数，follow_up 与 correct 算一个」。
+- 其他按旧区块文字或顺序断言的普通测试：本次只 grep 了 `What happened`、band、`Show controls` 这些字样，都没有命中；完整清单**未确认**，由测试作者在实现分支上跑全量测试时列出。
+
+### 4.9 无脚本时
+
+服务端渲染完整页面。头部表单直接提交，没有页内确认；输入框的单选可用；Key evidence 只有链接；没有实时更新，需要手动刷新；没有移动端页签，两部分上下排列；列表的幂等键字段在无脚本时可见（r2-M6）。
+
+POST 结果：仍然 303 到 `/incidents/{id}`，`Location` 不加锚点（测试逐字比较 `Location`）。提交后页面加载时，脚本若发现 `sessionStorage` 里有刚刚提交的标记，就把 Chat 日志滚到底并聚焦输入框。被拒绝的 POST（409 `CONTROL_CONFLICT` 等）仍返回现在的 JSON 错误，改进放在 §5。
+
+### 4.10 其余页面（只改展示）
 
 | 页面 | 首屏 | 折叠与上限 | 参照 |
 |---|---|---|---|
-| 事故详情 `incident.html` | 头部：标题、人话状态、Age。摘要：结论等级加 1–2 句、恢复观察一行、最后一次人工决定一行。右侧属性栏：Service、Target、Opened、Run、Recovery。`Stored record` 原样移进 `<details>Stored values</details>`，仍放在第一个 `<h2>` 之前，id 不变，并在这里加上从列表移过来的四个原值。动作表单原样收进 `Actions (N)` 面板，不改字段和数量 | 每组陈述显示 5 条；轮次显示首 3 轮和末 5 轮；每轮工具调用显示 5 个；历史 Run 每个一行；恢复样本显示最近 20 个；告警投递显示最近 10 次；决策显示最近 10 条；事件折叠。去掉重复的 run_id、恢复、结论。窄屏顺序：头部、摘要、Actions、依据、其余 | incident.io、Rootly：头部状态、摘要、时间线、右侧属性栏 |
-| 交接页 `incident_handoff.html` | `OpsPilot did not investigate this alert`，后接原因的人话说明，`#handoff-reason` 保留 | 投递显示最近 10 次 | — |
+| 交接页 `incident_handoff.html` | 标题、`OpsPilot did not investigate this alert`，后接原因的人话说明，`#handoff-reason` 保留。两栏外壳与详情页相同，Chat 只有告警条目，没有输入框 | 投递显示最近 10 次 | — |
 | 复盘 `postmortem.html` | 状态句和计数条；被标记的陈述排在前面；宽屏时决定区吸顶，表单不变 | 各节可折叠；每条陈述引用超过 3 条时折叠；生成尝试、事件、哈希收进 `History and integrity`（`postmortem-attempts` 等表保留原格式） | incident.io、Rootly 的 retrospective |
 | 证据 `evidence.html` | 键值：Tool、Query、Window、Status、Used by agent、Fingerprint matches | view 超过 200 行折叠；raw 只显示前 64 KiB，完整内容放在 `?raw=full`（[b]） | Datadog 证据侧栏 |
 | 知识条目 `knowledge.html` | 标题用条目名；显示生效修订的正文；`#form-revoke` 折叠 | 修订显示最近 10 个，审计显示最近 20 条，都分页（[b]） | — |
@@ -200,55 +371,83 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 | 版本变更详情 | 标题 `<service> v1 → v2`；判定；控制按钮首字母大写，移到第一屏 | 会话、对比、审计、投递各显示最近 10 条；store 读加 `LIMIT 200`（[b]，`observation/releases.py:733-757`） | — |
 | 暂停控制 | 全局状态用大字显示；目标表格 | 目标超过 20 个时出现过滤框 | — |
 
-所有页面的措辞规则：人话标签在前，原始值放进 `raw` 折叠或作为行尾的小号 `<code>`，例如 generation、epoch、logical_key、sha256、watermark、conclusion_key、supersede、citable_as_fact、原因码。验收依赖的 id 和原始文字一律保留在 HTML 里，完整清单留待各页预审时复核。
+所有页面的措辞规则：人话标签在前，原始值放进 `raw` 折叠或作为行尾的小号 `<code>`，例如 generation、epoch、logical_key、sha256、watermark、conclusion_key、supersede、citable_as_fact、原因码。验收依赖的 id 和原始文字一律保留在 HTML 里；详情页的清单见 §4.8，其余页面在各自预审时复核。
 
 ## 5. 第二阶段（只列要点，另行出规格）
 
-- 详情页动作合并：按状态给出 1–2 个主动作。
-- 不可逆动作的页内确认，做法是在同一个 `<form>` 里加必勾选框。
+布局 B 已经覆盖了原清单中的三项：按状态给主动作（§4.4）、页内确认（§4.4，用脚本实现）、实时更新时保留草稿（§4.5）。剩下的：
+
+- 被拒绝的 POST 在页内显示：现在 409/400 返回 JSON，浏览器里看到的是原始 JSON。可以改为按 `Accept: text/html` 渲染错误页并保留输入，或者用 `fetch` 提交；两种都要改 POST 的响应合同。
 - 成功提示：303 的 `Location` 被测试逐字比较，所以改用一次性 cookie 传递。
-- 表单出错后重渲染，保留用户输入。
 - 防重复提交，加 `no-store`。
-- 实时更新不再整页刷新，草稿存入 `sessionStorage`。
+- 无脚本时的不可逆动作确认：在同一个 `<form>` 里加必勾选框。
+- Chat 日志加入 `event` 输入（`/intake/events` 附加、合并带来的事件）：需要给 store 加一次有界的 `opspilot_inputs` 读取。
+- 日志里标出 Agent 读到消息的那一轮（`read at round k`）：需要轮次的输入水位，数据是否已有**未确认**。
+- 早期 Run 的轮次：`rebuild` 只返回当前 Run 的步骤，历史 Run 的轮次要新增读取。
+- 列表 In progress 行显示当前轮次与耗时。
 - 独立的 Ask 页面，新路由需要改白名单。
 - 逐句异议：A 方案是写进退回理由，B 方案是存储人工异议，后者是新能力。
 - 合并事故时用候选下拉选择。
 
-## 6. 需用户裁决（第一阶段）：无
+## 6. 决定表
 
-依据用户 2026-11-16 的说明：只有改 PRODUCT-CONSTRAINTS、扩大权限、不可逆操作，或者删除、放宽验收断言，才需要停下来问用户。下面两项都是可逆的，由 Agent 按推荐决定，并在任务记录里写明理由。
+依据用户 2026-11-16 的说明：只有改 PRODUCT-CONSTRAINTS、扩大权限、不可逆操作，或者删除、放宽验收断言，才需要停下来问用户。下表没有一项属于这几类，全部按推荐执行，在任务记录里写明理由。如果实现时发现 §4.8 有哪一项做不到、必须改验收测试，那一项才变成用户门。
 
-| 编号 | 决定 | 理由 | 备选及其代价 |
-|---|---|---|---|
-| D-L1 | Resolved 和 Closed 两个页签与 Needs a human 允许重叠（§3.3） | 已恢复但未关闭的事故确实还在等人处理；这样做不需要改任何验收断言 | 改成互斥（PagerDuty 的做法）：要把 `tests/acceptance/test_f2_alert_correlation.py:588,593` 里的 `GET /` 改成 `GET /?tab=resolved`，这算修改验收断言，届时再问用户 |
-| D-L2 | 新增 `GET /knowledge` 列表页，顶栏加 Knowledge 入口 | 只读页面，不含 `MUTATION_WORDS`；按测试自身的设计，在 `tests/acceptance/test_f7_step1_entry_points.py:68-91` 登记 `read: knowledge list` 即可，由独立测试作者完成 | 不加：知识页只能从复盘页进入 |
+| 编号 | 问题 | 决定（推荐） | 理由 | 备选及其代价 |
+|---|---|---|---|---|
+| D-L1 | Resolved/Closed 页签与 Needs a human 是否重叠 | 重叠（§3.3） | 已恢复但未关闭的事故确实还在等人；不改验收 | 互斥：要改 `test_f2_alert_correlation.py:588,593`，属用户门 |
+| D-L2 | 是否加 `GET /knowledge` 列表 | 加，登记白名单 `read: knowledge list` | 只读页面 | 不加：知识页只能从复盘页进入 |
+| D-B1 | Chat 日志的数据从哪来 | 服务端由 snapshot 已有的数据组装（§4.2），不迁移、不新建事件表 | 告警投递、Run、人工决策（含文字）、观察会话、复盘版本都已经在 snapshot 里 | 新建统一的事件流：要迁移，而且与现有审计重复 |
+| D-B2 | 怎么知道哪条消息开了新 Run | `controls` 行带上账本结果里已有的 `run_id`（§4.3） | 数据已存，只是没有传到视图 | 按时间猜：Run 的 `control_generation` 后续会变，不可靠 |
+| D-B3 | 一个输入框里怎么区分 follow_up 和 correct | 两个单选 `name="action"`，默认 follow_up；后端两个动作都保留 | 两种输入在模型那边是不同的 `kind`（`context.py:1323-1327`）；单选不依赖脚本，提交的字段与现在相同 | 只留 follow_up：correct 就无法从页面发出；按内容自动判断：等于替用户做决定 |
+| D-B4 | Run 在跑时发消息，状态句怎么写 | 按后端实际：`Sent to Run N. OpsPilot reads it at its next round.`（§4.4） | 后端是让当前这一轮作废、重新领取，不是等这一步做完 | 照抄样稿的 `Queued until the current step finishes`：与事实不符 |
+| D-B5 | 已有结论又有恢复观察时，状态句是否提到观察会结束 | 提，`Ends the current recovery watch.` | 续开会撤销观察授权（`controls.py:653-657`），用户应在发送前知道 | 不提：用户会以为只是追问 |
+| D-B6 | 已关闭的 human_owned 事故能否写备注 | 能，按 `available_actions` | 后端接受，页面照实显示 | 照样稿禁用：页面与后端不一致 |
+| D-B7 | 实时更新与草稿 | 保留 SSE 加整页刷新；草稿写入 `sessionStorage`；轮次时间线在浏览器端追加 | 刷新路径已被测试和使用多次验证过；草稿问题用存储就能解决 | 局部替换 DOM：要重写多处渲染，草稿以外的状态（展开、滚动）更容易出错 |
+| D-B8 | POST 之后怎么显示结果 | 303 不变，脚本在加载后滚动到 Chat 底部 | `Location` 被逐字比较；无脚本也能用 | `fetch` 提交：属于第二阶段（§5） |
+| D-B9 | 哪些动作需要页内确认 | cancel、close、takeover、merge_into、rebind_target；只用脚本实现 | 这几项会丢弃进度，或者无法撤回 | 全部确认：常用的 Pause/Resume 多一步；无脚本确认：要改表单，属第二阶段 |
+| D-B10 | 头部放哪些按钮 | 不需要额外输入的动作放头部（最多 4 个），需要输入的三个放进 More | 符合样稿；字段不变 | 全部平铺：Run 在跑时会有 7 个按钮 |
+| D-B11 | Run 怎么编号 | 按 `investigation_history` 的现有排序从 1 开始 | 这个排序已用于历史区块；编号只用于展示 | 加 `created_at` 列：要迁移 |
+| D-B12 | 「置信度」 | 用报告的 `conclusion` 等级，写成人话；不叫 confidence | 报告里没有置信度字段 | 造一个置信度：没有数据支撑 |
+| D-B13 | Key evidence 展开后的原始结果从哪来 | 用 `fetch` 取现有证据路由的 JSON，截取前 4 KiB 或 60 行 | 不新增路由，页面体积不随证据大小增长 | 服务端内联：每个被引用的证据要多读一次，页面变大 |
+| D-B14 | 各类陈述放在哪 | Key evidence = facts + counter_evidence；Hypotheses 单列并标 Not proven；Ruled out = rejected；Next steps = next_steps + recommendations；Could not see 来自 coverage（代码），Unknown 来自报告 | 分清「模型说的」和「代码统计的」 | 照样稿只列 4 组：假设和反证就没有位置 |
+| D-B15 | Run 在跑时，上一个结论是否显示 | 显示为 `Previous conclusion`，注明在新结论发布前保留 | 后端已从事故上清除结论，但历史里还在；标成 previous 是如实描述 | 不显示：用户在 Run 跑完前看不到任何结论 |
+| D-B16 | 列表的发起调查框是否保留 `<details id="ask">` | 保留元素，只改文字和摆放 | 现有表单测试原样通过，且不依赖脚本 | 改成脚本开关的 div：多改几处测试，无脚本时打不开 |
+| D-B17 | 幂等键「从不显示」与 r2-M6「无脚本时可见」 | 详情页的 key 由服务端渲染为隐藏字段；列表沿用 r2-M6 | 详情页本来就是每次渲染一个 nonce；列表要保证两次 GET 逐字节相同（D13） | 列表也由服务端生成：违反 D13 |
 
-第一阶段不删除也不放宽任何验收断言。§3.6 列出的普通测试，由独立测试作者按新页面改写。U5、U6 被取代，这一点已由产品负责人裁定。
+## 7. PR 拆分
 
-## 7. PR 拆分（第一阶段）
-
-每个 PR 都目标 `main`，不做 stacked PR，最多两条线并行。每个 PR 先做合同预审，测试由未参与实现的 Agent 编写，再做独立审查。
+每个 PR 都目标 `main`，不做 stacked PR，最多两条线并行。每个 PR 先做合同预审，测试由未参与实现的 Agent 编写，再做独立审查。PR #688（列表）已合并；§2 的外壳项大多已在 `main` 上（`crumbs` 宏、各页 `nav`、错误页），剩余项在 PR-D2 预审时对照代码复核。
 
 | PR | 内容 | 依赖 |
 |---|---|---|
-| 1 `feature/ux-list` | 只含列表需要的部分：§3 全部内容；§2 中的 `time`、`.clamp2`；顶栏去掉 `ui_basic`。不依赖任何共享框架 PR，可以单独合并 | — |
-| 2 `feature/ux-incident-detail` | §4 的事故详情和交接页；§2 的其余部分：各页 `nav` 高亮、面包屑宏、页面 GET 的 HTML 错误页 | 1 |
-| 3 `feature/ux-postmortem-pages` | §4 的复盘、证据、知识（含 D-L2）、版本变更、暂停控制 | 1，可以和 2 并行 |
+| D1 `feature/ux-list-b` | §3.8：New investigation 内嵌框、状态单元格两行。只改模板，可以单独合并 | — |
+| D2 `feature/ux-incident-b-main` | §4.1 的 #1–#13、§4.3（`run_id`、`question_actor`、Run 序号）、§4.4 的头部按钮、More 与页内确认、§4.5 的轮次时间线、§4.6、§4.7。follow_up 与 correct 两个表单此时原样放在右侧占位栏里，所以 `<form` 数量测试还不用改 | — |
+| D3 `feature/ux-incident-b-chat` | §4.2 的 Chat 面板与 `chat_log()`、§4.4 的输入框状态句、§4.5 的草稿保留、§4.9；去掉「What happened」和占位栏；改写 `test_m1_02_recovery_page.py:142` | D2 合并后开工 |
+| D4 `feature/ux-postmortem-pages` | §4.10 的复盘、证据、知识（含 D-L2）、版本变更、暂停控制；交接页的外壳 | 可以和 D2/D3 并行 |
 
-**PR 1 验收**（全部是用户任务；夹具用内存 store，PG 部分由 CI 的 m0-postgres 跑）：
-1. 夹具：2003 个事故，其中 30 个等人处理，最旧的一个排在第 1500 位。打开 `/`：默认页签显示 `Needs a human (30)`，第 2 页能看到那个第 1500 位的事故；各页签计数与夹具一致；HTML 不超过 120 KB；SQL 查询 3 条。
-2. 选 Service `shop/checkout`，搜索 `latency`：结果和计数一致；刷新以及复制 URL 到新标签页，看到的内容相同；切到 Closed 页签时筛选条件保留、页码回到 1。
-3. 筛选没有结果：显示 `No incidents match these filters.`，点 `Clear filters` 回到全量。
-4. 40 行数据，1440 和 400 两种宽度：表格只有 4 列，标题最多两行，悬停能看到全文，Age 显示相对时间、悬停显示绝对时间，页面不横向滚动。
-5. 点右上角 `Ask OpsPilot`：表单展开，选目标、填问题、提交，跳到新事故页；表单字段与之前一致。
-6. `?tab=bogus&page=999`：显示默认页签的最后一页，不报错。
-7. 隐藏的原值列：浏览器里看不到 `Run`、`Control`、`Lifecycle`、`Concluded` 这四列，但 `list_row` 助手仍能读到。
-8. 新增的 SQL 与 `status_of` 一致性测试通过；`tests/acceptance/` 全部原样通过；D13 测试通过。
+建议顺序：D1 与 D2 并行；D2 合并后做 D3，同时做 D4。
+
+**D2 + D3 验收**（用户任务；夹具用内存 store，PG 部分由 CI 的 m0-postgres 跑）：
+1. 一个 Run 正在跑：页面顶部是标题、Pause/Take over/Cancel、状态行；Run 区块随 `step_committed`/`tool_committed` 增加轮次，不整页刷新；`run_completed` 时整页刷新，结论出现，正在输入的草稿还在。
+2. 已有结论的事故：输入框提示 `Starts Run 2.`；发一条消息后，页面回到同一个 URL，Chat 底部出现这条消息，标签为 `started Run 2`；主栏显示 `Previous conclusion`，并注明 Run 2 发布前保留。
+3. 选 `Correct the conclusion` 再发送：审计里这一行的 action 是 `correct`。
+4. human_owned：状态句是 `Recorded as a note. No Run starts.`；发送后 Notes 区块多一条，没有新 Run。
+5. resolved 且已有结论：输入框禁用，点 `Reopen` 后事故回到 open，输入框可用。
+6. Cancel 和 Close 弹出页内确认；选 `Keep running` 什么也不提交；关闭脚本后直接提交。
+7. 夹具：80 轮 × 5 个工具、20 个已结论的 Run、200 条消息、一个 1 MB 的证据：HTML 不超过 400 KB；`#how` 默认显示 8 轮；Investigation history 有 19 行；展开证据只取前 4 KiB。
+8. 400px 与 1440px 两种宽度：不横向滚动；窄屏有 `Investigation · Chat` 页签；宽屏时 Chat 吸顶，日志在面板内滚动。
+9. §4.8 列出的测试全部原样通过；`tests/acceptance/` 原样通过。
+
+**D1 验收**：点 `New investigation`，内嵌框展开，选目标、填问题、点 Start，跳到新事故页；Cancel 收起框；页面上看不到幂等键；状态单元格第一行是状态，第二行是 `Next: …` 或说明。
 
 ## 8. 未确认
 
-- 第 4 节没有逐页核对锚点。上一轮子代理整理过的 id 清单，在 PR 2、3 预审时复核。
+- §4.8 只覆盖了 grep 到的依赖。其他按旧区块写的普通测试，要在实现分支上跑全量测试才能列全。
+- 样稿是在浏览器外读的脚本源码（`renderInv`、`renderChat`、`actionsFor`），没有截图核对。
 - 「参照」列的产品细节，比如 PagerDuty 页签的名称和默认每页行数，没有对照当前官方文档。
 - 查询在 PG 上的实际耗时没有实测，是推断。
 - `opspilot_incidents.updated_at`（`0001_baseline.py:56`）是否会随状态变化而更新，没有核实，所以 Age 用的是 `created_at`。
 - `ld.alert_json` 只是最新一次投递的记录，搜索范围因此不包括更早的投递。
+- 证据的 `view` 里是否都有 `query` 字段：`otel_demo` 的部分工具有（`otel_demo.py:1606,2045`），其余工具没有逐个核对；没有时展开区只显示状态和 view。
+- 被 follow_up 打断的那一轮里，已经提交的工具结果是否作为证据保留（`loop.py` 的 `_RoundAborted` 路径），没有逐行核对；§4.4 只写了「这一轮不再提交」。
