@@ -148,17 +148,23 @@ def _detail(feedback):
 def _paired_runs(make_body, wrap):
     """Oracle: run the same report twice -- once wrapped, once unfenced (the
     path the citation gate already names, C2) -- and return both forced-final
-    details with this Run's operation_id normalised to ``OP``."""
+    details with this Run's random ids normalised: every delivered
+    evidence_id ``<operation_id>:<dispatch uuid4>`` to ``OP:DISPATCH`` (#686
+    D6 may name it as the nearest valid id), then the operation_id to ``OP``."""
     details = []
     for wrapper in (wrap, lambda body: body):
         seen = {}
 
         def first(call, wrapper=wrapper, seen=seen):
-            seen["op"] = _delivered_ids(call)[-1][1]
+            seen["views"] = _delivered_ids(call)
+            seen["op"] = seen["views"][-1][1]
             return reply(content=wrapper(make_body(seen["op"])))
 
         _, model, _, _ = _run(first, _bad)
-        details.append(_detail(_forced_final_feedback(model)).replace(seen["op"], "OP"))
+        detail = _detail(_forced_final_feedback(model))
+        for evidence_id, operation_id in seen["views"]:
+            detail = detail.replace(evidence_id, f"{operation_id}:DISPATCH")
+        details.append(detail.replace(seen["op"], "OP"))
     return details
 
 
@@ -225,8 +231,8 @@ def test_every_failing_claim_is_named_and_the_valid_one_is_not():
     assert seen["op0"] in feedback
     assert seen["op1"] in feedback
     assert feedback.count("unknown_evidence_id") >= 2
-    # the correctly cited evidence_id is not reported as a failure
-    assert seen["ev0"] not in feedback
+    # the correctly cited claim is not reported as a failure (its evidence_id
+    # may still appear as the nearest valid id offered for claim 0, #686 D6)
     assert "claim 1" not in feedback
 
 
