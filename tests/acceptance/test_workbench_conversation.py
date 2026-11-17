@@ -13,6 +13,7 @@ import pytest
 
 from tests.m1_investigation_support import reply, report_from_transcript
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
+    UI_USER,
     step_contract,
     tool_round,
     workbench_database_fixture,
@@ -261,3 +262,595 @@ def test_back_compat_alert_without_messages_publishes_the_bare_report(workbench)
     outcome = workbench.project(scenario)
     assert outcome.final_state == "completed"
     assert outcome.report_available is True
+
+
+# P2 independent acceptance. The explicit P2 assignment allows five additional
+# functions; the five P1 functions above are retained without changing them.
+# All message/relay operations below go through the two driver accessors.
+
+
+def admitted(result):
+    assert 200 <= result.status < 300, (
+        f"message must be admitted: HTTP {result.status} {result.text}"
+    )
+
+
+def current_run(driver, incident_id):
+    return driver.store.rebuild(incident_id)["run"]
+
+
+def last_message(driver, incident_id):
+    return [row for row in driver.inputs(incident_id) if row["kind"] == "message"][-1]
+
+
+def unchanged_by_message(before, after):
+    for key in ("control_generation", "conclusion_bytes", "lifecycle", "mode", "state"):
+        assert after["incident"][key] == before["incident"][key], key
+    assert after["controls"] == before["controls"], "messages are not control actions"
+    assert after["observation"] == before["observation"]
+
+
+def conversation_input(driver, incident_id, *, floor, mode):
+    config = current_run(driver, incident_id)["input"]["scope_facts"].get(
+        "conversation", {}
+    )
+    assert config.get("floor") == floor, "each successor must refresh its read floor"
+    assert config.get("mode") == mode
+
+
+def model_inputs(call):
+    for message in call.messages:
+        try:
+            content = json.loads(message.get("content") or "null")
+        except (TypeError, ValueError):
+            continue
+        if isinstance(content, dict) and "investigation_inputs" in content:
+            return content["investigation_inputs"]
+    return []
+
+
+def dictionaries(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from dictionaries(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from dictionaries(child)
+
+
+@pytest.mark.parametrize(
+    ("http_action", "continuation_control"),
+    [("message", "pause"), ("follow_up", "cancel"), ("correct", "close")],
+)
+def test_p2_mid_run_message_reads_next_round_and_continuation_honors_control(
+    workbench, http_action, continuation_control
+):
+    """A1/A2/A11, B1/B4/B7, D1, R5, O2/O4; no in-flight fencing."""
+    scenario = workbench.from_alert(f"workbench-p2-mid-run-{http_action}")
+    incident_id = UUID(scenario.subject_id)
+    seq = max((row["sequence"] for row in workbench.inputs(incident_id)), default=0) + 1
+    expected = answer(seq, "消息在下一轮读到，本轮回复已记录。")
+    observed = {}
+
+    def send_during_request(call):
+        observed["before"] = workbench.records(incident_id)
+        observed["post"] = workbench.message(
+            incident_id, "请核对 payment 数据库。", action=http_action
+        )
+        observed["queued"] = workbench.records(incident_id)
+        observed["unread"] = workbench.unread(incident_id)
+        return tool_round(call_id="p2-before-message-read")
+
+    def report_after_reply(call):
+        observed["reading_steps"] = workbench.steps(incident_id)
+        return report_from_transcript(call)
+
+    workbench.run(
+        scenario,
+        [
+            send_during_request,
+            tool_round(
+                content=json.dumps({"note": "核对消息。", "replies": [expected]}),
+                call_id="p2-message-read",
+            ),
+            report_after_reply,
+        ],
+    )
+
+    admitted(observed["post"])
+    unchanged_by_message(observed["before"], observed["queued"])
+    assert observed["queued"]["runs"] == observed["before"]["runs"], (
+        "posting while running must preserve the Run and its live lease"
+    )
+    assert [row["sequence"] for row in observed["unread"]] == [seq]
+    message = last_message(workbench, incident_id)
+    assert message["actor"] == UI_USER
+    assert message["content"]["channel"] == "investigation"
+    assert message["sequence"] == seq
+    reading = [
+        step for step in observed["reading_steps"] if step_contract(step)["replies"]
+    ]
+    assert len(reading) == 1
+    assert step_contract(reading[0])["watermark"] == seq
+    assert_replies(step_contract(reading[0])["replies"], [expected])
+    assert all(
+        step_contract(step)["watermark"] < seq
+        for step in observed["reading_steps"]
+        if step["sequence"] < reading[0]["sequence"]
+    ), "the request already in flight must not read the new message"
+    assert workbench.unread(incident_id) == []
+    corrections = [
+        item
+        for item in workbench.audit(incident_id).entries
+        if item.category == "human_correction"
+        and item.source == "opspilot_inputs"
+        and item.record_id == str(message["input_id"])
+    ]
+    assert len(corrections) == 1, (
+        "O4: human messages must be reconstructible from audit"
+    )
+    assert corrections[0].actor == UI_USER
+    assert corrections[0].recorded_at == message["received_at"]
+
+    workbench.watch(incident_id)
+    before = workbench.records(incident_id)
+    floor = max(row["input_watermark"] for row in before["runs"])
+    admitted(workbench.message(incident_id, "继续说明。", action=http_action))
+    continuation = current_run(workbench, incident_id)
+    assert continuation["run_id"] != before["incident"]["current_run_id"]
+    assert len(workbench.runs(incident_id)) == 2
+    unchanged_by_message(before, workbench.records(incident_id))
+    conversation_input(workbench, incident_id, floor=floor, mode="report_optional")
+    assert incident_id in workbench.store.claimable_incidents(limit=10_000), (
+        "A2: a queued continuation with a published conclusion must reach the worker"
+    )
+    continuation_seq = last_message(workbench, incident_id)["sequence"]
+
+    def control_during_request(call):
+        observed["running"] = current_run(workbench, incident_id)
+        observed["control"] = workbench.control(incident_id, continuation_control)
+        return response(replies=[answer(continuation_seq)])
+
+    workbench.run(scenario, [control_during_request])
+    assert observed["running"]["state"] == "running"
+    admitted(observed["control"])
+    after = workbench.incident(incident_id)
+    assert after["conclusion_bytes"] == before["incident"]["conclusion_bytes"]
+    assert after["mode"] == before["incident"]["mode"]
+    assert incident_id not in workbench.store.claimable_incidents(limit=10_000)
+    _, stopped_model = workbench.run(scenario, [])
+    assert stopped_model.calls == [], "controlled continuation must not be claimed"
+    assert current_run(workbench, incident_id)["state"] == (
+        "paused" if continuation_control == "pause" else "cancelled"
+    )
+    if continuation_control == "pause":
+        admitted(workbench.control(incident_id, "resume"))
+        assert current_run(workbench, incident_id)["run_id"] == continuation["run_id"]
+        workbench.run(scenario, [response(replies=[answer(continuation_seq)])])
+        assert workbench.terminal(incident_id)["execution"] == "answered"
+    else:
+        assert after["state"] != "cancelled", "A11: only the continuation is cancelled"
+        if continuation_control == "cancel":
+            assert workbench.observation(incident_id) == before["observation"], (
+                "A11 r4: cancelling a continuation preserves recovery observation"
+            )
+        assert after["lifecycle"] == (
+            "closed"
+            if continuation_control == "close"
+            else before["incident"]["lifecycle"]
+        )
+        if continuation_control == "close":
+            admitted(workbench.message(incident_id, "关闭后还能解释吗？"))
+            conversation_input(
+                workbench,
+                incident_id,
+                floor=max(
+                    row["input_watermark"] for row in workbench.runs(incident_id)
+                ),
+                mode="reply_only",
+            )
+            seq = last_message(workbench, incident_id)["sequence"]
+            workbench.run(scenario, [response(replies=[answer(seq)])])
+            assert workbench.incident(incident_id)["lifecycle"] == "closed"
+            assert workbench.terminal(incident_id)["execution"] == "answered"
+
+
+def test_p2_paused_message_stays_queued_until_resume(workbench):
+    """D2/B7/R1: admission succeeds while human control prevents execution."""
+    scenario = workbench.from_alert("workbench-p2-paused")
+    incident_id = UUID(scenario.subject_id)
+    admitted(workbench.control(incident_id, "pause"))
+    before = workbench.records(incident_id)
+
+    admitted(workbench.message(incident_id, "恢复后检查这条补充事实。"))
+    seq = last_message(workbench, incident_id)["sequence"]
+    workbench.relay()
+    workbench.relay()
+
+    after = workbench.records(incident_id)
+    unchanged_by_message(before, after)
+    assert after["runs"] == before["runs"]
+    assert [row["sequence"] for row in workbench.unread(incident_id)] == [seq]
+    _, model = workbench.run(scenario, [])
+    assert model.calls == []
+    assert workbench.replies_for(incident_id, seq) == []
+
+    admitted(workbench.control(incident_id, "resume"))
+    expected = answer(seq, "恢复后已读到补充事实。")
+
+    def final_report(call):
+        return response(
+            replies=[expected], report=json.loads(report_from_transcript(call).content)
+        )
+
+    workbench.run(scenario, [tool_round(), final_report])
+    assert len(workbench.runs(incident_id)) == 1
+    assert current_run(workbench, incident_id)["state"] == "completed"
+    assert workbench.unread(incident_id) == []
+    assert_replies(workbench.replies_for(incident_id, seq), [expected])
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["resolved", "closed", "merged", "canceled", "failed", "human_owned", "no_run"],
+)
+def test_p2_message_admission_obeys_incident_state(workbench, state):
+    """D5–D12: reply only, refuse, or record without investigating."""
+    if state in {"resolved", "closed", "merged"}:
+        scenario = workbench.published(f"workbench-p2-state-{state}")
+    else:
+        scenario = workbench.from_alert(
+            f"workbench-p2-state-{state}",
+            target=None if state == "no_run" else "checkout-prod",
+        )
+    incident_id = UUID(scenario.subject_id)
+    late = {}
+    if state == "resolved":
+        workbench.resolved(incident_id)
+    elif state == "closed":
+        admitted(workbench.control(incident_id, "close"))
+    elif state == "merged":
+        survivor = workbench.from_alert("workbench-p2-merge-survivor")
+        admitted(
+            workbench.control(
+                incident_id, "merge_into", into_incident_id=survivor.subject_id
+            )
+        )
+    elif state == "canceled":
+        admitted(workbench.control(incident_id, "cancel"))
+    elif state == "human_owned":
+        admitted(workbench.control(incident_id, "takeover"))
+    elif state == "failed":
+
+        def fail_after_freeze(call):
+            late["post"] = workbench.message(incident_id, "尚未读取就失败的消息。")
+            return reply(content="{}")
+
+        # Post on the last, forced-final request: no subsequent request can
+        # accidentally consume the message before the failed Run settles.
+        workbench.run(scenario, [reply(content="{}"), fail_after_freeze])
+        admitted(late["post"])
+        assert workbench.incident(incident_id)["conclusion"] is None
+        assert workbench.terminal(incident_id)["execution"] == "failed"
+        assert len(workbench.unread(incident_id)) == 1
+    before = workbench.records(incident_id)
+
+    result = workbench.message(incident_id, f"状态 {state} 下的消息。")
+
+    if state in {"merged", "canceled", "failed", "no_run"}:
+        assert 400 <= result.status < 500, result.text
+        assert workbench.records(incident_id) == before, (
+            "refusal must not write business records"
+        )
+        if state in {"canceled", "failed"}:
+            assert result.json().get("code") == "INVESTIGATION_NOT_AVAILABLE"
+        elif state == "merged":
+            assert result.json().get("code") == "MERGED"
+        assert "message" not in workbench.actions(incident_id), (
+            "composer must be unavailable"
+        )
+        if state == "failed":
+            # D11/D12: the public Re-investigate action cancels + opens a
+            # Run, refreshing B4 instead of inheriting a continuation floor.
+            unread = workbench.unread(incident_id)[0]
+            floor = max(row["input_watermark"] for row in before["runs"])
+            admitted(workbench.control(incident_id, "reinvestigate"))
+            conversation_input(
+                workbench, incident_id, floor=floor, mode="report_required"
+            )
+
+            def finish_reinvestigation(call):
+                return response(
+                    replies=[answer(unread["sequence"], "重新调查读到了遗留消息。")],
+                    report=json.loads(report_from_transcript(call).content),
+                )
+
+            _, model = workbench.run(scenario, [tool_round(), finish_reinvestigation])
+            inputs = model_inputs(model.calls[0])
+            assert any(
+                item["sequence"] == unread["sequence"] and item.get("new")
+                for item in inputs
+            )
+            assert workbench.unread(incident_id) == []
+            assert workbench.replies_for(incident_id, unread["sequence"])
+        return
+
+    admitted(result)
+    after = workbench.records(incident_id)
+    unchanged_by_message(before, after)
+    message = last_message(workbench, incident_id)
+    assert message["actor"] == UI_USER
+    if state == "human_owned":
+        workbench.relay()
+        workbench.relay()
+        assert workbench.runs(incident_id) == before["runs"]
+        assert workbench.incident(incident_id)["mode"] == "human_owned"
+        assert workbench.inputs(incident_id)[-1] == message
+        return
+
+    assert len(after["runs"]) == len(before["runs"]) + 1
+    conversation_input(
+        workbench,
+        incident_id,
+        floor=max(row["input_watermark"] for row in before["runs"]),
+        mode="reply_only",
+    )
+    expected = answer(message["sequence"], "仅解释已有结论。")
+    _, model = workbench.run(scenario, [response(replies=[expected])])
+    assert len(model.calls) == 1 and not model.calls[0].tools
+    assert current_run(workbench, incident_id)["state"] == "completed"
+    assert workbench.terminal(incident_id)["execution"] == "answered"
+    assert not any(step["tool_results"] for step in workbench.steps(incident_id))
+    assert (
+        workbench.store.run_usage(current_run(workbench, incident_id)["run_id"])[
+            "tool_operations_used"
+        ]
+        == 0
+    )
+    assert_replies(workbench.replies_for(incident_id, message["sequence"]), [expected])
+    unchanged_by_message(before, workbench.records(incident_id))
+
+
+@pytest.mark.parametrize("initial", ["published", "incomplete"])
+def test_p2_idle_relay_is_idempotent_and_keeps_conversation_across_runs(
+    workbench, initial
+):
+    """A10/B3/B4/B8, D3/D7a, R1–R5 including the r2 look-back."""
+    scenario = workbench.from_alert(f"workbench-p2-relay-{initial}")
+    incident_id = UUID(scenario.subject_id)
+
+    def initial_report(call):
+        report = json.loads(report_from_transcript(call).content)
+        if initial == "incomplete":
+            report.update(assessment_status="incomplete", conclusion="inconclusive")
+        return reply(content=json.dumps(report))
+
+    workbench.run(scenario, [tool_round(), initial_report])
+    original = workbench.records(incident_id)
+    if initial == "incomplete":
+        assert original["incident"]["conclusion"] is None
+        assert current_run(workbench, incident_id)["state"] == "waiting_human"
+        assert workbench.terminal(incident_id)["handoff_reasons"] == [
+            "INCOMPLETE_INVESTIGATION"
+        ]
+    for kind in ("follow_up", "correct"):
+        workbench.legacy_input(incident_id, kind)
+    legacy = [
+        row
+        for row in workbench.inputs(incident_id)
+        if row["kind"] in {"follow_up", "correct"}
+    ]
+    workbench.relay()
+    workbench.relay()
+    assert len(workbench.runs(incident_id)) == 1, (
+        "B3: historical input kinds are not unread messages"
+    )
+    assert workbench.unread(incident_id) == []
+
+    key = f"p2-first-message-{incident_id}"
+    admitted(workbench.message(incident_id, "先说明两个可选方案。", key=key))
+    first_seq = last_message(workbench, incident_id)["sequence"]
+    first_run = current_run(workbench, incident_id)
+    admitted(workbench.message(incident_id, "先说明两个可选方案。", key=key))
+    assert len(workbench.runs(incident_id)) == 2
+    assert (
+        len([row for row in workbench.inputs(incident_id) if row["kind"] == "message"])
+        == 1
+    )
+    conversation_input(
+        workbench,
+        incident_id,
+        floor=max(row["input_watermark"] for row in original["runs"]),
+        mode="report_optional",
+    )
+    if initial == "incomplete":
+        old_run = next(
+            row
+            for row in workbench.runs(incident_id)
+            if row["run_id"] != first_run["run_id"]
+        )
+        assert old_run["state"] == "cancelled", (
+            "A10: retire the inactive handoff before relay"
+        )
+    prior = answer(first_seq, f"可选方案一是等待，方案二是复核流量。{incident_id}")
+    rejected_text = f"invalid-reply-{incident_id}"
+    private_text = f"private-protocol-{incident_id}"
+    observed = {}
+
+    def reply_then_queue_second(call):
+        observed["post"] = workbench.message(
+            incident_id, "展开你刚才建议的第二个方案。"
+        )
+        observed["runs"] = workbench.runs(incident_id)
+        return reply(
+            content=json.dumps(
+                {
+                    "schema_version": "m0-response-v1",
+                    "report": None,
+                    "replies": [prior, answer(first_seq + 1000, rejected_text)],
+                }
+            ),
+            reasoning=private_text,
+        )
+
+    workbench.run(scenario, [reply_then_queue_second])
+    admitted(observed["post"])
+    assert len(observed["runs"]) == 2, (
+        "R5: a message after freeze waits for the next relay"
+    )
+    assert current_run(workbench, incident_id)["state"] == "completed"
+    assert workbench.terminal(incident_id)["execution"] == "answered"
+    second_seq = last_message(workbench, incident_id)["sequence"]
+    assert [row["sequence"] for row in workbench.unread(incident_id)] == [second_seq]
+    floor = max(row["input_watermark"] for row in workbench.runs(incident_id))
+
+    workbench.relay()
+    successor = current_run(workbench, incident_id)
+    workbench.relay()
+    assert len(workbench.runs(incident_id)) == 3, (
+        "idle unread input opens exactly one successor"
+    )
+    assert current_run(workbench, incident_id)["run_id"] == successor["run_id"]
+    assert successor["run_id"] != first_run["run_id"]
+    conversation_input(workbench, incident_id, floor=floor, mode="report_optional")
+    assert any(
+        all(item.get(key) == value for key, value in prior.items())
+        for item in dictionaries(successor["input"])
+    ), "B8: the successor input must carry the prior validated reply"
+    input_text = json.dumps(successor["input"], ensure_ascii=False)
+    assert rejected_text not in input_text and private_text not in input_text
+
+    _, model = workbench.run(
+        scenario, [response(replies=[answer(second_seq, "第二个方案是复核流量。")])]
+    )
+    sent = json.dumps(model.calls[0].messages, ensure_ascii=False)
+    assert prior["text"] in sent, "the next model request needs the previous answer"
+    assert rejected_text not in sent and private_text not in sent
+    inputs = model_inputs(model.calls[0])
+    assert any(
+        item["sequence"] == second_seq and item.get("new") is True for item in inputs
+    )
+    assert all(not item.get("new") for item in inputs if item["sequence"] <= floor)
+    assert [
+        row
+        for row in workbench.inputs(incident_id)
+        if row["kind"] in {"follow_up", "correct"}
+    ] == legacy
+    assert workbench.unread(incident_id) == []
+    unchanged_by_message(original, workbench.records(incident_id))
+
+
+@pytest.mark.parametrize(
+    "phase", ["before_decision", "after_manual", "revise_during_watch"]
+)
+def test_p2_messages_preserve_recovery_authority_and_session(workbench, phase):
+    """A7/D4: authorization follows the publishing Run, never a chat Run."""
+    scenario = workbench.published(f"workbench-p2-watch-{phase}")
+    incident_id = UUID(scenario.subject_id)
+    workbench.enable_observation()
+    if phase == "after_manual":
+        admitted(
+            workbench.control(
+                incident_id, "register_remediation", revision="checkout:human-fix"
+            )
+        )
+        assert (
+            workbench.observation(incident_id)["sessions"][0]["authorization_source"]
+            == "post_remediation"
+        )
+        workbench.expire_watch(incident_id)
+    elif phase == "revise_during_watch":
+        workbench.automatic_observation()
+        assert len(workbench.observation(incident_id)["sessions"]) == 1
+    before = workbench.records(incident_id)
+    report = json.loads(workbench.terminal(incident_id)["report_content"])
+
+    admitted(workbench.message(incident_id, "说明当前结论，并按需要更新报告。"))
+    seq = last_message(workbench, incident_id)["sequence"]
+    assert current_run(workbench, incident_id)["state"] == "queued"
+    unchanged_by_message(before, workbench.records(incident_id))
+    if phase == "before_decision":
+        # The first conclusion qualifies even while the chat Run is queued.
+        workbench.automatic_observation()
+        watching = workbench.observation(incident_id)
+        assert len(watching["sessions"]) == 1
+        assert watching["sessions"][0]["state"] == "authorized"
+        assert watching["sessions"][0]["authorization_source"] == "automatic"
+        assert (
+            len(
+                [
+                    row
+                    for row in watching["authorizations"]
+                    if row["state"] == "authorized"
+                ]
+            )
+            == 1
+        )
+    else:
+        watching = before["observation"]
+
+    if phase == "revise_during_watch":
+        report["summary"] = f"续接调查修订后的结论 {incident_id}"
+    else:
+        report = None
+    workbench.run(
+        scenario, [response(replies=[answer(seq, "结论已说明。")], report=report)]
+    )
+    workbench.automatic_observation()
+    workbench.automatic_observation()
+
+    after = workbench.records(incident_id)
+    assert (
+        after["incident"]["control_generation"]
+        == before["incident"]["control_generation"]
+    )
+    assert after["incident"]["mode"] == before["incident"]["mode"]
+    assert after["incident"]["lifecycle"] == "observing_recovery"
+    assert_replies(
+        workbench.replies_for(incident_id, seq), [answer(seq, "结论已说明。")]
+    )
+    assert after["observation"]["sessions"] == watching["sessions"], (
+        "the same observation session must survive"
+    )
+    assert after["observation"]["samples"] == watching["samples"]
+    assert after["observation"]["endings"] == watching["endings"]
+    if phase == "after_manual":
+        assert not [
+            row
+            for row in after["observation"]["authorizations"]
+            if row["state"] == "authorized"
+        ]
+        assert not [
+            row
+            for row in after["controls"]
+            if row["action"] == "auto_authorize_observation"
+        ]
+    else:
+        assert after["observation"]["authorizations"] == watching["authorizations"]
+        assert (
+            len(
+                [
+                    row
+                    for row in after["controls"]
+                    if row["action"] == "auto_authorize_observation"
+                ]
+            )
+            == 1
+        )
+    if phase == "revise_during_watch":
+        assert workbench.terminal(incident_id)["execution"] == "completed"
+        assert (
+            workbench.workbench.snapshot(incident_id)["report"]["summary"]
+            == report["summary"]
+        )
+        assert (
+            after["incident"]["conclusion_bytes"]
+            != before["incident"]["conclusion_bytes"]
+        )
+    else:
+        assert workbench.terminal(incident_id)["execution"] == "answered"
+        assert (
+            after["incident"]["conclusion_bytes"]
+            == before["incident"]["conclusion_bytes"]
+        )
