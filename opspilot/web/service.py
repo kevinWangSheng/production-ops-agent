@@ -106,7 +106,7 @@ from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
-from opspilot.web.incident_list import list_page
+from opspilot.web.incident_list import list_page, page_of_items
 from opspilot.web.store import (
     ControlAudit,
     IncidentListItem,
@@ -2157,18 +2157,33 @@ class Workbench:
         (UI redesign U6); empty without a registry that lists keys."""
         return self._registry_keys()
 
-    def incident_list(self) -> dict[str, Any]:
-        """The list page (UI redesign 3.2): one store query, the stored
-        conclusion parsed here with the incident page's ``_report_view``. A
-        store without the list-page read (the in-memory test store) shows the
-        summaries alone."""
-        reader = getattr(self.incidents, "list_incident_items", None)
-        items = (
-            reader()
-            if reader is not None
-            else tuple(IncidentListItem(s) for s in self.incidents.list_incidents())
-        )
-        return list_page(items, report_of=_report_view, targets=self.registry_keys())
+    def incident_list(
+        self,
+        *,
+        tab: str = "needs_human",
+        service: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+    ) -> dict[str, Any]:
+        """The list page (web UX spec 3.7): one page of one tab with the
+        whole-database tab counts, all from the store's ``list_page`` (three
+        queries in one snapshot). A store without it (an older test double)
+        has its rows filtered here with the same rules."""
+        reader = getattr(self.incidents, "list_page", None)
+        if reader is not None:
+            result = reader(tab=tab, service=service, q=q, page=page)
+        else:
+            items_reader = getattr(self.incidents, "list_incident_items", None)
+            items = (
+                items_reader(limit=None)
+                if items_reader is not None
+                else tuple(
+                    IncidentListItem(s)
+                    for s in self.incidents.list_incidents(limit=10_000)
+                )
+            )
+            result = page_of_items(items, tab=tab, service=service, q=q, page=page)
+        return list_page(result, q=q, targets=self.registry_keys())
 
     def incident_subject(self, incident_id: UUID) -> dict[str, Any] | None:
         """What an incident is about, read like its list row (UI redesign

@@ -1,45 +1,52 @@
-"""The incident list page's view (UI redesign contract r2, 3.2 and D11).
+"""The incident list page's view (web UX spec 2026-11-16, section 3).
 
-Pure functions over the rows one list query returned
-(``DurableIncidentStore.list_incident_items``): no store access, so the page
-costs one query whatever the row count (list contract 3). The human status
-is added in front of the four stored words, never instead of them (U5); the
-mapping table is in the task record ``docs/tasks/2026-11-15-web-ui-redesign.md``.
+Pure functions over one page the store read
+(``DurableIncidentStore.list_page``): no store access, so the page costs the
+same three queries whatever the row count. ``status_of`` is the D11 mapping
+(task record ``docs/tasks/2026-11-15-web-ui-redesign.md``); the store's SQL
+``CASE`` mirrors its group, and a contract test holds the two together.
 
 Nothing here depends on the request time: two renders of the same rows are
-identical text (``tests/acceptance/test_m1_04_alert_intake.py``, D13).
+identical text (``tests/acceptance/test_m1_04_alert_intake.py``, D13). Ages
+are absolute ``<time>`` values; the browser writes the relative words.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlencode
 
-from opspilot.web.store import IncidentListItem
+from opspilot.web.store import (
+    LIST_PER_PAGE,
+    LIST_QUERY_CHARS,
+    LIST_TABS,
+    IncidentListItem,
+    IncidentPage,
+)
 
 NEEDS_HUMAN = "needs_human"
 IN_PROGRESS = "in_progress"
 CLOSED = "closed"
 
-GROUP_TITLES = {
-    NEEDS_HUMAN: "Needs a human",
-    IN_PROGRESS: "In progress, no action needed",
-    CLOSED: "Closed",
+TAB_TITLES = {
+    "needs_human": "Needs a human",
+    "in_progress": "In progress",
+    "resolved": "Resolved",
+    "closed": "Closed",
+    "all": "All",
 }
 
-#: The Agent's own rating (``investigation/reports.py``) with the fixed
-#: half sentence the list mock r2 uses; code checks citations, not the level.
-LEVELS = {
-    "supported": ("Supported", "strongest of three levels"),
-    "partial": ("Partial", "findings, cause unresolved"),
-    "inconclusive": ("Inconclusive", "weakest level"),
-}
+#: Spec section 2: long text is clamped to two lines on the page and kept
+#: whole, up to this many characters, in the ``title`` attribute.
+TITLE_CHARS = 500
 
 _ACTIVE_RUN = {"queued", "running"}
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\"'`])")
-_SUMMARY_CHARS = 320
+_PAGE = re.compile(r"[0-9]+")
+#: The largest page a query string asks for; longer numbers saturate here.
+PAGE_MAX = 999_999_999
 
 
 def status_of(item: IncidentListItem) -> dict[str, Any]:
@@ -48,6 +55,7 @@ def status_of(item: IncidentListItem) -> dict[str, Any]:
     First match wins (D11 mapping table in the task record). Closed comes
     first so a cancelled-then-closed incident reads as closed; ownership is
     checked before ``waiting_human`` because a take-over parks the Run there.
+    The store's ``_PAGE_GROUP`` SQL repeats the group column of this order.
     """
     s = item.summary
     run = s.run_state
@@ -132,156 +140,226 @@ def _status(
     return {"group": group, "todo": todo, "words": words, "detail": detail}
 
 
-def subject_of(item: IncidentListItem) -> dict[str, Any]:
-    """What the row is about: the service and alert name for an alert
-    incident, the question and target for a submitted one."""
-    s = item.summary
-    service = None
+def service_of(item: IncidentListItem) -> str | None:
+    """``namespace/workload`` of the alert, else the bound target's
+    ``resource_uid`` (store ``_PAGE_SERVICE``)."""
     if item.alert_namespace and item.alert_workload:
-        service = f"{item.alert_namespace}/{item.alert_workload}"
-    if item.alert_name or service:
-        return {
-            "kind": "alert",
-            "title": service or item.alert_name,
-            "alert_name": item.alert_name if service else None,
-            "target": None,
-        }
-    if item.question:
-        return {
-            "kind": "question",
-            "title": _clip(" ".join(item.question.split()), 140),
-            "alert_name": None,
-            "target": s.target_uid,
-        }
-    return {
-        "kind": "none",
-        "title": f"Incident {str(s.incident_id)[:8]}",
-        "alert_name": None,
-        "target": s.target_uid,
-    }
+        return f"{item.alert_namespace}/{item.alert_workload}"
+    return item.summary.target_uid or None
 
 
-def conclusion_of(
-    item: IncidentListItem,
-    report_of: Callable[[Mapping[str, Any] | None], Mapping[str, Any] | None],
-) -> dict[str, Any]:
-    """Level, its half sentence and the summary's first sentence; a stored
-    conclusion that does not parse says so instead of guessing a level."""
-    if not item.summary.concluded:
-        running = item.summary.run_state in _ACTIVE_RUN
-        return {
-            "level": None,
-            "words": "No conclusion yet" if running else "No conclusion",
-            "why": None,
-            "summary": None,
-        }
-    report = report_of(item.conclusion) if item.conclusion is not None else None
-    level = (
-        LEVELS.get(str(report.get("conclusion")))
-        if report and report.get("parsed")
-        else None
-    )
-    if level is None or report is None:
-        return {
-            "level": None,
-            "words": "Concluded",
-            "why": "level not in the record",
-            "summary": None,
-        }
-    summary = report.get("summary")
-    return {
-        "level": report.get("conclusion"),
-        "words": level[0],
-        "why": level[1],
-        "summary": first_sentence(summary) if isinstance(summary, str) else None,
-    }
-
-
-def recovery_of(item: IncidentListItem) -> dict[str, Any]:
-    """The latest recovery session in fixed words."""
-    state = item.recovery_state
-    if state is None:
-        return {"words": "Not started", "detail": None, "active": False}
-    if state == "authorized":
-        count = item.recovery_samples or 0
-        return {
-            "words": "Watching",
-            "detail": f"{count} sample{'' if count == 1 else 's'}",
-            "active": True,
-        }
-    ended = clock(item.recovery_ended_at)
-    if item.recovery_ended_reason == "recovery_confirmed":
-        return {"words": "Confirmed", "detail": ended, "active": True}
-    return {
-        "words": "Ended, not confirmed",
-        "detail": item.recovery_ended_reason,
-        "active": False,
-    }
-
-
-def first_sentence(text: str) -> str:
-    flat = " ".join(text.split())
-    head = _SENTENCE_END.split(flat, maxsplit=1)[0]
-    return _clip(head, _SUMMARY_CHARS)
+def title_of(item: IncidentListItem) -> str:
+    """The row's title (spec 3.2): the alert's ``summary``, its
+    ``alertname``, the question, or ``Incident <short id>``; whitespace
+    folded, at most ``TITLE_CHARS`` characters."""
+    for text in (item.alert_summary, item.alert_name, item.question):
+        if text and text.strip():
+            return _clip(" ".join(text.split()), TITLE_CHARS)
+    return f"Incident {str(item.summary.incident_id)[:8]}"
 
 
 def _clip(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    cut = text[:limit].rsplit(" ", 1)[0].rstrip(",;:")
-    return cut + "…"
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
-def clock(value: datetime | None) -> str | None:
-    return None if value is None else _utc(value).strftime("%H:%M:%S")
+def stamp(value: datetime | None) -> dict[str, str] | None:
+    """A time for ``ui.time``: ISO value, full and minute UTC text."""
+    if value is None:
+        return None
+    t = _utc(value)
+    return {
+        "iso": t.isoformat(),
+        "full": t.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "short": t.strftime("%Y-%m-%d %H:%M UTC"),
+    }
+
+
+# -- request parameters (spec 3.4) -------------------------------------------
+
+
+def parse_query(params: Mapping[str, str]) -> dict[str, Any]:
+    """The list's URL state with the fallbacks of 3.4: an unknown ``tab``
+    is the default, ``q`` is stripped and cut to 200 characters, ``page``
+    that is not a positive integer is 1. ``service`` is checked against the
+    store's values by the store."""
+    tab = params.get("tab") or LIST_TABS[0]
+    if tab not in LIST_TABS:
+        tab = LIST_TABS[0]
+    # NUL cannot reach a Postgres text parameter; drop it rather than fail.
+    service = (params.get("service") or "").replace("\x00", "").strip() or None
+    text = (params.get("q") or "").replace("\x00", "")
+    q = text.strip()[:LIST_QUERY_CHARS].strip() or None
+    raw = params.get("page") or ""
+    # ASCII digits only: str.isdigit() and int() also take fullwidth and
+    # superscript digits. Leading zeros are ignored; a number too long to
+    # be a page saturates, so it reads like any page past the end, which
+    # the store clamps to the last page.
+    if _PAGE.fullmatch(raw):
+        digits = raw.lstrip("0")
+        page = PAGE_MAX if len(digits) > 9 else int(digits or "0")
+    else:
+        page = 1
+    return {"tab": tab, "service": service, "q": q, "page": max(page, 1)}
+
+
+# -- the same page without SQL (stores without ``list_page``) ----------------
+
+
+def _matches(item: IncidentListItem, q: str) -> bool:
+    needle = q.lower()
+    for text in (
+        item.question,
+        item.alert_name,
+        item.alert_summary,
+        service_of(item),
+    ):
+        if text and needle in text.lower():
+            return True
+    return str(item.summary.incident_id).startswith(needle)
+
+
+def _in_tab(item: IncidentListItem, tab: str) -> bool:
+    if tab in (NEEDS_HUMAN, IN_PROGRESS):
+        return bool(status_of(item)["group"] == tab)
+    if tab in ("resolved", "closed"):
+        return item.summary.lifecycle == tab
+    return True
+
+
+def page_of_items(
+    items: Iterable[IncidentListItem],
+    *,
+    tab: str = LIST_TABS[0],
+    service: str | None = None,
+    q: str | None = None,
+    page: int = 1,
+    per_page: int = LIST_PER_PAGE,
+) -> IncidentPage:
+    """``DurableIncidentStore.list_page`` over rows already in memory, with
+    the same fallbacks; ``items`` is every incident, newest first."""
+    rows = list(items)
+    tab = tab if tab in LIST_TABS else LIST_TABS[0]
+    services = tuple(sorted({s for s in map(service_of, rows) if s}))[:200]
+    service = service if service in services else None
+    kept = [
+        item
+        for item in rows
+        if (service is None or service_of(item) == service)
+        and (not q or _matches(item, q))
+    ]
+    counts = {key: sum(1 for item in kept if _in_tab(item, key)) for key in LIST_TABS}
+    pages = max(1, -(-counts[tab] // per_page))
+    page = min(max(page, 1), pages)
+    shown = [item for item in kept if _in_tab(item, tab)]
+    start = (page - 1) * per_page
+    return IncidentPage(
+        items=tuple(shown[start : start + per_page]),
+        counts=counts,
+        services=services,
+        tab=tab,
+        service=service,
+        page=page,
+        pages=pages,
+    )
+
+
+# -- the page ------------------------------------------------------------------
+
+
+def _href(tab: str, service: str | None, q: str | None, page: int = 1) -> str:
+    params: list[tuple[str, str]] = [("tab", tab)]
+    if service:
+        params.append(("service", service))
+    if q:
+        params.append(("q", q))
+    if page > 1:
+        params.append(("page", str(page)))
+    return "/?" + urlencode(params)
+
+
+def row_of(item: IncidentListItem) -> dict[str, Any]:
+    s = item.summary
+    status = status_of(item)
+    return {
+        "item": s,
+        "id": str(s.incident_id),
+        "short_id": str(s.incident_id)[:8],
+        "title": title_of(item),
+        "alert_name": item.alert_name,
+        "status": status,
+        "service": service_of(item),
+        "related_short": None
+        if s.related_incident_id is None
+        else str(s.related_incident_id)[:8],
+        "postmortem_href": None
+        if status["todo"] != "Review postmortem"
+        else f"/postmortems/{item.postmortem_id}/versions/{item.postmortem_version}",
+        "created": stamp(s.created_at),
+    }
 
 
 def list_page(
-    items: Iterable[IncidentListItem],
+    result: IncidentPage,
     *,
-    report_of: Callable[[Mapping[str, Any] | None], Mapping[str, Any] | None],
+    q: str | None = None,
     targets: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    groups: dict[str, list[dict[str, Any]]] = {key: [] for key in GROUP_TITLES}
-    total = 0
-    for item in items:
-        total += 1
-        s = item.summary
-        status = status_of(item)
-        created = None if s.created_at is None else _utc(s.created_at)
-        groups[status["group"]].append(
-            {
-                "item": s,
-                "id": str(s.incident_id),
-                "short_id": str(s.incident_id)[:8],
-                "status": status,
-                "subject": subject_of(item),
-                "conclusion": conclusion_of(item, report_of),
-                "recovery": recovery_of(item),
-                "related_short": None
-                if s.related_incident_id is None
-                else str(s.related_incident_id)[:8],
-                "postmortem_href": None
-                if status["todo"] != "Review postmortem"
-                else f"/postmortems/{item.postmortem_id}/versions/{item.postmortem_version}",
-                "opened_date": None
-                if created is None
-                else created.strftime("%Y-%m-%d"),
-                "opened_time": None
-                if created is None
-                else created.strftime("%H:%M:%S"),
-            }
-        )
+    """Rows, tabs, pager and filters for ``index.html`` (spec 3.1-3.5)."""
+    service = result.service
+    tab = result.tab
+    counts = result.counts
+    total = counts[tab]
+    first = 0 if total == 0 else (result.page - 1) * LIST_PER_PAGE + 1
+    last = min(result.page * LIST_PER_PAGE, total)
+    filtered = bool(service or q)
+    if counts["all"] == 0 and not filtered:
+        empty = "none"
+    elif total == 0 and filtered:
+        empty = "filtered"
+    elif total == 0:
+        empty = "tab"
+    else:
+        empty = None
     return {
-        "total": total,
-        "groups": [
-            {"key": key, "title": GROUP_TITLES[key], "rows": rows}
-            for key, rows in groups.items()
+        "rows": [row_of(item) for item in result.items],
+        "tabs": [
+            {
+                "key": key,
+                "title": TAB_TITLES[key],
+                "count": f"{counts[key]:,}",
+                "href": _href(key, service, q),
+                "current": key == tab,
+            }
+            for key in LIST_TABS
         ],
-        "counts": {key: len(rows) for key, rows in groups.items()},
+        "tab": tab,
+        "tab_title": TAB_TITLES[tab],
+        "counts": dict(counts),
+        "empty": empty,
+        "pager": {
+            "first": f"{first:,}",
+            "last": f"{last:,}",
+            "total": f"{total:,}",
+            "page": f"{result.page:,}",
+            "pages": f"{result.pages:,}",
+            "many": result.pages > 1,
+            "prev": None
+            if result.page <= 1
+            else _href(tab, service, q, result.page - 1),
+            "next": None
+            if result.page >= result.pages
+            else _href(tab, service, q, result.page + 1),
+        },
+        "filters": {
+            "service": service,
+            "q": q or "",
+            "services": result.services,
+            "active": filtered,
+            "clear_href": _href(tab, None, None),
+        },
         "targets": tuple(targets),
     }

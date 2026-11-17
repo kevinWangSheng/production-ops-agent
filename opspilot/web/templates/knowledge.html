@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{#- D-L2: the Knowledge nav item comes later; until then no item is current. -#}
+{% set nav = "knowledge" %}
 {% set e = page.entry %}
 {% block title %}Knowledge entry {{ e.entry_id }}{% endblock %}
 {% block body %}
