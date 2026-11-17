@@ -69,7 +69,7 @@ def _detail(app, incident) -> str:
 
 
 def _index(app) -> str:
-    response = call(app, "GET", "/", headers=basic())
+    response = call(app, "GET", "/?tab=all", headers=basic())
     assert response.status == 200
     return response.text
 
