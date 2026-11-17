@@ -59,6 +59,17 @@ _DELIVERY_COLUMNS = (
     "incident_id,actor,received_at,raw_sha256,annotations_sha256,"
     "annotation_revision,alert_json,truncated,payload_state"
 )
+_PRE_0023_DELIVERY_COLUMNS = _DELIVERY_COLUMNS.removesuffix(",payload_state")
+
+
+def _delivery_columns(cur: Any) -> str:
+    # ``payload_state`` arrives with 0023; a schema downgraded below it reads
+    # back without the column, which ``mark_cleaned`` treats as not cleaned.
+    present = cur.execute(
+        "SELECT 1 FROM pg_attribute WHERE attrelid='opspilot_alert_deliveries'::regclass "
+        "AND attname='payload_state' AND NOT attisdropped"
+    ).fetchone()
+    return _DELIVERY_COLUMNS if present else _PRE_0023_DELIVERY_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -164,7 +175,7 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
         deliveries = [
             mark_cleaned(row)
             for row in cur.execute(
-                f"SELECT {_DELIVERY_COLUMNS} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
+                f"SELECT {_delivery_columns(cur)} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
                 (subject,),
             ).fetchall()
         ]
