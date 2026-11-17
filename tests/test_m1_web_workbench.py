@@ -15,6 +15,7 @@ import pytest
 
 from opspilot.persistence import PersistenceError
 from opspilot.web import MemoryEventLog
+from tests.m1_incident_control_support import element_text
 from tests.m1_investigation_support import (
     reply,
     report_from_transcript,
@@ -535,14 +536,15 @@ def test_submitted_incident_is_investigated_and_the_report_is_shown_with_evidenc
     assert 'id="run-state">completed' in page.text
     assert 'id="concluded">concluded' in page.text
     assert workbench.list_incidents()[0].concluded is True
-    assert "Facts (1)" in page.text and "Hypotheses (0)" in page.text
-    assert (
-        "Counter-evidence (0)" in page.text and "Rejected hypotheses (0)" in page.text
+    # D2 puts facts and counter-evidence in Key evidence; empty groups are
+    # omitted. Keep checking the actual claim and gap, rather than old counts.
+    assert element_text(page.text, "key-evidence") is not None
+    assert "The authorized metrics query returned a sample." in element_text(
+        page.text, "claim-F1"
     )
-    assert (
-        "Unknown / gaps (1)" in page.text
-        and "No HealthProfile was supplied." in page.text
-    )
+    for empty_group in ("claim-H1", "claim-C1", "claim-X1"):
+        assert element_text(page.text, empty_group) is None
+    assert element_text(page.text, "claim-G1") == "No HealthProfile was supplied."
     evidence_id = completed["evidence_ids"][0]
     assert f"/incidents/{incident}/evidence/{evidence_id}" in page.text
     assert outcome.report_content_sha256 in page.text
@@ -617,7 +619,8 @@ def test_incomplete_report_is_a_handoff_not_a_conclusion_and_control_stays_open(
     assert last.payload["report_sha256"] == outcome.report_content_sha256
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert 'id="handoff-report"' in page.text
-    assert "Incomplete investigation, not an uncertain finding." in page.text
+    assert "Unpublished handoff report, not the conclusion" in page.text
+    assert "Incomplete investigation" in page.text
     assert 'conclusion <span class="badge">inconclusive' in page.text
     follow = _control(
         app,

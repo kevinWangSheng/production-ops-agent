@@ -141,7 +141,10 @@ def test_without_a_health_profile_the_action_is_refused():
     assert workbench.incidents.sessions == []
     assert workbench.incidents.controls == []
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert "no HealthProfile configured" in page.text
+    # D2 removes the old control hint; registration remains unavailable in
+    # the action menu and there is still no authorized recovery watch.
+    assert 'id="act-register_remediation"' not in page.text
+    assert "No recovery observation authorized." in page.text
 
 
 def test_pause_and_cancel_withdraw_the_authorization():

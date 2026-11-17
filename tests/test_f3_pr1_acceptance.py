@@ -435,25 +435,27 @@ def test_each_committed_observation_resolves_with_its_provenance(five_class_run)
             assert view["data_as_of"] is None and view["freshness_seconds"] is None
 
 
-def test_the_report_keeps_the_five_claim_kinds_in_separate_groups(five_class_run):
-    # Step 2 on the workbench surface: each claim appears under its own
-    # heading and under no other.
+def test_the_report_keeps_the_five_claim_kinds_distinguishable(five_class_run):
+    # D2 §4.6 combines facts and labelled counter-evidence in Key evidence.
+    # Each claim still has its own public id and remains distinguishable.
     page = five_class_run["page"]
-    headings = {
-        "fact": "Facts (",
-        "hypothesis": "Hypotheses (",
-        "counter_evidence": "Counter-evidence (",
-        "rejected_hypothesis": "Rejected hypotheses (",
-        "recommendation": "Recommendations (",
+    from tests.m1_incident_control_support import element_text
+
+    ids = {
+        "fact": "claim-F1",
+        "hypothesis": "claim-H1",
+        "counter_evidence": "claim-C1",
+        "rejected_hypothesis": "claim-X1",
+        "recommendation": "claim-A1",
     }
-    sections = {}
-    for kind, heading in headings.items():
-        start = page.index(heading)
-        end = page.index("</section>", start)
-        sections[kind] = page[start:end]
+    sections = {kind: element_text(page, claim_id) for kind, claim_id in ids.items()}
     for kind, text in CLAIM_TEXT.items():
         for other, fragment in sections.items():
-            present = html.escape(text) in fragment or text in fragment
+            assert fragment is not None, ids[other]
+            present = text in fragment
             assert present is (other == kind), (kind, other)
-    for kind in headings:
-        assert f"{headings[kind]}1)" in page
+    key = element_text(page, "key-evidence")
+    assert CLAIM_TEXT["fact"] in key and CLAIM_TEXT["counter_evidence"] in key
+    assert "Counter-evidence" in sections["counter_evidence"]
+    assert "Hypotheses" in page and "Not proven" in page
+    assert "Ruled out" in page and "advisory, OpsPilot will not act" in page

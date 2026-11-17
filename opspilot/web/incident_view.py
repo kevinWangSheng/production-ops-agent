@@ -971,6 +971,7 @@ def page_view(
             for item in groups.get(key, [])
         ],
         "evidence_shown": EVIDENCE_SHOWN,
+        "level_words": LEVEL,
         "groups": groups,
         "blind": _blind(snapshot),
         "history": _history_rows(snapshot, numbers, day),

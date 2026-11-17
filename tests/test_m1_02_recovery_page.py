@@ -107,7 +107,8 @@ def test_the_page_separates_the_recovery_verdict_from_the_report_and_shows_the_b
     # independent recovery verdict
     assert 'id="recovery-verdict"' in text
     assert 'id="investigation-report"' in text
-    assert text.index('id="recovery-verdict"') < text.index('id="investigation-report"')
+    # D2 §4.1: Conclusion (#6) precedes the independent Recovery watch (#11).
+    assert text.index('id="investigation-report"') < text.index('id="recovery-verdict"')
     assert "recovery confirmed" in text
     assert "replay consistent" in text
     # the basis: every sample with its window and verdict, every reading

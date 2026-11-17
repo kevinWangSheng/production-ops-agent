@@ -171,7 +171,10 @@
     <p class="concl quiet" id="report-missing">{{ view.no_conclusion }}{% if snapshot.outcome and snapshot.outcome.reasons %} <code>{{ snapshot.outcome.reasons | join(", ") }}</code>{% endif %}</p>
     {% if snapshot.handoff_report and snapshot.handoff_report.parsed %}
     <p id="handoff-report" class="flag">Unpublished handoff report, not the conclusion</p>
-    <p class="concl sub2">{{ view.handoff_lede or snapshot.handoff_report.summary }}</p>
+    {% set hr = snapshot.handoff_report %}
+    <p class="concl sub2">{{ view.handoff_lede or hr.summary }}</p>
+    <p class="cmeta">{{ view.level_words.get(hr.conclusion, hr.conclusion) }}{% if hr.incomplete %} · <strong>Incomplete investigation</strong>{% endif %}</p>
+    <p class="prov" id="report-status"><code>Assessment <span class="badge">{{ hr.assessment_status }}</span> · conclusion <span class="badge">{{ hr.conclusion }}</span> · content sha256 {{ hr.content_sha256 }}</code></p>
     {% endif %}
   {% endif %}
 

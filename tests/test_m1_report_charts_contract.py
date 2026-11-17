@@ -811,7 +811,8 @@ class Page:
         self.root = parse(text)
 
     def charts_section(self):
-        return self.root.find("section", id="evidence-charts")
+        # D2 retains the public id above Key evidence without fixing its tag.
+        return self.root.find(id="evidence-charts")
 
     def figures(self):
         return self.root.find_all("figure", cls="evidence-chart")
@@ -892,7 +893,8 @@ def test_page_section_comes_after_the_report_and_keeps_existing_ids_and_links():
     link = f"/incidents/{page.incident}/evidence/ev-a"
     hrefs = [a.attrs.get("href") for a in page.root.find_all("a")]
     assert link in hrefs
-    assert "Facts (1)" in page.text and "Unknown / gaps (1)" in page.text
+    assert page.root.find(id="claim-F1") is not None
+    assert page.root.find(id="claim-G1").text() == "No HealthProfile was supplied."
 
 
 def test_page_figure_link_targets_the_incident_evidence_route():
@@ -981,7 +983,8 @@ def test_page_unavailable_reasons_do_not_break_the_page(reason, record):
     (node,) = page.placeholders()
     assert node.attrs["data-evidence-id"] == "ev-u"
     assert node.attrs["data-reason"] == reason
-    assert "Facts (1)" in page.text and "Unknown / gaps (1)" in page.text
+    assert page.root.find(id="claim-F1") is not None
+    assert page.root.find(id="claim-G1").text() == "No HealthProfile was supplied."
 
 
 def test_page_mixes_figures_and_placeholders_in_one_section():
