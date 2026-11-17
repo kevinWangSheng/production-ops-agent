@@ -31,7 +31,7 @@
 {#- Spec 4.5/4.7/4.8: one element for live and finished Runs; no nested
     <details> inside it (tests read up to its first </details>). -#}
 <details class="how" id="how">
-  <summary><span class="hs">{% if live %}Rounds{% else %}Run {{ view.run_no }}{% endif %} · <span id="how-count">{{ how.rounds | length }} round{{ "" if how.rounds | length == 1 else "s" }}</span> · {{ how.total }} quer{{ "y" if how.total == 1 else "ies" }} · {{ how.problems }} with a problem</span><span class="meta">{{ how.cited }} cited by the report · {{ run.budget_spent }} of {{ run.budget_limit }} model requests</span></summary>
+  <summary><span class="hs">{% if live %}Rounds{% else %}Run {{ view.run_no }}{% endif %} · <span id="how-count">{{ how.rounds | length }} round{{ "" if how.rounds | length == 1 else "s" }}</span> · <span id="how-q" data-n="{{ how.total }}">{{ how.total }} quer{{ "y" if how.total == 1 else "ies" }}</span> · <span id="how-p" data-n="{{ how.problems }}">{{ how.problems }} with a problem</span></span><span class="meta">{{ how.cited }} cited by the report · {{ run.budget_spent }} of {{ run.budget_limit }} model requests</span></summary>
   {% if snapshot.steps %}
   <div class="filt" role="group" aria-label="Filter queries">
     <button type="button" aria-pressed="true" data-f="all">All {{ how.total }}</button>
@@ -671,6 +671,13 @@
     else { q = el("span", "q"); }
     q.appendChild(el("code", null, data.tool || "tool")); q.appendChild(document.createTextNode(" → " + (data.status || "")));
     call.appendChild(q); li.querySelector(".calls").appendChild(call);
+    function bump(id, add, one, many) {
+      var c = document.getElementById(id); if (!c || !add) return;
+      var n = +(c.getAttribute("data-n") || 0) + 1; c.setAttribute("data-n", n);
+      c.textContent = n + " " + (n === 1 ? one : many);
+    }
+    bump("how-q", true, "query", "queries");
+    bump("how-p", data.status !== "ok", "with a problem", "with a problem");
     var tc = li.querySelector(".tc");
     if (tc) { var done = li.querySelectorAll(".calls .q").length; tc.textContent = done + " of " + Math.max(done, +(tc.getAttribute("data-planned") || 0)) + " tools"; }
   }

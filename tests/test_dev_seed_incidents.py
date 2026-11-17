@@ -125,6 +125,11 @@ class _Result:
     def fetchall(self):
         return self._rows
 
+    def fetchone(self):
+        # reset_rows probes a table before deleting from it; the double
+        # reports every probed table as holding seed rows.
+        return self._rows[0] if self._rows else {"?column?": 1}
+
 
 class _FakeConn:
     """Answers reset_rows' reads and records every statement."""
