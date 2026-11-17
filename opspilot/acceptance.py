@@ -145,7 +145,9 @@ def outcome_from_loop(
         scenario_id=scenario.scenario_id,
         final_state=state,
         evidence_ids=result.evidence_ids,
-        decision="handoff" if result.handoff else "report_available",
+        decision="handoff"
+        if result.handoff
+        else ("answered" if state == "answered" else "report_available"),
         actions=("read_only_query",) if result.evidence_ids else (),
         permissions=("read_only",),
         human_interaction="handoff" if result.handoff else None,
@@ -365,7 +367,16 @@ def outcome_from_durable(
         and (own is None or own["execution"] != "answered")
     ):
         raise ValueError("INVALID_DURABLE_SNAPSHOT")
-    conclusion = own if own is not None else published
+    # This Run's own result: its unpublished conclusion step, or the
+    # conclusion it published (a completed row). An earlier Run's published
+    # conclusion beside a parked continuation Run is not this Run's result
+    # (review r7 item 2); it only keeps ``report_available`` true.
+    if own is not None:
+        conclusion = own
+    elif row_state == "completed":
+        conclusion = published
+    else:
+        conclusion = None
 
     reasons: list[str] = []
     # A published report stays available whatever a later Run answered.
@@ -441,11 +452,14 @@ def outcome_from_durable(
     elif own is not None and own.get("handoff") is True:
         decision = "handoff"
     elif own is not None and own["execution"] == "answered":
-        decision = "report_available" if report_available else "answered"
+        decision = "answered"
+    elif row_state in {"waiting_human", "blocked"}:
+        # A parked Run is a handoff even beside an earlier Run's published
+        # report (review r7 item 2): ``report_available`` says the old report
+        # is still there, the decision says this Run handed off.
+        decision = "handoff"
     elif published is not None:
         decision = "handoff" if published.get("handoff") is True else "report_available"
-    elif row_state in {"waiting_human", "blocked"}:
-        decision = "handoff"
     else:
         decision = "durable_state"
     return IncidentOutcome(
@@ -501,7 +515,9 @@ def outcome_from_live_record(
         scenario_id=scenario.scenario_id,
         final_state=execution,
         evidence_ids=tuple(evidence),
-        decision="handoff" if handoff else "report_available",
+        decision="handoff"
+        if handoff
+        else ("answered" if execution == "answered" else "report_available"),
         actions=("read_only_query",) if evidence else (),
         permissions=("read_only",),
         human_interaction="handoff" if handoff else None,

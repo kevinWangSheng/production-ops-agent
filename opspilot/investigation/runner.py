@@ -164,12 +164,11 @@ class InvestigationRunner:
             if str(exc) != "INCONSISTENT_STATE":
                 raise
             return self._block_undecodable(incident_id)
-        # A published conclusion beside a queued/running current Run is a
-        # continuation Run answering a message (contract A1): it runs.
-        if snapshot["run"]["state"] in {"completed", "cancelled"} or (
-            snapshot["conclusion"] is not None
-            and snapshot["run"]["state"] not in {"queued", "running"}
-        ):
+        # Only the current Run's own row says it is done. A published
+        # conclusion beside it belongs to an earlier Run when the current one
+        # is a continuation answering a message (contract A1): that Run runs,
+        # or is reported handed off / swept like any other (review r7).
+        if snapshot["run"]["state"] in {"completed", "cancelled"}:
             return RunnerOutcome("already_completed")
         if snapshot["run"]["run_id"] in swept:
             return RunnerOutcome("handed_off", reason=DEADLINE_EXCEEDED)

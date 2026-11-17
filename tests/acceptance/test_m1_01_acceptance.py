@@ -454,3 +454,70 @@ def test_a_live_record_without_a_recorded_schema_exposes_no_report():
     ledger = {**ledger, "report_schema_version": None}
     outcome = outcome_from_live_record(scenario("real-deepseek"), ledger, report)
     assert outcome.report_available is False
+
+
+def test_a_swept_continuation_run_beside_an_earlier_report_is_a_visible_handoff():
+    """Review r7 item 2 (no timeout scenario in the workbench suite): a
+    continuation Run swept before its conclusion step sits beside an earlier
+    Run's published conclusion. The outcome keeps that report available and
+    still reports this Run's handoff and its reason."""
+    _first, published = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), report_from_transcript]
+    )
+    _result, snapshot = durable_snapshot(
+        [reply(tool_calls=[tool_call()], finish="tool_calls"), Crash()], publish=False
+    )
+    parked = _parked(snapshot)
+    parked["conclusion"] = published["conclusion"]
+    event = {
+        "run_id": parked["run"]["run_id"],
+        "parked": True,
+        "reasons": ["DEADLINE_EXCEEDED"],
+    }
+    outcome = outcome_from_durable(scenario("swept"), parked, handoff_events=[event])
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff" and outcome.human_interaction == "handoff"
+    assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
+    assert outcome.report_available is True
+
+
+def test_an_answered_loop_result_projects_as_answered():
+    """Review r7 item 3: ``outcome_from_loop`` and ``outcome_from_live_record``
+    name an answered Run's decision ``answered``, not ``report_available``."""
+    loop, request, _model, _transport, store, _sink = assemble(
+        replies=[
+            reply(
+                content=json.dumps(
+                    {
+                        "schema_version": "m0-response-v1",
+                        "replies": [
+                            {"to_input_seq": 1, "text": "hi", "evidence_ids": []}
+                        ],
+                        "report": None,
+                    }
+                )
+            )
+        ]
+    )
+    store._inputs.append(
+        {"sequence": 1, "kind": "message", "content": {"text": "hello"}}
+    )
+    request = replace(request, conversation={"floor": 0, "mode": "reply_only"})
+    result = loop.run(request)
+    outcome = outcome_from_loop(scenario("answered"), result)
+    assert outcome.final_state == "answered"
+    assert outcome.decision == "answered" and outcome.report_available is False
+    live = outcome_from_live_record(
+        scenario("answered"),
+        {
+            "model": "deepseek-flash",
+            "run_id": request.run_id,
+            "execution": result.execution,
+            "evidence_ids": list(result.evidence_ids),
+            "handoff": result.handoff,
+            "handoff_reasons": list(result.handoff_reasons),
+            "report_schema_version": None,
+        },
+        None,
+    )
+    assert live.final_state == "answered" and live.decision == "answered"
