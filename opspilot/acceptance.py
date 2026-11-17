@@ -395,11 +395,13 @@ def outcome_from_durable(
         evidence = _committed_evidence(snapshot)
     if row_state in _HUMAN_OR_BLOCKED:
         state = cast(OutcomeState, row_state)
-    elif row_state == "waiting_human" and loop_state == "completed":
+    elif row_state == "waiting_human" and loop_state in {"completed", "answered"}:
         # ADR-0005 §1: a parked Run is a handoff terminal, never ``completed``.
         # The loop's step may say completed while ``conclusion_publishable``
         # refused to publish it (digest or parse mismatch); the Run's
-        # observable outcome is the refusal, not the step's self-report.
+        # observable outcome is the refusal, not the step's self-report. The
+        # same holds for an ``answered`` step the Run never settled (a crash
+        # before ``settle_answered``, then the deadline sweep): the row wins.
         state = "failed"
     else:
         state = cast(OutcomeState, loop_state)
@@ -413,7 +415,9 @@ def outcome_from_durable(
             )
             or ("INCOMPATIBLE_STATE",)
         )
-    elif row_state == "waiting_human" and conclusion is None:
+    elif row_state == "waiting_human" and (
+        conclusion is None or conclusion["execution"] == "answered"
+    ):
         reasons.extend(
             _event_reasons(
                 handoff_events,
@@ -452,13 +456,14 @@ def outcome_from_durable(
         decision = "human_control"
     elif own is not None and own.get("handoff") is True:
         decision = "handoff"
+    elif row_state in {"waiting_human", "blocked"}:
+        # The Run row wins: a parked Run is a handoff even beside an earlier
+        # Run's published report (review r7 item 2) or its own unsettled
+        # ``answered`` step (r7 recheck); ``report_available`` still says
+        # whether an old report is there.
+        decision = "handoff"
     elif own is not None and own["execution"] == "answered":
         decision = "answered"
-    elif row_state in {"waiting_human", "blocked"}:
-        # A parked Run is a handoff even beside an earlier Run's published
-        # report (review r7 item 2): ``report_available`` says the old report
-        # is still there, the decision says this Run handed off.
-        decision = "handoff"
     elif published is not None:
         decision = "handoff" if published.get("handoff") is True else "report_available"
     else:

@@ -480,6 +480,40 @@ def test_a_swept_continuation_run_beside_an_earlier_report_is_a_visible_handoff(
     assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
     assert outcome.report_available is True
 
+    # r7 recheck: the Run committed its ``answered`` step, crashed before
+    # ``settle_answered`` and was swept. The row wins over the step.
+    loop, request, _model, _transport, store, _sink = assemble(
+        replies=[
+            reply(
+                content=json.dumps(
+                    {
+                        "schema_version": "m0-response-v1",
+                        "replies": [
+                            {"to_input_seq": 1, "text": "hi", "evidence_ids": []}
+                        ],
+                        "report": None,
+                    }
+                )
+            )
+        ]
+    )
+    store._inputs.append(
+        {"sequence": 1, "kind": "message", "content": {"text": "hello"}}
+    )
+    request = replace(request, conversation={"floor": 0, "mode": "reply_only"})
+    assert loop.run(request).execution == "answered"
+    unsettled = store.snapshot()
+    unsettled["run"]["state"] = "waiting_human"
+    unsettled["conclusion"] = published["conclusion"]
+    event = {**event, "run_id": unsettled["run"]["run_id"]}
+    outcome = outcome_from_durable(
+        scenario("swept-answered"), unsettled, handoff_events=[event]
+    )
+    assert outcome.final_state == "failed"
+    assert outcome.decision == "handoff" and outcome.human_interaction == "handoff"
+    assert outcome.handoff_reasons == ("DEADLINE_EXCEEDED",)
+    assert outcome.report_available is True
+
 
 def test_an_answered_loop_result_projects_as_answered():
     """Review r7 item 3: ``outcome_from_loop`` and ``outcome_from_live_record``
