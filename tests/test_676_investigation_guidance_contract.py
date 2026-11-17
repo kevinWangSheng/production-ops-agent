@@ -8,6 +8,7 @@ until that work lands.  Existing contract tests remain unchanged.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import fields
@@ -31,8 +32,14 @@ EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-d387f77762f5"
 BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
 EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-d467c4b436b0"
 CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
+# Public INVESTIGATION_METHOD text read from main 83b3b968, UTF-8, including
+# its leading space. D13 moves the background rule exclusively to ext.
+MAIN_INVESTIGATION_METHOD_SHA256 = (
+    "222e5fa74a8acd694fa369ef98e9b9e083c4e1f13036ed21952591ba26e1fcf3"
+)
 
-# D6-D9: each tuple describes ONE prose sentence, never a bag of words
+# D6-D9 as revised by D12-D14: each tuple describes ONE prose sentence,
+# never a bag of words
 # collected across the prompt or from the JSON report example.  Exact
 # sentence counts remain the implementer's existing census test's concern.
 SEMANTIC_RULES = {
@@ -48,15 +55,18 @@ SEMANTIC_RULES = {
             r"\b(?:as\s+hypothes(?:is|es)|hypothetical\w*|word\w*|phras\w*|label\w*)\b",
         ),
     ),
-    "hypothesis_cause_requires_partial": (
+    "supported_cause_requires_fact_not_hypothesis_alone": (
         "report",
         (
-            r"\b(?:if|when|whenever)\b",
+            r"\bsupported\b",
+            r"\b(?:requir\w*|needs?|must)\b",
+            r"\bfact\b",
             r"\bclaims?\b",
             r"\b(?:causes?|root[_ -]cause)\b",
+            r"\b(?:nam\w*|identif\w*|point\w*)\b",
+            r"\bobject\b",
             r"\bhypothes(?:is|es)\b",
-            r"\bconclusion\b",
-            r"\bpartial\b",
+            r"\b(?:not\s+(?:enough|sufficient)|insufficient|does\s+not\s+suffice)\b",
         ),
     ),
     "configuration_cause_requires_matching_failure_path": (
@@ -85,18 +95,61 @@ SEMANTIC_RULES = {
             r"\bpartial\b",
         ),
     ),
+    "alert_is_entry_and_preexisting_stable_errors_are_background": (
+        "kubernetes_guidance",
+        (
+            r"\balerts?\b",
+            r"\b(?:entry|starting|start|leads?|clues?)\b",
+            r"\bscope\b",
+            r"\b(?:stable|steady|unchanged)\b",
+            r"\b(?:before|prior|earlier)\b",
+            r"\b(?:deviat\w*|depart\w*|chang\w*|onset|began|started)\b",
+            r"\berrors?\b",
+            r"\bbackground\b",
+        ),
+    ),
+    "non_ok_views_cannot_support_absence_claims": (
+        "report",
+        (
+            r"\bno_data\b",
+            r"\b(?:error|timeout|denied)\b",
+            r"\b(?:never|cannot|does\s+not|do\s+not)\b",
+            r"\bsupport\w*\b",
+            r"\bfact\b",
+            r"\bcounter_evidence\b",
+            r"\brejected_hypothesis\b",
+            r"\b(?:absent|healthy|free\s+of\s+errors)\b",
+            r"\bempty\s+results?\b",
+            r"\b(?:only|merely)\b",
+            r"\bquer(?:y|ies)\b",
+            r"\b(?:nothing|no\s+matches)\b",
+        ),
+    ),
+    "empty_query_requires_gaps_or_direct_ok_evidence": (
+        "report",
+        (
+            r"\bquer(?:y|ies)\b",
+            r"\b(?:nothing|empty|no\s+matches)\b",
+            r"\bgaps\b",
+            r"\bor\b",
+            r"\bcit\w*\b",
+            r"\bok\b",
+            r"\bviews?\b",
+            r"\bdirect\w*\b",
+        ),
+    ),
 }
 
 # Hand-written contract-equivalent prose for testing the assertions
-# themselves on main, where the four new product sentences are still absent.
+# themselves on main, where the new product sentences are still absent.
 SEMANTIC_EXAMPLES = {
     "summary_fact_and_hypothesis_wording": (
         "In the summary, state as facts only what fact claims support, "
         "and phrase hypotheses as hypotheses."
     ),
-    "hypothesis_cause_requires_partial": (
-        "If the claim identifying the object as the cause is a hypothesis, "
-        "use conclusion partial rather than supported."
+    "supported_cause_requires_fact_not_hypothesis_alone": (
+        "Supported requires a fact claim that names that object as the cause; "
+        "a hypothesis alone is not enough."
     ),
     "configuration_cause_requires_matching_failure_path": (
         "Treat a setting as root cause only when its declared fault matches "
@@ -106,15 +159,30 @@ SEMANTIC_EXAMPLES = {
         "For a completed investigation with only event evidence supporting "
         "the cause, use conclusion partial."
     ),
+    "alert_is_entry_and_preexisting_stable_errors_are_background": (
+        "An alert is the entry point, not the scope: establish when the signal "
+        "began to deviate, and treat stable errors present before that deviation "
+        "as background."
+    ),
+    "non_ok_views_cannot_support_absence_claims": (
+        "A view whose status is no_data, error, timeout or denied never supports "
+        "a fact, counter_evidence or rejected_hypothesis, including a statement "
+        "that something is absent, healthy or free of errors: an empty result "
+        "shows only that this query matched nothing."
+    ),
+    "empty_query_requires_gaps_or_direct_ok_evidence": (
+        "Write what the query was and that it returned nothing in gaps, "
+        "or cite an ok view that shows it directly."
+    ),
 }
 
 SEMANTIC_WEAKENED_EXAMPLES = {
     "summary_fact_and_hypothesis_wording": (
         "In the summary, state as facts only what fact claims support."
     ),
-    "hypothesis_cause_requires_partial": (
-        "If the claim identifying the object as the cause is a hypothesis, "
-        "use conclusion supported."
+    "supported_cause_requires_fact_not_hypothesis_alone": (
+        "Supported requires a claim naming that object as the cause; "
+        "a hypothesis alone is enough."
     ),
     "configuration_cause_requires_matching_failure_path": (
         "Treat a setting as root cause; otherwise keep it as a hypothesis."
@@ -122,6 +190,15 @@ SEMANTIC_WEAKENED_EXAMPLES = {
     "event_only_partial_requires_completed_investigation": (
         "For an investigation with only event evidence supporting "
         "the cause, use conclusion partial."
+    ),
+    "alert_is_entry_and_preexisting_stable_errors_are_background": (
+        "An alert is the entry point, not the scope: stable errors are affected."
+    ),
+    "non_ok_views_cannot_support_absence_claims": (
+        "A no_data, error, timeout or denied view never supports a fact."
+    ),
+    "empty_query_requires_gaps_or_direct_ok_evidence": (
+        "Write what the query was and that it returned nothing in gaps."
     ),
 }
 
@@ -164,17 +241,32 @@ def _prose_without_examples(text: str) -> str:
     return prose
 
 
-def _require_sentence(text: str, patterns: tuple[str, ...]) -> tuple[int, int]:
-    """Require every pattern in a single sentence, and return its raw span."""
+def _prose_sentences(text: str) -> list[tuple[int, int, str]]:
     prose = _prose_without_examples(text)
+    sentences = []
     start = 0
     for boundary in re.finditer(r"(?<=[.!?])\s+|\Z", prose):
         end = boundary.start()
         sentence = prose[start:end].strip()
-        if sentence and all(re.search(pattern, sentence, re.I) for pattern in patterns):
-            return start, end
+        if sentence:
+            sentences.append((start, end, sentence))
         start = boundary.end()
+    return sentences
+
+
+def _require_sentence(text: str, patterns: tuple[str, ...]) -> tuple[int, int]:
+    """Require every pattern in a single sentence, and return its raw span."""
+    for start, end, sentence in _prose_sentences(text):
+        if all(re.search(pattern, sentence, re.I) for pattern in patterns):
+            return start, end
     raise AssertionError(f"no prose sentence satisfies {patterns!r}")
+
+
+def _forbid_sentence(text: str, patterns: tuple[str, ...]) -> None:
+    assert not any(
+        all(re.search(pattern, sentence, re.I) for pattern in patterns)
+        for _, _, sentence in _prose_sentences(text)
+    ), f"forbidden prose sentence satisfies {patterns!r}"
 
 
 def _require_semantic_sentence(text: str, rule: str) -> tuple[int, int]:
@@ -187,6 +279,25 @@ def _require_deletion_breaks_semantic_rule(text: str, rule: str) -> None:
     assert mutated != text
     with pytest.raises(AssertionError, match="no prose sentence"):
         _require_semantic_sentence(mutated, rule)
+
+
+def _require_no_data_rule(text: str) -> None:
+    """D14's quoted contract is two adjacent sentences, not one long sentence.
+
+    Also allow one sentence carrying both halves.  Unrelated prose elsewhere
+    in L2 must not supply the gaps/ok disposition for the no_data rule.
+    """
+    restriction = _require_semantic_sentence(
+        text, "non_ok_views_cannot_support_absence_claims"
+    )
+    disposition = _require_semantic_sentence(
+        text, "empty_query_requires_gaps_or_direct_ok_evidence"
+    )
+    spans = [(start, end) for start, end, _ in _prose_sentences(text)]
+    assert spans.index(disposition) in (
+        spans.index(restriction),
+        spans.index(restriction) + 1,
+    ), "no_data restriction must include or immediately precede its gaps/ok disposition"
 
 
 def _rendered_section(section: str) -> str:
@@ -230,7 +341,7 @@ def _registered_text(registration: Any) -> str:
     return " ".join(prose)
 
 
-def test_revision_contract_changes_only_the_declared_faces():
+def test_prompt_and_ext_tool_revisions_change():
     base = select_profile({PROFILE_ENV: "otel-demo"}).versions()
     extension = select_profile({PROFILE_ENV: "otel-demo-ext"}).versions()
 
@@ -240,6 +351,11 @@ def test_revision_contract_changes_only_the_declared_faces():
     assert base["prompt_revision"] != BASE_PROMPT_REVISION
     assert extension["prompt_revision"] != EXT_PROMPT_REVISION
     assert extension["tool_schema_revision"] != EXT_TOOL_SCHEMA_REVISION
+
+
+def test_base_tool_context_policy_and_report_schema_are_unchanged():
+    base = select_profile({PROFILE_ENV: "otel-demo"}).versions()
+    extension = select_profile({PROFILE_ENV: "otel-demo-ext"}).versions()
     assert base["tool_schema_revision"] == BASE_TOOL_SCHEMA_REVISION
 
     assert base["context_policy_revision"] == CONTEXT_POLICY_REVISION
@@ -306,13 +422,13 @@ def test_kubernetes_guidance_keeps_a7_guards_and_has_no_environment_terms():
 
 
 @pytest.mark.parametrize("rule", SEMANTIC_RULES)
-def test_d6_d9_required_semantics_are_present_in_one_prose_sentence(rule: str):
+def test_r2_required_semantics_are_present_in_one_prose_sentence(rule: str):
     section, _ = SEMANTIC_RULES[rule]
     _require_semantic_sentence(_rendered_section(section), rule)
 
 
 @pytest.mark.parametrize("rule", SEMANTIC_RULES)
-def test_d6_d9_deleting_the_required_sentence_breaks_the_same_assertion(rule: str):
+def test_r2_deleting_the_required_sentence_breaks_the_same_assertion(rule: str):
     section, _ = SEMANTIC_RULES[rule]
     _require_deletion_breaks_semantic_rule(_rendered_section(section), rule)
 
@@ -328,7 +444,7 @@ def test_semantic_matcher_self_check_rejects_examples_cross_sentence_and_deletio
     """
     sentence = SEMANTIC_EXAMPLES[rule]
     # Keep all other rules when deleting this one, especially the
-    # hypothesis -> partial rule when deleting the summary wording rule.
+    # supported-needs-fact rule when deleting the summary wording rule.
     rendered = d.render(
         "replay-candidate",
         model_requests=5,
@@ -395,21 +511,79 @@ def test_kubernetes_guidance_names_the_required_network_resources():
         )
 
 
-def test_preexisting_stable_errors_are_background_in_the_shared_method():
+def test_d13_base_investigation_method_is_byte_identical_to_main_83b3b968():
     method = _segments("replay-candidate")["investigation_method"].text
     rendered = d.render(
         "replay-candidate", model_requests=5, report_contract=REPORT_CONTRACT
     )
     assert method in rendered
-    _require_sentence(
-        method,
-        (
-            r"\bbackground\b",
-            r"\b(?:stable|steady|unchanged)\b",
-            r"\b(?:before|prior|earlier)\b",
-            r"\berrors?\b",
-        ),
+    assert hashlib.sha256(method.encode("utf-8")).hexdigest() == (
+        MAIN_INVESTIGATION_METHOD_SHA256
     )
+
+
+def test_d13_base_render_omits_the_ext_background_guidance():
+    rendered = d.render(
+        "replay-candidate", model_requests=5, report_contract=REPORT_CONTRACT
+    )
+    _forbid_sentence(
+        rendered,
+        SEMANTIC_RULES["alert_is_entry_and_preexisting_stable_errors_are_background"][
+            1
+        ],
+    )
+
+
+def test_d13_base_background_guard_rejects_an_injected_rule():
+    rendered = d.render(
+        "replay-candidate", model_requests=5, report_contract=REPORT_CONTRACT
+    )
+    rule = "alert_is_entry_and_preexisting_stable_errors_are_background"
+    patterns = SEMANTIC_RULES[rule][1]
+    _forbid_sentence(rendered, patterns)
+    with pytest.raises(AssertionError, match="forbidden prose sentence"):
+        _forbid_sentence(rendered + " " + SEMANTIC_EXAMPLES[rule], patterns)
+
+
+def test_d12_l2_does_not_bind_hypothesis_to_partial():
+    _forbid_sentence(
+        _rendered_section("report"), (r"\bhypothes(?:is|es)\b", r"\bpartial\b")
+    )
+
+
+def test_d12_old_hypothesis_partial_rule_is_rejected_and_removal_clears_it():
+    patterns = (r"\bhypothes(?:is|es)\b", r"\bpartial\b")
+    rendered = d.render(
+        "replay-candidate",
+        model_requests=5,
+        report_contract=" ".join(SEMANTIC_EXAMPLES.values()),
+    )
+    _forbid_sentence(rendered, patterns)
+    mutated = rendered + (
+        " When the claim that names that object as the cause is a hypothesis, "
+        "conclusion is partial, not supported."
+    )
+    with pytest.raises(AssertionError, match="forbidden prose sentence"):
+        _forbid_sentence(mutated, patterns)
+    start, end = _require_sentence(mutated, patterns)
+    _forbid_sentence(mutated[:start] + mutated[end:], patterns)
+
+
+def test_d14_non_ok_restriction_and_gaps_disposition_form_one_local_rule():
+    _require_no_data_rule(_rendered_section("report"))
+
+
+def test_d14_local_rule_self_check_rejects_deleting_either_sentence_or_separating_them():
+    restriction = SEMANTIC_EXAMPLES["non_ok_views_cannot_support_absence_claims"]
+    disposition = SEMANTIC_EXAMPLES["empty_query_requires_gaps_or_direct_ok_evidence"]
+    _require_no_data_rule(f"{restriction} {disposition}")
+    for mutated in (
+        restriction,
+        disposition,
+        f"{restriction} This unrelated sentence separates the rules. {disposition}",
+    ):
+        with pytest.raises(AssertionError):
+            _require_no_data_rule(mutated)
 
 
 @pytest.mark.parametrize(
