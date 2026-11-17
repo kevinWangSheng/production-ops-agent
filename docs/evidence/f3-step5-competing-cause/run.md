@@ -2,7 +2,7 @@
 
 两次真实 Run 的运行过程、时间线、trace 与余额见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)。本文件只记录审查者结论与证据的两项说明。
 
-> 2026-11-17（#695 + #690，r3 D21）：#676 合同 r2 的三份（`prompt-replay-candidate-8688f6e52275`，Run `8b06fee1`、`41b97848`、`9d3c1236`）移到了 [prompt-8688f6e52275/](prompt-8688f6e52275/)，内容未改；`run-1/`–`run-3/` 留给 r3 新 revision（`769bffec53cd`）的重跑，入库前本目录无当前 revision 的 Run。
+> 2026-11-17（#695 + #690，r3 D21）：#676 合同 r2 的三份（`prompt-replay-candidate-8688f6e52275`，Run `8b06fee1`、`41b97848`、`9d3c1236`）移到了 [prompt-8688f6e52275/](prompt-8688f6e52275/)，内容未改；`run-1/`–`run-3/` 留给 r3 新 revision（`860b743085d1`）的重跑，入库前本目录无当前 revision 的 Run。
 >
 > 2026-11-16（#676 r2，D11）：#676 第一版（`prompt-replay-candidate-14eb2a0a6afd`）的两份移到了 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)，内容未改；`run-1/`、`run-2/` 留给 r2 新 revision 的重跑，入库前本目录无当前 revision 的 Run。
 >

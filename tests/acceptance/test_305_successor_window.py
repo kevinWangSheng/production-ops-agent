@@ -385,7 +385,7 @@ def test_item8_tool_schema_and_prompt_revisions_are_unchanged():
     )
     # R7: no handoff note or prompt constant changes.
     assert investigation_versions()["prompt_revision"] == (
-        "prompt-replay-candidate-769bffec53cd"
+        "prompt-replay-candidate-860b743085d1"
     )
 
 

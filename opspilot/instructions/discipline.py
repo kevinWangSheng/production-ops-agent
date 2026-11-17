@@ -90,13 +90,13 @@ INVESTIGATION_METHOD: Final = (
     " Report the specific identities the evidence shows, such as exact service, operation, metric and label names, not generic examples."
     " If a named service, operation or metric returns nothing, compare the name with the names the tools list or have returned before treating it as absent; never query outside the authorized targets."
     " When the exact entity named has no data but a similarly named one does, report both facts: that nothing was found under the exact name, and what was found for the related entity, labeled as a different entity."
-    " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
-    " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
     " Before you call something unobservable, list the metric and label names that could show it and check them; a signal you did not look for is unchecked, not unobservable."
     " A time range with no samples is unknown, not zero; state the sampled times you rely on."
+    " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
+    " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
     " A service that is up or ready can still be failing; check its own error and latency signals before calling it healthy."
 )
-"""调查方法（10 句；#690 加第 8、9 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
+"""调查方法（10 句；#690 加第 6、7 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
 不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。
 （#676 r1 曾在此加「告警是入口不是范围」一句，r2 D13 移入 ``KUBERNETES_GUIDANCE``。）"""

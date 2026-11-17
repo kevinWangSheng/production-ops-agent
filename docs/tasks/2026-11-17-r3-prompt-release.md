@@ -31,15 +31,17 @@ PR-R（#686）用户裁决：U1=a（#456 七项断言由独立测试作者改写
 | PR-G 验收与合同测试 | Codex（codex-role test），不看实现 | `../poa-695-tests` / `test/695-guidance-contract` |
 | 独立审查 | Codex（codex-role review） | 只读 |
 
-## 验收计划（租机，两个 PR 合并后一次）
+## 验收计划（租机一次，在 PR-G 分支上跑）
+
+顺序（D21：新证据与代码同一 PR）：PR-R（#686）先合入 main；PR-G 分支随后 merge origin/main；唯一一次租机在含两处改动的 PR-G 分支上跑；证据提交进 PR-G；之后 PR-G 合并。
 
 阶段与通过条件见交接中的验收表（冒烟 9 次：S8、S14、S16 各 3；集成批 16 次；F3 ×3；全量 105）。全量门：root_cause_entity_pass ≥ 54/105、REPORT_INVALID ≤ 2、首答被拒 < 39。
 
 ## 证据
 
-- PR-G 实施（本地分支 `feature/695-setting-restart-guidance`）：新版本 base `prompt-replay-candidate-769bffec53cd` / `l1a-replay-candidate-4371f5d11c84`，ext `prompt-replay-candidate-k8s-e7ac6a855472` / `l1a-replay-candidate-k8s-8c374ab67ecc`；tool_schema（`otel-demo-a3a95a0f888e`、`otel-demo-ext-c63f058afb18`）与 context_policy 不变（select_profile 打印）。删掉新句、放回旧 :135 后 INVESTIGATION_METHOD 与 K8s 段 sha256 分别为 `222e5fa7…`、`1ff52ac3…`，即其余句逐字节不变。
+- PR-G 实施（本地分支 `feature/695-setting-restart-guidance`）：新版本 base `prompt-replay-candidate-860b743085d1` / `l1a-replay-candidate-454225cff16b`，ext `prompt-replay-candidate-k8s-1137251eea4d` / `l1a-replay-candidate-k8s-cfd71e12cb4a`；tool_schema（`otel-demo-a3a95a0f888e`、`otel-demo-ext-c63f058afb18`）与 context_policy 不变（select_profile 打印）。删掉新句、放回旧 :135 后 INVESTIGATION_METHOD 与 K8s 段 sha256 分别为 `222e5fa7…`、`1ff52ac3…`，即其余句逐字节不变。
 - 改动：discipline.py 文字与段说明；D20 列出的 9 个测试文件只改钉值和句数；F3 第 5 步与 f3-acceptance-live 的 run-1..3 移到 `prompt-8688f6e52275/`，两份 run.md 各加一行说明。
-- 定向测试：discipline/A7/676/310/对齐合同 6 个文件 193 过、3 败（test_676 D16 三项，等独立测试作者改写）；钉值与 F3 8 个文件 76 过、12 跳过（PG）、14 败（test_f3_step5_real_runs 里依赖 run-1/run-2 与第 3 步重跑的全部条目，等租机证据）。ruff、ruff format、mypy（discipline.py）通过。
+- 定向测试（审查修正后：#690 两句移到「When the exact entity named has no data…」之后，D11）：test_695 与 discipline/A7/676/310/对齐合同共 7 个文件 242 过、0 败；钉值与 F3 8 个文件 76 过、12 跳过（PG）、14 败（test_f3_step5_real_runs 里依赖 run-1/run-2 与第 3 步重跑的全部条目，等租机证据）。ruff、ruff format、mypy（discipline.py）通过。
 
 ## 待决
 

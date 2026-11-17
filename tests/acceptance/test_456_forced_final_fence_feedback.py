@@ -48,7 +48,7 @@ SUFFIX = (
 # The bytes main sends today for a reply that is not JSON at the outer layer
 # and carries nothing wrong inside its fence (the #304 pinned value).
 MAIN_PARSE_ONLY_FEEDBACK = PREFIX + OUTER_PARSE + SUFFIX
-PROMPT_REVISION = "prompt-replay-candidate-769bffec53cd"
+PROMPT_REVISION = "prompt-replay-candidate-860b743085d1"
 PROSE = "I have sufficient evidence to report.\n\n"
 
 
