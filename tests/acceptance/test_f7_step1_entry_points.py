@@ -69,9 +69,9 @@ UI = {**basic(), **same_origin(), "accept": "application/json"}
 EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     # #682 form login, registered by the independent test author.
     ("GET", "/login"): "read: login page",
-    ("POST", "/login"): "write: OpsPilot browser session sign-in (no OpsPilot record)",
+    ("POST", "/login"): "write: OpsPilot browser session sign-in",
     ("GET", "/logout"): "read: logout confirmation",
-    ("POST", "/logout"): "write: OpsPilot browser session sign-out (no OpsPilot record)",
+    ("POST", "/logout"): "write: OpsPilot browser session sign-out",
     ("GET", "/"): "read: incident list",
     ("GET", "/controls"): "read: suspension state",
     ("POST", "/controls/suspension"): "write: OpsPilot investigation suspension",
