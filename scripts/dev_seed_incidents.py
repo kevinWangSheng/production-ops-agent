@@ -26,20 +26,24 @@ incidents are cancelled through ``control`` and then get
 watch moves an incident there).
 
 Everything the script creates is tagged: every alert delivery has actor
-``dev-seed``, every target id starts with ``dev-seed-``. ``--reset`` deletes
-only those incidents and the rows that hang off them (found through the
-schema's foreign keys and ``incident_id`` columns), then those targets; run
-it alone, or before seeding again. The connecting role needs DELETE on
-those tables (the migration owner does; the runtime web role does not).
+``dev-seed`` and the targets are the registry's ``dev-seed-*`` keys.
+``--reset`` deletes exactly the incidents of ``dev-seed`` deliveries and
+the rows keyed to them (foreign keys, ``incident_id`` columns, their web
+ledger rows by intake key and incident id), never anything by text pattern;
+a seed target is deleted only when no remaining row refers to it. The
+connecting role needs DELETE on those tables (the migration owner does;
+the runtime web role does not).
 
 Usage::
 
     OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=opspilot_dev user=..." \
         .venv/bin/python scripts/dev_seed_incidents.py [--reset] [--reset-only]
 
-The database must already be migrated, and its name must contain "dev" or
-"test". Seeding refuses when seed rows exist; pass ``--reset`` to replace
-them. Non-seed incidents are left alone and show up in the printed counts.
+The database must already be migrated and local (Unix socket, localhost,
+127.0.0.1 or ::1), and its name must hold ``dev``, ``test`` or ``seed`` as a
+whole ``_``-separated token; there is no override. Seeding refuses when
+seed rows exist; pass ``--reset`` to replace them. Non-seed incidents are
+left alone and show up in the printed counts.
 """
 
 from __future__ import annotations
@@ -48,7 +52,9 @@ import argparse
 import hashlib
 import os
 import random
+import re
 import sys
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -172,14 +178,35 @@ def registry_entries() -> dict[str, dict[str, Any]]:
     return entries
 
 
-def check_dsn(dsn: str) -> str:
+_DEV_NAME = re.compile(r"^[a-z0-9_]*(^|_)(dev|test|seed)(_[a-z0-9_]*)?$")
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def check_dsn(dsn: str, environ: Mapping[str, str] | None = None) -> str:
+    """Refuse anything but a local dev or test database: the name must hold
+    ``dev``, ``test`` or ``seed`` as a whole ``_``-separated token, and every
+    host (from the DSN, else ``PGHOST``/``PGHOSTADDR``) must be a Unix socket
+    directory or a loopback address. There is no override."""
     from psycopg.conninfo import conninfo_to_dict
 
-    name = str(conninfo_to_dict(dsn).get("dbname") or "")
-    if "dev" not in name.lower() and "test" not in name.lower():
+    env = os.environ if environ is None else environ
+    info = conninfo_to_dict(dsn)
+    name = str(info.get("dbname") or env.get("PGDATABASE") or "")
+    if not _DEV_NAME.fullmatch(name):
         raise SystemExit(
-            f"refusing database {name!r}: its name must contain 'dev' or 'test'"
+            f"refusing database {name!r}: the name needs a whole 'dev', 'test'"
+            " or 'seed' token (for example opspilot_dev)"
         )
+    hosts: list[str] = []
+    for field, var in (("host", "PGHOST"), ("hostaddr", "PGHOSTADDR")):
+        value = info.get(field)
+        value = env.get(var) if value is None else value
+        if value:
+            hosts.extend(str(value).split(","))
+    for host in hosts:
+        host = host.strip()
+        if host and not host.startswith("/") and host not in _LOCAL_HOSTS:
+            raise SystemExit(f"refusing host {host!r}: only a local database is seeded")
     return name
 
 
@@ -233,49 +260,75 @@ def reset(dsn: str, out: Any = sys.stdout) -> int:
     from psycopg.rows import dict_row
 
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        ids = [
-            r["incident_id"]
-            for r in conn.execute(
-                "SELECT DISTINCT incident_id FROM opspilot_alert_deliveries"
-                " WHERE actor=%s AND incident_id IS NOT NULL",
-                (ACTOR,),
-            ).fetchall()
-        ]
-        keys = [
-            r["intake_key"]
-            for r in conn.execute(
-                "SELECT intake_key FROM opspilot_incidents WHERE incident_id = ANY(%s)",
-                (ids,),
-            ).fetchall()
-        ]
-        fks = list(conn.execute(_FKS).fetchall())
-        tables = [
-            r["table_name"]
-            for r in conn.execute(
-                "SELECT table_name FROM information_schema.columns"
-                " WHERE table_schema='public' AND column_name='incident_id'"
-                " AND table_name<>'opspilot_incidents'"
-                " AND table_name IN (SELECT table_name FROM information_schema.tables"
-                " WHERE table_schema='public' AND table_type='BASE TABLE')"
-            ).fetchall()
-        ]
-        for table in tables:
-            _purge(conn, fks, table, "incident_id = ANY(%s)", (ids,))
-        conn.execute(
-            "DELETE FROM opspilot_web_ledger WHERE key = ANY(%s) OR key LIKE %s",
-            (keys, f"%{ACTOR}-%"),
-        )
-        deleted = _purge(
-            conn, fks, "opspilot_incidents", "incident_id = ANY(%s)", (ids,)
-        )
-        _purge(
-            conn,
-            fks,
-            "opspilot_targets",
-            "resource_uid LIKE %s",
-            (f"{TARGET_PREFIX}%",),
-        )
+        deleted = reset_rows(conn)
     print(f"reset: deleted {deleted} seed incidents", file=out)
+    return deleted
+
+
+def reset_rows(conn: Any) -> int:
+    """One transaction's deletes. The seed set is exactly the incidents of
+    ``dev-seed`` deliveries; every delete is keyed to those ids (or rows
+    that refer to them by foreign key), never by a text pattern. A
+    ``dev-seed-`` target goes only when nothing else still refers to it."""
+    ids = [
+        r["incident_id"]
+        for r in conn.execute(
+            "SELECT DISTINCT incident_id FROM opspilot_alert_deliveries"
+            " WHERE actor=%s AND incident_id IS NOT NULL",
+            (ACTOR,),
+        ).fetchall()
+    ]
+    if not ids:
+        return 0
+    texts = [str(i) for i in ids]
+    keys = [
+        r["intake_key"]
+        for r in conn.execute(
+            "SELECT intake_key FROM opspilot_incidents WHERE incident_id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+    ]
+    fks = list(conn.execute(_FKS).fetchall())
+    tables = [
+        r["table_name"]
+        for r in conn.execute(
+            "SELECT c.table_name FROM information_schema.columns c"
+            " JOIN information_schema.tables t ON t.table_schema=c.table_schema"
+            " AND t.table_name=c.table_name"
+            " WHERE c.table_schema='public' AND c.column_name='incident_id'"
+            " AND c.table_name<>'opspilot_incidents' AND t.table_type='BASE TABLE'"
+        ).fetchall()
+    ]
+    for table in tables:
+        _purge(conn, fks, table, "incident_id = ANY(%s)", (ids,))
+    # The web ledger rows of these incidents (``Workbench.submit``,
+    # ``intake_alert`` and ``control`` key them so): the intake envelope
+    # under the incident's intake key, the intake sequence under its id,
+    # and control rows under ``<incident id>:<idempotency key>``.
+    conn.execute(
+        "DELETE FROM opspilot_web_ledger WHERE"
+        " (namespace='intake' AND key = ANY(%s))"
+        " OR (namespace='intake_event' AND key = ANY(%s))"
+        " OR (namespace IN ('control_intent','control')"
+        " AND split_part(key, ':', 1) = ANY(%s))",
+        (keys, texts, texts),
+    )
+    deleted = _purge(conn, fks, "opspilot_incidents", "incident_id = ANY(%s)", (ids,))
+    unreferenced = " AND ".join(
+        f"NOT EXISTS (SELECT 1 FROM {fk['child']} x WHERE "
+        + " AND ".join(
+            f"x.{c}=t.{p}"
+            for c, p in zip(fk["child_cols"], fk["parent_cols"], strict=True)
+        )
+        + ")"
+        for fk in fks
+        if fk["parent"] == "opspilot_targets"
+    )
+    conn.execute(
+        "DELETE FROM opspilot_targets t WHERE t.resource_uid = ANY(%s)"
+        + (f" AND {unreferenced}" if unreferenced else ""),
+        (list(registry_entries()),),
+    )
     return deleted
 
 

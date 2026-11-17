@@ -13,6 +13,7 @@ are absolute ``<time>`` values; the browser writes the relative words.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -43,6 +44,8 @@ TAB_TITLES = {
 TITLE_CHARS = 500
 
 _ACTIVE_RUN = {"queued", "running"}
+_PAGE = re.compile(r"[0-9]{1,64}")
+_SIGNIFICANT = re.compile(r"[0-9]{0,9}")
 
 
 def status_of(item: IncidentListItem) -> dict[str, Any]:
@@ -185,10 +188,16 @@ def parse_query(params: Mapping[str, str]) -> dict[str, Any]:
     tab = params.get("tab") or LIST_TABS[0]
     if tab not in LIST_TABS:
         tab = LIST_TABS[0]
-    service = (params.get("service") or "").strip() or None
-    q = (params.get("q") or "").strip()[:LIST_QUERY_CHARS].strip() or None
-    raw = (params.get("page") or "").strip()
-    page = int(raw) if raw.isdigit() and 0 < len(raw) <= 9 else 1
+    # NUL cannot reach a Postgres text parameter; drop it rather than fail.
+    service = (params.get("service") or "").replace("\x00", "").strip() or None
+    text = (params.get("q") or "").replace("\x00", "")
+    q = text.strip()[:LIST_QUERY_CHARS].strip() or None
+    raw = params.get("page") or ""
+    # ASCII digits only: str.isdigit() and int() also take fullwidth and
+    # superscript digits. Leading zeros are ignored; at most nine
+    # significant digits; past the last page is the store's to clamp.
+    digits = raw.lstrip("0") if _PAGE.fullmatch(raw) else "x"
+    page = int(digits or "0") if _SIGNIFICANT.fullmatch(digits) else 1
     return {"tab": tab, "service": service, "q": q, "page": max(page, 1)}
 
 

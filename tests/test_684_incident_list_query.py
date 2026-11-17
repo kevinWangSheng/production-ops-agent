@@ -468,3 +468,70 @@ def test_pg_list_page_groups_counts_and_pages_match_the_python_view():
                 i.summary.incident_id for i in mirror.items
             ], (view, q)
             assert sql.pages == mirror.pages
+
+
+# -- review fixes (#684 Codex review): page parsing -------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, page",
+    [
+        ("2", 2),
+        ("0000000002", 2),
+        ("999999999", 999999999),
+        ("0", 1),
+        ("000", 1),
+        ("1234567890", 1),
+        ("0001234567890", 1),
+        ("0" * 60 + "3", 3),
+        ("0" * 70 + "3", 1),
+        ("２", 1),  # fullwidth digit
+        ("²", 1),  # superscript digit
+        ("١", 1),  # Arabic-Indic digit
+        (" 2", 1),
+        ("2 ", 1),
+        ("2\n", 1),
+        ("-1", 1),
+        ("+2", 1),
+        ("1e3", 1),
+        ("2.0", 1),
+        ("", 1),
+    ],
+)
+def test_page_accepts_only_ascii_digits(raw, page):
+    assert parse_query({"page": raw})["page"] == page
+
+
+def test_query_drops_nul_characters():
+    parsed = parse_query({"q": "a\x00b", "service": "\x00"})
+    assert parsed["q"] == "ab" and parsed["service"] is None
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "page=999999999",
+        "page=%EF%BC%92",
+        "page=%C2%B2",
+        "page=1&page=2",
+        "tab=closed&page=0000000002",
+        "q=%00&service=%00&page=%00",
+        "q=" + "x" * 5000,
+        "tab=%FF&q=%E2%80%AE&service=..%2F",
+        "page=" + "9" * 400,
+    ],
+)
+def test_any_query_string_renders(query):
+    app, workbench, ids = _many(30)
+    for incident_id in ids:
+        _set(workbench, incident_id, run="waiting_human")
+    response = call(app, "GET", f"/?{query}", headers=basic())
+    assert response.status == 200, response.text
+
+
+def test_page_past_the_end_shows_the_last_page():
+    app, workbench, ids = _many(30)
+    for incident_id in ids:
+        _set(workbench, incident_id, run="waiting_human")
+    html = _get(app, "/?page=999999999")
+    assert "26–30 of 30" in html
