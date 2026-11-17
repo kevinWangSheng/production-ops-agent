@@ -90,7 +90,7 @@ Resolved 和 Closed 是按生命周期看的视图，所以与「Needs a human�
 
 | 参数 | 取值 | 非法值的处理 |
 |---|---|---|
-| `view` | `needs_human`（默认）、`in_progress`、`resolved`、`closed`、`all` | 按默认处理，不返回 400 |
+| `tab` | `needs_human`（默认）、`in_progress`、`resolved`、`closed`、`all` | 按默认处理，不返回 400 |
 | `service` | 下拉里的某个值 | 不在下拉值里时忽略 |
 | `q` | 去掉首尾空白，最多 200 字 | 超出部分截断 |
 | `page` | 正整数 | 超过最后一页时显示最后一页 |
@@ -136,7 +136,7 @@ PRD 和 `feature_list.json` 都没有提到列表的列（grep 结果为空）�
 
 ### 3.7 数据与查询改动 [b]，无迁移
 
-**接口**：`Workbench.incident_list(view, service, q, page)` 返回：
+**接口**：`Workbench.incident_list(tab, service, q, page)` 返回：
 - `rows`：当前页最多 25 行
 - `counts`：五个页签的计数
 - `services`：Service 下拉的取值
@@ -169,7 +169,7 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 | 查询 | 内容 |
 |---|---|
 | Q1 计数 | `SELECT count(*) FILTER (WHERE grp='needs_human'), … FILTER (WHERE grp='in_progress'), … FILTER (WHERE lifecycle='resolved'), … FILTER (WHERE lifecycle='closed'), count(*) FROM base WHERE <筛选>` |
-| Q2 当前页 | `SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id IN (SELECT incident_id FROM base WHERE <view 谓词> AND <筛选> ORDER BY created_at DESC, incident_id LIMIT 25 OFFSET %s) ORDER BY i.created_at DESC, i.incident_id` |
+| Q2 当前页 | `SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id IN (SELECT incident_id FROM base WHERE <tab 谓词> AND <筛选> ORDER BY created_at DESC, incident_id LIMIT 25 OFFSET %s) ORDER BY i.created_at DESC, i.incident_id` |
 | Q3 下拉值 | `SELECT DISTINCT service FROM base WHERE service IS NOT NULL ORDER BY 1 LIMIT 200` |
 
 筛选条件：
