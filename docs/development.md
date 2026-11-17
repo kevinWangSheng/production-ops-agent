@@ -117,8 +117,14 @@ export OPSPILOT_WORKER_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=opsp
 # 条目可选 "match": {"version": 1, "labels": {"namespace": "otel-demo", "service": "checkout"}}：Alertmanager 告警（POST /intake/alertmanager，Bearer 为 OPSPILOT_EVENT_TOKENS 中的 token）的 labels 包含全部键值即命中；恰好一个条目命中才建 Run，零个或多个命中建无 Run 的仅交接事故。
 # fixture profile 的示例值（合成演示，不是任何真实集群的身份）：
 echo '{"checkout-prod": {"integration_id": "fixture", "cluster_uid": "fixture-cluster", "namespace": "otel-demo", "workload": "checkout", "health_profile_id": "otel-demo-checkout"}}' > /tmp/opspilot-targets.json
+# 会话 cookie 的签名密钥（#682，可选，至少 16 字节，短于 16 字节拒绝启动）：设了就用它，web 重启后会话仍有效；
+# 不设则进程内随机生成一把，启动时打一行警告，web 重启后所有浏览器重新登录（Compose 安装目前就是这种模式，持久密钥见 #683）。
+# 换密钥或换口令集（OPSPILOT_AUTH_REVISION）会让所有浏览器重新登录
+export OPSPILOT_SESSION_SECRET="$(openssl rand -hex 32)"
 OPSPILOT_TARGET_IDENTITIES=/tmp/opspilot-targets.json \
 OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.web serve
+# 浏览器登录：打开 http://127.0.0.1:8080/login，填用户名 demo 与口令；登录后得到 12 小时有效的签名会话 cookie（HttpOnly、SameSite=Lax；只有 OPSPILOT_ALLOWED_ORIGINS 全是 https 时才带 Secure），右上角 Log out 打开确认页，确认后清除。未登录打开页面会跳到 /login 并在登录后回到原页面。
+# 脚本与 curl 继续用 Basic Auth（下面的 -u），两条路径得到同一个 ui_basic 主体，变更请求都校验 Origin。
 # 「登记处置」用的 HealthProfile 默认是随产品发布的 otel-demo-checkout.json；OPSPILOT_HEALTH_PROFILE=<路径> 可换
 # web 进程内的自动观察循环（#184）每 OPSPILOT_SELF_HEAL_INTERVAL_SECONDS 秒（默认 30；设 0 关闭，设其他正数改间隔，非法值拒绝启动；F6/F13 投影把它记为系统授权，不计入人工动作）为当前代际已发布合格结论、未登记处置的事故自动授权一次恢复观察，身份与 HealthProfile 规则同「登记处置」
 # 同一线程随后跑发布授权 pass（F11 PR-5b）：每个新登记、仍 pending、未暂停、从未授权、未到期、是该目标最新且该目标没有正在观察的发布（每个目标同时只观察一个发布；较旧的被取代、不观察，到期 unknown），以 system 身份按校准清单中目标与 HealthProfile 恰好匹配的条目调用一次 authorize_release（幂等键 auto-authorize:<observation_id>）；拒绝（挂起、清单不匹配、与人工暂停竞争等）写审计后不再重试，挂起解除也不补开，到期由清扫判 unknown；存储故障不写、下一轮重试。再跑发布异常消费 pass（F11 PR-4b）。间隔设 0 时三个 pass 都关闭，新发布不会被观察
