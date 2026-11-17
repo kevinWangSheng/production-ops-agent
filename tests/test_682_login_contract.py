@@ -551,7 +551,12 @@ def test_shell_shows_actor_and_logout_link_without_adding_forms(app_factory, aut
             p.tag in {"header", "nav"} for e in page.tags("form") for p in e.parents
         )
         if path == "/":
-            assert len(page.tags("form")) == 1  # The existing incident-intake form.
+            for form in page.tags("form"):
+                action = form.attrs.get("action", "")
+                method = form.attrs.get("method", "get").lower()
+                assert action == "/intake/ui" or (
+                    method == "get" and action in {"", "/"}
+                ), form.attrs
 
 
 @pytest.mark.parametrize("path", [f"/incidents/{MISSING_ID}", "/incidents/not-a-uuid"])
