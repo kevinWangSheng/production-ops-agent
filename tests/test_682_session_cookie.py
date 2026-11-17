@@ -155,3 +155,100 @@ def test_serve_generates_an_ephemeral_key_when_unset(monkeypatch, caplog):
     monkeypatch.setenv("OPSPILOT_SESSION_SECRET", "short")
     with pytest.raises(SystemExit):
         web_main._session_secret()
+
+
+# -- review fixes (#682 codex review) ------------------------------------------
+
+
+def _web_app():
+    from opspilot.web.app import create_app
+    from tests import m1_web_support as support
+
+    _, workbench, clock = support.build_workbench()
+    users = {
+        support.UI_USER: hash_password(support.UI_PASSWORD, salt=b"fixed-salt-16byt"),
+        "bob": hash_password("bob-pw", salt=b"fixed-salt-16byt"),
+    }
+    config = AuthConfig(
+        ui_users=users,
+        event_tokens={},
+        auth_revision="auth-rev-1",
+        allowed_origins=frozenset({support.ORIGIN}),
+        session_secret=SECRET,
+    )
+    return create_app(workbench, Authenticator(config), clock), support
+
+
+HTML = {"accept": "text/html,application/xhtml+xml"}
+
+
+def _login(app, support, user, password):
+    from urllib.parse import urlencode
+
+    response = support.call(
+        app,
+        "POST",
+        "/login",
+        headers={
+            "content-type": "application/x-www-form-urlencoded",
+            **HTML,
+            **support.same_origin(),
+        },
+        body=urlencode({"username": user, "password": password}).encode(),
+    )
+    assert response.status == 303
+    return {"cookie": response.headers["set-cookie"].split(";")[0]}
+
+
+def test_a_valid_session_wins_over_a_cached_basic_header():
+    app, support = _web_app()
+    bob = _login(app, support, "bob", "bob-pw")
+    page = support.call(app, "GET", "/", headers={**HTML, **support.basic(), **bob})
+    assert page.status == 200
+    assert "Signed in as <code>bob</code>" in page.text
+    assert f"<code>{support.UI_USER}</code>" not in page.text
+
+
+def test_basic_still_works_beside_a_stale_cookie_and_alone():
+    app, support = _web_app()
+    stale = {"cookie": "opspilot_session=garbage"}
+    for headers in ({**support.basic(), **stale}, support.basic()):
+        page = support.call(app, "GET", "/", headers={**HTML, **headers})
+        assert page.status == 200
+        assert f"Signed in as <code>{support.UI_USER}</code>" in page.text
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status"),
+    [("GET", "/no-such-page", 404), ("GET", "/intake/ui", 405)],
+)
+def test_framework_errors_render_html_for_page_gets_and_json_otherwise(
+    method, path, status
+):
+    app, support = _web_app()
+    page = support.call(app, method, path, headers=HTML)
+    assert page.status == status
+    assert page.headers["content-type"].startswith("text/html")
+    assert "Back to Incidents" in page.text
+    plain = support.call(app, method, path, headers={"accept": "application/json"})
+    assert plain.status == status
+    assert "detail" in plain.json()
+
+
+@pytest.mark.parametrize("value", ["   ", " test-session-secret "])
+def test_the_secret_is_used_byte_for_byte(monkeypatch, value):
+    from opspilot.web import __main__ as web_main
+
+    monkeypatch.setenv("OPSPILOT_SESSION_SECRET", value)
+    if len(value) < 16:
+        with pytest.raises(SystemExit):
+            web_main._session_secret()
+    else:
+        assert web_main._session_secret() == value.encode("utf-8")
+
+
+def test_an_empty_secret_counts_as_unset(monkeypatch):
+    from opspilot.web import __main__ as web_main
+
+    monkeypatch.setenv("OPSPILOT_SESSION_SECRET", "")
+    assert len(web_main._session_secret()) == 32

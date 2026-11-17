@@ -131,8 +131,10 @@ def _run_seconds() -> float:
 
 
 def _session_secret() -> bytes:
-    raw = os.environ.get("OPSPILOT_SESSION_SECRET", "").strip()
-    if not raw:
+    # Only unset or exactly empty is absent; any other value is the key,
+    # byte for byte (no stripping), so a short one is refused, not ignored.
+    raw = os.environ.get("OPSPILOT_SESSION_SECRET", "")
+    if raw == "":
         _log.warning(
             "OPSPILOT_SESSION_SECRET not set; sessions end when the web restarts"
         )

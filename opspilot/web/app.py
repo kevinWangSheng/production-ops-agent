@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, quote
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -36,6 +37,7 @@ from fastapi.responses import (
 )
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from opspilot.alertmanager import parse_payload
 from opspilot.domain.base import DomainError
@@ -132,11 +134,13 @@ _PAGE_ERRORS = {
     "INVALID_CREDENTIALS": "Sign in to continue.",
     "INVALID_SESSION": "Your session has ended. Sign in again.",
 }
+_FRAMEWORK_CODES = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
 _STATUS_ERRORS = {
     400: "This address is not valid.",
     401: "Sign in to continue.",
     403: "You cannot open this page.",
     404: "This page does not exist.",
+    405: "This page does not exist.",
     409: "This page cannot be shown in its current state. Reload and try again.",
     503: "The workbench cannot reach its storage right now. Try again shortly.",
 }
@@ -282,6 +286,25 @@ def create_app(
         response.status_code = exc.status
         return response
 
+    @app.exception_handler(StarletteHTTPException)
+    async def framework_error(
+        request: Request, exc: StarletteHTTPException
+    ) -> Response:
+        """Starlette's own 404/405 (an unknown path or method): the HTML
+        error page for a page GET, FastAPI's JSON otherwise."""
+        if request.method == "GET" and wants_html(request):
+            response = error_page(
+                request,
+                _Refusal(
+                    exc.status_code,
+                    _FRAMEWORK_CODES.get(exc.status_code, f"HTTP_{exc.status_code}"),
+                ),
+            )
+            for name, value in (exc.headers or {}).items():
+                response.headers[name] = value
+            return response
+        return await http_exception_handler(request, exc)
+
     @app.exception_handler(_Refusal)
     async def refused(request: Request, exc: _Refusal) -> Response:
         event_path = request.url.path.startswith(_EVENT_PATHS)
@@ -316,11 +339,18 @@ def create_app(
     async def ui(request: Request) -> Principal:
         cookie = request.cookies.get(SESSION_COOKIE)
         try:
-            if request.headers.get("authorization") is None and cookie is not None:
-                # The database clock, as every product time (#682 D1).
+            principal: Principal | None = None
+            if cookie is not None:
+                # A valid session wins over a Basic header the browser may
+                # still cache for another user: the form login is who is
+                # signed in. The database clock, as every product time.
                 now = await asyncio.to_thread(clock.now)
-                principal = authenticator.session_principal(cookie, now)
-            else:
+                try:
+                    principal = authenticator.session_principal(cookie, now)
+                except AuthError:
+                    if request.headers.get("authorization") is None:
+                        raise
+            if principal is None:
                 principal = authenticator.ui_principal(request.headers)
             principal = verify_channel(principal, expected="ui_basic")
         except AuthError as exc:
