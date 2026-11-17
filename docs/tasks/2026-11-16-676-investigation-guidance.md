@@ -16,7 +16,7 @@
 - 前提：用户 2026-11-16 授权 lead 自行分析并修复（分析、取舍、审查用隔离上下文）；提示词改动由 Agent 决定（租机评测惯例）。
 - 完成条件：本机测试全绿（含新增验收与合同测试，由未参与实现的 Agent 编写）；独立审查完成；租机冒烟 2 题各 2 次过行为门 → F3 第 3 步 D9 + 第 5 步两 Run 两名审查者判定（不过即停，不上全量）→ 集成批 8×2 四门 → 全量 105；F3 `passes` 翻转由用户裁决。
 
-## 合同（r1）
+## 合同（r2）
 
 完整决定表见 [2026-11-16-676-investigation-guidance-contract.md](2026-11-16-676-investigation-guidance-contract.md)。全部按预审推荐，lead 依用户授权定；唯一用户门项 D8-b（确定性 summary 检查）选不做。
 
@@ -29,6 +29,7 @@
 - D8 第 4 项只改提示词：认定原因的 claim 是 hypothesis 时 conclusion 用 partial。
 - D9 第 4 项进共用 L2，第 5 项扩写 INVESTIGATION_METHOD 现有句，第 1、3 项只进 KUBERNETES_GUIDANCE；base revision 变，F3 必须重跑。
 - D10 实现者只改钉值，不改断言逻辑；base 的 tool_schema_revision 不变。
+- D12–D14（r2，租机后）：L2 根因句改为「supported 需要 fact claim 点名该对象，单有 hypothesis 不够」；「告警是入口」句移到仅 ext；#678 no_data 句并入。见决定表 r2 节。
 - D11 旧证据按 #653 惯例移到 `prompt-a6b4dfd02030/`，3 条 F3 证据测试在租机证据入库前失败，证据与代码同一 PR。
 
 ## 进展
