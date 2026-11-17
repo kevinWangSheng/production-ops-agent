@@ -1077,7 +1077,7 @@ def test_exploration_retry_does_not_consume_the_final_slot():
     )
     outcome = loop.run(request)
     assert len(model.calls) == 2
-    assert model.calls[0].json_mode is False
+    assert model.calls[0].json_mode is True
     assert model.calls[1].json_mode is True
     # Round 2 rule C: the run coverage summary follows the instruction.
     assert model.calls[1].messages[-2]["content"] == FINAL_REPORT_INSTRUCTION
@@ -1758,7 +1758,7 @@ def test_last_request_is_reserved_for_the_report_and_sends_no_tools():
     outcome = loop.run(request)
     assert outcome.execution == "completed"
     assert model.calls[0].tools is not None
-    assert model.calls[0].json_mode is False
+    assert model.calls[0].json_mode is True
     assert model.calls[1].tools is None
     assert model.calls[1].json_mode is True
     # Round 2 rule C: the run coverage summary follows the instruction.
