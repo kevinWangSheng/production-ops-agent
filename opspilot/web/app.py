@@ -503,7 +503,10 @@ def create_app(
     @app.get("/logout", response_class=HTMLResponse)
     async def logout_confirm(request: Request) -> Response:
         # A link cannot carry Origin; the state change is the POST below.
-        response = render("logout.html", principal=None)
+        # Without a valid session there is nothing to end: like every page,
+        # an HTML GET goes to /login?next=/logout.
+        principal = await ui(request)
+        response = render("logout.html", principal=principal)
         response.headers["Cache-Control"] = "no-store"
         return response
 
