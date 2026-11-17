@@ -87,3 +87,14 @@ F3 PR-2 预审 D9-a：PR-3b 开工时 `prompt_revision` 已由 `prompt-replay-ca
 - 覆盖节：jaeger `failed`（非 ok 4 次，`SOURCE_UNAVAILABLE ×4`）；prometheus `all_ok`（ok 14、no_data 2）；其余三源 `not_integrated`。
 - U6-a 判定：**通过**（报告非 supported，jaeger 行 `gap=true`）。与 #646 那次的差异：结论从 partial 变为 inconclusive。
 - 费用：`known_cost_cny_upper` 0.470 CNY（上界）；prompt 161,274、completion 13,346。
+
+## D9 重跑：场景 A（#676 合同 r2，2026-11-17）
+
+合同 r2（[决定表](../../tasks/2026-11-16-676-investigation-guidance-contract.md) D12–D14）改了 L2 与 INVESTIGATION_METHOD，基础档位 `prompt_revision` 变为 `prompt-replay-candidate-8688f6e52275`，所以再重跑场景 A 一次。上面各节的冻结 summary 都没有改。
+
+- 做法同上：租机主机，代码 `feature/676-investigation-guidance` `d96823fc`，替身加真实 DeepSeek，一次性 PG 17（56157），`--lab-round f3-r2-d9-missing-source`，输出目录 `missing-source-rerun-8688f6e52275`。
+- Run `f93ec360-7c85-49de-84e1-d0d24552bf2c`（01:02:42–01:04:33Z），12 次 HTTP；报告 `m0-report-v3`，`completed / partial`。
+- [summary](missing-source-rerun-8688f6e52275/f93ec360-7c85-49de-84e1-d0d24552bf2c/summary.json) · [LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7ca4511f-8d7e-49e5-a25d-230bfde88150/r/00000000-0000-0000-5c0d-9cc0c8648f20?poll=true)（回读 `found`）
+- 覆盖节：jaeger `failed`（非 ok 3 次）；prometheus `all_ok`（ok 12、no_data 3）；其余三源 `not_integrated`。
+- U6-a 判定：**通过**（报告非 supported，jaeger 行 `gap=true`）。
+- 费用：`known_cost_cny_upper` 0.602 CNY（上界）；prompt 203,025、completion 17,925。

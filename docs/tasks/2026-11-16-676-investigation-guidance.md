@@ -38,6 +38,11 @@
 - 2026-11-16：实现提交。base `prompt-replay-candidate-14eb2a0a6afd`（原 a6b4dfd02030），ext `prompt-replay-candidate-k8s-f09a033198ca`，ext tool_schema `otel-demo-ext-c63f058afb18`（原 d467c4b436b0），base tool_schema `otel-demo-a3a95a0f888e` 不变；实现期间新冒出的合同问题 0。自定一项：D9 第 5 项在 INVESTIGATION_METHOD「无关错误」句后另起一句，不拉长原句（句短便于匹配）。本机 swap 紧，全量 acceptance 探针跑到约 460/3876 条后停（慢在无关评测测试），改跑引用 revision/报告契约/K8s 工具的 134 个测试文件。
 - 2026-11-16（租机，代码 `e8b98507`）：冒烟 `lite-smoke-676`（S19、S15 各 2 次，[记录](../evidence/itbench-lite-sre-lite-smoke-676/run.md)）：门② ③ 过，门① 不过（S19 t2 被产品拒收；只读重放为 `cites_non_ok_view`，即引用 no_data 的日志视图，加上 id 抄错）。lead 裁决按基线偶发率继续。F3 第 3 步 D9：Run `b3a2e9f0`，inconclusive，U6 通过。第 5 步两次：Run `a10cf725`（partial，根因 checkout）、`f3b73c46`（partial，根因 payment），确定性判定全过、15/15 测试通过；两次都没有否定这次部署，rubric 由审查者判（[F3 live](../evidence/f3-acceptance-live/run.md)「#676 重跑」）。集成批 `lite-batch-676`（[记录](../evidence/itbench-lite-sre-lite-batch-676/run.md)）：门① 不过（`REPORT_INVALID` 2/16；重放为缺 `next_steps` 后重试时 id 截断，或 `cites_non_ok_view`）；② 12/14；③ 过；④ 结论移向 partial（supported 3/14，#646 批为 12/15），root_cause_entity_pass 4/16（#646 批为 3/16）；附加门不触发。是否上全量由 lead 定。
 - 2026-11-16：r2 实现（D12–D14、D11 搬迁）。base `prompt-replay-candidate-8688f6e52275`，ext `prompt-replay-candidate-k8s-0b066c7cd6d1`；ext tool_schema `otel-demo-ext-c63f058afb18` 与 base `otel-demo-a3a95a0f888e` 不变；base 的 discipline revision 回到 #646 的 `l1a-replay-candidate-9a45deb526fe`（INVESTIGATION_METHOD 逐字恢复 83b3b968）。#676 第一版 F3 第 5 步与 f3-acceptance-live 的 run-1/run-2 移到各自 `prompt-14eb2a0a6afd/`。新冒出的合同问题 0。
+- 2026-11-17（租机，合同 r2，代码 `d96823fc`）：
+  - 冒烟 `lite-smoke-676r2`（[记录](../evidence/itbench-lite-sre-lite-smoke-676r2/run.md)）：0/4 拒收，S19 与 S15 行为门过。
+  - 集成批 `lite-batch-676r2`（[记录](../evidence/itbench-lite-sre-lite-batch-676r2/run.md)）：`REPORT_INVALID` 0/16；root_cause_entity_pass 7/16；不含 S12 时根因非 null 14/14；首答重试 10/16，冒烟 4/4，超过约定的约 8/16，14 次重试全部通过（首答被拒原因：JSON 前有文字或用了围栏 5、`cites_non_ok_view` 4、`unknown_evidence_id` 4、缺 `next_steps` 1）。
+  - F3 第 3 步 D9：Run `f93ec360`，partial，U6 通过。
+  - F3 第 5 步跑了 3 次：`8b06fee1`（supported）、`41b97848`（partial）、`9d3c1236`（partial），`root_cause` 都是 Deployment payment，三次都否定了这次部署；只有 Run 3 查了 `feature_flag_*` 指标，但标签名用错了。确定性判定全过，测试 15/15。rubric 待审查者（[F3 live](../evidence/f3-acceptance-live/run.md)「#676 合同 r2」）。
 
 ## 待决
 
