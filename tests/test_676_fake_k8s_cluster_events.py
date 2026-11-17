@@ -194,9 +194,7 @@ def test_application_namespace_scope_does_not_hide_custom_kind_contract(executor
                     "kind": "events",
                     "namespace": APP_NAMESPACE,
                     "field_selector": f"involvedObject.kind={CUSTOM_KIND}",
-                    "jq_expr": (
-                        "[.items[] | .involvedObject.kind] | length"
-                    ),
+                    "jq_expr": ("[.items[] | .involvedObject.kind] | length"),
                 },
             )
         )
