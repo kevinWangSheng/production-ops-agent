@@ -269,6 +269,11 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     docs/tasks/2026-10-22-310-investigation-method-contract.md）的有意变化：
     候选臂在报告契约前新增 :data:`d.INVESTIGATION_METHOD`（8 句）与
     :data:`d.IMPACT_SCOPE`（9 句）；两个 baseline 变体不变。
+
+    #676 r1 曾把调查方法段加到 9 句（候选臂 31 句），r2 D13 把那句移入
+    :data:`d.KUBERNETES_GUIDANCE`，候选臂回到 30 句。同时钉
+    :data:`d.KUBERNETES_GUIDANCE` 的句数（#676 r2 起 23 句，只属
+    ``replay-candidate-k8s``）。
     """
 
     def sentences(text: str) -> int:
@@ -285,6 +290,7 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     assert variant_sentences("baseline-final-report") == 24
     assert variant_sentences("replay-candidate") == 30
     assert sentences(d.INVESTIGATION_METHOD) == 8
+    assert sentences(d.KUBERNETES_GUIDANCE) == 23
     assert sentences(d.IMPACT_SCOPE) == 9
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)

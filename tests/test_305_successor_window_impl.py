@@ -218,7 +218,7 @@ def test_revisions_are_unchanged():
     assert KNOWN_INPUT_VERSIONS[-1] == "opspilot-investigation-input-v6"
     assert len(KNOWN_INPUT_VERSIONS) == 6
     common = {
-        "prompt_revision": "prompt-replay-candidate-a6b4dfd02030",
+        "prompt_revision": "prompt-replay-candidate-8688f6e52275",
         "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
     }
     assert otel_demo_versions() == {

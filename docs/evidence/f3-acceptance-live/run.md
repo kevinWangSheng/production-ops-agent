@@ -87,7 +87,7 @@ R 到 flagd 生效：Run 1 7.6 分钟、Run 2 7.4 分钟；新 Pod Ready 到 fla
 
 ## #646 重跑：第 5 步两次真实 Run（2026-11-16，`prompt-replay-candidate-a6b4dfd02030`）
 
-#646 把 L2 报告升为 `m0-report-v3`，基础档位 `prompt_revision` 由 `bef70649a3a8` 变为 `a6b4dfd02030`。用户 2026-11-15 裁决「F3 证据 = A」：在租机上用新提示词重跑第 5 步的两次 Run。上面 10-24 的两份冻结摘要移到 [prompt-bef70649a3a8/](prompt-bef70649a3a8/)，内容未改；第 5 步测试读的 `run-{1,2}/summary.json` 现在是本节的两次 Run。
+#646 把 L2 报告升为 `m0-report-v3`，基础档位 `prompt_revision` 由 `bef70649a3a8` 变为 `a6b4dfd02030`。用户 2026-11-15 裁决「F3 证据 = A」：在租机上用新提示词重跑第 5 步的两次 Run。上面 10-24 的两份冻结摘要移到 [prompt-bef70649a3a8/](prompt-bef70649a3a8/)，内容未改。本节两次 Run 的摘要在 #676 之后移到了 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)（见文末一节）。
 
 - 主机：Vultr，Ubuntu 24.04，8 vCPU / 32 GB；kind lab 由 `install_linux.sh` 新装（05:59Z）。代码 `feature/646-eval-root-cause` `c772eae7`（含 PR-A `fa7c72bf`），运行期间未改代码。版本 `prompt-replay-candidate-a6b4dfd02030` / `otel-demo-a3a95a0f888e` / `ctx-ctx-policy-v1-a30e65ea52f4`，与当前代码的 `otel_demo_versions()` 三项相同，因此不需要等价证明。
 - 拓扑（Linux 宿主进程，参照租机手册 4b）：PG 17 在 55431（`postgres_lab start`、`make migrate` 到 `0024_trace_outbox`、`runtime-roles`），另建只读角色 `f3_lab_reader`（只有 SELECT，`default_transaction_read_only=on`）。web `OPSPILOT_BIND=0.0.0.0:8080`：驱动走 127.0.0.1，Alertmanager 走 kind 网关 172.18.0.1；ufw 只放行 172.18.0.0/16 → 8080。lab 以 `OPSPILOT_LAB_HOST_ADDRESS=172.18.0.1` 重新渲染 webhook。目标身份文件由 `kind_lab.py control-secrets --secrets-dir <私有目录>` 写出。worker 设 `OPSPILOT_TOOL_PROFILE=otel-demo`、`OPSPILOT_TRACE=lab`、`OPSPILOT_HEALTH_BIND=`（空值；见下「偏离」）。flagd 端口转发 18013 → `svc/flagd:8013`，`--flag-method Int`。trace 项目 `opspilot-lab-f3-646-live-20261116`，开跑前用 `lab_evidence.prepare_lab_project` 设为 `longlived`。
@@ -132,3 +132,102 @@ R 到 flagd 生效：Run 1 7.6 分钟、Run 2 7.4 分钟；新 Pod Ready 到 fla
 ### 费用
 
 DeepSeek：两次 Run 的 token 见上表。单价同集成批记录 `docs/evidence/itbench-lite-sre-lite-batch-646/run.md`（PR-B，沿用 `m3-soak-2026-11-07/cost-primary.json`）：Run 1 调查在北京时间 17:24 前后，按高峰价，约 CNY 0.41；Run 2 在 18:16 之后，按闲时价，约 CNY 0.27；合计约 **CNY 0.68**。复盘生成另有少量调用，未计入。账户共用，余额差不作依据。
+
+## #676 重跑：第 5 步两次真实 Run（2026-11-16，`prompt-replay-candidate-14eb2a0a6afd`）
+
+#676 改了共用 L2 段（认定原因的 claim 是 hypothesis 时 conclusion 写 partial；summary 措辞）和 INVESTIGATION_METHOD（告警是入口，不是范围），基础档位 `prompt_revision` 由 `a6b4dfd02030` 变为 `14eb2a0a6afd`（[任务记录](../../tasks/2026-11-16-676-investigation-guidance.md) D9）。按 D11，#646 的两份摘要移到 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)，内容未改；本节的两次 Run 当时放在 `run-{1,2}/summary.json`，#676 r2（D11）起移到 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)，内容未改。
+
+- 主机与拓扑同上一节（同一台 Vultr 主机；kind lab 由 `kind_lab.py up` 从停止状态重新拉起，health ok，frontend span rate 2.6/s；PG 55431 与只读角色沿用）。代码 `feature/676-investigation-guidance` `e8b98507`（PR #677），运行期间未改代码。版本 `prompt-replay-candidate-14eb2a0a6afd` / `otel-demo-a3a95a0f888e` / `ctx-ctx-policy-v1-a30e65ea52f4`，与当前代码的 `otel_demo_versions()` 三项相同。worker `OPSPILOT_HEALTH_BIND=` 空值；flagd 转发 18013；swap 垫片同上；trace 项目 `opspilot-lab-f3-676-live-20261116`（`longlived`）。收集方式同上一节。
+
+### 时间线（UTC）
+
+| | Run 1（`f3-676-run1`） | Run 2（`f3-676-run2`） |
+|---|---|---|
+| preflight 七项通过 / 发布 R | 22:32:04，`rel-20261116223203` | 23:42:48，`rel-20261116234248` |
+| flagd 生效 `100%` | 22:39:57（R + 7.9 分钟） | 23:49:57（R + 7.2 分钟） |
+| 事故与 Run / 授权窗终点 | 事故 `53f5ccd3`，Run `a10cf725`，22:45:04 | 事故 `6ece32c3`，Run `f3b73c46`，23:56:04 |
+| 追问 / 起 worker | 追问 200，代际 0→1；22:45:05 起 worker 并领取 | 追问 200，代际 0→1；23:56:09 起 worker 并领取 |
+| 故障恢复 / 驱动结束 | 23:09:58 / 23:10:40 `finished ok:true` | 00:19:57 / 00:20:31 `finished ok:true` |
+| resolved 附加 → UI `close` | 约 23:18 close（代际 1→2） | 约 00:25 close（代际 1→2） |
+
+### 每次 Run 的结果
+
+| 项 | Run 1 | Run 2 |
+|---|---|---|
+| 报告 | `m0-report-v3`，`completed / partial` | `m0-report-v3`，`completed / partial` |
+| `root_cause` | Deployment / otel-demo / `checkout` | Deployment / otel-demo / `payment` |
+| claim 分组 | fact 15、counter_evidence 2、rejected_hypothesis 2、hypothesis 2 | fact 14、counter_evidence 3、rejected_hypothesis 3、hypothesis 2 |
+| 模型轮次 / token | 10 轮；prompt 355,666（命中 279,424）、completion 27,691 | 10 轮；prompt 536,374（命中 437,632）、completion 45,418 |
+| 工具请求 | 20：metrics_range_query 13、traces_search 3、get_label_values 2、get_metric_names 1、read_evidence 1 | 24：metrics_range_query 18、traces_search 3、read_evidence 2、get_metric_names 1 |
+| 投递 outcome | `created`、`resolved_attached` | 同左 |
+| trace | [Run 1 根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/42c71272-664a-43c4-907d-373ee323b6b1/r/00000000-0000-0000-6908-046f84d36622?poll=true) | [Run 2 根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/42c71272-664a-43c4-907d-373ee323b6b1/r/00000000-0000-0000-ba18-3105ba54a320?poll=true) |
+
+确定性判定（gate1–4、scenario_shape、step1、step2、step6）两次都为空；`tests/acceptance/test_f3_step5_real_runs.py` 15 条全过（本机定向运行）。rubric 5–8 由两名独立审查者判，本节不含判定。
+
+照实记录给审查者（不是判定）：
+- Run 1 的 summary 写的是「The most likely cause is the checkout configuration-only rollout…」，并注明这个联系只靠时间先后和「没有别的变更」，还被约 10 分钟的间隔削弱了。认定部署的那条 claim 是 hypothesis；没有任何 claim 否定这次部署。
+- Run 2 的主假设是 payment，把 checkout 部署列为「未排除的备选」。rejected_hypothesis 否掉的是 checkout 重启、其他依赖、延迟，没有一条否掉部署。两次都没有点名 flagd 的 `paymentFailure`（base 档位没有 K8s/ConfigMap 工具）。#646 那两次 Run 是 supported，根因分别是 paymentFailure 和 flagd。
+
+### 偏离与说明
+
+- 同一台主机先后跑了 ITBench-Lite 冒烟（lab 停着）和集成批 `lite-batch-676`（lab 开着）。集成批各段都避开了 Run 1 的调查窗口，并且在 Run 2 发布前结束（批记录 `docs/evidence/itbench-lite-sre-lite-batch-676/run.md`）。每分钟 lab 读数：checkout p95 最高 36 ms，swap 全程空闲。
+- 两次 Run 的 24 小时授权窗里都有更早的 checkout 发布（#646 那几次、lab 安装）。Run 2 还包含 Run 1 的发布与故障。这是同一 lab 上连续跑的固有结果。
+- Run 1 关闭后停 worker 时，复盘尝试在 30 秒 grace 后被中断，和 10-24 那次相同。
+- 第 6 步代理探测没有重跑。
+
+### 费用
+
+DeepSeek：北京时间 11-17 06:45 与 07:56，闲时，两次合计约 CNY 0.48（命中 717,056、未命中 174,984、输出 73,109；单价同 `m3-soak-2026-11-07/cost-primary.json`）。
+
+## #676 合同 r2：第 5 步三次真实 Run（2026-11-17，`prompt-replay-candidate-8688f6e52275`）
+
+合同 r2（[决定表](../../tasks/2026-11-16-676-investigation-guidance-contract.md) D12–D14）：L2 那句「认定原因的 claim 是 hypothesis 时 conclusion 写 partial」改成「Supported requires a fact claim that names that object as the cause; a hypothesis alone is not enough」；「告警是入口不是范围」那句移到仅 ext 的 KUBERNETES_GUIDANCE；no_data 视图不能支撑 fact、counter_evidence、rejected_hypothesis。基础档位变为 `8688f6e52275`。r1 的两份摘要（上一节）按 D11 移到 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)。合同要求跑 2 次，这里跑了 3 次（合同 r2 第四节修订：n=2 分不清）。验收测试读 `run-1`、`run-2`；`run-3` 与它们同样收集。
+
+- 主机、拓扑、收集方式同上一节。代码 `feature/676-investigation-guidance` `d96823fc`，运行期间未改代码。版本 `prompt-replay-candidate-8688f6e52275` / `otel-demo-a3a95a0f888e` / `ctx-ctx-policy-v1-a30e65ea52f4`，与当前代码的 `otel_demo_versions()` 三项相同。web 在 r2 代码上重启过；trace 项目 `opspilot-lab-f3-r2-live-20261117`（`longlived`）。
+
+### 时间线（UTC，2026-11-17）
+
+| | Run 1（`f3-r2-run1`） | Run 2（`f3-r2-run2`） | Run 3（`f3-r2-run3`） |
+|---|---|---|---|
+| preflight 通过 / 发布 R | 01:02:04，`rel-20261117010204` | 02:15:21，`rel-20261117021521` | 03:26:24，`rel-20261117032623` |
+| flagd 生效 `100%` | 01:10:13 | 02:22:57 | 03:34:33 |
+| 事故与 Run / 授权窗终点 | `f846b4e8` / `8b06fee1`，01:16:04 | `7b68624a` / `41b97848`，02:30:04 | `3b7647b4` / `9d3c1236`，03:39:04 |
+| 起 worker（追问已在领取前送达，代际 0→1） | 01:16:06 | 02:30:12 | 03:39:05 |
+| 故障恢复 / 驱动结束 | 01:40:13 / 01:40:33 `ok:true` | 02:52:58 / 02:54:20 `ok:true` | 04:04:33 / 04:05:38 `ok:true` |
+| resolved 附加 → UI `close` | 约 01:47 | 约 03:00 | 约 04:13 |
+
+Run 2 比最早可发时刻（02:12:04）晚了 3 分钟，是为了等集成批跑完，避免 trial 和调查窗口重叠。
+
+### 每次 Run 的结果
+
+| 项 | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| 报告 | `completed / supported` | `completed / partial` | `completed / partial` |
+| `root_cause` | Deployment / otel-demo / `payment` | Deployment / otel-demo / `payment` | Deployment / otel-demo / `payment` |
+| claim 分组 | fact 14、hypothesis 2、counter_evidence 2 | fact 13、hypothesis 2、rejected_hypothesis 2 | fact 9、hypothesis 2、counter_evidence 1、rejected_hypothesis 1 |
+| 对这次 checkout 部署的否定 | counter_evidence「Evidence against the checkout rollout being the trigger」 | rejected_hypothesis「…did not introduce this failure mode…」 | rejected_hypothesis「Rejected as the cause: the checkout Deployment rollout…」 |
+| 查 `feature_flag_*` 指标 | 0 次 | 0 次 | 3 次：`get_label_values`（label=`variant`、`flag_key`）都是 no_data，`sum by (flag_key, variant, …)` ok；实际标签名是 `feature_flag_key`/`feature_flag_result_variant`，所以没能点出是哪个 flag |
+| 模型轮次 / token | 11 轮；prompt 305,853（命中 252,544）、completion 32,116 | 10 轮；prompt 498,093（命中 402,560）、completion 33,154 | 17 轮；prompt 1,017,259（命中 910,080）、completion 55,237 |
+| 工具请求 | 23：metrics_range_query 16、get_label_values 3、traces_search 2、read_evidence 2 | 18：metrics_range_query 12、traces_search 4、read_evidence 2 | 35：metrics_range_query 22、get_label_values 4、get_metric_names 4、traces_search 3、read_evidence 2 |
+| 投递 outcome | `created`、`resolved_attached` | 同左 | 同左 |
+| trace | [Run 1](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8e92e6e3-22e4-4886-b6a0-0dca2b992e9d/r/00000000-0000-0000-7f75-cbe250b6851a?poll=true) | [Run 2](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8e92e6e3-22e4-4886-b6a0-0dca2b992e9d/r/00000000-0000-0000-1730-70af01c30877?poll=true) | [Run 3](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8e92e6e3-22e4-4886-b6a0-0dca2b992e9d/r/00000000-0000-0000-72a6-8b788693b8fa?poll=true) |
+
+三次的确定性判定（gate1–4、scenario_shape、step1、step2、step6）都为空；`tests/acceptance/test_f3_step5_real_runs.py` 读 `run-1`、`run-2`，15 条全过。rubric 5–8 由审查者判，本节不含判定。
+
+k/n（只陈述事实）：
+- 对部署有否定：3/3。
+- `root_cause` 为这次的 checkout 部署：0/3。
+- 查到 flag 侧证据：1/3（Run 3 查了，但标签名错了，没能点名是哪个 flag）。
+- supported：1/3。
+
+Run 2、Run 3 用来否定部署的论据，都包括「同样的 payment 拒绝在部署之前就出现过」，而它们引用的早先时段是前一次 Run 的故障窗。这是同一 lab 上连续跑的固有结果。
+
+### 偏离与说明
+
+- 同一台主机同时跑了冒烟 `lite-smoke-676r2` 与集成批 `lite-batch-676r2`，共 3 个进程，都在 Run 1 报告发布后才开始，并且在 Run 2 发布前结束。每分钟 lab 读数：checkout p95 最高约 35 ms，swap 全程空闲。
+- 每次关闭事故后停 worker 时，复盘尝试都在 30 秒 grace 后被中断，和以前相同。
+- 第 6 步代理探测没有重跑。
+
+### 费用
+
+DeepSeek：三次调查都在北京时间 09–12 点之间（高峰），按高峰价合计约 CNY 1.54（Run 1 0.37、Run 2 0.47、Run 3 0.69；单价同 `m3-soak-2026-11-07/cost-primary.json`）。

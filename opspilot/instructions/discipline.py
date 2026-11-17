@@ -96,7 +96,8 @@ INVESTIGATION_METHOD: Final = (
 )
 """调查方法（8 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
-不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。"""
+不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。
+（#676 r1 曾在此加「告警是入口不是范围」一句，r2 D13 移入 ``KUBERNETES_GUIDANCE``。）"""
 
 IMPACT_SCOPE: Final = (
     " Name an entity as affected only when you observed evidence for that entity itself, such as its own error spans, error-rate reading or failed operations, and cite that evidence."
@@ -122,17 +123,34 @@ KUBERNETES_GUIDANCE: Final = (
     " Eviction and OOM leave marks on the pod: an Evicted event from the kubelet, or OOMKilled as a container's last termination reason."
     " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it."
     " A startup readiness-probe miss on such a pod is part of starting, not impact."
-    " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors."
+    " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors; when connections between services are refused while their pods are healthy, also check networkpolicies, services, endpoints, resourcequotas."
+    " An alert is where the investigation starts, not its scope: find when the alerting signal began to deviate, and treat errors stable before the signal deviated as background, neither affected nor the cause."
+    " Read events across all namespaces first and do not filter by type, since the events that explain a fault are often Normal events recorded in another namespace."
+    " Group events by involved object kind, namespace and reason, then look into the groups that matter."
+    " Take each event's object kind from the event itself; an object of another kind can share a pod's name."
+    " When an event names an object you cannot read, the event is still evidence; record the unread object as a gap."
+    " Name as the root cause the object that applied the change or fault to the affected objects, with its kind and name exactly as the evidence writes them."
+    " When a restart leaves the pod template unchanged, the restart is a mechanism, not the cause; read the workload's and its dependencies' ConfigMaps for what triggered it."
+    " List as candidates the settings whose names or values show that they inject faults, errors, delays or failures."
+    " Name such a setting as the root cause only when the fault it declares matches the failure path you observed; otherwise keep it as a hypothesis."
+    " When the investigation is complete and events are the only evidence for the cause, set the conclusion to partial."
     " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
     " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
     " A running or ready pod can still be failing; read its application logs before calling it healthy."
     " When a tool reports RESULT_TOO_LARGE, retry it narrower, with a shorter window, a specific service or operation, tags or a lower limit, or page through the stored result as the response suggests; do not drop that evidence."
+    " When events are too many to list, group and count them first; do not narrow them by namespace or type."
 )
 """Kubernetes 调查指导（12 句，K1–K9 加 #628），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` :56/:58/:69/:73-78：去掉上游依赖命令行 describe 的措辞，不点工具名、
 参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。
 末句（#628）：工具报 RESULT_TOO_LARGE 后收窄重试或分页读取，不放弃该类证据；
-RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数名。"""
+RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数名。
+#676（D1–D7、D9）增至 22 句，r2 D13 把「告警是入口不是范围」一句从调查方法段移来，共 23 句：事件先全集群、不按 type 过滤、按对象种类/命名空间/原因
+分组，对象种类以事件为准，读不了的对象记缺口；原因对象是施加变更或故障者，模板未变的
+重启是机制，转读工作负载及其依赖的 ConfigMap，配置声明的故障与观测失败路径吻合才作
+原因；只有事件支撑时 partial；连接被拒且 Pod 健康时查网络策略等（扩写 K6 句，保留
+services…ingresses…logs 语序）；事件太大先分组计数（#628 句不动，另加一句）。
+字面投影字段名与分组示例在 L3 工具描述里。"""
 
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""

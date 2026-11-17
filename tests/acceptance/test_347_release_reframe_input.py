@@ -200,7 +200,7 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
     assert (
         fixture_versions()["prompt_revision"]
         == otel_demo_versions()["prompt_revision"]
-        == "prompt-replay-candidate-a6b4dfd02030"
+        == "prompt-replay-candidate-8688f6e52275"
     )
     assert schema.head_revision() == "0024_trace_outbox"
     grants = {
