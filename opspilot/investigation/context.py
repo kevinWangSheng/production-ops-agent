@@ -35,6 +35,9 @@ from opspilot.investigation.messages import (
     validate_tool_calls,
 )
 from opspilot.investigation.reports import (
+    CONVERSATION,
+    CONVERSATION_MODES,
+    DEFAULT_CONVERSATION_MODE,
     REPORT_CONTRACT,
     DeliveredView,
     context_target_catalog,
@@ -42,6 +45,8 @@ from opspilot.investigation.reports import (
     eligible_time_policies,
     evidence_context_projection,
     parse_report,
+    reply_instruction,
+    split_response,
     validated_report,
     view_targets_authorized,
 )
@@ -608,6 +613,18 @@ class InvestigationInput:
             self.scope_facts[RELEASE_OBSERVATION]
         ):
             raise ContextError("INPUT_INVALID")
+        if CONVERSATION in self.scope_facts and not _valid_conversation(
+            self.scope_facts[CONVERSATION]
+        ):
+            raise ContextError("INPUT_INVALID")
+
+    @property
+    def conversation(self) -> tuple[int, str]:
+        """``(floor, mode)`` of contract B4; ``(0, report_required)`` when
+        the Run was created without the fact. Not part of ``version``: it
+        changes no prefix byte (the reply instruction it governs is a
+        per-round trailing message, contract C5)."""
+        return conversation_of(self.scope_facts)
 
     @property
     def version(self) -> str:
@@ -683,6 +700,25 @@ class InvestigationInput:
             # edited or partially written. Refuse rather than pick one.
             raise ContextError("INPUT_INVALID")
         return parsed
+
+
+def _valid_conversation(value: object) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"floor", "mode"}
+        and type(value["floor"]) is int
+        and value["floor"] >= 0
+        and value["mode"] in CONVERSATION_MODES
+    )
+
+
+def conversation_of(scope_facts: Mapping[str, Any] | None) -> tuple[int, str]:
+    """``(floor, mode)`` from a Run's ``scope_facts`` (contract B4)."""
+    value = (scope_facts or {}).get(CONVERSATION)
+    if not _valid_conversation(value):
+        return 0, DEFAULT_CONVERSATION_MODE
+    assert isinstance(value, Mapping)
+    return int(value["floor"]), str(value["mode"])
 
 
 def step_key(segment: str, round_no: int) -> str:
@@ -867,6 +903,9 @@ class CommittedRound:
     # history, not a verdict to redo. A round replayed after that conclusion
     # starts a fresh record.
     concluded: bool = False
+    # The frozen human-input boundary the round saw (contract C2: a reply
+    # may answer only a message at or below it).
+    input_watermark: int = 0
 
 
 @dataclass
@@ -893,6 +932,12 @@ class Transcript:
     dropped_groups: tuple[UUID, ...] = ()
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
     last_round: CommittedRound | None = None
+    # Contract C1/C2: the ``message`` inputs the incident holds, the ones this
+    # Run already answered in a committed tool step, and whether any of its
+    # rounds was sent the reply instruction.
+    message_sequences: frozenset[int] = frozenset()
+    replied_sequences: frozenset[int] = frozenset()
+    reply_instruction_sent: bool = False
 
 
 def _ordered_results(
@@ -967,6 +1012,9 @@ def rebuild_transcript(
     inputs = snapshot.get("inputs") or ()
     if not isinstance(inputs, Sequence):
         raise ContextError("INCONSISTENT_STATE")
+    conversation = input.conversation
+    replied: set[int] = set()
+    instruction_sent = False
     ordered = sorted(
         (step for step in steps if isinstance(step, Mapping)),
         key=lambda step: (int(step.get("sequence", 0)), str(step.get("step_id"))),
@@ -1007,7 +1055,9 @@ def rebuild_transcript(
             # A conclusion committed under a superseded generation can never be
             # published (publish fences on the step's generation); a human
             # follow-up moved the Run on, so the loop continues instead.
-            if snapshot.get("conclusion") is None:
+            # Contract A5: unsettled means the incident's conclusion is not
+            # this row (empty, or an earlier Run's), not only "empty".
+            if snapshot.get("conclusion") != response:
                 if step.get("control_generation") == generation:
                     pending_publish = (step_id, dict(response))
                 elif last_round is not None:
@@ -1084,9 +1134,21 @@ def rebuild_transcript(
                     and retry_feedback[0] == step.get("control_generation")
                     else ""
                 ),
+                conversation=conversation,
             )
         retry_feedback = None
         last_step_id = step_id
+        row_replies = response.get("replies")
+        if isinstance(row_replies, list):
+            replied.update(
+                item["to_input_seq"]
+                for item in row_replies
+                if isinstance(item, Mapping) and type(item.get("to_input_seq")) is int
+            )
+        if isinstance(response.get("context"), Mapping) and isinstance(
+            response["context"].get("reply_instruction_sha256"), str
+        ):
+            instruction_sent = True
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
             raise ContextError("INCONSISTENT_STATE")
@@ -1118,6 +1180,12 @@ def rebuild_transcript(
             # row landed before the fence: history, not a verdict to redo
             # (bot review finding, PR #29).
             concluded=step.get("control_generation") != generation,
+            input_watermark=(
+                row_context["input_watermark"]
+                if isinstance(row_context, Mapping)
+                and type(row_context.get("input_watermark")) is int
+                else 0
+            ),
         )
         if (
             not diverged
@@ -1129,7 +1197,7 @@ def rebuild_transcript(
             # so far; when it failed, the next (forced final) round sent the
             # resulting feedback, so its recorded hash covers those bytes.
             report, _reason, feedback = validated_report(
-                content or "",
+                split_response(content).report_content or "",
                 finish_reason=committed.finish_reason,
                 delivered=delivered,
                 evidence_context=context,
@@ -1211,6 +1279,9 @@ def rebuild_transcript(
         dropped_groups=tuple(dropped),
         pending_publish=pending_publish,
         last_round=last_round,
+        message_sequences=message_sequences(inputs),
+        replied_sequences=frozenset(replied),
+        reply_instruction_sent=instruction_sent,
     )
 
 
@@ -1292,19 +1363,13 @@ def input_watermark(inputs: Sequence[Mapping[str, Any]]) -> int:
     )
 
 
-def inputs_message(
-    inputs: Sequence[Mapping[str, Any]], *, watermark: int | None = None
-) -> dict[str, Any] | None:
-    """The one trailing user message carrying the inputs a round may see.
+MESSAGE_INPUT_KIND = "message"
 
-    The live round (``InvestigationLoop._round``) builds it from what
-    ``begin_round()`` returned; the rebuild builds it from the persisted
-    ``inputs`` up to the step row's recorded ``context.input_watermark``.
-    Both go through this function, so the bytes -- and therefore the
-    recorded ``input_snapshot_hash`` -- agree. It is a per-round trailing
-    message, never part of the durable transcript or of a compaction fold.
-    """
-    rows = sorted(
+
+def _rows_upto(
+    inputs: Sequence[Mapping[str, Any]], watermark: int | None
+) -> list[Mapping[str, Any]]:
+    return sorted(
         (
             row
             for row in inputs
@@ -1314,22 +1379,81 @@ def inputs_message(
         ),
         key=lambda row: int(row["sequence"]),
     )
+
+
+def message_sequences(inputs: Sequence[Mapping[str, Any]]) -> frozenset[int]:
+    """Sequences of the human ``message`` inputs among ``inputs``."""
+    return frozenset(
+        int(row["sequence"])
+        for row in _rows_upto(inputs, None)
+        if row.get("kind") == MESSAGE_INPUT_KIND
+    )
+
+
+def new_messages(
+    inputs: Sequence[Mapping[str, Any]], *, floor: int, watermark: int | None = None
+) -> tuple[int, ...]:
+    """Contract B4: ``message`` inputs above the Run's ``floor`` (and at or
+    below ``watermark``) -- the ones this Run must answer."""
+    return tuple(
+        int(row["sequence"])
+        for row in _rows_upto(inputs, watermark)
+        if row.get("kind") == MESSAGE_INPUT_KIND and row["sequence"] > floor
+    )
+
+
+def reply_instruction_message(
+    inputs: Sequence[Mapping[str, Any]],
+    *,
+    floor: int,
+    mode: str,
+    watermark: int | None = None,
+) -> dict[str, Any] | None:
+    """Contract C4: the trailing reply instruction, sent right after the
+    inputs message in exactly the rounds whose inputs carry a new message.
+    The live round and the rebuild's hash check both build it here."""
+    if not new_messages(inputs, floor=floor, watermark=watermark):
+        return None
+    return {"role": "user", "content": reply_instruction(mode)}
+
+
+def inputs_message(
+    inputs: Sequence[Mapping[str, Any]],
+    *,
+    watermark: int | None = None,
+    floor: int = 0,
+) -> dict[str, Any] | None:
+    """The one trailing user message carrying the inputs a round may see.
+
+    The live round (``InvestigationLoop._round``) builds it from what
+    ``begin_round()`` returned; the rebuild builds it from the persisted
+    ``inputs`` up to the step row's recorded ``context.input_watermark``.
+    Both go through this function, so the bytes -- and therefore the
+    recorded ``input_snapshot_hash`` -- agree. It is a per-round trailing
+    message, never part of the durable transcript or of a compaction fold.
+
+    Contract B4/B5: a ``message`` row above the Run's ``floor`` also carries
+    ``"new": true``; every other row -- ``event``, ``follow_up``, ``correct``
+    -- keeps exactly the shape it always had, so a committed step whose
+    inputs held no message rebuilds to the same bytes.
+    """
+    rows = _rows_upto(inputs, watermark)
     if not rows:
         return None
+
+    def entry(row: Mapping[str, Any]) -> dict[str, Any]:
+        item: dict[str, Any] = {
+            "sequence": row["sequence"],
+            "kind": row.get("kind"),
+            "content": project_input_content(row.get("content")),
+        }
+        if row.get("kind") == MESSAGE_INPUT_KIND and row["sequence"] > floor:
+            item["new"] = True
+        return item
+
     return {
         "role": "user",
-        "content": canonical(
-            {
-                INPUTS_MESSAGE_KEY: [
-                    {
-                        "sequence": row["sequence"],
-                        "kind": row.get("kind"),
-                        "content": project_input_content(row.get("content")),
-                    }
-                    for row in rows
-                ]
-            }
-        ),
+        "content": canonical({INPUTS_MESSAGE_KEY: [entry(row) for row in rows]}),
     }
 
 
@@ -1340,6 +1464,7 @@ def _check_snapshot_hash(
     inputs: Sequence[Mapping[str, Any]] = (),
     delivered: Sequence[DeliveredView] = (),
     retry_feedback: str = "",
+    conversation: tuple[int, str] = (0, DEFAULT_CONVERSATION_MODE),
 ) -> None:
     """Refuse a rebuild whose bytes differ from what that step actually sent.
 
@@ -1353,6 +1478,9 @@ def _check_snapshot_hash(
     it with ``validated_report`` from the committed non-final reply that
     forced this round, #304), then the run coverage summary.
     Rows without a recorded hash (pre-segment rows) are not checked.
+    Contract B5: when the inputs up to the watermark carry a new ``message``
+    (``conversation`` is the Run's ``(floor, mode)``), the reply instruction
+    follows the inputs message, exactly as ``_round`` sent it.
     """
     context = response.get("context")
     if not isinstance(context, Mapping):
@@ -1363,9 +1491,15 @@ def _check_snapshot_hash(
     sent = list(sent_before)
     watermark = context.get("input_watermark")
     if type(watermark) is int and watermark > 0:
-        message = inputs_message(inputs, watermark=watermark)
+        floor, mode = conversation
+        message = inputs_message(inputs, watermark=watermark, floor=floor)
         if message is not None:
             sent.append(message)
+        instruction = reply_instruction_message(
+            inputs, floor=floor, mode=mode, watermark=watermark
+        )
+        if instruction is not None:
+            sent.append(instruction)
     if context.get("final") is True:
         from opspilot.investigation.reports import (
             FINAL_REPORT_INSTRUCTION,
@@ -1389,9 +1523,13 @@ def pending_conclusion(
 
     Read before replaying pending tools: once a Run has concluded, nothing it
     left behind (including a rejected plan) may be executed.
+
+    Contract A5: "never published" means the incident's conclusion is not
+    this row -- it is empty, or a conclusion an earlier Run published (a
+    continuation Run answering a message keeps it until it publishes its
+    own, or settles ``answered`` without publishing).
     """
-    if snapshot.get("conclusion") is not None:
-        return None
+    published = snapshot.get("conclusion")
     generation = snapshot.get("control_generation")
     for step in snapshot.get("steps") or ():
         if not isinstance(step, Mapping) or step.get("status") == "late_result":
@@ -1403,6 +1541,8 @@ def pending_conclusion(
             and step.get("control_generation") == generation
             and isinstance(step.get("step_id"), UUID)
         ):
+            if published is not None and published == response:
+                return None
             return step["step_id"], dict(response)
     return None
 
@@ -1438,6 +1578,22 @@ def conclusion_publishable(response: Mapping[str, Any]) -> bool:
     report, _reason = parse_report(content, finish_reason="stop")
     return report is not None and report.schema_version == body.get(
         "report_schema_version"
+    )
+
+
+def conclusion_answered(response: Mapping[str, Any]) -> bool:
+    """Contract A3/A4: the Run replied and keeps the incident's conclusion.
+
+    The third way a committed ``conclusion`` step settles, beside publish
+    (``conclusion_publishable``) and handoff: ``execution == "answered"``
+    with no handoff. The Run is completed without touching the incident's
+    conclusion (ADR-0005 item 1: answered publishes nothing new).
+    """
+    body = response.get("conclusion")
+    return (
+        isinstance(body, Mapping)
+        and body.get("execution") == "answered"
+        and body.get("handoff") is False
     )
 
 

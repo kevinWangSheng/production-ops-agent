@@ -98,7 +98,13 @@ __all__ = [
 ]
 
 OutcomeState = Literal[
-    "completed", "failed", "blocked", "budget_exhausted", "cancelled", "paused"
+    "completed",
+    "failed",
+    "blocked",
+    "budget_exhausted",
+    "cancelled",
+    "paused",
+    "answered",
 ]
 
 
@@ -133,7 +139,7 @@ def outcome_from_loop(
 ) -> IncidentOutcome:
     """Project a loop result without interpreting its hidden reasoning."""
     state: OutcomeState = result.execution
-    if state not in {"completed", "failed", "blocked", "budget_exhausted"}:
+    if state not in {"completed", "failed", "blocked", "budget_exhausted", "answered"}:
         raise ValueError("UNKNOWN_LOOP_STATE")
     return IncidentOutcome(
         scenario_id=scenario.scenario_id,
@@ -148,7 +154,11 @@ def outcome_from_loop(
     )
 
 
-_LOOP_STATES = frozenset({"completed", "failed", "blocked", "budget_exhausted"})
+# ``answered`` (workbench redesign contract A3): the Run replied to the
+# messages it read and completed without publishing a new conclusion.
+_LOOP_STATES = frozenset(
+    {"completed", "failed", "blocked", "budget_exhausted", "answered"}
+)
 # Human control and an incompatible rebuild are the final authority over a
 # Run row; a committed conclusion never overrides them.
 _HUMAN_OR_BLOCKED = frozenset({"paused", "cancelled", "blocked"})
@@ -345,21 +355,29 @@ def outcome_from_durable(
     steps = _steps(snapshot)
 
     published = _published_conclusion(snapshot)
-    if row_state == "completed" and published is None:
+    # The current Run's own settled-but-unpublished conclusion step: a
+    # handoff (ADR-0005), or -- beside an earlier Run's published conclusion
+    # -- a continuation Run's ``answered`` or handoff step (contract A3/A5).
+    own = _parked_conclusion(snapshot)
+    if (
+        row_state == "completed"
+        and published is None
+        and (own is None or own["execution"] != "answered")
+    ):
         raise ValueError("INVALID_DURABLE_SNAPSHOT")
-    conclusion = published if published is not None else _parked_conclusion(snapshot)
+    conclusion = own if own is not None else published
 
     reasons: list[str] = []
-    report_available = False
+    # A published report stays available whatever a later Run answered.
+    report_available = (
+        published is not None
+        and published["execution"] == "completed"
+        and isinstance(published.get("report_schema_version"), str)
+    )
     if conclusion is not None:
         loop_state = conclusion["execution"]
         evidence = _string_list(conclusion.get("evidence_ids", ()))
         reasons = list(_string_list(conclusion.get("handoff_reasons", ())))
-        report_available = (
-            published is not None
-            and loop_state == "completed"
-            and isinstance(conclusion.get("report_schema_version"), str)
-        )
     else:
         loop_state = "failed"
         evidence = _committed_evidence(snapshot)
@@ -420,6 +438,10 @@ def outcome_from_durable(
             human = "scope_suspension"
     if human is not None:
         decision = "human_control"
+    elif own is not None and own.get("handoff") is True:
+        decision = "handoff"
+    elif own is not None and own["execution"] == "answered":
+        decision = "report_available" if report_available else "answered"
     elif published is not None:
         decision = "handoff" if published.get("handoff") is True else "report_available"
     elif row_state in {"waiting_human", "blocked"}:
@@ -456,7 +478,13 @@ def outcome_from_live_record(
     ):
         raise ValueError("INVALID_LIVE_RECORD")
     execution = ledger.get("execution")
-    if execution not in {"completed", "failed", "blocked", "budget_exhausted"}:
+    if execution not in {
+        "completed",
+        "failed",
+        "blocked",
+        "budget_exhausted",
+        "answered",
+    }:
         raise ValueError("INVALID_LIVE_RECORD")
     evidence = ledger.get("evidence_ids", ())
     if not isinstance(evidence, list) or not all(

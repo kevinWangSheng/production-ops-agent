@@ -290,6 +290,10 @@ class IncidentStore(Protocol):
         self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
     ) -> bool: ...
 
+    def settle_answered(self, lease: Lease, *, step_id: UUID) -> bool:
+        """Complete the leased Run on its ``answered`` step (contract A4)."""
+        ...
+
     def abandon(self, lease: Lease) -> None: ...
 
     def hand_off(self, lease: Lease) -> None:
@@ -718,6 +722,9 @@ class DurableIncidentStore:
         self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
     ) -> bool:
         return self._store.publish(lease, conclusion, step_id=step_id)
+
+    def settle_answered(self, lease: Lease, *, step_id: UUID) -> bool:
+        return self._store.settle_answered(lease, step_id=step_id)
 
     def abandon(self, lease: Lease) -> None:
         self._store.abandon(lease)

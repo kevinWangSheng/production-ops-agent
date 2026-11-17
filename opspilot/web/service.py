@@ -62,6 +62,7 @@ from opspilot.investigation.context import (
     KNOWLEDGE,
     RELEASE_OBSERVATION,
     ContextError,
+    conclusion_answered,
     conclusion_publishable,
 )
 from opspilot.investigation.coverage import (
@@ -84,6 +85,7 @@ from opspilot.investigation.limits import (
 from opspilot.investigation.loop import LoopOutcome
 from opspilot.investigation.progress import (
     EmittingCommitter,
+    announce_answered,
     announce_claim_refused,
     announce_claimed,
     announce_completed,
@@ -2291,6 +2293,13 @@ class Workbench:
             return
         if run["state"] != "completed":
             return
+        if not any(
+            step.get("response") == rebuilt.get("conclusion")
+            for step in rebuilt["steps"]
+        ):
+            # The conclusion is an earlier Run's: this completed Run settled
+            # ``answered`` (contract A4) and published nothing to announce.
+            return
         # This stub can be the retained record: a page load that races the
         # worker between its publish and its append wins the run_id key, so
         # readers must not rely on the worker-only fields (evidence_ids,
@@ -2948,6 +2957,32 @@ class Workbench:
             budget_limit=int(rebuilt["run"]["budget_limit"]),
         )
         outcome = investigator.investigate(context, committer, self.evidence)
+        if (
+            outcome.final_step_id is not None
+            and outcome.conclusion is not None
+            and conclusion_answered(outcome.conclusion)
+        ):
+            # Contract A4: replied, nothing published; the Run completes.
+            if not self.incidents.settle_answered(lease, step_id=outcome.final_step_id):
+                self._handoff(
+                    incident_id,
+                    lease,
+                    run_id,
+                    outcome.execution,
+                    ("LATE_RESULT",),
+                )
+                return outcome
+            body = outcome.conclusion.get("conclusion") or {}
+            announce_answered(
+                self.events,
+                incident_id,
+                run_id,
+                replies=body.get("replies") or [],
+                report_rejected_reason=body.get("report_rejected_reason"),
+                model_requests_used=outcome.model_requests_used,
+                prompt_revision=outcome.prompt_revision,
+            )
+            return outcome
         # A handoff (incomplete finding, budget, pairing failure) is never
         # published as the conclusion (ADR-0005): publishing would freeze
         # human control (DurableStore.control refuses once a conclusion

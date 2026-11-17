@@ -16,7 +16,7 @@ rows (``DurableStore.rebuild``). The ``ProgressLog`` and
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -88,6 +88,50 @@ def announce_completed(
             "handoff_reasons": [],
             "report_sha256": report_sha256,
             "evidence_ids": list(evidence_ids),
+            "model_requests_used": model_requests_used,
+            "prompt_revision": prompt_revision,
+        },
+        key={"run_id": str(run_id)},
+    )
+
+
+def announce_answered(
+    log: ProgressLog,
+    subject_id: UUID,
+    run_id: UUID,
+    *,
+    replies: Sequence[Mapping[str, Any]],
+    report_rejected_reason: str | None,
+    model_requests_used: int | None,
+    prompt_revision: str | None,
+) -> int:
+    """Contract A3/A4: the Run replied and completed without publishing.
+
+    A ``run_completed`` with ``published: false`` and ``execution:
+    "answered"``, keyed by run like ``announce_completed`` (a Run settles
+    once). Reply text stays in the step rows; the event carries only the
+    sequences answered, so the log never duplicates operator-facing text.
+    """
+    return log.append_once(
+        subject_id,
+        "run_completed",
+        {
+            "run_id": str(run_id),
+            "published": False,
+            "execution": "answered",
+            "handoff": False,
+            "handoff_reasons": [],
+            "answered_input_seqs": sorted(
+                {
+                    int(item["to_input_seq"])
+                    for item in replies
+                    if isinstance(item, Mapping)
+                    and type(item.get("to_input_seq")) is int
+                }
+            ),
+            "report_rejected_reason": report_rejected_reason,
+            "report_sha256": None,
+            "evidence_ids": [],
             "model_requests_used": model_requests_used,
             "prompt_revision": prompt_revision,
         },

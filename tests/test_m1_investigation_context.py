@@ -955,3 +955,65 @@ def test_redact_credentials_reuses_the_registry_rules_and_is_deterministic():
     for text, expected in cases.items():
         assert redact_credentials(text) == expected, text
         assert redact_credentials(redact_credentials(text)) == expected  # idempotent
+
+
+def test_a_conversation_run_rebuilds_its_reply_instruction_and_resumes_answered():
+    """Workbench redesign contract B5/C5 (not reachable from the scenario
+    suite, which never restarts mid-Run): a round that read a new human
+    ``message`` was also sent the reply instruction, whose hash is recorded on
+    that step and never enters the versions. A restart must rebuild the same
+    bytes (the recorded ``input_snapshot_hash``), resume, and settle the Run
+    as ``answered`` from the reply the resumed round gives."""
+    import hashlib
+    from dataclasses import replace
+
+    from opspilot.investigation.reports import reply_instruction
+
+    loop, request, model, _, store, _ = _wide(replies=[])
+    request = replace(request, conversation={"floor": 0, "mode": "report_optional"})
+    store._inputs.append(
+        {"sequence": 1, "kind": "message", "content": {"text": "is it only checkout?"}}
+    )
+    narration = json.dumps({"note": "checking cart too", "replies": []})
+    first = reply(
+        content=narration,
+        tool_calls=[tool_call(call_id="call-1")],
+        finish="tool_calls",
+    )
+    loop.model = model = ScriptedModel([first, Crash("in flight")])
+    with pytest.raises(Crash):
+        loop.run(request)
+    sent = model.calls[0].messages
+    instruction = reply_instruction("report_optional")
+    assert sent[-1] == {"role": "user", "content": instruction}
+    assert '"new":true' in sent[-2]["content"]
+    row = store.steps["ctx0:round-1"]["response"]
+    assert (
+        row["context"]["reply_instruction_sha256"]
+        == hashlib.sha256(instruction.encode("utf-8")).hexdigest()
+    )
+    assert row["note"] == "checking cart too" and row["replies"] == []
+
+    transcript = _transcript(store, request)  # INCOMPATIBLE_STATE if B5 broke
+    answer = {"to_input_seq": 1, "text": "Only checkout.", "evidence_ids": []}
+    resumed, model2 = _restart(
+        loop,
+        store,
+        [
+            reply(
+                content=json.dumps(
+                    {
+                        "schema_version": "m0-response-v1",
+                        "replies": [answer],
+                        "report": None,
+                    }
+                )
+            )
+        ],
+    )
+    outcome = resumed.resume(transcript)
+    assert model2.calls[0].messages[-1] == {"role": "user", "content": instruction}
+    assert outcome.execution == "answered" and outcome.handoff is False
+    assert list(outcome.replies) == [answer]
+    assert outcome.conclusion is not None
+    assert outcome.conclusion["conclusion"]["report_content"] is None
