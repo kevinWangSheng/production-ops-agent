@@ -6,7 +6,13 @@ requires-python = ">=3.12,<3.13"
 dependencies = ["tokenizers==0.23.2"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-xdist==3.8.0", "ruff", "mypy"]
+dev = [
+    "pytest",
+    "pytest-xdist==3.8.0",
+    "ruff",
+    "mypy",
+    "playwright==1.64.1",
+]
 m0 = [
     "alembic==1.20.0",
     "httpx2==2.12.0",

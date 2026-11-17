@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r7 已定，P1 待开工
+- 状态：合同 r7 已定，P1 待合并
 - 更新日期：2026-11-17
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
@@ -58,6 +58,8 @@ P1 回复合同 → P2 消息输入与接力 → P3 日志投影与 SSE → P4 �
 
 - 2026-11-17 P4 页面（分支 `feature/workbench-p4-incident-pages`，worktree `poa-wb-p4`，本地提交未推送）：列表与详情按原型 v2 重写；A8 九级状态一条函数（`opspilot/web/status.py`）列表与页头共用，列表分组 SQL 同步改；详情页结果在前 + 可展开日志（每次工具调用展开看查询/来源/目标/时间窗/新鲜度/耗时/脱敏结果）+ Chat 面板外壳；输入框按 D 表显示但在 P2 `message` 动作前禁用，不走旧 follow_up/correct；回复、排队请求读步骤行 `replies` 与 `queued_requests`，main 上为空。截图存 `~/.agent/diagrams/opspilot-workbench-p4-shots/`（不入库）。
 - 2026-11-17：合同预审完成（全新上下文 Fable，只读）。全量探针：推荐做法 6 个受影响文件 0 失败；改版本号做法 12 失败（含 3 条 F3 第 5 步真实 Run 证据）。PG 门控验收未跑，留给 P1/P2 CI。
+
+- P1 回复合同（`feature/workbench-p1-response-contract`，worktree `../poa-wb-p1`，对齐 r7）：实现 Opus；独立测试 Codex gpt-6.1-sol（`tests/acceptance/test_workbench_conversation.py` 5 个函数 8 例 + `tests/workbench_driver.py`，在 main 上 7 红 1 绿，原因均为功能缺失）；独立审查 Codex gpt-6-astra 三轮：首审 3×P2（1 项裁为合同澄清 r7，2 项修复），复验 1×P2（未收尾的 answered 步骤 + 超时清扫，Run 行优先）已修，lead 自核 delta。全新 PG：场景 + m1-01 验收 41 通过；实现者跑 `tests/acceptance` 带 PG 全过。真实 Run 证据 `docs/evidence/workbench-p1-response-live/`：Run 1 `RESPONSE_INVALID`（空回复，保留），Run 2 续接回答「你好」结局 `answered`、结论与代际不变；费用上限约 0.183 CNY（3 次尝试）。未覆盖：已发布结论上的 D3 真实 Run、`reply_only` 真实 Run（fixture 给不出完整首份报告）。
 
 ## 下一步与交接
 

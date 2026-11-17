@@ -53,4 +53,18 @@
 
 - `run-1/` 对应 Run `8b06fee1`（事故 `f846b4e8`），`run-2/` 对应 `41b97848`（`7b68624a`），`run-3/` 对应 `9d3c1236`（`3b7647b4`）。r1 那两份已移到 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)。收集方式同上（UI `close` 之后、只读角色、`lab_readings` 连续读数）。三份 `run_versions` 都等于当前代码的 `otel_demo_versions()`。
 - 确定性判定：三份都为空；验收测试读 `run-1`、`run-2`，15 条全过。
-- **审查者判定：待 lead 派审查者。** 运行事实见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「#676 合同 r2」。
+- **审查者判定（2026-11-16）**：两名全新上下文审查者按冻结 rubric（`b58974b2…1d956`）、answer（`a35361da…37a`）独立判定三次 Run，审查者 A 为 Claude 子 Agent，审查者 B 为 Codex（另一模型）。
+
+  | Run | 审查者 | rubric 1–8 | 第 2 步 summary 一致性 | 记录的弱点（不作门槛） |
+  |---|---|---|---|---|
+  | Run 1 `8b06fee1` | A | PASS（8/8） | 一致 | claim 0、16 称 PlaceOrder 错误率在 01:05:54–01:10:54 为 0，但证据 `921ba20e-t0` 该段无样本（claim 0 与 gap 3 自己写了无样本），D5-a(i) 不成立，A 认为 (ii)(iii) 单独够；对部署是软否定；「earlier」引用的 00:20 是 r1 第 2 次 Run 的故障尾部 |
+  | Run 1 `8b06fee1` | B | **FAIL（第 8 项）** | 一致 | 同一处：claim 17 称部署后「error ratio stayed 0…01:05:54–01:10:54」，引用序列从 00:29:54 直接跳到 01:11:54，把未知时段写成已证实的部署后正常期，改变了否定部署的时间论证，D5-a(ii) 成立不能豁免第 8 项；C8 把 00:30:54 写成 00:35:54 |
+  | Run 2 `41b97848` | A | PASS（8/8） | 一致 | summary「(0 earlier in the hour)」与 claim 5 不符但后文已写 01:37；next_steps 把前一次注入当成自愈；claim 5 区间下限应为 0.0208 |
+  | Run 2 `41b97848` | B | PASS（8/8） | 一致 | C2 与 summary 称唯一错误操作是 Charge，同一视图也有 PlaceOrder ERROR |
+  | Run 3 `9d3c1236` | A | PASS（8/8） | 一致 | summary 数值笔误「404.0167/s」（应为 0.0167/s）；claim 4 时刻与「through 03:36:04」两处数值误差；03:26:31 span 归给新 Pod 无 Pod 字段依据 |
+  | Run 3 `9d3c1236` | B | PASS（8/8） | 一致 | 同上 404.0167/s 与几处时刻误差 |
+
+  两名审查者都判 01:37–01:39Z 那段错误（Run 1 故障窗尾部）不影响 Run 2：它确实早于 Run 2 的部署，报告没有给它编造原因，否定部署另有部署后成功 span 与 payment Charge 错误两条依据。
+- 合计：第 2 步 summary 一致性 3 次 Run 两名审查者均判一致（#664 的问题在 r2 下未再出现）；第 5 步 Run 1 审查者分歧，Run 2、Run 3 均为两名审查者 PASS。
+- **裁决**：Run 1 按 FAIL 处理（用户 2026-11-17 同意 r3 计划时随计划一并认可，未单独确认；依据与 2026-11-16 U-A 一致：分歧按不通过、不挑样）。验收测试读 `run-1`、`run-2`，所以 F3 第 5 步在 `prompt-replay-candidate-8688f6e52275` 下记为未达成，`passes` 仍为 false；下一版（r3，#695/#690，PR #697）revision 变化后重跑三次。B 指出的问题（把无样本时段写成 0）正是 #690 第 2 句「无样本时段是 unknown 不是 zero」要约束的行为。
+- 审查原文：审查者 B 的输出与审查者 A 的复述留在 lead 会话目录，未入库（只入结论）。运行事实见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「#676 合同 r2」。
