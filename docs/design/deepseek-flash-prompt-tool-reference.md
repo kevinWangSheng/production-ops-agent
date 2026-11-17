@@ -109,6 +109,8 @@ max_tokens=64, thinking=enabled, reasoning_effort=high
 
 **推论**：报告契约里的 "json" 字样与示例对象是**供应商要求**，不是排版偏好，
 缺一都可能失效；"返回空正文"要当正常失败路径处理，不是异常。
+2026-11-17 本项目实测（#686）：开 JSON 模式时，模型要写的内容不是 JSON 就返回空白、
+`finish_reason=stop`，循环按 `EMPTY_REPORT` 处理。
 
 ### 1.6 工具调用
 
@@ -117,11 +119,11 @@ max_tokens=64, thinking=enabled, reasoning_effort=high
 | schema | OpenAI 兼容（`type: "function"` + `name` / `description` / `parameters`） |
 | strict 模式 | `/beta` base_url；要求全属性 `required` + `additionalProperties: false`；不支持 `minLength` / `maxLength` |
 | 官方对 name / description **撰写**的指引 | **没有** |
-| `tools` 与 `response_format` 同时使用 | **官方未文档化** |
+| `tools` 与 `response_format` 同时使用 | **官方未文档化**；本项目 2026-11-17 实测同时发送（33 次真实调用，0 个 API 错误） |
 
 C3 第 5 节已定**默认关闭 strict beta**，strict 的限制当前不适用。
 因官方无撰写指引，第 3 节是本项目自有标准。
-因交互未文档化，建议**工具轮送 `tools`、报告轮送 `response_format`**，两者不叠加。
+自 2026-11-17（#686）起，**每个调查轮都送 `response_format`，工具轮同时送 `tools`**；压缩请求不送。
 
 ### 1.7 容量、计费与错误
 
@@ -305,7 +307,7 @@ not delivered by this view, not that no error occurred (D5).
 - [ ] 每轮重发全部历史，严格 user/assistant 交替（1.1）
 - [ ] 带 `tools` 的每轮回传全部历史 `reasoning_content`（1.3）
 - [ ] `reasoning_content` 不进报告 / 知识 / trace / judge
-- [ ] 工具轮与报告轮分送 `tools` / `response_format`（1.6）
+- [ ] 每个调查轮都送 `response_format`，工具轮同时送 `tools`，压缩请求不送（1.6）
 - [ ] 把"返回空正文"当正常失败路径（1.5）
 - [ ] 400/422 不重试，429/500/503 有界重试（1.7）
 - [ ] 不依赖 `temperature` 等无效参数（1.3）

@@ -28,7 +28,9 @@
 
 ## 证据
 
-（实施后填写：定向测试、有界真实 Run 的 trace 与 summary.json）
+- 实现（2026-11-17）：`loop.py` 调查轮 `json_mode=True`、压缩请求仍 False；`reports.py` U2/U3 默认空列表、D6 重试提示（唯一最近的已交付 id；`missing_target_refs` 列出出错的 ref 与允许值，各最多 50 条）。报告合同、`FINAL_REPORT_INSTRUCTION`、重试模板字节不变。
+- 定向测试：按 U7 预期失败 2 项（`test_m1_investigation_loop.py` 钉工具轮 `json_mode is False` 的两项，由测试作者翻转）；D6 与 #456 两条既有断言冲突（`test_456_forced_final_fence_feedback.py` 的 `..._matches_what_the_citation_gate_says_unfenced`、`..._the_valid_one_is_not`），交 lead 裁决；其余定向文件全过。
+- 有界真实 Run：[证据](../evidence/686-json-mode-live/README.md)。4 个模型请求 `json_mode` 全为 true；首个 Run 纯 JSON 报告、`INCOMPLETE_INVESTIGATION`；续接 Run 终答轮返回不带 `schema_version` 的 `{note,replies,report}`，`RESPONSE_INVALID`。0.077032 CNY。
 
 ## 待决
 
