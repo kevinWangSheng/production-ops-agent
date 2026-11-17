@@ -66,6 +66,7 @@ ACTOR = "dev-seed"
 TARGET_PREFIX = "dev-seed-"
 TITLE_PREFIX = "[seed]"
 MARKER_TITLE = "checkout payment latency p99 regression"
+DETAIL_TARGET = f"{TARGET_PREFIX}detail"
 #: name -> (namespace, workload, title)
 SERVICES = {
     "checkout": ("shop", "checkout", "Checkout p99 latency above 2s for 10 minutes"),
@@ -167,6 +168,16 @@ def registry_entries() -> dict[str, dict[str, Any]]:
             "workload": workload,
             "match": {"version": 1, "labels": {"service": name}},
         }
+    # The incident page fixture's target (``--detail``): bound to the
+    # shipped checkout HealthProfile so a remediation can be registered.
+    entries[DETAIL_TARGET] = {
+        "integration_id": ACTOR,
+        "cluster_uid": f"{ACTOR}-cluster",
+        "namespace": "otel-demo",
+        "workload": "checkout",
+        "health_profile_id": "otel-demo-checkout",
+        "match": {"version": 1, "labels": {"service": DETAIL_TARGET}},
+    }
     # Two entries with one match: an alert matching both is ambiguous (E7).
     for suffix in ("a", "b"):
         entries[f"{TARGET_PREFIX}ambiguous-{suffix}"] = {
@@ -402,7 +413,370 @@ def seed(workbench: Any, kinds: list[str], *, dsn: str, out: Any = sys.stdout) -
             )
 
 
-def build(dsn: str) -> Any:
+# -- incident page fixture (web UX spec 2026-11-16, section 4.7) ---------------
+#
+# ``--detail`` adds one incident per page state the detail page must carry,
+# each opened by a ``dev-seed`` alert (so ``--reset`` finds it) on the
+# ``dev-seed-detail`` target. Runs are driven through ``Workbench.run_once``
+# with the test suite's scripted model and tool doubles (the same path the
+# PostgreSQL integration tests use), so steps, evidence and reports are what
+# the product writes. Two states have no product path from a script: a Run a
+# worker is still holding (its rounds are committed through the store's
+# committer under a long lease, no model) and ``resolved`` (one ``UPDATE``, as
+# for the list fixture).
+
+DETAIL_KINDS = (
+    "long-run",
+    "many-runs",
+    "running",
+    "paused",
+    "taken-over",
+    "watching",
+    "resolved",
+    "closed",
+    "no-report",
+)
+_DETAIL_TITLES = {
+    "long-run": "Checkout p99 latency above 2s: 80-round investigation",
+    "many-runs": "Checkout error ratio: twenty Runs after follow-ups",
+    "running": "Checkout 5xx burst: Run in progress",
+    "paused": "Checkout queue depth: Run paused by an operator",
+    "taken-over": "Checkout pod restarts: taken over by a human",
+    "watching": "Checkout latency regression: recovery watch running",
+    "resolved": "Checkout timeouts: recovered, not closed",
+    "closed": "Checkout cache misses: closed",
+    "no-report": "Checkout canary failing: no report yet",
+}
+_TOOLS = (
+    "metrics.range_query",
+    "metrics.instant_query",
+    "logs.search",
+    "traces.search",
+    "k8s.events",
+)
+
+
+def detail_alert(kind: str) -> dict[str, Any]:
+    starts = datetime.now(UTC) - timedelta(minutes=30)
+    fingerprint = hashlib.sha256(
+        f"{ACTOR}-detail-{kind}-{uuid4()}".encode()
+    ).hexdigest()
+    return {
+        "status": "firing",
+        "labels": {
+            "alertname": "DevSeedDetail" + kind.title().replace("-", ""),
+            "service": DETAIL_TARGET,
+            "namespace": "otel-demo",
+        },
+        "annotations": {"summary": f"{TITLE_PREFIX} {_DETAIL_TITLES[kind]}"},
+        "startsAt": starts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endsAt": "0001-01-01T00:00:00Z",
+        "fingerprint": fingerprint[:16],
+        "generatorURL": "http://prometheus:9090/graph",
+    }
+
+
+def _rounds_and_report(
+    rounds: int,
+    tools: int,
+    *,
+    facts: int,
+    run: int = 1,
+) -> list[Any]:
+    """Scripted replies: ``rounds`` tool rounds of ``tools`` calls each (every
+    call distinct, so none is skipped as a duplicate), then a report that
+    cites the evidence the tool views delivered."""
+    import json
+
+    from tests.m1_investigation_support import reply, tool_call
+
+    replies: list[Any] = []
+    for r in range(rounds):
+        calls = [
+            tool_call(
+                call_id=f"call-{r}-{t}",
+                arguments=json.dumps(
+                    {"expr": f'rate(http_server_duration_bucket{{le="{r}.{t}"}}[5m])'}
+                ),
+            )
+            for t in range(tools)
+        ]
+        replies.append(reply(tool_calls=calls, finish="tool_calls"))
+
+    def report(call: Any) -> Any:
+        evidence: list[str] = []
+        for message in call.messages:
+            if message.get("role") == "tool":
+                try:
+                    eid = json.loads(message["content"]).get("evidence_id")
+                except (ValueError, AttributeError):
+                    eid = None
+                if eid and eid not in evidence:
+                    evidence.append(eid)
+        pick = evidence or ["missing"]
+
+        def cites(n: int) -> list[str]:
+            first, second = pick[n % len(pick)], pick[(n + 7) % len(pick)]
+            return [first] + ([second] if n % 5 == 0 and second != first else [])
+
+        claims: list[dict[str, Any]] = [
+            {
+                "kind": "fact",
+                "text": f"Run {run}: checkout p99 latency in bucket {n} rose above"
+                " 2 s within the authorized window while the request rate held steady"
+                + (_LONG if n % 9 == 0 else "."),
+                "evidence_ids": cites(n),
+                "target_refs": ["checkout-prod"],
+                "time_scope_ref": "policy-window-1",
+            }
+            for n in range(facts)
+        ]
+        claims += [
+            {
+                "kind": "counter_evidence",
+                "text": "Error ratio stayed flat across the same window.",
+                "evidence_ids": cites(1),
+                "target_refs": ["checkout-prod"],
+                "time_scope_ref": "policy-window-1",
+            },
+            {
+                "kind": "hypothesis",
+                "text": f"Run {run}: a connection-pool limit on the payment client"
+                " queues checkout requests.",
+                "evidence_ids": [],
+                "target_refs": ["checkout-prod"],
+                "time_scope_ref": "policy-window-1",
+            },
+            {
+                "kind": "rejected_hypothesis",
+                "text": "A deploy in the window caused it: no rollout is visible.",
+                "evidence_ids": cites(2),
+                "target_refs": ["checkout-prod"],
+                "time_scope_ref": "policy-window-1",
+            },
+            {
+                "kind": "recommendation",
+                "text": "Compare the payment client's pool size with peak concurrency.",
+                "evidence_ids": [],
+                "target_refs": ["checkout-prod"],
+                "time_scope_ref": "policy-window-1",
+            },
+        ]
+        payload = {
+            "schema_version": "m0-report-v2",
+            "assessment_status": "completed",
+            "conclusion": "partial" if run % 2 else "supported",
+            "summary": f"Run {run}: checkout latency rose because requests queue"
+            " behind the payment client's connection pool. The pool saturates at"
+            " peak traffic; the error ratio did not move, so this is slowness,"
+            " not failure." + (_LONG * 3 if run == 1 else ""),
+            "claims": claims,
+            "gaps": [
+                "No database metrics are integrated, so pool waits on the database"
+                " side are not visible.",
+                "Traces were sampled at 1%; rare slow paths may be missing.",
+            ],
+            "next_steps": ["Have a human check the payment client's pool settings."],
+        }
+        return reply(content=json.dumps(payload, ensure_ascii=False))
+
+    replies.append(report)
+    return replies
+
+
+def _investigator(workbench: Any, replies: list[Any], rows: int = 1) -> Any:
+    """The test suite's scripted investigator (real loop, scripted model,
+    tool doubles) on the database clock. Every query answers ``rows``
+    series; above the double's 4 KiB result limit the registration is
+    widened to the product's 2 MiB so one long evidence record is kept."""
+    import tests.m1_web_support as support
+    from tests.integration.test_m1_web_postgres import _DbClock
+    from tests.m1_tool_support import body, registration
+
+    class _Investigator(support.ScriptedInvestigator):
+        def investigate(self, context: Any, committer: Any, evidence: Any) -> Any:
+            response, build = support.TransportResponse, support.build
+
+            def wide(**kw: Any) -> Any:
+                kw["body"] = body(
+                    [
+                        {
+                            "metric": {"le": str(i), "pod": f"checkout-{i % 7}"},
+                            "values": [[1700000000 + i, str(i % 97)]] * 4,
+                        }
+                        for i in range(rows)
+                    ]
+                )
+                return response(**kw)
+
+            def roomy(**kw: Any) -> Any:
+                kw["registrations"] = [
+                    registration(
+                        max_result_bytes=2 * 1024 * 1024, max_view_tokens=25_000
+                    )
+                ]
+                return build(**kw)
+
+            support.TransportResponse = wide
+            if rows > 1:
+                support.build = roomy
+            try:
+                return super().investigate(context, committer, evidence)
+            finally:
+                support.TransportResponse, support.build = response, build
+
+    return _Investigator(
+        _DbClock(workbench.incidents._store),
+        replies=replies,
+        model_requests=len(replies),
+    )
+
+
+def _commit_rounds(workbench: Any, incident_id: UUID, rounds: int) -> Any:
+    """Rounds a worker would have committed so far, with no model or tool:
+    tool results carry no evidence, so the page shows them as unlinked."""
+    from opspilot.investigation.progress import EmittingCommitter, announce_claimed
+
+    summary = workbench.incidents.find_incident(incident_id)
+    lease = workbench.incidents.claim(
+        incident_id,
+        summary.current_run_id,
+        uuid4(),
+        dict(workbench.run_versions),
+        7 * 24 * 3600,
+    )
+    announce_claimed(workbench.events, lease)
+    committer = EmittingCommitter(
+        workbench.incidents.committer(lease),
+        workbench.events,
+        incident_id,
+        summary.current_run_id,
+    )
+    statuses = ("ok", "no_data", "error", "ok", "timeout")
+    reasons = {
+        "no_data": "NO_DATA",
+        "error": "SOURCE_UNAVAILABLE",
+        "timeout": "TOOL_TIMEOUT",
+    }
+    for r in range(rounds):
+        key = f"seed-round-{r}"
+        committer.begin_round(key)
+        calls = [
+            {
+                "id": f"call-{r}-{t}",
+                "type": "function",
+                "function": {"name": _TOOLS[t], "arguments": "{}"},
+            }
+            for t in range(3)
+        ]
+        step = committer.commit_step(
+            key,
+            {
+                "assistant": {"role": "assistant", "tool_calls": calls},
+                "finish_reason": "tool_calls",
+                "response_model": "dev-seed",
+            },
+        )
+        for t in range(3):
+            status = statuses[(r + t) % len(statuses)]
+            committer.commit_tool(
+                step,
+                t,
+                {
+                    "tool": _TOOLS[t],
+                    "status": status,
+                    "reason": reasons.get(status),
+                    "adopted": status == "ok",
+                    "evidence_id": None,
+                    "source_contact": "confirmed",
+                    "target_id": "checkout-prod",
+                },
+            )
+    return lease
+
+
+def seed_detail(workbench: Any, *, dsn: str, out: Any = sys.stdout) -> dict[str, UUID]:
+    import psycopg
+
+    from opspilot.intake import Principal
+
+    principal = Principal(actor_id=ACTOR, channel="event_token", auth_revision=ACTOR)
+    incidents = workbench.incidents
+    made: dict[str, UUID] = {}
+
+    def control(incident_id: UUID, action: str, **fields: Any) -> Any:
+        summary = incidents.find_incident(incident_id)
+        return workbench.control(
+            incident_id,
+            actor_id=fields.pop("actor", "alice"),
+            action=action,
+            expected_generation=int(summary.control_generation),
+            idempotency_key=f"{ACTOR}-{action}-{uuid4()}",
+            **fields,
+        )
+
+    def run(incident_id: UUID, replies: list[Any], rows: int = 1) -> None:
+        outcome = workbench.run_once(
+            incident_id, _investigator(workbench, replies, rows)
+        )
+        if outcome is None or outcome.execution != "completed":
+            raise SystemExit(f"{incident_id}: Run did not complete: {outcome}")
+
+    for kind in DETAIL_KINDS:
+        result = workbench.intake_alert(principal, detail_alert(kind), incidents.now())
+        if result.outcome != "created" or result.incident_id is None:
+            raise SystemExit(f"detail {kind}: outcome {result.outcome}")
+        incident_id = UUID(result.incident_id)
+        made[kind] = incident_id
+        if kind == "long-run":
+            # 80 rounds x 5 tools, 30 statements.
+            run(incident_id, _rounds_and_report(80, 5, facts=30))
+        elif kind == "many-runs":
+            for n in range(1, 21):
+                run(incident_id, _rounds_and_report(2, 2, facts=3, run=n))
+                if n < 20:
+                    control(
+                        incident_id,
+                        "correct" if n % 4 == 0 else "follow_up",
+                        text=f"Follow-up {n}: check the payment client pool as well.",
+                    )
+        elif kind == "running":
+            run(incident_id, _rounds_and_report(1, 2, facts=2))
+            control(incident_id, "follow_up", text="Is the cache cluster involved?")
+            _commit_rounds(workbench, incident_id, 6)
+        elif kind == "paused":
+            lease = _commit_rounds(workbench, incident_id, 4)
+            incidents.abandon(lease)
+            control(incident_id, "pause")
+        elif kind == "taken-over":
+            run(incident_id, _rounds_and_report(2, 3, facts=4))
+            control(incident_id, "takeover")
+            for n in range(5):
+                control(
+                    incident_id,
+                    "follow_up",
+                    text=f"Note {n + 1}: restarted checkout-{n} by hand; watching it.",
+                )
+        elif kind == "watching":
+            run(incident_id, _rounds_and_report(3, 3, facts=5))
+            control(incident_id, "register_remediation", revision="checkout:v2")
+        elif kind == "resolved":
+            run(incident_id, _rounds_and_report(3, 3, facts=5))
+        elif kind == "closed":
+            # One query whose evidence is as long as the registry admits (the
+            # 25k-token view cap): 400 series.
+            run(incident_id, _rounds_and_report(1, 1, facts=2), rows=400)
+            control(incident_id, "close")
+        print(f"detail {kind}: /incidents/{incident_id}", file=out, flush=True)
+    with psycopg.connect(dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='resolved' WHERE incident_id=%s",
+            (made["resolved"],),
+        )
+    return made
+
+
+def build(dsn: str, *, health_profile: Any = None) -> Any:
     from opspilot.persistence import DurableStore
     from opspilot.web import (
         DurableEventLog,
@@ -429,6 +803,7 @@ def build(dsn: str) -> Any:
         targets=MappingTargetRegistry(registry_entries()),
         run_versions={"state": ACTOR},
         run_seconds=7 * 24 * 3600,
+        health_profile=health_profile,
     )
 
 
@@ -448,13 +823,31 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--reset", action="store_true", help="delete seed rows first")
     parser.add_argument("--reset-only", action="store_true", help="delete and stop")
+    parser.add_argument(
+        "--detail",
+        action="store_true",
+        help="also seed the incident page fixture (one incident per page state)",
+    )
+    parser.add_argument(
+        "--detail-only",
+        action="store_true",
+        help="seed only the incident page fixture",
+    )
     args = parser.parse_args(argv)
     if not args.dsn:
         raise SystemExit("set OPSPILOT_DSN or OPSPILOT_WEB_DSN, or pass --dsn")
     check_dsn(args.dsn)
     if args.reset or args.reset_only:
         reset(args.dsn)
-    workbench = build(args.dsn)
+    profile = None
+    if args.detail or args.detail_only:
+        from opspilot.observer.health_profile import (
+            PROFILE_DIRECTORY,
+            load_health_profile,
+        )
+
+        profile = load_health_profile(PROFILE_DIRECTORY / "otel-demo-checkout.json")
+    workbench = build(args.dsn, health_profile=profile)
     if not args.reset_only:
         import psycopg
 
@@ -465,7 +858,10 @@ def main(argv: list[str] | None = None) -> int:
             ).fetchone()
         if row and int(row[0]):
             raise SystemExit("seed rows already exist; pass --reset to replace them")
-        seed(workbench, plan(), dsn=args.dsn)
+        if not args.detail_only:
+            seed(workbench, plan(), dsn=args.dsn)
+        if args.detail or args.detail_only:
+            seed_detail(workbench, dsn=args.dsn)
     print_counts(workbench)
     return 0
 

@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
+
+from opspilot.web.incident_list import stamp, status_of
+from opspilot.web.store import IncidentListItem
 
 __all__ = ["page_view", "handoff_view"]
 
@@ -51,7 +55,7 @@ BUTTON = {
     "takeover": "Take over",
     "pause": "Pause",
     "resume": "Resume",
-    "cancel": "Cancel",
+    "cancel": "Cancel Run",
     "new_run": "Start a new Run",
     "follow_up": "Ask",
     "correct": "Add a correction",
@@ -75,6 +79,33 @@ ORDER = (
     "rebind_target",
     "merge_into",
 )
+
+#: Spec 4.7: rounds shown around the folded middle of a long Run.
+ROUNDS_HEAD = 3
+ROUNDS_TAIL = 5
+#: Spec 4.7: Key evidence items shown before "Show N more".
+EVIDENCE_SHOWN = 8
+
+#: Header buttons (spec 4.4): actions that need no extra input. The rest of
+#: the offered actions go into the "More" menu.
+HEADER = ("resume", "pause", "cancel", "new_run", "takeover", "reopen", "close")
+HEADER_MAX = 4
+#: Actions the browser confirms in place before submitting (D-B9).
+CONFIRM = frozenset({"cancel", "close", "takeover", "merge_into", "rebind_target"})
+#: Labels in the "More" menu.
+MORE_LABEL = {
+    "register_remediation": "Register remediation",
+    "rebind_target": "Retarget",
+    "merge_into": "Merge into another incident",
+    "resume": "Resume",
+}
+
+#: Spec 4.6 (D-B12): the report's own conclusion level, in words.
+LEVEL = {
+    "supported": "Supported by evidence",
+    "partial": "Partly supported",
+    "inconclusive": "Inconclusive",
+}
 
 _SOURCE_WORDS = {
     "partial_failure": "partial",
@@ -181,6 +212,10 @@ def _rounds(
                 "time": clock(step.get("observed_at"), day),
                 "step": step,
                 "calls": calls,
+                # Spec 4.7: the first ROUNDS_HEAD and last ROUNDS_TAIL rounds
+                # show; the middle stays in the DOM behind one button.
+                "rest": ROUNDS_HEAD < number <= len(steps) - ROUNDS_TAIL
+                and len(steps) > ROUNDS_HEAD + ROUNDS_TAIL,
             }
         )
     times = [
@@ -188,8 +223,10 @@ def _rounds(
         for step in steps
         if step.get("observed_at") and not step.get("history_only")
     ]
+    hidden = sum(1 for r in rounds if r["rest"])
     return {
         "rounds": rounds,
+        "hidden": hidden,
         "labels": labels,
         "total": total,
         "cited": cited_count,
@@ -295,124 +332,6 @@ def _recovery(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
         "authorized": clock(session.get("authorized_at"), day),
         "replay": replay_text,
     }
-
-
-def _human(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
-    incident = snapshot["incident"]
-    log = snapshot.get("decision_log") or []
-    humans = [row for row in log if not row.get("system")]
-    if humans:
-        last = humans[-1]
-        when = clock(last.get("decided_at"), day)
-        text = f"{DONE.get(last.get('action'), last.get('action'))} by {last.get('actor_id')}"
-        return {"text": text + (f" {when}" if when else ""), "kind": "human"}
-    if snapshot.get("run", {}).get("state") == "waiting_human":
-        return {"text": "Waiting for a human · no action yet", "kind": "human"}
-    mode = "human-owned" if incident.mode == "human_owned" else "automatic"
-    return {"text": f"No human action · {mode}", "kind": "code"}
-
-
-def _conclusion(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    """Band cell 1 and the conclusion slot's heading."""
-    report = snapshot.get("report")
-    run_state = (snapshot.get("run") or {}).get("state")
-    if report is not None and not report.get("parsed"):
-        return {
-            "heading": "Investigation conclusion",
-            "answer": "Published, but the report could not be parsed",
-            "who": "Agent (model)",
-        }
-    if report is not None:
-        level = str(report.get("conclusion") or "")
-        return {
-            "heading": "Investigation conclusion",
-            "answer": opening(report.get("summary")),
-            "lede": opening(report.get("summary"), 480),
-            "quoted": True,
-            "who": "Agent (model) · " + (level[:1].upper() + level[1:]),
-            "note": "Incomplete investigation, not an uncertain finding."
-            if report.get("incomplete")
-            else None,
-        }
-    handoff = snapshot.get("handoff_report")
-    if run_state in ("queued", "running"):
-        answer, who, heading = (
-            "None yet: the Run is still investigating",
-            "Agent (model) · in progress",
-            "Investigation in progress",
-        )
-    elif run_state == "paused":
-        answer, who, heading = (
-            "None yet: the Run is paused",
-            "Agent (model) · Run paused",
-            "Investigation paused",
-        )
-    elif run_state == "waiting_human":
-        answer, who, heading = (
-            "None: the Agent handed this incident to a human",
-            "Agent (model) · handed to a human",
-            "Investigation conclusion",
-        )
-    elif run_state == "cancelled":
-        answer, who, heading = (
-            "None: the Run was cancelled",
-            "Agent (model) · no conclusion",
-            "Investigation conclusion",
-        )
-    else:
-        answer, who, heading = (
-            "No published conclusion yet",
-            "Agent (model)",
-            "Investigation conclusion",
-        )
-    note = None
-    if handoff and handoff.get("parsed"):
-        note = "An unpublished handoff report is shown below; it is not the conclusion."
-    return {"heading": heading, "answer": answer, "who": who, "note": note}
-
-
-def _blind_spots(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    coverage = snapshot.get("coverage")
-    if not coverage or not coverage.get("sources"):
-        return {"answer": None, "note": "No tool results committed yet."}
-    rows = [r for r in coverage["sources"] if r.get("state") != "internal"]
-    missing = [r for r in rows if r.get("state") == "not_integrated"]
-    parts = []
-    if missing:
-        parts.append(f"{len(missing)} of {len(rows)} sources not integrated")
-    words = [
-        f"{r['name']} {_SOURCE_WORDS[r['state']]}"
-        for r in rows
-        if r.get("state") in _SOURCE_WORDS
-    ]
-    if words:
-        parts.append(", ".join(words))
-    if not parts:
-        no_data = [r["name"] for r in rows if r.get("state") == "no_data_only"]
-        parts.append(
-            "returned no data: " + ", ".join(no_data)
-            if no_data
-            else "every queried source answered"
-        )
-    return {"answer": "; ".join(parts), "note": None}
-
-
-def _grounds(snapshot: Mapping[str, Any], claims: Mapping[str, Any]) -> str:
-    report = snapshot.get("report")
-    if report is None or not report.get("parsed"):
-        if (snapshot.get("run") or {}).get("state") in ("queued", "running", "paused"):
-            return "No statements yet"
-        return "No report, so no statements"
-    sizes = {g["key"]: len(g["items"]) for g in claims["groups"]}
-    gaps = len(report.get("unknown") or [])
-    hyp = sizes.get("hypotheses", 0)
-    return " · ".join(
-        [
-            _plural(sizes.get("facts", 0), "fact", "facts"),
-            _plural(hyp, "hypothesis", "hypotheses") + (" (not proven)" if hyp else ""),
-            _plural(gaps, "gap", "gaps"),
-        ]
-    )
 
 
 def _timeline(
@@ -601,15 +520,6 @@ def _copy(action: str, snapshot: Mapping[str, Any]) -> str:
     }.get(action, "")
 
 
-def _sources(snapshot: Mapping[str, Any]) -> list[str]:
-    coverage = snapshot.get("coverage") or {}
-    return [
-        r["name"]
-        for r in coverage.get("sources") or []
-        if r.get("state") not in ("not_integrated", "internal")
-    ]
-
-
 def _day(snapshot: Mapping[str, Any]) -> str | None:
     created = _dt(snapshot["incident"].created_at)
     return None if created is None else created.strftime("%Y-%m-%d")
@@ -629,6 +539,318 @@ def _alert_header(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def hm(value: Any, day: str | None = None) -> str | None:
+    """``HH:MM`` UTC; prefixed with the date when it is not ``day``."""
+    moment = _dt(value)
+    if moment is None:
+        return None
+    if day is not None and moment.strftime("%Y-%m-%d") != day:
+        return moment.strftime("%m-%d %H:%M")
+    return moment.strftime("%H:%M")
+
+
+def _run_started(snapshot: Mapping[str, Any]) -> str | None:
+    """The current Run's start: its first committed step (the same rule as
+    ``investigation_history.started_at``)."""
+    for step in snapshot.get("steps") or []:
+        moment = _dt(step.get("observed_at"))
+        if moment is not None:
+            return moment.isoformat()
+    return None
+
+
+def run_numbers(snapshot: Mapping[str, Any]) -> dict[str, int]:
+    """Spec 4.3 (D-B11): display numbers from 1 for every Run, history plus
+    the current one, in ``investigation_history`` order (``started_at``
+    nulls last, ``control_generation``, ``run_id``). Display only."""
+    run = snapshot.get("run") or {}
+    rows = [
+        (h.get("started_at"), int(h.get("control_generation") or 0), str(h["run_id"]))
+        for h in snapshot.get("history") or []
+    ]
+    if run.get("run_id"):
+        rows.append(
+            (
+                _run_started(snapshot),
+                int(run.get("control_generation") or 0),
+                str(run["run_id"]),
+            )
+        )
+
+    def key(row: tuple[Any, int, str]) -> tuple[Any, ...]:
+        moment = _dt(row[0])
+        return (
+            moment is None,
+            moment or datetime.min.replace(tzinfo=timezone.utc),
+            row[1],
+            row[2],
+        )
+
+    return {row[2]: n for n, row in enumerate(sorted(rows, key=key), start=1)}
+
+
+def _header(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """Spec 4.1 #1: the title (same order as the list's ``title_of``) and
+    where the incident came from."""
+    incident = snapshot["incident"]
+    head = _alert_header(snapshot)
+    question = snapshot.get("question")
+    title = None
+    for text in (
+        head["summary"],
+        head["alertname"],
+        None if snapshot.get("alert") else question,
+    ):
+        if isinstance(text, str) and text.strip():
+            title = " ".join(text.split())
+            break
+    if title is None:
+        title = f"Incident {str(incident.incident_id)[:8]}"
+    return {
+        **head,
+        "title": title,
+        "asked_by": None if snapshot.get("alert") else snapshot.get("question_actor"),
+        "opened": stamp(_dt(incident.created_at)),
+    }
+
+
+def _status(
+    snapshot: Mapping[str, Any], postmortem: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """The list's words for this incident (spec 4.1 #3): ``status_of`` on an
+    item assembled from the snapshot, so both pages say the same thing."""
+    incident = snapshot["incident"]
+    run_state = (snapshot.get("run") or {}).get("state")
+    latest = (postmortem or {}).get("latest") or {}
+    item = IncidentListItem(
+        summary=replace(incident, run_state=run_state),
+        postmortem_id=(postmortem or {}).get("postmortem_id"),
+        postmortem_version=latest.get("version"),
+        postmortem_state=(postmortem or {}).get("status"),
+    )
+    return status_of(item)
+
+
+def _recovery_line(
+    snapshot: Mapping[str, Any], rec: Mapping[str, Any], day: str | None
+) -> str | None:
+    """The status line's recovery part; ``None`` without a watch."""
+    view = rec.get("view")
+    if not view:
+        return None
+    session = rec.get("session") or {}
+    samples = view.get("samples") or []
+    replay = view.get("replay") or {}
+    if view.get("state") == "authorized":
+        healthy = sum(1 for s in samples if s.get("stored_outcome") == "healthy")
+        since = hm(session.get("authorized_at"), day)
+        total = session.get("max_samples") or len(samples)
+        return f"Watching recovery · {healthy} of {total} samples healthy" + (
+            f" · since {since}" if since else ""
+        )
+    verified = bool(replay.get("recovery_confirmed") and replay.get("consistent"))
+    lifecycle = snapshot["incident"].lifecycle
+    if verified and lifecycle == "resolved":
+        at = next(
+            (
+                s.get("submitted_at") or s.get("window_end")
+                for s in samples
+                if s.get("transition") == "recovery_confirmed"
+            ),
+            None,
+        )
+        when = hm(at, day)
+        how = (
+            "no handling recorded"
+            if view.get("recovery_status") == "recovered_no_remediation"
+            else "after a registered remediation"
+            if view.get("authorization_source") != "automatic"
+            else None
+        )
+        return " · ".join(
+            x for x in ("Recovered" + (f" {when}" if when else ""), how) if x
+        )
+    if verified and lifecycle == "closed":
+        return "Recovery confirmed"
+    return str(rec.get("headline"))
+
+
+def _header_actions(
+    actions: Sequence[str], snapshot: Mapping[str, Any]
+) -> dict[str, list[str]]:
+    """Spec 4.4 (D-B10): up to ``HEADER_MAX`` buttons that need no input, in
+    ``ORDER``; actions needing input, and any overflow, go into More.
+    ``resume`` is a header button only while paused (on a Run that is not
+    paused it re-queues the same Run, which is not a usual next step)."""
+    incident = snapshot["incident"]
+    paused = (
+        incident.control == "paused"
+        or (snapshot.get("run") or {}).get("state") == "paused"
+    )
+    ordered = sorted(actions, key=lambda a: ORDER.index(a) if a in ORDER else 99)
+    main = [a for a in ordered if a in HEADER and (a != "resume" or paused)][
+        :HEADER_MAX
+    ]
+    more = [a for a in ordered if a not in main and a not in ("follow_up", "correct")]
+    return {"main": main, "more": more}
+
+
+def _shown_report(
+    snapshot: Mapping[str, Any], numbers: Mapping[str, int], live: bool
+) -> dict[str, Any] | None:
+    """Spec 4.1 #6 and D-B15: the conclusion slot. With a Run in flight it
+    holds the last concluded, parseable report from the history as the
+    previous conclusion; otherwise the incident's report."""
+    run = snapshot.get("run") or {}
+    history = snapshot.get("history") or []
+    parsed = [
+        h
+        for h in history
+        if h.get("report") is not None and (h["report"] or {}).get("parsed")
+    ]
+    if live:
+        if not parsed:
+            return None
+        entry = parsed[-1]
+        earlier = parsed[:-1]
+        return {
+            "report": entry["report"],
+            "run_no": numbers.get(str(entry["run_id"])),
+            "at": entry.get("concluded_at"),
+            "previous": True,
+            "revises": numbers.get(str(earlier[-1]["run_id"])) if earlier else None,
+        }
+    report = snapshot.get("report")
+    if report is None:
+        return None
+    completed = next(
+        (
+            e.get("recorded_at")
+            for e in reversed(snapshot.get("events") or [])
+            if e.get("kind") == "run_completed"
+            and (e.get("payload") or {}).get("run_id") == run.get("run_id")
+        ),
+        None,
+    )
+    return {
+        "report": report,
+        "run_no": numbers.get(str(run.get("run_id"))),
+        "at": completed,
+        "previous": False,
+        "revises": numbers.get(str(parsed[-1]["run_id"])) if parsed else None,
+    }
+
+
+def _no_conclusion(snapshot: Mapping[str, Any], number: int | None) -> str:
+    """Spec 4.6: the single line of an empty conclusion slot."""
+    run = snapshot.get("run") or {}
+    incident = snapshot["incident"]
+    state = run.get("state")
+    label = f"Run {number}" if number else "The Run"
+    if incident.mode == "human_owned":
+        takeover = next(
+            (
+                row
+                for row in reversed(snapshot.get("decision_log") or [])
+                if row.get("action") == "takeover"
+            ),
+            None,
+        )
+        actor = takeover.get("actor_id") if takeover else None
+        return f"{label} stopped when {actor or 'a human'} took over."
+    if state == "cancelled" or incident.control == "cancelled":
+        return f"{label} was cancelled."
+    if state == "waiting_human":
+        return f"{label} handed this incident to a human."
+    return "No conclusion yet."
+
+
+def _history_rows(
+    snapshot: Mapping[str, Any], numbers: Mapping[str, int], day: str | None
+) -> list[dict[str, Any]]:
+    """Spec 4.1 #10: one folded row per earlier Run, newest first."""
+    history = list(snapshot.get("history") or [])
+
+    def parsed(report: Mapping[str, Any] | None) -> bool:
+        return report is not None and bool(report.get("parsed"))
+
+    reported = [
+        numbers.get(str(h["run_id"])) or 0 for h in history if parsed(h.get("report"))
+    ]
+    if parsed(snapshot.get("report")):
+        reported.append(
+            numbers.get(str((snapshot.get("run") or {}).get("run_id"))) or 0
+        )
+    latest = max(reported) if reported else None
+    rows = []
+    for entry in history:
+        n = numbers.get(str(entry["run_id"]))
+        report = entry.get("report")
+        state = entry.get("state")
+        if entry.get("concluded_at"):
+            what = "concluded " + (hm(entry["concluded_at"], day) or "")
+        elif state == "cancelled":
+            what = "cancelled"
+        elif state == "waiting_human":
+            what = "handed off"
+        else:
+            what = "no conclusion"
+        superseded = latest if parsed(report) and latest and n and n < latest else None
+        rows.append(
+            {
+                "entry": entry,
+                "no": n,
+                "short": str(entry["run_id"])[:8],
+                "what": what.strip(),
+                "superseded": superseded,
+            }
+        )
+    rows.sort(key=lambda r: r["no"] or 0, reverse=True)
+    return rows
+
+
+def _notes(snapshot: Mapping[str, Any], day: str | None) -> list[dict[str, Any]]:
+    """Spec 4.1 #9: text recorded after a takeover (no Run reads it)."""
+    incident = snapshot["incident"]
+    if incident.mode != "human_owned":
+        return []
+    controls = snapshot.get("controls") or []
+    takeover = max(
+        (int(c["generation"]) for c in controls if c.get("action") == "takeover"),
+        default=None,
+    )
+    return [
+        {
+            "actor": c.get("actor_id"),
+            "time": hm(c.get("decided_at"), day),
+            "text": c.get("text"),
+            "correct": c.get("action") == "correct",
+        }
+        for c in controls
+        if c.get("action") in ("follow_up", "correct")
+        and c.get("text")
+        and (takeover is None or int(c["generation"]) > takeover)
+    ]
+
+
+def _blind(snapshot: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Spec 4.6 "Could not see": one line per source with a gap (counted by
+    code from the committed tool results)."""
+    coverage = snapshot.get("coverage") or {}
+    words = {
+        "not_integrated": "not integrated",
+        "failed": "no query succeeded",
+        "partial_failure": "some queries failed",
+        "not_queried": "not queried",
+        "not_authorized": "not authorized",
+    }
+    return [
+        {"name": row["name"], "words": words[row["state"]]}
+        for row in coverage.get("sources") or []
+        if row.get("state") in words
+    ]
+
+
 def page_view(
     snapshot: Mapping[str, Any],
     postmortem: Mapping[str, Any] | None,
@@ -636,10 +858,27 @@ def page_view(
 ) -> dict[str, Any]:
     """Everything the incident page derives, from data already on it."""
     day = _day(snapshot)
-    claims = _claims(snapshot.get("report") or snapshot.get("handoff_report"))
+    run = snapshot.get("run") or {}
+    live = snapshot.get("report") is None and run.get("state") in (
+        "queued",
+        "running",
+        "paused",
+    )
+    numbers = run_numbers(snapshot)
+    current_no = numbers.get(str(run.get("run_id")))
+    shown = _shown_report(snapshot, numbers, live)
+    claim_source = (
+        shown["report"]
+        if shown
+        else snapshot.get("handoff_report")
+        if (snapshot.get("handoff_report") or {}).get("parsed")
+        else None
+    )
+    claims = _claims(claim_source)
     how = _rounds(snapshot.get("steps") or [], claims["cited"], day)
     recovery = _recovery(snapshot, day)
-    ordered = sorted(actions, key=lambda a: ORDER.index(a) if a in ORDER else 99)
+    status = _status(snapshot, postmortem)
+    header_actions = _header_actions(actions, snapshot)
     incident = snapshot["incident"]
     primary = (
         "resume"
@@ -648,28 +887,56 @@ def page_view(
         if incident.lifecycle in ("closed", "resolved") and "reopen" in actions
         else None
     )
+    steps = [s for s in snapshot.get("steps") or [] if not s.get("history_only")]
+    report = shown["report"] if shown else None
+    offered = [
+        {
+            "action": a,
+            "button": BUTTON.get(a, a),
+            "hint": _copy(a, snapshot),
+            "primary": a == primary,
+        }
+        for a in sorted(actions, key=lambda a: ORDER.index(a) if a in ORDER else 99)
+    ]
+    groups = {g["key"]: g["items"] for g in claims["groups"]}
     return {
         "day": day,
-        "header": _alert_header(snapshot),
-        "conclusion": _conclusion(snapshot),
-        "grounds": _grounds(snapshot, claims),
-        "blind": _blind_spots(snapshot),
+        "live": live,
+        "header": _header(snapshot),
+        "status": status,
+        "recovery_line": _recovery_line(snapshot, recovery, day),
+        "run_no": current_no,
+        "numbers": numbers,
+        "started": _run_started(snapshot),
+        "round": len(steps),
+        "shown": shown,
+        "level": None
+        if report is None or not report.get("parsed")
+        else LEVEL.get(str(report.get("conclusion")), str(report.get("conclusion"))),
+        "at": None if shown is None else hm(shown.get("at"), day),
+        "lede": None if report is None else opening(report.get("summary"), 480),
+        "handoff_lede": opening(
+            (snapshot.get("handoff_report") or {}).get("summary"), 480
+        ),
+        "no_conclusion": _no_conclusion(snapshot, current_no),
+        "key_evidence": [dict(item, counter=False) for item in groups.get("facts", [])]
+        + [dict(item, counter=True) for item in groups.get("counter_evidence", [])],
+        "evidence_shown": EVIDENCE_SHOWN,
+        "groups": groups,
+        "blind": _blind(snapshot),
+        "history": _history_rows(snapshot, numbers, day),
+        "notes": _notes(snapshot, day),
         "recovery": recovery,
-        "human": _human(snapshot, day),
         "timeline": _timeline(snapshot, postmortem, day),
         "claims": claims,
         "how": how,
-        "sources": _sources(snapshot),
-        "actions": [
-            {
-                "action": a,
-                "button": BUTTON.get(a, a),
-                "hint": _copy(a, snapshot),
-                "primary": a == primary,
-            }
-            for a in ordered
-        ],
+        "header_actions": header_actions,
+        "confirm": CONFIRM,
+        "more_label": MORE_LABEL,
+        "actions": offered,
+        "by_action": {item["action"]: item for item in offered},
         "clock": lambda value: clock(value, day),
+        "hm": lambda value: hm(value, day),
     }
 
 

@@ -2341,6 +2341,10 @@ class Workbench:
                     intent,
                     generation=int(result["generation"]),
                     sequence=int(result["sequence"]),
+                    # Web UX spec 4.3: the Run this decision started (set
+                    # when a note renewed the incident), so the page labels
+                    # the message without guessing from times.
+                    run_id=result.get("run_id"),
                     decided_at=(
                         times[int(result["generation"])]
                         .astimezone(timezone.utc)
@@ -2457,9 +2461,8 @@ class Workbench:
         except PersistenceError as exc:
             raise WorkbenchError(str(exc)) from None
         intake = self.ledger.get("intake", summary.intake_key)
-        request = (
-            None if intake is None else _envelope_from_json(intake["envelope"]).request
-        )
+        envelope = None if intake is None else _envelope_from_json(intake["envelope"])
+        request = None if envelope is None else envelope.request
         events = self._newest_events(incident_id)
         run = rebuilt["run"]
         steps = [_step_view(step) for step in rebuilt["steps"]]
@@ -2507,6 +2510,9 @@ class Workbench:
         return {
             "incident": summary,
             "question": None if request is None else request.question,
+            # Web UX spec 4.3: who asked, from the intake envelope (the
+            # ``intake_accepted`` event may have left the 50-event page).
+            "question_actor": None if envelope is None else envelope.principal.actor_id,
             "target_id": None if request is None else request.target_id,
             "run": {
                 "run_id": str(run["run_id"]),
