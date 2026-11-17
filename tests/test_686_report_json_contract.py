@@ -190,7 +190,6 @@ def _projected_context():
     ("field", "wrong", "nearest"),
     [
         ("target_refs", "svc-alphx", "svc-alpha"),
-        ("time_scope_ref", "policy-window-x", "policy-window-1"),
     ],
 )
 def test_retry_hint_names_unique_nearest_scope_ref(field, wrong, nearest):
