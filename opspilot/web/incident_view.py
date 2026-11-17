@@ -646,9 +646,12 @@ def _recovery_line(
         healthy = sum(1 for s in samples if s.get("stored_outcome") == "healthy")
         since = hm(session.get("authorized_at"), day)
         total = session.get("max_samples") or len(samples)
-        return f"Watching recovery · {healthy} of {total} samples healthy" + (
-            f" · since {since}" if since else ""
+        counted = (
+            f"{healthy} of {total} samples healthy"
+            if samples
+            else f"no samples yet (up to {total})"
         )
+        return f"Watching recovery · {counted}" + (f" · since {since}" if since else "")
     verified = bool(replay.get("recovery_confirmed") and replay.get("consistent"))
     lifecycle = snapshot["incident"].lifecycle
     if verified and lifecycle == "resolved":
@@ -744,6 +747,21 @@ def _shown_report(
         "previous": False,
         "revises": numbers.get(str(parsed[-1]["run_id"])) if parsed else None,
     }
+
+
+def _owner(snapshot: Mapping[str, Any]) -> str | None:
+    """Who took a human-owned incident over (the latest takeover row)."""
+    if snapshot["incident"].mode != "human_owned":
+        return None
+    row = next(
+        (
+            r
+            for r in reversed(snapshot.get("decision_log") or [])
+            if r.get("action") == "takeover"
+        ),
+        None,
+    )
+    return None if row is None else row.get("actor_id")
 
 
 def _no_conclusion(snapshot: Mapping[str, Any], number: int | None) -> str:
@@ -882,14 +900,22 @@ def page_view(
     claims = _claims(claim_source)
     how = _rounds(snapshot.get("steps") or [], claims["cited"], day)
     recovery = _recovery(snapshot, day)
-    status = _status(snapshot, postmortem)
+    status = dict(_status(snapshot, postmortem))
+    if incident_owner := _owner(snapshot):
+        status["words"] = f"{status['words']} by {incident_owner}"
+    recovery_line = _recovery_line(snapshot, recovery, day)
+    if recovery_line and recovery_line.startswith(status["words"] + " · "):
+        # "Watching recovery" is already the status words.
+        recovery_line = recovery_line[len(status["words"]) + 3 :]
     header_actions = _header_actions(actions, snapshot)
     incident = snapshot["incident"]
     primary = (
         "resume"
         if incident.control == "paused" and "resume" in actions
         else "reopen"
-        if incident.lifecycle in ("closed", "resolved") and "reopen" in actions
+        if incident.lifecycle == "closed" and "reopen" in actions
+        else "close"
+        if incident.lifecycle == "resolved" and "close" in actions
         else None
     )
     steps = [s for s in snapshot.get("steps") or [] if not s.get("history_only")]
@@ -909,7 +935,7 @@ def page_view(
         "live": live,
         "header": _header(snapshot),
         "status": status,
-        "recovery_line": _recovery_line(snapshot, recovery, day),
+        "recovery_line": recovery_line,
         "run_no": current_no,
         "numbers": numbers,
         "started": _run_started(snapshot),

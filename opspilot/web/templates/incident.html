@@ -7,6 +7,8 @@
 {% set rec = view.recovery %}
 {% set how = view.how %}
 {% set labels_by_eid = how.labels %}
+{#- Evidence of a previous conclusion is not in this Run's rounds. -#}
+{% set ev_fallback = ("Run " ~ view.shown.run_no ~ " evidence") if view.shown and view.shown.previous else "evidence" %}
 {% set live = view.live %}
 {% set paused = inc.control == "paused" or run.state == "paused" %}
 {% set gen = inc.control_generation %}
@@ -18,7 +20,7 @@
     badge other than the stored values'. Section 4.8 lists the ids and
     literals tests rely on; they are kept as they were. -#}
 {% macro cite(eid) -%}
-<a class="rc" href="/incidents/{{ iid }}/evidence/{{ eid }}" title="evidence {{ eid }}">{{ labels_by_eid.get(eid|string, "evidence") }}</a>
+<a class="rc" href="/incidents/{{ iid }}/evidence/{{ eid }}" title="evidence {{ eid }}">{{ labels_by_eid.get(eid|string, ev_fallback) }}</a>
 {%- endmacro %}
 {% macro hidden(action) -%}
 <input type="hidden" name="action" value="{{ action }}">
@@ -188,10 +190,10 @@
   <ol class="kev" id="key-evidence">
     {% for item in kev %}{% set claim = item.claim %}{% set eids = claim.evidence_ids or [] %}
     <li{% if loop.index > view.evidence_shown %} class="rest"{% endif %}><details class="ev" id="claim-{{ item.id }}">
-      <summary><span class="n">{{ loop.index }}</span><span class="tx">{% if item.counter %}<span class="tag">Counter-evidence</span> {% endif %}{{ claim.text }}</span><span class="src">{% for eid in eids %}{{ labels_by_eid.get(eid|string, "evidence") }}{% if not loop.last %}, {% endif %}{% else %}no evidence cited{% endfor %}</span></summary>
+      <summary><span class="n">{{ loop.index }}</span><span class="tx">{% if item.counter %}<span class="tag">Counter-evidence</span> {% endif %}{{ claim.text }}</span><span class="src">{% for eid in eids %}{{ labels_by_eid.get(eid|string, ev_fallback) }}{% if not loop.last %}, {% endif %}{% else %}no evidence cited{% endfor %}</span></summary>
       <div class="evx">
         {% for eid in eids %}
-        <div class="evi" data-href="/incidents/{{ iid }}/evidence/{{ eid }}"><div class="evr" aria-live="polite"></div><a href="/incidents/{{ iid }}/evidence/{{ eid }}">Open full evidence{% if eids | length > 1 %} · {{ labels_by_eid.get(eid|string, "evidence") }}{% endif %}</a></div>
+        <div class="evi" data-href="/incidents/{{ iid }}/evidence/{{ eid }}"><div class="evr" aria-live="polite"></div><a href="/incidents/{{ iid }}/evidence/{{ eid }}">Open full evidence{% if eids | length > 1 %} · {{ labels_by_eid.get(eid|string, ev_fallback) }}{% endif %}</a></div>
         {% endfor %}
         {% if claim.target_refs or claim.time_scope_ref %}<p class="small">{% if claim.target_refs %}targets {% for t in claim.target_refs %}<code>{{ t }}</code> {% endfor %}{% endif %}{% if claim.time_scope_ref %}· time scope <code>{{ claim.time_scope_ref }}</code>{% endif %}</p>{% endif %}
       </div>
