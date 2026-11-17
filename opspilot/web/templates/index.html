@@ -4,7 +4,9 @@
 {% block title %}OpsPilot · incidents{% endblock %}
 {% block body %}
 {#- List page (web UX spec 2026-11-16, section 3). Rules this template keeps:
-    - one <th> row (the thead); each incident is one <tr class="r">;
+    - one <th> row (the thead); each incident is one <tr class="r">, no group rows;
+    - the stored Run, Control, Lifecycle and Concluded cells stay in the DOM,
+      hidden by .rawc (spec 3.1; the list_row test helper reads them);
     - one href="/incidents/{id}" per row and nowhere else on the page;
     - "re-fired" only for refired_after_resolved;
     - nothing that changes per request (no load time, no relative time, no
@@ -41,6 +43,7 @@
   table.lt { table-layout: fixed; margin-top: 8px; }
   .lt th, .lt td { padding: 10px 18px 10px 0; }
   .lt col.c-st { width: 28%; } .lt col.c-sv { width: 20%; } .lt col.c-age { width: 136px; }
+  .lt .rawc { display: none; }
   .lt tbody tr.r { cursor: pointer; }
   .lt tbody tr.r:hover { background: var(--tint); }
   .svc { font-size: 14px; font-weight: 500; line-height: 1.4; }
@@ -118,7 +121,7 @@
 {%- if listing.empty == "none" %}
 <div class="empty">
   <p class="e1">No incidents yet.</p>
-  <p class="muted">An incident appears here when Alertmanager sends an alert for a registered target, or when someone asks with <a href="#ask" class="ask-open">Ask OpsPilot</a>.</p>
+  <p class="muted">An incident appears here when Alertmanager sends an alert for a registered target, or when someone asks with Ask OpsPilot at the top right.</p>
 </div>
 {%- else %}
 {%- set f = listing.filters %}
@@ -148,7 +151,7 @@
 <div class="tw">
 <table class="lt">
   <colgroup><col class="c-ti"><col class="c-st"><col class="c-sv"><col class="c-age"></colgroup>
-  <thead><tr><th>Title</th><th>Status</th><th>Service</th><th>Age</th></tr></thead>
+  <thead><tr><th>Title</th><th>Status</th><th>Service</th><th>Age</th><th class="rawc">Run</th><th class="rawc">Control</th><th class="rawc">Lifecycle</th><th class="rawc">Concluded</th></tr></thead>
   <tbody>
     {%- for row in listing.rows %}
     {%- set item = row.item %}
@@ -167,6 +170,10 @@
       </td>
       <td class="c-sv">{% if row.service %}{{ row.service }}{% else %}{{ ui.missing() }}{% endif %}</td>
       <td class="c-age">{{ ui.time(row.created) }}</td>
+      <td class="rawc">{{ item.run_state or "" }}</td>
+      <td class="rawc">{{ item.control or "" }}</td>
+      <td class="rawc">{{ item.lifecycle }}</td>
+      <td class="rawc">{{ "yes" if item.concluded else "no" }}</td>
     </tr>
     {%- endfor %}
   </tbody>
@@ -229,10 +236,6 @@
     }
     if (key && key.value && field) field.hidden = true;
   } catch (e) { /* the field stays visible for a person to fill */ }
-  var ask = document.getElementById("ask");
-  document.querySelectorAll("#ask-jump, .ask-open").forEach(function (a) {
-    a.addEventListener("click", function () { if (ask) ask.open = true; });
-  });
   // The whole row opens the incident through the row's one link.
   document.querySelectorAll(".lt tbody tr.r").forEach(function (tr) {
     tr.addEventListener("click", function (e) {

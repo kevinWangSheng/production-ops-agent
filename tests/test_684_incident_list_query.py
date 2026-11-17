@@ -273,7 +273,16 @@ def test_tabs_count_the_whole_store_and_pages_hold_25_rows():
 
     html = _get(app, "/?tab=needs_human&page=2")
     assert "26–33 of 33" in html
-    assert _parse(html).ths == ["Title", "Status", "Service", "Age"]
+    assert _parse(html).ths == [
+        "Title",
+        "Status",
+        "Service",
+        "Age",
+        "Run",
+        "Control",
+        "Lifecycle",
+        "Concluded",
+    ]
     assert len(_parse(html).links) == 8
 
 
@@ -316,7 +325,8 @@ def test_search_and_service_filters_narrow_counts_and_keep_the_tab():
 def test_empty_states():
     app, workbench, _ = build_workbench()
     html = _get(app, "/")
-    assert "No incidents yet." in html and 'href="#ask"' in html
+    assert "No incidents yet." in html and "Ask OpsPilot" in html
+    assert "ask-open" not in html and "ask-jump" not in html
     submit_incident(app, key="queued-one")
     html = _get(app, "/")
     assert "Nothing needs a human right now." in html
@@ -333,9 +343,14 @@ def test_rows_carry_title_status_service_and_absolute_age_only():
     assert "2026-11-16 12:00 UTC" in html
     assert "Ask or take over" in html
     assert "checkout-prod" in html
-    # The raw stored-value columns left the list (spec 3.2).
-    for header in ("Run", "Control", "Lifecycle", "Concluded", "Agent conclusion"):
-        assert f"<th>{header}</th>" not in html
+    # The stored values stay in the DOM, hidden (spec 3.1); the conclusion
+    # and recovery columns left the list (3.2).
+    for header in ("Run", "Control", "Lifecycle", "Concluded"):
+        assert f'<th class="rawc">{header}</th>' in html
+    assert ".lt .rawc { display: none; }" in html
+    assert '<td class="rawc">waiting_human</td>' in html
+    assert "Agent conclusion</th>" not in html and "Recovery</th>" not in html
+    assert "tr.gh" not in html and 'class="gh"' not in html
 
 
 def test_ask_form_moved_into_the_ask_details_unchanged_and_get_filter_form():
@@ -444,12 +459,12 @@ def test_pg_list_page_groups_counts_and_pages_match_the_python_view():
     groups = incidents.page_groups()
     items = incidents.list_incident_items(limit=100_000)
     assert {i.summary.incident_id: status_of(i)["group"] for i in items} == groups
-    for tab in ("needs_human", "in_progress", "resolved", "closed", "all"):
+    for view in ("needs_human", "in_progress", "resolved", "closed", "all"):
         for q in (None, "pg list", str(created[3])[:8]):
-            sql = incidents.list_page(tab=tab, q=q, page=1)
-            mirror = page_of_items(items, tab=tab, q=q, page=1)
-            assert dict(sql.counts) == dict(mirror.counts), (tab, q)
+            sql = incidents.list_page(tab=view, q=q, page=1)
+            mirror = page_of_items(items, tab=view, q=q, page=1)
+            assert dict(sql.counts) == dict(mirror.counts), (view, q)
             assert [i.summary.incident_id for i in sql.items] == [
                 i.summary.incident_id for i in mirror.items
-            ], (tab, q)
+            ], (view, q)
             assert sql.pages == mirror.pages
