@@ -37,7 +37,9 @@ PR-R（#686）用户裁决：U1=a（#456 七项断言由独立测试作者改写
 
 ## 证据
 
-（实施后填写）
+- PR-G 实施（本地分支 `feature/695-setting-restart-guidance`）：新版本 base `prompt-replay-candidate-769bffec53cd` / `l1a-replay-candidate-4371f5d11c84`，ext `prompt-replay-candidate-k8s-e7ac6a855472` / `l1a-replay-candidate-k8s-8c374ab67ecc`；tool_schema（`otel-demo-a3a95a0f888e`、`otel-demo-ext-c63f058afb18`）与 context_policy 不变（select_profile 打印）。删掉新句、放回旧 :135 后 INVESTIGATION_METHOD 与 K8s 段 sha256 分别为 `222e5fa7…`、`1ff52ac3…`，即其余句逐字节不变。
+- 改动：discipline.py 文字与段说明；D20 列出的 9 个测试文件只改钉值和句数；F3 第 5 步与 f3-acceptance-live 的 run-1..3 移到 `prompt-8688f6e52275/`，两份 run.md 各加一行说明。
+- 定向测试：discipline/A7/676/310/对齐合同 6 个文件 193 过、3 败（test_676 D16 三项，等独立测试作者改写）；钉值与 F3 8 个文件 76 过、12 跳过（PG）、14 败（test_f3_step5_real_runs 里依赖 run-1/run-2 与第 3 步重跑的全部条目，等租机证据）。ruff、ruff format、mypy（discipline.py）通过。
 
 ## 待决
 

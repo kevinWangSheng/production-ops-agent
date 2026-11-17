@@ -183,6 +183,8 @@ DeepSeek：北京时间 11-17 06:45 与 07:56，闲时，两次合计约 CNY 0.4
 
 合同 r2（[决定表](../../tasks/2026-11-16-676-investigation-guidance-contract.md) D12–D14）：L2 那句「认定原因的 claim 是 hypothesis 时 conclusion 写 partial」改成「Supported requires a fact claim that names that object as the cause; a hypothesis alone is not enough」；「告警是入口不是范围」那句移到仅 ext 的 KUBERNETES_GUIDANCE；no_data 视图不能支撑 fact、counter_evidence、rejected_hypothesis。基础档位变为 `8688f6e52275`。r1 的两份摘要（上一节）按 D11 移到 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)。合同要求跑 2 次，这里跑了 3 次（合同 r2 第四节修订：n=2 分不清）。验收测试读 `run-1`、`run-2`；`run-3` 与它们同样收集。
 
+> 2026-11-17（#695 + #690，r3 D21）：本节三份摘要移到 [prompt-8688f6e52275/](prompt-8688f6e52275/)，内容未改；`run-1/`–`run-3/` 留给 r3 新 revision（基础档位 `prompt-replay-candidate-769bffec53cd`）的重跑，入库前本目录无当前 revision 的 Run。
+
 - 主机、拓扑、收集方式同上一节。代码 `feature/676-investigation-guidance` `d96823fc`，运行期间未改代码。版本 `prompt-replay-candidate-8688f6e52275` / `otel-demo-a3a95a0f888e` / `ctx-ctx-policy-v1-a30e65ea52f4`，与当前代码的 `otel_demo_versions()` 三项相同。web 在 r2 代码上重启过；trace 项目 `opspilot-lab-f3-r2-live-20261117`（`longlived`）。
 
 ### 时间线（UTC，2026-11-17）

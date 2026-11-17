@@ -92,9 +92,11 @@ INVESTIGATION_METHOD: Final = (
     " When the exact entity named has no data but a similarly named one does, report both facts: that nothing was found under the exact name, and what was found for the related entity, labeled as a different entity."
     " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
     " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
+    " Before you call something unobservable, list the metric and label names that could show it and check them; a signal you did not look for is unchecked, not unobservable."
+    " A time range with no samples is unknown, not zero; state the sampled times you rely on."
     " A service that is up or ready can still be failing; check its own error and latency signals before calling it healthy."
 )
-"""调查方法（8 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
+"""调查方法（10 句；#690 加第 8、9 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
 不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。
 （#676 r1 曾在此加「告警是入口不是范围」一句，r2 D13 移入 ``KUBERNETES_GUIDANCE``。）"""
@@ -132,7 +134,9 @@ KUBERNETES_GUIDANCE: Final = (
     " Name as the root cause the object that applied the change or fault to the affected objects, with its kind and name exactly as the evidence writes them."
     " When a restart leaves the pod template unchanged, the restart is a mechanism, not the cause; read the workload's and its dependencies' ConfigMaps for what triggered it."
     " List as candidates the settings whose names or values show that they inject faults, errors, delays or failures."
-    " Name such a setting as the root cause only when the fault it declares matches the failure path you observed; otherwise keep it as a hypothesis."
+    " When such a setting is switched on, meaning its value in effect is not off, zero or false, and its name or description refers to the workload or service that was restarted with an unchanged pod template or is failing, and no other object is seen applying a change or fault to that workload, name the object that holds the setting as the root cause, write each such setting you read as its own fact, and write the restart and errors as its mechanism and consequences."
+    " When you did not see the declared fault itself happen, or cannot tell when the setting was changed, set the conclusion to partial and record both as gaps; a setting that is still on while the errors have stopped is not a reason to reject it."
+    " A workload restarted with an unchanged pod template is not itself the root cause; when you cannot find what triggered the restart, name no root cause and record that as a gap."
     " When the investigation is complete and events are the only evidence for the cause, set the conclusion to partial."
     " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
     " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
@@ -150,6 +154,8 @@ RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数
 重启是机制，转读工作负载及其依赖的 ConfigMap，配置声明的故障与观测失败路径吻合才作
 原因；只有事件支撑时 partial；连接被拒且 Pod 健康时查网络策略等（扩写 K6 句，保留
 services…ingresses…logs 语序）；事件太大先分组计数（#628 句不动，另加一句）。
+#695 把「配置声明的故障与观测失败路径吻合才作原因」一句换成按取值指认持有设置的对象，
+另加结论强度句与「模板未变的重启对象不作根因」句，共 25 句。
 字面投影字段名与分组示例在 L3 工具描述里。"""
 
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."

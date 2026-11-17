@@ -274,6 +274,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     :data:`d.KUBERNETES_GUIDANCE`，候选臂回到 30 句。同时钉
     :data:`d.KUBERNETES_GUIDANCE` 的句数（#676 r2 起 23 句，只属
     ``replay-candidate-k8s``）。
+
+    #695 + #690（r3）：调查方法段加 2 句（10 句，候选臂 32 句），
+    :data:`d.KUBERNETES_GUIDANCE` 替换 1 句并加 2 句（25 句）。
     """
 
     def sentences(text: str) -> int:
@@ -288,9 +291,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 30
-    assert sentences(d.INVESTIGATION_METHOD) == 8
-    assert sentences(d.KUBERNETES_GUIDANCE) == 23
+    assert variant_sentences("replay-candidate") == 32
+    assert sentences(d.INVESTIGATION_METHOD) == 10
+    assert sentences(d.KUBERNETES_GUIDANCE) == 25
     assert sentences(d.IMPACT_SCOPE) == 9
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)
