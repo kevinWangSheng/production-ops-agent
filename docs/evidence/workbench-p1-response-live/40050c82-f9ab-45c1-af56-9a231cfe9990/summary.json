@@ -1,0 +1,187 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "40050c82-f9ab-45c1-af56-9a231cfe9990",
+  "frozen_at": "2026-11-17T15:52:49.779585+00:00",
+  "incident_id": "f29c04f3-6963-408d-8c01-05c2e30a7dbd",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-17T15:52:21.969242+00:00",
+  "ended": "2026-11-17T15:52:44.351062+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "fixture",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "RESPONSE_INVALID",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      },
+      {
+        "label": "after-message",
+        "status": "handed_off",
+        "reason": "RESPONSE_INVALID",
+        "handoff_reasons": [
+          "RESPONSE_INVALID"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff",
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 3,
+    "http_count": 4,
+    "prompt_tokens": 12715,
+    "completion_tokens": 3835,
+    "run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 18.125130583997816,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "current_run_id": "9f4a7dd5-7842-476f-9a07-776309a3cfad",
+    "current_run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 3.917485292069614,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "e3c2f3e7-7c0b-4ef2-9884-978b8ee3e6c4-t0:23a1eddf-2f53-4e5a-9536-1862119e50e4",
+      "66403865-cd39-4e3d-b0ab-a03a8b3358da-t0:478075eb-bb84-4d55-b361-4b4ce1931c6e"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.06144
+  },
+  "report": {
+    "note": "正在按新消息重新确认 checkout-prod 唯一授权指标 rate(http_errors[5m]) 的当前返回，判断是否需要修订已发布报告。",
+    "replies": []
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "conclusion:g0:ctx0:round-2"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 2,
+    "next_round": 3,
+    "evidence_ids": [
+      "e3c2f3e7-7c0b-4ef2-9884-978b8ee3e6c4-t0:23a1eddf-2f53-4e5a-9536-1862119e50e4",
+      "66403865-cd39-4e3d-b0ab-a03a8b3358da-t0:478075eb-bb84-4d55-b361-4b4ce1931c6e"
+    ]
+  },
+  "citations": {
+    "cited": [],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "45a027842fbc89a8d9e180712ed73d3c14937e539f628dc1e231cb2c5f4bae33",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "93c95f71528a84970449a89f5ae5dc3a",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-workbench-p1",
+    "project_id": "51ed7670-4877-4ac3-9aa9-ebee43eb8f2f",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-8a00-9687fcd02b60",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/51ed7670-4877-4ac3-9aa9-ebee43eb8f2f/r/00000000-0000-0000-8a00-9687fcd02b60?poll=true",
+    "read_back": "found"
+  },
+  "conversation": {
+    "run_id": "9f4a7dd5-7842-476f-9a07-776309a3cfad",
+    "mode": "report_optional",
+    "floor": 0,
+    "input_seq": 1,
+    "text": "你好",
+    "before": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "run_state": "waiting_human",
+    "tool_operations_used": 0,
+    "steps": [
+      {
+        "logical_key": "ctx0:round-1",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "abecf9ffb7d008ad20495628b5b3a97c780abf33a7e946f205201d778ccc5b38",
+        "tool_calls": 1,
+        "note": null,
+        "replies": [],
+        "final": false
+      },
+      {
+        "logical_key": "ctx0:round-2",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "abecf9ffb7d008ad20495628b5b3a97c780abf33a7e946f205201d778ccc5b38",
+        "tool_calls": 0,
+        "note": null,
+        "replies": null,
+        "final": false
+      }
+    ],
+    "terminal": {
+      "execution": "failed",
+      "handoff": true,
+      "handoff_reasons": [
+        "RESPONSE_INVALID"
+      ],
+      "replies": [],
+      "report_rejected_reason": null,
+      "report_content_sha256": "45a027842fbc89a8d9e180712ed73d3c14937e539f628dc1e231cb2c5f4bae33",
+      "model_requests_used": 2,
+      "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+    },
+    "after": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "conclusion_unchanged": true
+  },
+  "raw_ledger": {
+    "sha256": "823bada00bf5f33ecea18ee11a14f773d6a9f2d95197916e00e50b862bd8a231",
+    "bytes": 12410,
+    "path": "m1-01-handoff-runner/40050c82-f9ab-45c1-af56-9a231cfe9990/ledger.json",
+    "in_repository": false
+  }
+}

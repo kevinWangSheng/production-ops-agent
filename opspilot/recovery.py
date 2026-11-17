@@ -24,7 +24,11 @@ class RecoveryPlan:
 
     @property
     def candidate(self) -> bool:
-        return self.state in {"queued", "running"} and self.conclusion is None
+        # A published conclusion settled its Run (``publish`` completes the
+        # Run row in the same transaction), so a queued/running current Run
+        # beside one is a continuation Run answering a message (workbench
+        # redesign contract A1), not a finished one.
+        return self.state in {"queued", "running"}
 
 
 def rebuild_plan(snapshot: Mapping[str, Any]) -> RecoveryPlan:

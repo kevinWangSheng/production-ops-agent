@@ -1,0 +1,186 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "0e671822-9de4-4100-9143-9724fbb9e2a3",
+  "frozen_at": "2026-11-17T15:54:29.810474+00:00",
+  "incident_id": "22dd0529-d0f1-4516-9526-419e97ff8762",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-17T15:53:44.292433+00:00",
+  "ended": "2026-11-17T15:54:23.627258+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "fixture",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "answered",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      },
+      {
+        "label": "after-message",
+        "status": "answered",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "run_handoff",
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 3,
+    "http_count": 5,
+    "prompt_tokens": 15812,
+    "completion_tokens": 7008,
+    "run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 3,
+      "model_seconds_used": 16.753205166198313,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "current_run_id": "33d0ebfc-1049-40bc-8a1f-846a5eb6e0d6",
+    "current_run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 22.223651500418782,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "298e6a7e-9696-40de-b75b-517324795d3b-t0:e96945d3-c8ac-42d1-a1fd-f9e728efa6ee",
+      "48920c18-5c58-4d48-a9f0-05990ade07c4-t0:0d77bc5f-e7a9-499d-a77e-86205a46a29c"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.096019
+  },
+  "report": null,
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "conclusion:g0:ctx0:round-2"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 2,
+    "next_round": 3,
+    "evidence_ids": [
+      "298e6a7e-9696-40de-b75b-517324795d3b-t0:e96945d3-c8ac-42d1-a1fd-f9e728efa6ee",
+      "48920c18-5c58-4d48-a9f0-05990ade07c4-t0:0d77bc5f-e7a9-499d-a77e-86205a46a29c"
+    ]
+  },
+  "citations": null,
+  "report_content_sha256": null,
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "73ac0cf6e14cf990af2c07e05bc21fd5",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-workbench-p1",
+    "project_id": "51ed7670-4877-4ac3-9aa9-ebee43eb8f2f",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-a51e-c539b5ab6b19",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/51ed7670-4877-4ac3-9aa9-ebee43eb8f2f/r/00000000-0000-0000-a51e-c539b5ab6b19?poll=true",
+    "read_back": "found"
+  },
+  "conversation": {
+    "run_id": "33d0ebfc-1049-40bc-8a1f-846a5eb6e0d6",
+    "mode": "report_optional",
+    "floor": 0,
+    "input_seq": 1,
+    "text": "你好",
+    "before": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "run_state": "completed",
+    "tool_operations_used": 0,
+    "steps": [
+      {
+        "logical_key": "ctx0:round-1",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 1,
+        "note": null,
+        "replies": [],
+        "final": false
+      },
+      {
+        "logical_key": "ctx0:round-2",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 0,
+        "note": null,
+        "replies": null,
+        "final": false
+      }
+    ],
+    "terminal": {
+      "execution": "answered",
+      "handoff": false,
+      "handoff_reasons": [],
+      "replies": [
+        {
+          "text": "你好。本轮我重新查询了唯一可用的授权查询：对目标 checkout-prod、在授权窗口 2026-09-14T00:00:00Z–2026-09-14T01:00:00Z 内执行 rate(http_errors[5m])，返回状态 ok、仅 1 条序列 http_errors_rate，值为 0.042，没有按操作、状态码、pod、实例或节点划分的标签，也没有样本序列。上一轮观察到的同一序列同一数值 0.042 与本轮一致。由于没有可比的历史基线，也没有拆分明细，目前仍无法确认「HTTP 错误率升高」，问题结论仍为 inconclusive，无法定位到具体操作或 Kubernetes 对象。另外，traces、kubernetes_state、pod_logs、change_history 未在本轮接入，因此调用链、pod 状态、日志文本和近期变更都无法核查（属信息缺口，不代表健康）；本轮可查询的表达式也仅限于 rate(http_errors[5m])。",
+          "evidence_ids": [
+            "48920c18-5c58-4d48-a9f0-05990ade07c4-t0:0d77bc5f-e7a9-499d-a77e-86205a46a29c",
+            "298e6a7e-9696-40de-b75b-517324795d3b-t0:e96945d3-c8ac-42d1-a1fd-f9e728efa6ee"
+          ],
+          "to_input_seq": 1
+        }
+      ],
+      "report_rejected_reason": "INCOMPLETE_INVESTIGATION",
+      "report_content_sha256": null,
+      "model_requests_used": 2,
+      "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+    },
+    "after": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "conclusion_unchanged": true
+  },
+  "raw_ledger": {
+    "sha256": "d3b4a29481f6c2d676078f2c6a188447b5f1addb9dcc96eb10bde193d929595c",
+    "bytes": 14264,
+    "path": "m1-01-handoff-runner/0e671822-9de4-4100-9143-9724fbb9e2a3/ledger.json",
+    "in_repository": false
+  }
+}
