@@ -31,6 +31,11 @@ from opspilot.schema import (
     target_match,
 )
 
+#: Web UX spec 3.3/3.4: the list tabs, the default first.
+LIST_TABS = ("needs_human", "in_progress", "resolved", "closed", "all")
+LIST_PER_PAGE = 25
+LIST_QUERY_CHARS = 200
+
 
 @dataclass(frozen=True)
 class IncidentSummary:
@@ -520,8 +525,7 @@ class DurableWebLedger:
 
 
 def _like_prefix(prefix: str) -> str:
-    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return escaped + "%"
+    return _like_escape(prefix) + "%"
 
 
 class DurableClock:
@@ -847,6 +851,73 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(_item(row) for row in rows)
 
+    def list_page(
+        self,
+        *,
+        tab: str = "needs_human",
+        service: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+        per_page: int = LIST_PER_PAGE,
+    ) -> IncidentPage:
+        """One page of the incident list (web UX spec 3.7): the Service
+        values, the five tab counts over the whole database under the
+        filters, and the page's rows, in three statements of one snapshot
+        whatever the row count. A ``service`` that is not one of the values
+        is ignored and a ``page`` past the last shows the last one; an
+        unknown ``tab`` reads as the default (3.4)."""
+        tab = tab if tab in LIST_TABS else LIST_TABS[0]
+        page = max(1, page)
+        with self._store.transaction(snapshot=True) as conn:
+            services = tuple(
+                row["service"]
+                for row in conn.execute(
+                    f"{_PAGE_BASE} SELECT DISTINCT service FROM base WHERE service IS NOT NULL ORDER BY 1 LIMIT {_SERVICE_LIMIT}"
+                ).fetchall()
+            )
+            service = service if service in services else None
+            where, params = _page_filters(service, q)
+            row = conn.execute(
+                f"{_PAGE_BASE} SELECT count(*) FILTER (WHERE grp='needs_human') AS needs_human,"
+                "count(*) FILTER (WHERE grp='in_progress') AS in_progress,"
+                "count(*) FILTER (WHERE lifecycle='resolved') AS resolved,"
+                "count(*) FILTER (WHERE lifecycle='closed') AS closed,"
+                f'count(*) AS "all" FROM base WHERE {where}',
+                params,
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("STORAGE_UNAVAILABLE")
+            counts = {key: int(row[key]) for key in LIST_TABS}
+            pages = max(1, -(-counts[tab] // per_page))
+            page = min(page, pages)
+            rows = conn.execute(
+                f"{_PAGE_BASE} SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " WHERE i.incident_id IN (SELECT incident_id FROM base"
+                f" WHERE {_TAB_PREDICATES[tab]} AND {where}"
+                " ORDER BY created_at DESC, incident_id LIMIT %s OFFSET %s)"
+                " ORDER BY i.created_at DESC, i.incident_id",
+                (*params, per_page, (page - 1) * per_page),
+            ).fetchall()
+        return IncidentPage(
+            items=tuple(_item(r) for r in rows),
+            counts=counts,
+            services=services,
+            tab=tab,
+            service=service,
+            page=page,
+            pages=pages,
+        )
+
+    def page_groups(self) -> dict[UUID, str]:
+        """Every incident's list group as SQL computes it (``base.grp``): the
+        consistency guard against ``incident_list.status_of`` (3.7) reads
+        it. Unbounded; tests only."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"{_PAGE_BASE} SELECT incident_id,grp FROM base"
+            ).fetchall()
+        return {row["incident_id"]: row["grp"] for row in rows}
+
     def incident_item(self, incident_id: UUID) -> IncidentListItem | None:
         """One incident's list-page row (UI redesign 3.3): the postmortem
         page's heading reads the same subject (alert name or question,
@@ -1003,6 +1074,93 @@ _ITEM_JOINS = (
     " ORDER BY (v.state='under_review') DESC,v.version DESC LIMIT 1) pm ON true"
 )
 
+_SERVICE_LIMIT = 200
+#: The list group ``incident_list.status_of`` gives a row, in SQL, in the
+#: same first-match order (web UX spec 3.7). Change both together; the
+#: consistency test compares them over every status.
+_PAGE_GROUP = (
+    "CASE"
+    " WHEN i.lifecycle='closed' THEN CASE WHEN pm.state='under_review'"
+    " AND pm.postmortem_id IS NOT NULL THEN 'needs_human' ELSE 'closed' END"
+    f" WHEN COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) IS NOT NULL THEN 'needs_human'"
+    " WHEN i.state='paused' OR r.state='paused' THEN 'needs_human'"
+    " WHEN r.state='blocked' OR i.mode='human_owned' OR r.state='waiting_human'"
+    " OR i.lifecycle='resolved' THEN 'needs_human'"
+    " WHEN i.lifecycle='observing_recovery' OR r.state IN ('queued','running')"
+    " THEN 'in_progress'"
+    " ELSE 'needs_human' END"
+)
+#: ``incident_list.service_of`` in SQL: ``namespace/workload`` of the alert,
+#: else the bound target's ``resource_uid``.
+_PAGE_SERVICE = (
+    "COALESCE(NULLIF(a.namespace,'')||'/'||NULLIF(a.workload,''),"
+    "NULLIF(t.resource_uid,''))"
+)
+_PAGE_BASE = (
+    "WITH base AS (SELECT i.incident_id,i.created_at,i.lifecycle,"
+    + _PAGE_GROUP
+    + " AS grp,"
+    + _PAGE_SERVICE
+    + " AS service,wl.value #>> '{envelope,request,question}' AS question,"
+    "ld.alert_json FROM "
+    + _LIST_FROM
+    + " LEFT JOIN LATERAL (SELECT p.postmortem_id,v.state"
+    " FROM opspilot_postmortems p JOIN opspilot_postmortem_versions v"
+    " ON v.postmortem_id=p.postmortem_id WHERE p.incident_id=i.incident_id"
+    " ORDER BY (v.state='under_review') DESC,v.version DESC LIMIT 1) pm ON true"
+    " LEFT JOIN opspilot_web_ledger wl ON wl.namespace='intake' AND wl.key=i.intake_key"
+    " LEFT JOIN LATERAL (SELECT d.alert_json FROM opspilot_alert_deliveries d"
+    " WHERE d.incident_id=i.incident_id ORDER BY d.delivery_id DESC LIMIT 1) ld ON true)"
+)
+_TAB_PREDICATES = {
+    "needs_human": "grp='needs_human'",
+    "in_progress": "grp='in_progress'",
+    "resolved": "lifecycle='resolved'",
+    "closed": "lifecycle='closed'",
+    "all": "TRUE",
+}
+
+
+def _page_filters(service: str | None, q: str | None) -> tuple[str, tuple[Any, ...]]:
+    """The list filters as a ``WHERE`` fragment over ``base`` and its
+    parameters: the Service value, and ``q`` as a case-insensitive
+    substring of the question, the latest delivery's stored alert text or
+    the service, or a prefix of the incident id."""
+    clauses = ["TRUE"]
+    params: list[Any] = []
+    if service is not None:
+        clauses.append("service=%s")
+        params.append(service)
+    if q:
+        text = _like_escape(q)
+        clauses.append(
+            "(question ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            " OR alert_json ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            " OR service ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            " OR incident_id::text LIKE %s||'%%' ESCAPE '\\')"
+        )
+        params.extend([text, text, text, text.lower()])
+    return " AND ".join(clauses), tuple(params)
+
+
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@dataclass(frozen=True)
+class IncidentPage:
+    """One page of the incident list (web UX spec 3.7). ``counts`` has
+    every tab of ``LIST_TABS``; ``tab``, ``service`` and ``page`` are the
+    values the page was read with after the fallbacks of 3.4."""
+
+    items: tuple[IncidentListItem, ...]
+    counts: Mapping[str, int]
+    services: tuple[str, ...]
+    tab: str
+    service: str | None
+    page: int
+    pages: int
+
 
 @dataclass(frozen=True, eq=False)
 class IncidentListItem:
@@ -1015,6 +1173,9 @@ class IncidentListItem:
     conclusion: Mapping[str, Any] | None = None
     question: str | None = None
     alert_name: str | None = None
+    #: The latest delivery's ``annotations.summary`` (the incident page's
+    #: title reads the same record); ``None`` when absent or blank.
+    alert_summary: str | None = None
     alert_namespace: str | None = None
     alert_workload: str | None = None
     recovery_state: str | None = None
@@ -1026,16 +1187,25 @@ class IncidentListItem:
     postmortem_state: str | None = None
 
 
-def _alert_name(alert_json: str | None) -> str | None:
+def _alert_fields(alert_json: str | None) -> tuple[str | None, str | None]:
+    """``labels.alertname`` and ``annotations.summary`` of a stored delivery
+    record; a record cut at its byte bound is not JSON and gives neither."""
     if alert_json is None:
-        return None
+        return None, None
     try:
         alert = json.loads(alert_json)
     except ValueError:
-        return None
-    labels = alert.get("labels") if isinstance(alert, dict) else None
+        return None, None
+    if not isinstance(alert, dict):
+        return None, None
+    labels = alert.get("labels")
     name = labels.get("alertname") if isinstance(labels, dict) else None
-    return name if isinstance(name, str) and name else None
+    annotations = alert.get("annotations")
+    summary = annotations.get("summary") if isinstance(annotations, dict) else None
+    return (
+        name if isinstance(name, str) and name else None,
+        summary if isinstance(summary, str) and summary.strip() else None,
+    )
 
 
 def _item(row: Mapping[str, Any]) -> IncidentListItem:
@@ -1043,11 +1213,13 @@ def _item(row: Mapping[str, Any]) -> IncidentListItem:
     samples = row.get("recovery_samples")
     version = row.get("postmortem_version")
     question = row.get("question")
+    alert_name, alert_summary = _alert_fields(row.get("alert_json"))
     return IncidentListItem(
         summary=_summary(row),
         conclusion=conclusion if isinstance(conclusion, Mapping) else None,
         question=question if isinstance(question, str) else None,
-        alert_name=_alert_name(row.get("alert_json")),
+        alert_name=alert_name,
+        alert_summary=alert_summary,
         alert_namespace=row.get("alert_namespace"),
         alert_workload=row.get("alert_workload"),
         recovery_state=row.get("recovery_state"),

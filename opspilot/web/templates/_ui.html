@@ -39,3 +39,42 @@
 {% macro fold(summary, open=false, id=none) -%}
 <details class="fold"{% if id %} id="{{ id }}"{% endif %}{% if open %} open{% endif %}><summary>{{ summary }}</summary><div class="fold-body">{{ caller() }}</div></details>
 {%- endmacro %}
+
+{#- Breadcrumbs (web UX spec 2026-11-16, section 2). items: (label, href) pairs;
+    the last item, or one with no href, is plain text. -#}
+{% macro crumbs(items) -%}
+<nav class="crumbs" aria-label="Breadcrumb">
+{%- for label, href in items %}{% if not loop.first %}<span class="cs" aria-hidden="true"> / </span>{% endif %}
+{%- if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span{% if loop.last %} aria-current="page"{% endif %}>{{ label }}</span>{% endif %}
+{%- endfor %}
+</nav>
+{%- endmacro %}
+
+{#- Time (section 2): the server writes the absolute UTC time only, so two
+    renders are byte-identical (D13); time_script() rewrites the visible text
+    to "2 h ago" in the browser and keeps the absolute time in the title.
+    t: {"iso", "full", "short"} from incident_list.stamp, or none. -#}
+{% macro time(t) -%}
+{%- if t -%}
+<time class="rel" datetime="{{ t.iso }}" title="{{ t.full }}">{{ t.short }}</time>
+{%- else -%}{{ missing() }}{%- endif -%}
+{%- endmacro %}
+
+{% macro time_script() -%}
+<script>
+(function () {
+  var now = Date.now();
+  document.querySelectorAll("time.rel[datetime]").forEach(function (el) {
+    var at = Date.parse(el.getAttribute("datetime"));
+    if (isNaN(at)) return;
+    var s = Math.max(0, Math.round((now - at) / 1000));
+    var text = s < 60 ? "just now"
+      : s < 3600 ? Math.floor(s / 60) + " min ago"
+      : s < 86400 ? Math.floor(s / 3600) + " h ago"
+      : s < 86400 * 30 ? Math.floor(s / 86400) + " d ago"
+      : null;
+    if (text) el.textContent = text;
+  });
+})();
+</script>
+{%- endmacro %}
