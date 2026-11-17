@@ -42,6 +42,42 @@ SETTING_HOLDER = (
     r"\b(?:holds?|holding|contains?|containing|stores?|storing|owns?|owning)\b"
     r"[^;:]*\b(?:setting|configuration)\b"
 )
+NEGATED_DIRECTIVE = (
+    r"\b(?:not|never|don't|cannot|can't|mustn't|shouldn't|avoid|refrain\s+from|"
+    r"no\s+(?:need|reason)\s+to)\s+"
+    r"(?:(?:ever|actually|explicitly|directly|necessarily)\s+)*"
+)
+
+
+def _affirmative(pattern: str) -> tuple[str, str]:
+    """Require the action and reject a negation governing that same action.
+
+    Negations elsewhere remain valid: K2 must not reject a persistent setting,
+    and K3 must not assign a root cause when its trigger is unknown.
+    """
+    return pattern, rf"^(?!.*{NEGATED_DIRECTIVE}(?:{pattern}))"
+
+
+# These are lexical alternatives plus the one allowed logical alternative.
+# Checking each "or" in context avoids treating "or no other object" as an
+# independent attribution trigger, without pinning the order of conditions.
+K1_OR_CONTEXTS = (
+    (r"\b(?:off|zero|0|false),?\s*", r"\s+(?:off|zero|0|false)\b"),
+    (
+        r"\b(?:name|description)\s*",
+        r"\s+(?:(?:its|the)\s+)?(?:name|description)\b",
+    ),
+    (r"\b(?:workload|service)\s*", r"\s+(?:(?:the|a)\s+)?(?:workload|service)\b"),
+    (
+        rf"(?:{UNCHANGED_RESTART})\s*",
+        r"\s+(?:(?:is\s+)?failing|fails|has\s+(?:errors|failures))\b",
+    ),
+    (
+        r"\b(?:(?:is\s+)?failing|fails|has\s+(?:errors|failures))\s*",
+        rf"\s+(?:{UNCHANGED_RESTART})",
+    ),
+    (r"\bchange\s*", r"\s+fault\b"),
+)
 
 RULES = {
     "K1": (
@@ -58,24 +94,34 @@ RULES = {
         r"\b(?:no\s+other\s+(?:object|resource)|no\s+evidence\s+of\s+"
         r"(?:another|any\s+other)\s+(?:object|resource))\b[^;:]*"
         r"\b(?:appl\w*|impos\w*|introduc\w*)\b[^;:]*\bchange\s+or\s+fault\b",
-        rf"\b(?:name|identify|report|cite)\b[^;:]*(?:{SETTING_HOLDER})[^;:]*"
-        r"\bas\s+(?:the\s+)?root[- ]cause\b"
-        r"|\b(?:name|identify|report|cite)\s+as\s+(?:the\s+)?root[- ]cause\b"
-        rf"[^;:]*(?:{SETTING_HOLDER})",
+        *_affirmative(
+            rf"\b(?:name|identify|report|cite)\b[^;:]*(?:{SETTING_HOLDER})[^;:]*"
+            r"\bas\s+(?:the\s+)?root[- ]cause\b"
+            r"|\b(?:name|identify|report|cite)\s+as\s+(?:the\s+)?root[- ]cause\b"
+            rf"[^;:]*(?:{SETTING_HOLDER})"
+        ),
         r"\b(?:each|every)\b[^;:]*\b(?:setting|configuration)\b[^;:]*"
         r"\b(?:own|separate\w*|individual|distinct)\b[^;:]*\bfact\b"
         r"|\b(?:separate|individual|distinct)\s+fact\b[^;:]*"
         r"\b(?:each|every)\b[^;:]*\b(?:setting|configuration)\b",
         r"\brestart\w*\b[^;:]*\bmechanism\b",
         r"\berrors?\b[^;:]*\bconsequences?\b",
+        rf"^(?!.*{NEGATED_DIRECTIVE}\b(?:write|record|report|list|state)\b[^;:]*"
+        r"(?:\b(?:each|every)\b[^;:]*\bfact\b|"
+        r"\brestart\w*\b[^;:]*\bmechanism\b|\berrors?\b[^;:]*\bconsequences?\b))",
     ),
     "K2": (
         rf"(?:{UNSEEN_FAULT})[^;:]*\bor\b[^;:]*(?:{UNKNOWN_CHANGE_TIME})"
         rf"|(?:{UNKNOWN_CHANGE_TIME})[^;:]*\bor\b[^;:]*(?:{UNSEEN_FAULT})",
-        r"\b(?:set|make|mark|report|keep|use)\b[^;:]*"
-        r"\b(?:conclusion\b[^;:]*\bpartial|partial\b[^;:]*\bconclusion)\b",
-        r"\b(?:record|report|write|list|note)\b[^;:]*"
-        r"(?:\bboth\b[^;:]*\bgaps\b|\bgaps\b[^;:]*\bboth\b)",
+        *_affirmative(
+            r"\b(?:set|make|mark|report|keep|use)\b[^;:]*"
+            r"\b(?:conclusion\b[^;:]*\bpartial|partial\b[^;:]*\bconclusion)\b"
+        ),
+        r"^(?!.*\b(?:not|never)\s+partial\b)",
+        *_affirmative(
+            r"\b(?:record|report|write|list|note)\b[^;:]*"
+            r"(?:\bboth\b[^;:]*\bgaps\b|\bgaps\b[^;:]*\bboth\b)"
+        ),
         r"\b(?:still|remains?)\s+on\b",
         r"\berrors?\b[^;:]*\b(?:stopped|ceased|ended|resolved)\b",
         r"\b(?:not|no)\s+(?:a\s+)?(?:reason|grounds?|basis)\s+to\s+"
@@ -90,35 +136,43 @@ RULES = {
         r"\b(?:cannot|can't|unable\s+to)\s+(?:find|identify|determine|establish|locate)\b"
         r"[^;:]*\b(?:trigger\w*|cause\w*|initiat\w*)\b"
         r"|\b(?:trigger|cause)\b[^;:]*\b(?:unknown|unidentified|not\s+found)\b",
-        r"\b(?:name|report|identify|assign)\s+no\s+root[- ]cause\b"
-        r"|\b(?:do\s+not|never)\s+(?:name|report|identify|assign)\s+"
-        r"(?:(?:a|the|any)\s+)?root[- ]cause\b",
-        r"\b(?:record|report|write|note|list)\b[^;:]*\bgap\b",
+        *_affirmative(
+            r"\b(?:name|report|identify|assign)\s+no\s+root[- ]cause\b"
+            r"|\b(?:do\s+not|never)\s+(?:name|report|identify|assign)\s+"
+            r"(?:(?:a|the|any)\s+)?root[- ]cause\b"
+        ),
+        *_affirmative(r"\b(?:record|report|write|note|list)\b[^;:]*\bgap\b"),
     ),
     "M1": (
         r"\bbefore\b[^;:]*\b(?:call\w*|declar\w*|label\w*|classif\w*)\b"
         r"[^;:]*\bunobservable\b",
-        r"\b(?:list|enumerate|identify)\b[^;:]*"
-        r"(?:\bmetrics?\b[^;:]*\blabels?\b|\blabels?\b[^;:]*\bmetrics?\b)"
-        r"[^;:]*\bnames\b",
+        *_affirmative(
+            r"\b(?:list|enumerate|identify)\b[^;:]*"
+            r"(?:\bmetrics?\b[^;:]*\blabels?\b|\blabels?\b[^;:]*\bmetrics?\b)"
+            r"[^;:]*\bnames\b"
+        ),
         r"\b(?:could|can|might|may)\b[^;:]*\b(?:show|reveal|expose|indicate|detect)\w*\b",
-        r"\b(?:check|inspect|query|examine|look\s+up)\s+"
-        r"(?:them|those|these|(?:the\s+)?(?:metrics?|names?|signals?))\b",
+        *_affirmative(
+            r"\b(?:check|inspect|query|examine|look\s+up)\s+"
+            r"(?:them|those|these|(?:the\s+)?(?:metrics?|names?|signals?))\b"
+        ),
         r"\b(?:did\s+not|have\s+not|never|didn't|haven't)\s+"
         r"(?:look\w*\s+for|seek|search\w*\s+for|check|inspect|query|examine)\b"
         r"|\bnot\s+(?:sought|queried|checked|examined)\b",
-        r"\b(?:unchecked|unexamined|not\s+checked)\b",
+        r"\b(?:is|are|remains?|as)\s+(?:unchecked|unexamined|not\s+checked)\b",
         r"\bnot\s+unobservable\b",
     ),
     "M2": (
         r"\b(?:time\s+range|interval|period|window)\b[^;:]*"
         r"\b(?:no|without|lacking)\s+samples\b"
         r"|\bunsampled\s+(?:time\s+range|interval|period|window)\b",
-        r"\bunknown\b",
+        r"\b(?:is|are|remains?|as)\s+unknown\b",
         r"\b(?:not|rather\s+than|instead\s+of)\s+(?:zero|0)\b",
-        r"\b(?:state|report|record|list|give|name)\b[^;:]*"
-        r"\b(?:sampled\s+times|sample\s+times|sample\s+timestamps|sampling\s+times|"
-        r"timestamps\s+of\s+(?:the\s+)?samples)\b",
+        *_affirmative(
+            r"\b(?:state|report|record|list|give|name)\b[^;:]*"
+            r"\b(?:sampled\s+times|sample\s+times|sample\s+timestamps|sampling\s+times|"
+            r"timestamps\s+of\s+(?:the\s+)?samples)\b"
+        ),
         r"\b(?:rel(?:y|ied|ying)|depend\w*|based)\b",
     ),
 }
@@ -271,6 +325,76 @@ WEAKENINGS = (
     ),
 )
 
+# Reviewer mutations and the equivalent reversals of other required actions.
+# K3's "is itself the root cause" is already covered by restart_is_cause.
+REVIEW_WEAKENINGS = (
+    (
+        "K1",
+        "disjunctive_other_actor_guard",
+        "and no other object",
+        "or no other object",
+    ),
+    ("K1", "disjunctive_name_condition", "false, and its name", "false, or its name"),
+    (
+        "K1",
+        "negated_holder_attribution",
+        "name the object that holds the setting",
+        "do not name the object that holds the setting",
+    ),
+    (
+        "K1",
+        "negated_each_fact",
+        "write each such setting",
+        "do not write each such setting",
+    ),
+    (
+        "K1",
+        "negated_mechanism",
+        "write the restart and errors",
+        "do not write the restart and errors",
+    ),
+    (
+        "K2",
+        "negated_partial_directive",
+        "set the conclusion to partial",
+        "do not set the conclusion to partial",
+    ),
+    (
+        "K2",
+        "negated_partial_value",
+        "conclusion to partial",
+        "conclusion to not partial",
+    ),
+    ("K2", "negated_both_gaps", "record both as gaps", "do not record both as gaps"),
+    (
+        "K3",
+        "negated_trigger_gap",
+        "record that as a gap",
+        "do not record that as a gap",
+    ),
+    (
+        "K3",
+        "negated_no_cause_directive",
+        "name no root cause",
+        "do not name no root cause",
+    ),
+    ("M1", "negated_check", "check them", "do not check them"),
+    (
+        "M1",
+        "negated_name_listing",
+        "list the metric and label names",
+        "do not list the metric and label names",
+    ),
+    ("M1", "negated_unchecked", "is unchecked", "is not unchecked"),
+    ("M2", "negated_unknown", "is unknown, not zero", "is not unknown, not zero"),
+    (
+        "M2",
+        "negated_sample_times",
+        "state the sampled times",
+        "do not state the sampled times",
+    ),
+)
+
 
 def _prose_sentences(text: str) -> list[tuple[int, int, str]]:
     """Keep raw offsets, including leading separators, for exact D16 removal.
@@ -305,9 +429,29 @@ def _prose_sentences(text: str) -> list[tuple[int, int, str]]:
     return sentences
 
 
+def _matches_rule(sentence: str, rule: str) -> bool:
+    # Layout whitespace cannot change negation scope; raw deletion offsets
+    # remain in _prose_sentences and are never normalized.
+    sentence = " ".join(sentence.split())
+    if not all(re.search(pattern, sentence, re.I) for pattern in RULES[rule]):
+        return False
+    if rule == "K1":
+        for disjunction in re.finditer(r"\bor\b", sentence, re.I):
+            before, after = (
+                sentence[: disjunction.start()],
+                sentence[disjunction.end() :],
+            )
+            if not any(
+                re.search(left + r"$", before, re.I) and re.match(right, after, re.I)
+                for left, right in K1_OR_CONTEXTS
+            ):
+                return False
+    return True
+
+
 def _require_sentence(text: str, rule: str) -> tuple[int, int]:
     for start, end, sentence in _prose_sentences(text):
-        if all(re.search(pattern, sentence, re.I) for pattern in RULES[rule]):
+        if _matches_rule(sentence, rule):
             return start, end
     raise AssertionError(f"no prose sentence satisfies {rule}: {RULES[rule]!r}")
 
@@ -319,7 +463,7 @@ def remove_rule_sentences(text: str, rules: tuple[str, ...]) -> str:
         matching = [
             (start, end)
             for start, end, sentence in _prose_sentences(text)
-            if all(re.search(pattern, sentence, re.I) for pattern in RULES[rule])
+            if _matches_rule(sentence, rule)
         ]
         assert len(matching) == 1, f"expected one {rule} sentence, got {matching!r}"
         spans.extend(matching)
@@ -397,7 +541,11 @@ def test_kubernetes_guidance_does_not_use_enabled_as_a_value_condition():
 def test_matchers_accept_reference_and_paraphrase_but_reject_nonprose_and_split_rules(
     rule: str,
 ):
-    for sentence in (EXAMPLES[rule], PARAPHRASES[rule]):
+    for sentence in (
+        EXAMPLES[rule],
+        PARAPHRASES[rule],
+        EXAMPLES[rule].replace(" ", "\n"),
+    ):
         text = " ".join(EXAMPLES[key] if key != rule else sentence for key in RULES)
         _require_sentence(text, rule)
         with pytest.raises(AssertionError, match="no prose sentence"):
@@ -414,15 +562,21 @@ def test_matchers_accept_reference_and_paraphrase_but_reject_nonprose_and_split_
 
 
 @pytest.mark.parametrize(
-    "rule,case,before,after", WEAKENINGS, ids=[case[1] for case in WEAKENINGS]
+    "rule,case,before,after",
+    WEAKENINGS + REVIEW_WEAKENINGS,
+    ids=[case[1] for case in WEAKENINGS + REVIEW_WEAKENINGS],
 )
 def test_weakened_counterexamples_are_rejected(
     rule: str, case: str, before: str, after: str
 ):
     assert EXAMPLES[rule].count(before) == 1, case
     weakened = EXAMPLES[rule].replace(before, after)
-    with pytest.raises(AssertionError, match="no prose sentence"):
-        _require_sentence(weakened, rule)
+    for text in (weakened, weakened.replace(" ", "\n")):
+        with pytest.raises(AssertionError, match="no prose sentence"):
+            _require_sentence(text, rule)
+        # D16's hashes must use the same polarity/conjunction guard.
+        with pytest.raises(AssertionError, match=f"expected one {rule} sentence"):
+            remove_rule_sentences(text, (rule,))
 
 
 @pytest.mark.parametrize(
