@@ -98,6 +98,7 @@ MORE_LABEL = {
     "rebind_target": "Retarget",
     "merge_into": "Merge into another incident",
     "resume": "Resume",
+    "takeover": "Take over",
 }
 
 #: Spec 4.6 (D-B12): the report's own conclusion level, in words.
@@ -681,16 +682,20 @@ def _header_actions(
     """Spec 4.4 (D-B10): up to ``HEADER_MAX`` buttons that need no input, in
     ``ORDER``; actions needing input, and any overflow, go into More.
     ``resume`` is a header button only while paused (on a Run that is not
-    paused it re-queues the same Run, which is not a usual next step)."""
+    paused it re-queues the same Run, which is not a usual next step), and
+    ``takeover`` only while the incident is not human-owned already."""
     incident = snapshot["incident"]
     paused = (
         incident.control == "paused"
         or (snapshot.get("run") or {}).get("state") == "paused"
     )
     ordered = sorted(actions, key=lambda a: ORDER.index(a) if a in ORDER else 99)
-    main = [a for a in ordered if a in HEADER and (a != "resume" or paused)][
-        :HEADER_MAX
-    ]
+    owned = incident.mode == "human_owned"
+    main = [
+        a
+        for a in ordered
+        if a in HEADER and (a != "resume" or paused) and (a != "takeover" or not owned)
+    ][:HEADER_MAX]
     more = [a for a in ordered if a not in main and a not in ("follow_up", "correct")]
     return {"main": main, "more": more}
 
