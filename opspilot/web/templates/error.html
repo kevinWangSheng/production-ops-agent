@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% set nav = "login" if not principal else "" %}
+{% block title %}OpsPilot{% endblock %}
+{% block body %}
+<div class="card">
+  <p>{{ message }}</p>
+  <p>{% if sign_in %}<a href="/login">Sign in</a>{% else %}<a href="/">Back to Incidents</a>{% endif %}</p>
+  <p class="code">{{ code }}</p>
+</div>
+{% endblock %}

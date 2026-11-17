@@ -39,6 +39,16 @@
     .top .sp { flex: 1; }
     .ro, .user { font-size: 12.5px; color: var(--ink3); }
     .user code { font-size: 12px; color: var(--ink2); }
+    .logout { font-size: 12.5px; }
+
+    /* login and error pages: one small centred card */
+    .card { max-width: 380px; margin: 48px auto 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 24px; }
+    .card h1 { font-size: 19px; margin-bottom: 16px; }
+    .card label { display: block; font-size: 12.5px; color: var(--ink2); margin: 12px 0 4px; }
+    .card input { width: 100%; font-family: var(--sans); font-size: 13px; padding: 7px 9px; }
+    .card button { width: 100%; margin-top: 20px; padding: 7px 12px; }
+    .card .err { color: var(--err); font-size: 13px; margin: 0 0 4px; }
+    .card .code { font-family: var(--mono); font-size: 11.5px; color: var(--ink3); margin-top: 12px; }
 
     /* page */
     .wrap { max-width: 1440px; margin: 0 auto; padding-inline: 32px; padding-block: 24px 56px; overflow-wrap: anywhere; }
@@ -91,6 +101,10 @@
     details.fold > summary::before { content: "+ "; }
     details.fold[open] > summary::before { content: "\2212 "; }
     details.fold > .fold-body { margin-top: 8px; }
+    .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .crumbs { font-size: 13px; color: var(--ink2); margin: 0 0 8px; overflow-wrap: anywhere; }
+    .crumbs .cs { color: var(--ink4); }
+    time.rel { white-space: nowrap; }
 
     @media (max-width: 720px) {
       .top { padding-inline: 16px; }
@@ -114,14 +128,19 @@
   <header class="top">
     <div class="top-in">
       <div class="brand"><i aria-hidden="true"></i>OpsPilot</div>
+      {%- if current != "login" %}
       <nav aria-label="Primary">
         <a href="/"{% if current == "incidents" %} aria-current="page"{% endif %}>Incidents</a>
         <a href="/version-changes"{% if current == "version-changes" %} aria-current="page"{% endif %}>Version changes</a>
         <a href="/controls"{% if current == "suspension" %} aria-current="page"{% endif %}>Suspension</a>
       </nav>
+      {%- endif %}
       <div class="sp"></div>
       <span class="ro">Read-only agent · no production changes</span>
-      <span class="user">signed in as <code>{{ principal.actor_id }}</code> · {{ principal.channel }}</span>
+      {%- if principal %}
+      <span class="user">Signed in as <code>{{ principal.actor_id }}</code></span>
+      <a class="logout" href="/logout">Log out</a>
+      {%- endif %}
     </div>
   </header>
   <main class="wrap">

@@ -569,7 +569,7 @@ def test_submitted_incident_is_investigated_and_the_report_is_shown_with_evidenc
         ).status
         == 404
     )
-    listing = call(app, "GET", "/", headers=basic())
+    listing = call(app, "GET", "/?tab=all", headers=basic())
     assert listing.status == 200 and incident in listing.text and other in listing.text
     # Pause remains refused after a conclusion (C3 §10).
     assert (

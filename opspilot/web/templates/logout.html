@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% set nav = "login" %}
+{% block title %}OpsPilot · log out{% endblock %}
+{% block body %}
+<div class="card">
+  <h1>Log out</h1>
+  <p>Signed in as <code>{{ principal.actor_id }}</code>.</p>
+  <p>End this browser's session on the workbench?</p>
+  <form method="post" action="/logout">
+    <button type="submit" class="btn primary">Log out</button>
+  </form>
+  <p class="small"><a href="/">Back to Incidents</a></p>
+</div>
+{% endblock %}
