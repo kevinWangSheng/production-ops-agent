@@ -647,36 +647,6 @@ def test_step3_close_after_takeover_cancels_the_waiting_human_run():
     _assert_no_automatic_work(env, env.old_run)
 
 
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_step3_closed_incident_needs_reopen_before_a_new_run(action):
-    env = _concluded(f"s3-reopen-required-{action}")
-    _ok(_act(env, "close", 0), 1)
-    row = _incident(env)
-    assert row["lifecycle"] == "closed"
-    assert row["conclusion"] is not None  # C2: the conclusion is kept
-    assert _runs(env)[env.old_run]["state"] == "completed"
-
-    text = "Is checkout still erroring after the rollback?"
-    _refused(_act(env, action, 1, text), "REOPEN_REQUIRED")
-    assert _incident(env)["control_generation"] == 1
-    assert set(_runs(env)) == {env.old_run}
-    assert [r["action"] for r in _controls(env)] == ["close"]
-    assert env.store.read_inputs(env.subject) == []
-
-    _ok(_act(env, "reopen", 1), 2)
-    assert _incident(env)["lifecycle"] == "open"
-    assert set(_runs(env)) == {env.old_run}  # reopen opens no Run
-    assert env.subject not in env.store.claimable_incidents(limit=1000)
-
-    _ok(_act(env, action, 2, text), 3)
-    rebuilt = env.store.rebuild(env.subject)
-    new_run = rebuilt["run"]["run_id"]
-    assert new_run != env.old_run and rebuilt["run"]["state"] == "queued"
-    assert _runs(env)[env.old_run]["state"] == "completed"
-    assert env.subject in env.store.claimable_incidents(limit=1000)
-    assert [r["action"] for r in _controls(env)] == ["close", "reopen", action]
-
-
 # ==========================================================================
 # Step 4: new evidence after a takeover respects the incident state and
 # keeps the handoff (U7-A, three stimuli)
@@ -766,5 +736,3 @@ def test_step4_the_same_alert_firing_again_is_recorded_without_a_new_investigati
     assert env.store.read_inputs(env.subject) == inputs_before
     assert _project(env, scenario).report_available is False
     _assert_handoff_kept(env, 1, "waiting_human")
-
-

@@ -1282,6 +1282,10 @@ class Workbench:
                 _INTAKE_NAMESPACE,
                 f"{summary.intake_key}:relay:{basis['max_unread']}",
             )
+            if str(run_id) == basis["current_run_id"]:
+                # This very message already opened the current Run (R3): a
+                # repeat opens nothing, even when that Run was left paused.
+                return None
             deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
             run_input = self._successor_input(
                 summary,
@@ -1570,14 +1574,20 @@ class Workbench:
         if body is None:
             return None
         facts = dict(body.get("scope_facts") or {})
-        facts[CONVERSATION] = (
-            dict(conversation)
-            if conversation is not None
-            else {
+        facts.pop(CONVERSATION, None)
+        if conversation is not None:
+            facts[CONVERSATION] = dict(conversation)
+        elif any(
+            row.get("kind") == MESSAGE
+            for row in self.incidents.rebuild(summary.incident_id).get("inputs") or ()
+        ):
+            # Only ``message`` rows read the floor: an incident without one
+            # keeps the successor's bytes as they were (the missing fact is
+            # floor 0, report_required).
+            facts[CONVERSATION] = {
                 "floor": self.incidents.conversation_floor(summary.incident_id),
                 "mode": DEFAULT_CONVERSATION_MODE,
             }
-        )
         prior = prior_replies_fact(self.incidents.prior_replies(summary.incident_id))
         if prior is None:
             facts.pop(PRIOR_REPLIES, None)

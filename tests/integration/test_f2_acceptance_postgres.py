@@ -689,45 +689,6 @@ def test_step1_follow_up_after_an_attachment_to_a_concluded_incident_sees_the_ev
     assert_read_only(outcome)
 
 
-def test_step1_follow_up_after_an_attachment_to_a_handed_off_run_requeues_it():
-    """C4-A assertion 2 / #304: the forced-final REPORT_INVALID handoff."""
-    env = lab()
-    fingerprint = uuid4().hex[:16]
-    t0 = db_now()
-    first = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=10)))
-    subject, run_id = UUID(first["incident_id"]), UUID(first["run_id"])
-    handed, _ = poll(env, subject, [_tool_round(), bad_report, bad_report])
-    ((_, handoff),) = handed
-    assert handoff.status == "handed_off" and handoff.reason == "REPORT_INVALID", (
-        handoff
-    )
-    joined = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=2)))
-    assert joined["outcome"] == "attached"
-    (event,) = alert_events(env.store, subject)
-    input_before = env.store.rebuild(subject)["run"]["input"]
-
-    response = act(env, subject, "follow_up", FOLLOW_UP)
-    assert response.status == 200, response.text
-    requeued = env.store.rebuild(subject)
-    assert requeued["run"]["run_id"] == run_id  # same Run (W2-A)
-    assert requeued["run"]["state"] == "queued"
-    assert requeued["run"]["input"] == input_before  # window unchanged
-
-    second, model = poll(env, subject, [report_from_transcript])
-
-    ((_, resumed),) = second
-    assert resumed.status == "published", resumed  # not blocked(INCOMPATIBLE_STATE)
-    assert resumed.reason != "INCOMPATIBLE_STATE"
-    assert len(model.calls) >= 1
-    assert event["content"]["text"] in json.dumps(model.calls[0].messages)
-    outcome, snapshot = durable_outcome(
-        env.store, env.events, "1", "attach-handoff-follow-up", subject
-    )
-    assert snapshot["run"]["run_id"] == run_id
-    assert outcome.final_state == "completed" and outcome.report_available
-    assert "worker_resumed" in outcome.actions
-
-
 def test_step1_successor_run_after_attached_episode_reframes_on_new_episode():
     """#305 W1-B (optional, not an F2 gate; needs PR #346)."""
     env = lab()

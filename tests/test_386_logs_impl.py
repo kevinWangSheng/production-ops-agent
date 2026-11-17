@@ -613,6 +613,9 @@ def test_web_self_heal_exception_keeps_its_traceback_on_one_line(buf):
         def release_anomaly_pass(self):
             return None
 
+        def relay_pass(self):
+            return None
+
     thread = threading.Thread(
         target=web_main.self_heal_loop, args=(Workbench(), 0.01, stop)
     )

@@ -32,8 +32,8 @@ CASES = {
     "cancel": ({}, ()),
     "resume": ({}, ()),
     "new_run": ({}, ("cancel",)),
-    "follow_up": ({"text": "Same note twice."}, ()),
-    "correct": ({"text": "Same note twice."}, ()),
+    # follow_up/correct are message aliases since workbench P2 (contract
+    # O2): an input, never a control decision with an audit row.
 }
 
 

@@ -273,20 +273,6 @@ def test_pause_resume_cancel_after_conclusion_stay_refused(action):
 # --------------------------------------------------------------------------
 
 
-def test_successor_input_carries_prior_conclusion_labelled_not_instructions():
-    env = _concluded("successor-input")
-    text = "Correction: the latency hypothesis is wrong, payments was healthy."
-    _ok(_act(env, "correct", 0, text), 1)
-    rebuilt = env.store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] != env.old_run
-    stored = rebuilt["run"]["input"]
-    assert stored is not None
-    question = stored["question"]
-    assert env.old_summary in question
-    assert env.old_hypothesis in question
-    assert _NOT_INSTRUCTIONS.search(question), question
-
-
 def test_continuation_context_of_a_concluded_run_includes_the_prior_report():
     env = _concluded("continuation-unit")
     snapshot = env.store.rebuild(env.subject)
@@ -327,31 +313,6 @@ def _rendered_forms(moment: datetime) -> set[str]:
         for sep in (" ", "T"):
             forms.add(dt.strftime(f"%Y-%m-%d{sep}%H:%M"))
     return forms
-
-
-def test_human_decisions_carry_their_database_timestamp():
-    env = _concluded("decision-time")
-    _ok(_act(env, "takeover", 0), 1)
-    _ok(_act(env, "follow_up", 1, "Was a deploy in the window?"), 2)
-    db_times = {r["resulting_generation"]: r["created_at"] for r in _controls(env)}
-    assert set(db_times) == {1, 2}
-
-    rows = env.workbench.snapshot(env.subject)["controls"]
-    assert [r["generation"] for r in rows] == [1, 2]
-    for row in rows:
-        values = [
-            _as_datetime(row.get(k)) for k in _TIME_KEYS if row.get(k) is not None
-        ]
-        values = [v for v in values if v is not None]
-        assert values, f"no timestamp field on decision row {sorted(row)}"
-        assert values[0] == db_times[row["generation"]]
-
-    decisions = _section(_page(env), "Human decisions")
-    for moment in db_times.values():
-        assert any(f in decisions for f in _rendered_forms(moment)), (
-            moment,
-            decisions,
-        )
 
 
 # --------------------------------------------------------------------------

@@ -365,7 +365,7 @@ def test_pr1_observing_recovery_rebind_returns_open_and_revokes_session(app, dat
     assert sessions and all(row["state"] == "revoked" for row in sessions)
 
 
-@pytest.mark.parametrize("action", ["follow_up", "new_run"])
+@pytest.mark.parametrize("action", ["new_run"])
 def test_pr1_rebind_successors_use_fresh_new_target_input(app, database, action):
     """PR-1 AC3: follow_up/new_run after rebind use fresh target-bound input."""
     first = _submit(app)

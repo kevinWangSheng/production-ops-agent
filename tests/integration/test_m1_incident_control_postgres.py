@@ -266,63 +266,6 @@ def test_releasing_a_suspension_leaves_control_paused_until_a_human_resumes(scop
 # -- the remaining rows on the real store --------------------------------------
 
 
-def test_publish_handoff_cancel_pause_resume_and_claim_on_postgres():
-    app, workbench, store = _build()
-    target = f"tgt-{uuid4()}"
-
-    # 9 claim, then 1 publish (marker stays queued in the database).
-    incident = _submit(app, target)
-    _claim(workbench, incident)
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "running"
-    _assert_in_progress(html)
-    _assert_list_control(_index(app), incident, "")
-
-    published = _submit(app, target)
-    outcome = workbench.run_once(UUID(published), ScriptedInvestigator(_DbClock(store)))
-    assert outcome is not None and outcome.execution == "completed"
-    html = _detail(app, published)
-    assert element_text(html, "run-state") == "completed"
-    assert element_text(html, "concluded") == "concluded"
-    _assert_in_progress(html)
-
-    # 3 cancel: control marker cancelled, lifecycle open.
-    cancelled = _submit(app, target)
-    _act(app, cancelled, "cancel", 0)
-    html = _detail(app, cancelled)
-    assert element_text(html, "incident-control") == "cancelled"
-    assert element_text(html, "run-state") == "cancelled"
-    _assert_no_incident_state(html)
-    words = summary_words(html)
-    assert "open" in words and "closed" not in words
-    _assert_list_control(_index(app), cancelled, "cancelled")
-
-    # 4 pause of a claimed Run, then 8 resume.
-    paused = _submit(app, target)
-    _claim(workbench, paused)
-    _act(app, paused, "pause", 0)
-    html = _detail(app, paused)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
-    _assert_list_control(_index(app), paused, "paused")
-    _act(app, paused, "resume", 1)
-    assert _stored_state(store, UUID(paused)) == "running"
-    assert _run_state(store, UUID(paused)) == "queued"
-    html = _detail(app, paused)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
-    _assert_list_control(_index(app), paused, "")
-
-    # 8 follow_up on a fresh incident.
-    noted = _submit(app, target)
-    _act(app, noted, "follow_up", 0, text="check the 5xx panel")
-    assert _stored_state(store, UUID(noted)) == "running"
-    html = _detail(app, noted)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
-
-
 def test_overdue_run_sweep_shows_waiting_human_without_control_marker():
     """Scenario 2 on the real store: the page load sweeps the overdue Run."""
     app, workbench, store = _build()

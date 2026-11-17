@@ -146,6 +146,22 @@ def _audit_records(
         row
     ) in rows("""SELECT input_id,kind,sequence,control_generation,received_at,actor
                       FROM opspilot_inputs WHERE incident_id=%s"""):
+        if row["kind"] == "message":
+            # Workbench contract O4: a human message to the investigation is
+            # an input row, not a controls row; it is the human's correction
+            # of the investigation all the same, with its author and database
+            # time (never its text: details carry ids and enums only).
+            add(
+                row,
+                "human_correction",
+                "opspilot_inputs",
+                row["input_id"],
+                "received_at",
+                ("sequence", "control_generation"),
+                actor=row["actor"],
+                extra={"action": "message"},
+            )
+            continue
         add(
             row,
             "input",
@@ -460,25 +476,6 @@ def _audit_records(
             ("action", "expected_generation", "resulting_generation"),
             actor=row["actor"],
         )
-    # Workbench contract O4: a human message to the investigation is an
-    # input row (kind ``message``), not a controls row; it is the human's
-    # correction of the investigation all the same, with its author and
-    # database time. Never its text (details carry ids and enums only).
-    for (
-        row
-    ) in rows("""SELECT input_id,kind,sequence,control_generation,received_at,actor
-                      FROM opspilot_inputs WHERE incident_id=%s AND kind='message'"""):
-        add(
-            row,
-            "human_correction",
-            "opspilot_inputs",
-            row["input_id"],
-            "received_at",
-            ("sequence", "control_generation"),
-            actor=row["actor"],
-            extra={"action": "message"},
-        )
-
     for row in rows("""SELECT session_id,purpose,authorization_source,created_at
                       FROM opspilot_observation_sessions WHERE incident_id=%s
                         AND purpose='incident_recovery'"""):

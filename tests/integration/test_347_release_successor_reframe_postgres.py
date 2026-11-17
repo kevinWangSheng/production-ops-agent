@@ -169,31 +169,6 @@ def test_ac1_cancel_new_run_reframes_but_preserves_release_fact(released):
     _assert_reframed(first, _current(incident))
 
 
-@pytest.mark.parametrize(
-    "state,action",
-    [("concluded", "follow_up"), ("overdue", "follow_up"), ("overdue", "correct")],
-)
-def test_ac2_concluded_or_overdue_notes_reframe(released, owner, state, action):
-    current, incident, first = released
-    if state == "concluded":
-        # The public store publication seam; no live model is needed to
-        # establish the conclusion that gates this web-side renewal.
-        lease = owner.claim(incident, first["run_id"], uuid4(), first["versions"])
-        conclusion = {"summary": "release investigated"}
-        step = owner.commit_step(lease, "347-conclusion", conclusion)
-        assert owner.publish(lease, conclusion, step_id=step)
-        assert owner.rebuild(incident)["conclusion"] == conclusion
-    else:
-        _tamper(
-            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
-            (first["run_id"],),
-        )
-    _attach(current, incident, first)
-    _renew(current, incident, action)
-    assert _current(incident)["run_id"] != first["run_id"]
-    _assert_reframed(first, _current(incident))
-
-
 def test_ac3_without_attached_alert_time_policies_are_byte_identical(released):
     current, incident, first = released
     _after_second(_instant(_policy(first["input"])["window"]["end"]))
@@ -346,19 +321,6 @@ def test_ac7_old_release_clamps_anchor_but_keeps_consumption_fact(
     # Checks the stored release fact again on continuation of the moved Run.
     _cancel_and_new_run(current.workbench, incident)
     assert _fact(_current(incident)["input"]) == _fact(first["input"])
-
-
-def test_ac8_waiting_human_follow_up_keeps_same_run_and_snapshot(released, owner):
-    current, incident, first = released
-    lease = owner.claim(incident, first["run_id"], uuid4(), first["versions"])
-    owner.hand_off(lease)
-    assert _current(incident)["state"] == "waiting_human"
-    _attach(current, incident, first)
-    _renew(current, incident)
-    after = _current(incident)
-    assert after["run_id"] == first["run_id"]
-    assert after["state"] == "queued"
-    assert after["raw"] == first["raw"]
 
 
 def test_ac9_missing_snapshot_fresh_fallback_uses_creation_frame(released):

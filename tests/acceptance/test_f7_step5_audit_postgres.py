@@ -92,7 +92,8 @@ SOURCES = {
         "opspilot_runs",
         "opspilot_suspension_audit",
     },
-    "human_correction": {"opspilot_controls"},
+    # Workbench contract O4: a human message is an input row, not a control.
+    "human_correction": {"opspilot_controls", "opspilot_inputs"},
     "recovery_observation": {
         "opspilot_observation_sessions",
         "opspilot_observation_samples",
@@ -256,7 +257,8 @@ def test_s5b_category_details_name_the_query_the_decision_and_the_records(dsn, c
         assert entry.detail["tool"] in {"metrics_range_query", "traces_search"}
 
     actions = sorted(e.detail.get("action") for e in _of(timeline, "human_correction"))
-    assert actions == ["correct", "register_remediation"]
+    # O4: the HTTP ``correct`` alias is recorded as a ``message`` input.
+    assert actions == ["message", "register_remediation"]
     assert {e.actor for e in _of(timeline, "human_correction")} == {UI_USER}
 
     recovery = {e.source for e in _of(timeline, "recovery_observation")}
@@ -293,7 +295,7 @@ def test_s5b_causal_order_holds(dsn, chain):
     [correction] = [
         e
         for e in _of(timeline, "human_correction")
-        if e.detail.get("action") == "correct"
+        if e.detail.get("action") == "message" and e.source == "opspilot_inputs"
     ]
     concluded = [
         e

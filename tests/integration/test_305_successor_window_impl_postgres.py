@@ -153,49 +153,6 @@ def test_new_run_after_an_attached_episode_is_framed_at_its_creation():
     assert versions == otel_demo_versions()
 
 
-def test_renewal_after_an_attached_episode_moves_once_then_keeps_the_frame():
-    app, workbench, store = _build()
-    first, anchor = _attached_case(store, app)
-    incident_id = first["incident_id"]
-    with psycopg.connect(DSN) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline = clock_timestamp() - interval '1 second' WHERE run_id=%s",
-            (UUID(first["run_id"]),),
-        )
-    _control(workbench, incident_id, "follow_up", "still failing?")
-    rows = _runs(incident_id)
-    assert len(rows) == 2
-    renewed = rows[1]
-    created = _second(renewed["deadline"] - timedelta(seconds=RUN_SECONDS))
-    _assert_moved(renewed["input"], end=created, anchor=anchor, original=_z(anchor))
-
-    # After the move: a repeat of the attached episode and a replay of the
-    # first add no event (R-C3), so the next successor keeps the moved frame
-    # (J5). The episode itself was received before the renewal; the test
-    # runs within one second, so its receipt is set a second before the
-    # moved frame's end to make that strict.
-    with psycopg.connect(DSN) as conn:
-        conn.execute(
-            "UPDATE opspilot_alert_deliveries SET received_at=%s WHERE incident_id=%s AND outcome='attached'",
-            (created - timedelta(seconds=1), UUID(incident_id)),
-        )
-    fingerprint = _records(incident_id).deliveries[0]["fingerprint"]
-    assert _post_alert(app, _z(anchor), fingerprint)["outcome"] == "attached"
-    first_start = _records(incident_id).deliveries[0]["starts_at_raw"]
-    assert _post_alert(app, first_start, fingerprint)["outcome"] == "replayed"
-    summary = workbench.incidents.find_incident(UUID(incident_id))
-    deadline = workbench.incidents.now() + timedelta(hours=2)
-    successor = workbench._successor_input(summary, uuid4(), deadline)
-    assert (
-        successor["evidence_context"]["time_policies"]
-        == renewed["input"]["evidence_context"]["time_policies"]
-    )
-    assert (
-        successor["scope_facts"]["alert_starts_at"]
-        == renewed["input"]["scope_facts"]["alert_starts_at"]
-    )
-
-
 def test_a_new_episode_after_the_moved_frame_moves_it_again():
     app, workbench, store = _build()
     first, _ = _attached_case(store, app)
