@@ -2,7 +2,9 @@
 
 两次真实 Run 的运行过程、时间线、trace 与余额见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)。本文件只记录审查者结论与证据的两项说明。
 
-> 2026-11-16（#646）：`run-1/`、`run-2/` 已换成新提示词 `prompt-replay-candidate-a6b4dfd02030` 下的两次重跑（Run `e6fa260e`、`33922153`，见文末一节）。下面「审查者结论」表判的是 10-24 的两次 Run（`dbf02dca`、`1a9b37f1`），它们的 summary 移到了 [prompt-bef70649a3a8/](prompt-bef70649a3a8/)，内容未改。
+> 2026-11-16（#676）：`run-1/`、`run-2/` 又换成了 `prompt-replay-candidate-14eb2a0a6afd` 下的两次重跑（Run `a10cf725`、`f3b73c46`），#646 那两份移到了 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)。
+>
+> 2026-11-16（#646）：`run-1/`、`run-2/` 当时换成了新提示词 `prompt-replay-candidate-a6b4dfd02030` 下的两次重跑（Run `e6fa260e`、`33922153`，见文末一节）。下面「审查者结论」表判的是 10-24 的两次 Run（`dbf02dca`、`1a9b37f1`），它们的 summary 移到了 [prompt-bef70649a3a8/](prompt-bef70649a3a8/)，内容未改。
 
 ## 审查者结论
 
@@ -38,3 +40,9 @@
 
   审查者 A 只回报了结论，全文未留存。合计：第 5 步 2/2；第 2 步 Run 2 审查者分歧。用户 2026-11-16 裁决按不一致处理：F3 第 2 步在当前提示词下未达成，`passes` 改为 false，不挑样重跑（U-A），跟踪 #664。
 - 当时供审查者注意的事实：两次 `root_cause` 分别写 FeatureFlag `paymentFailure` 和 Deployment `flagd`；两次的 24 小时授权窗里都有更早的 checkout 发布（lab 安装、失败尝试；Run 2 还包含 Run 1 那次发布和故障）；Run 1 晚领取约 19 分钟（授权窗终点早于晚领取）。
+
+## #676 重跑（2026-11-16）
+
+- `run-1/summary.json` 对应 Run `a10cf725`（事故 `53f5ccd3`），`run-2/summary.json` 对应 Run `f3b73c46`（事故 `6ece32c3`）。收集方式同上一节（UI `close` 之后、只读角色、`lab_readings` 是连续读数）。`run_versions` 等于当前代码的 `otel_demo_versions()`。
+- 确定性判定：`tests/acceptance/test_f3_step5_real_runs.py` 15 条全过。
+- **审查者判定（rubric 5–8、第 2 步一致性）：待 lead 派审查者。** 运行事实见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「#676 重跑」。

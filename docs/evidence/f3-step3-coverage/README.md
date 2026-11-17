@@ -76,3 +76,14 @@ F3 PR-2 预审 D9-a：PR-3b 开工时 `prompt_revision` 已由 `prompt-replay-ca
 - 覆盖节：jaeger `failed`（ok 0 / 非 ok 3，`SOURCE_UNAVAILABLE ×3`）；prometheus `all_ok`（ok 14、no_data 4）；kubernetes_state、pod_logs、change_history 为 `not_integrated`。页面 `#coverage-gaps` 出现（HTTP 200）。
 - U6-a 判定（脚本按冻结答案计算，答案 sha256 不变）：**通过**。报告非 `supported`，jaeger 行 `gap=true`。`tests/acceptance/test_f3_step5_real_runs.py::test_step3_d9_rerun_of_scenario_a_on_the_current_prompt_revision` 读这份 summary 通过。
 - 失败轮：无。费用：`known_cost_cny_upper` 0.531 CNY（不计缓存折扣的上界）；token：prompt 167,235、completion 18,811。
+
+## D9 重跑：场景 A（#676，2026-11-16）
+
+#676 改了共用 L2 段与 INVESTIGATION_METHOD，基础档位 `prompt_revision` 由 `a6b4dfd02030` 变为 `prompt-replay-candidate-14eb2a0a6afd`（[任务记录](../../tasks/2026-11-16-676-investigation-guidance.md) D9、D11），所以在新的模型可见面上再重跑场景 A 一次。上面各节的冻结 summary 都没有改。
+
+- 地点与做法同上一节（#646）：租机主机，代码 `feature/676-investigation-guidance` `e8b98507`，替身加真实 DeepSeek，一次性 PG 17（56157，`0024_trace_outbox`），`--lab-round f3-676-d9-missing-source`，输出目录 `missing-source-rerun-14eb2a0a6afd`。
+- Run `b3a2e9f0-140b-4c8e-abb9-1c0973bfe611`（22:14:08–22:15:33Z），11 次 HTTP；报告 `m0-report-v3`，`completed / inconclusive`，`root_cause: null`。
+- [summary](missing-source-rerun-14eb2a0a6afd/b3a2e9f0-140b-4c8e-abb9-1c0973bfe611/summary.json) · [LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ebc2b200-3393-4a55-87f4-f220d2325feb/r/00000000-0000-0000-1115-52b1e6f7c3a2?poll=true)（回读 `found`，`longlived`）
+- 覆盖节：jaeger `failed`（非 ok 4 次，`SOURCE_UNAVAILABLE ×4`）；prometheus `all_ok`（ok 14、no_data 2）；其余三源 `not_integrated`。
+- U6-a 判定：**通过**（报告非 supported，jaeger 行 `gap=true`）。与 #646 那次的差异：结论从 partial 变为 inconclusive。
+- 费用：`known_cost_cny_upper` 0.470 CNY（上界）；prompt 161,274、completion 13,346。
