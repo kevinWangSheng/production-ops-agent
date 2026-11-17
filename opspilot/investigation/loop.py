@@ -27,6 +27,7 @@ from opspilot.investigation.context import (
     CONTEXT_POLICY,
     INITIAL_SEGMENT,
     KNOWLEDGE_BOUNDARY,
+    PRIOR_REPLIES,
     RELEASE_CONTEXT_BOUNDARY,
     InvestigationInput,
     Transcript,
@@ -43,6 +44,7 @@ from opspilot.investigation.context import (
     message_sequences,
     messages_hash,
     new_messages,
+    prior_replies_of,
     reply_instruction_message,
     step_key,
     visible_view,
@@ -264,6 +266,9 @@ class InvestigationRequest:
     # ``scope_facts["conversation"]``); ``None`` means floor 0 and
     # ``report_required``, i.e. every Run created before the fact existed.
     conversation: Mapping[str, Any] | None = None
+    # Contract B8: the Run's ``scope_facts["prior_replies"]`` (validated
+    # replies earlier Runs gave), rendered beside the messages they answer.
+    prior_replies: Mapping[str, Any] | None = None
 
     def as_input(self) -> InvestigationInput:
         """The persistable snapshot a later attempt rebuilds this request from."""
@@ -274,6 +279,8 @@ class InvestigationRequest:
         }
         if self.conversation is not None:
             facts[CONVERSATION] = dict(self.conversation)
+        if self.prior_replies is not None:
+            facts[PRIOR_REPLIES] = dict(self.prior_replies)
         return InvestigationInput(
             question=self.question,
             model_requests=self.model_requests,
@@ -552,6 +559,7 @@ class InvestigationLoop:
             variant_id=input.variant_id,
             limits=input.limits,
             conversation=input.scope_facts.get(CONVERSATION),
+            prior_replies=prior_replies_of(input.scope_facts),
         )
         self._check_identity(request)
         system = transcript.messages[0]["content"] if transcript.messages else ""
@@ -745,7 +753,15 @@ class InvestigationLoop:
         when one of them is a new ``message`` (contract C4)."""
         state.message_sequences.update(message_sequences(inputs))
         found = (
-            inputs_message(inputs, floor=state.floor),
+            inputs_message(
+                inputs,
+                floor=state.floor,
+                prior_replies=prior_replies_of(
+                    None
+                    if state.request.prior_replies is None
+                    else {PRIOR_REPLIES: state.request.prior_replies}
+                ),
+            ),
             reply_instruction_message(inputs, floor=state.floor, mode=state.mode),
         )
         return tuple(message for message in found if message is not None)

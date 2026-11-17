@@ -74,14 +74,6 @@ def test_claim_allows_a_fresh_never_suspended_target_at_generation_zero():
     assert lease.target_suspension_generation == 0
 
 
-def test_follow_up_payload_is_durable_and_readable():
-    s = _store()
-    i, r = _accept(s)
-    assert s.control(i, 0, "follow_up", "operator", {"question": "why"}) == 1
-    rows = s.read_inputs(i)
-    assert rows[0]["kind"] == "follow_up" and rows[0]["content"] == {"question": "why"}
-
-
 def test_global_suspension_blocks_budget_and_publish_via_lease_fence():
     s = _store()
     i, r = _accept(s)
@@ -211,29 +203,6 @@ def test_begin_round_freezes_the_watermark_and_commit_step_writes_it_back():
     ]
 
 
-def test_a_follow_up_after_a_frozen_round_refreezes_that_round_for_the_new_generation():
-    """Independent review (PR #31, P2b): a round frozen under generation G
-    that never committed, followed by a human follow_up (G+1) and a re-claim,
-    is re-frozen on the same key at the new watermark -- the new generation
-    must see the very input that moved it on."""
-    s = _store()
-    i, r = _accept(s)
-    lease = s.claim(i, r, uuid4(), {"v": "1"})
-    assert s.begin_round(lease, "ctx0:round-1")["input_watermark"] == 0
-    g = lease.control_generation
-    assert (
-        s.control(i, g, "follow_up", "operator", {"question": "and payments?"}) == g + 1
-    )
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        s.begin_round(lease, "ctx0:round-1")  # the superseded lease is fenced
-    fresh = s.claim(i, r, uuid4(), {"v": "1"})
-    assert fresh.control_generation == g + 1
-    frozen = s.begin_round(fresh, "ctx0:round-1")
-    assert frozen["control_generation"] == g + 1
-    assert frozen["input_watermark"] == 1 and frozen["committed"] is False
-    assert frozen["inputs"][0]["content"] == {"question": "and payments?"}
-
-
 def test_a_round_committed_under_another_generation_is_refused_not_refrozen():
     """Independent review (PR #31, P2c): a *committed* round key from another
     generation is a real conflict; only an uncommitted boundary is re-frozen."""
@@ -270,29 +239,3 @@ def test_a_redundant_pause_with_a_payload_is_still_refused_on_a_paused_incident(
     assert [x["kind"] for x in rebuilt["inputs"]] == ["follow_up"]
 
 
-def test_a_non_object_follow_up_payload_is_refused_before_anything_is_written():
-    """codex review (PR #31, P1): a payload that is valid JSON but not an
-    object (a list, a scalar) was persisted and reported as success, and the
-    model-facing projection later dropped the non-mapping content -- the
-    operator's text silently vanished. control() must refuse it up front:
-    no audit row, no input row, generation untouched. append_input() already
-    refuses the same shape for events."""
-    s = _store()
-    i, r = _accept(s)
-    for bad in ([], ["why"], "why", 7, True):
-        with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-            s.control(i, 0, "follow_up", "operator", bad)  # type: ignore[arg-type]
-        with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-            s.control(i, 0, "correct", "operator", bad)  # type: ignore[arg-type]
-    with pytest.raises(PersistenceError, match="INVALID_INPUT"):
-        s.append_input(i, uuid4(), ["event"])  # type: ignore[arg-type]
-    rebuilt = s.rebuild(i)
-    assert rebuilt["control_generation"] == 0 and rebuilt["state"] == "queued"
-    assert s.read_inputs(i) == [] and rebuilt["inputs"] == []
-    with s.transaction() as conn:
-        audits = conn.execute(
-            "SELECT count(*) AS n FROM opspilot_controls WHERE incident_id=%s", (i,)
-        ).fetchone()["n"]
-    assert audits == 0
-    # The well-formed shape still goes through at the same generation.
-    assert s.control(i, 0, "follow_up", "operator", {"question": "why"}) == 1

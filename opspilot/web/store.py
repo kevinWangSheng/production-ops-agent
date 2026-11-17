@@ -244,18 +244,46 @@ class IncidentStore(Protocol):
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
-        *,
-        renew_run_id: UUID | None = None,
-        renew_deadline: datetime | None = None,
-        renew_input: dict[str, Any] | None = None,
-        renew_basis: dict[str, Any] | None = None,
     ) -> int:
-        """Apply one human decision; ``payload`` carries follow-up/correction content.
-
-        ``renew_run_id`` / ``renew_deadline`` are the fresh Run a note on a
-        timed-out Run starts (``DurableStore.control``); unused otherwise.
-        """
+        """Apply one human decision; ``payload`` is its audit annotation."""
         ...
+
+    def append_message(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str,
+    ) -> tuple[int, bool]:
+        """Record one human ``message`` input (workbench contract B1);
+        ``(sequence, replayed)``."""
+        ...
+
+    def relay_candidates(self, *, limit: int = 20) -> tuple[UUID, ...]: ...
+
+    def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None: ...
+
+    def relay_continuation(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        basis: dict[str, Any],
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+    ) -> bool:
+        """Open the continuation Run of contract R4; ``False`` on a replay
+        or when the relay predicate no longer holds."""
+        ...
+
+    def conversation_floor(self, incident_id: UUID) -> int: ...
+
+    def has_validated_report(self, incident_id: UUID) -> bool: ...
+
+    def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]: ...
 
     def new_run(
         self,
@@ -561,12 +589,6 @@ class DurableIncidentStore:
         # + opspilot_inputs). Detect it once so this adapter works on both bases.
         parameters = inspect.signature(store.control).parameters
         self._payload_supported = "payload" in parameters
-        # A note on a timed-out Run starts a fresh Run (user decision
-        # 2026-09-25) only where the store's control() knows the renewal
-        # keywords; an older base gets the positional call it accepts and
-        # keeps re-queueing (bot review, PR #47).
-        self._renewal_supported = "renew_run_id" in parameters
-        self._renew_basis_supported = "renew_basis" in parameters
         # #128 adds ``payload`` to DurableStore.new_run (the request key on
         # the audit row); an older base gets the call it accepts.
         new_run = getattr(store, "new_run", None)
@@ -638,36 +660,62 @@ class DurableIncidentStore:
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
-        *,
-        renew_run_id: UUID | None = None,
-        renew_deadline: datetime | None = None,
-        renew_input: dict[str, Any] | None = None,
-        renew_basis: dict[str, Any] | None = None,
     ) -> int:
-        renewal: dict[str, Any] = {}
-        if self._renewal_supported:
-            renewal = {
-                "renew_run_id": renew_run_id,
-                "renew_deadline": renew_deadline,
-                "renew_input": renew_input,
-            }
-        if self._renew_basis_supported:
-            renewal["renew_basis"] = renew_basis
-        # The signature guards above prove which keywords exist at runtime;
-        # mypy only sees the current DurableStore signature.
-        control: Any = self._store.control
         if payload is None or not self._payload_supported:
-            # Base without PR #31: the store has no payload column. The
-            # workbench then keeps the note in its ledger and composes it
-            # into the next attempt's question (read under the lease).
-            result: int = control(
-                incident_id, expected_generation, action, actor, **renewal
+            # Base without PR #31: the store has no payload column.
+            result: int = self._store.control(
+                incident_id, expected_generation, action, actor
             )
             return result
-        applied: int = control(
-            incident_id, expected_generation, action, actor, payload, **renewal
+        return self._store.control(
+            incident_id, expected_generation, action, actor, payload
         )
-        return applied
+
+    def append_message(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str,
+    ) -> tuple[int, bool]:
+        return self._store.append_message(incident_id, input_id, content, actor=actor)
+
+    def relay_candidates(self, *, limit: int = 20) -> tuple[UUID, ...]:
+        return self._store.relay_candidates(limit=limit)
+
+    def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None:
+        return self._store.relay_basis(incident_id)
+
+    def relay_continuation(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        basis: dict[str, Any],
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+    ) -> bool:
+        return self._store.relay_continuation(
+            incident_id,
+            run_id,
+            basis=basis,
+            deadline=deadline,
+            budget_limit=budget_limit,
+            versions=versions,
+            input=input,
+        )
+
+    def conversation_floor(self, incident_id: UUID) -> int:
+        return self._store.conversation_floor(incident_id)
+
+    def has_validated_report(self, incident_id: UUID) -> bool:
+        return self._store.has_validated_report(incident_id)
+
+    def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]:
+        return self._store.prior_replies(incident_id)
 
     def new_run(
         self,

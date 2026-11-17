@@ -28,7 +28,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.investigation.context import continuation_context
-from opspilot.persistence import PersistenceError
 from tests.integration.test_m1_web_worker_postgres import (
     _build,
     _control,
@@ -218,41 +217,6 @@ def _assert_new_run_opened(env, action, generation, text):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "action,text",
-    [
-        ("follow_up", "Check the payments dependency as well."),
-        (
-            "correct",
-            "Added fact: payments was redeployed at 10:02; the latency hypothesis is wrong.",
-        ),
-    ],
-)
-def test_note_after_conclusion_opens_new_run_and_page_keeps_history(action, text):
-    env = _concluded(action)
-    _ok(_act(env, action, 0, text), 1)
-    new_run = _assert_new_run_opened(env, action, 1, text)
-    assert _runs(env)[env.old_run]["state"] == "completed"
-    assert _incident(env)["lifecycle"] == "open"
-
-    new_summary = f"Updated assessment after the human note {uuid4().hex[:10]}."
-    _publish(env, new_summary, "Payments redeploy is the more likely cause.")
-    rebuilt = env.store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] == new_run
-    assert rebuilt["run"]["state"] == "completed"
-    assert rebuilt["conclusion"] is not None
-    assert _runs(env)[env.old_run]["state"] == "completed"
-
-    snapshot = env.workbench.snapshot(env.subject)
-    assert snapshot["report"] is not None
-    assert snapshot["report"]["summary"] == new_summary
-    page = _page(env)
-    assert new_summary in page
-    history = _section(page, "Investigation history")
-    assert str(env.old_run) in history
-    assert env.old_summary in history
-
-
 def test_note_after_conclusion_needs_authentication_and_same_origin():
     env = _concluded("auth")
     fields = ("follow_up", 0, "Check the payments dependency as well.")
@@ -273,38 +237,6 @@ def test_note_after_conclusion_needs_authentication_and_same_origin():
 # --------------------------------------------------------------------------
 # 2. follow_up after cancel opens a new Run (U1-A "已取消的事故")
 # --------------------------------------------------------------------------
-
-
-def test_follow_up_after_cancel_opens_new_run():
-    # Cancel is refused once a conclusion exists (item 3), so this incident is
-    # cancelled before its first Run publishes.
-    app, workbench, store, events, evidence = _build()
-    submitted = _submit(app, f"f12-pr1-cancel-{uuid4()}")
-    env = SimpleNamespace(
-        app=app,
-        workbench=workbench,
-        store=store,
-        events=events,
-        evidence=evidence,
-        subject=UUID(submitted["incident_id"]),
-        old_run=UUID(submitted["run_id"]),
-    )
-    _ok(_act(env, "cancel", 0), 1)
-    assert _incident(env)["state"] == "cancelled"
-    assert _runs(env)[env.old_run]["state"] == "cancelled"
-    assert not _claimable(env)
-
-    text = "Please investigate again, the errors are back."
-    _ok(_act(env, "follow_up", 1, text), 2)
-    new_run = _assert_new_run_opened(env, "follow_up", 2, text)
-    assert _runs(env)[env.old_run]["state"] == "cancelled"
-
-    summary = f"Investigation after the cancel {uuid4().hex[:10]}."
-    _publish(env, summary, "A dependency regression is plausible.")
-    rebuilt = store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] == new_run
-    assert rebuilt["run"]["state"] == "completed"
-    assert summary in _page(env)
 
 
 # --------------------------------------------------------------------------
@@ -331,110 +263,9 @@ def test_pause_resume_cancel_after_conclusion_stay_refused(action):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-@pytest.mark.parametrize("mode", ["automatic", "human_owned"])
-@pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
-def test_note_on_resolved_or_closed_incident_requires_reopen(lifecycle, mode, action):
-    """Contract r2: REOPEN_REQUIRED only for a note that would open a new Run
-    (automatic mode, conclusion published); human_owned notes are recorded."""
-    env = _concluded(f"reopen-{lifecycle}-{mode}-{action}")
-    generation = 0
-    if mode == "human_owned":
-        _ok(_act(env, "takeover", 0), 1)
-        generation = 1
-    with env.store.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
-            (lifecycle, env.subject),
-        )
-    runs_before = _runs(env)
-    controls_before = _controls(env)
-    inputs_before = _inputs(env)
-    conclusion_before = env.store.rebuild(env.subject)["conclusion"]
-    text = "Is it still broken?"
-
-    response = _act(env, action, generation, text)
-    row = _incident(env)
-    assert row["lifecycle"] == lifecycle
-    assert row["mode"] == mode
-    assert row["current_run_id"] == env.old_run
-    assert _runs(env) == runs_before
-    assert env.store.rebuild(env.subject)["conclusion"] == conclusion_before
-    assert not _claimable(env)
-
-    if mode == "automatic":
-        # r2: a note that would start a new Run is refused.
-        assert response.status == 409, response.text
-        assert response.json()["code"] == "REOPEN_REQUIRED"
-        assert row["control_generation"] == generation
-        assert _controls(env) == controls_before
-        assert _inputs(env) == inputs_before
-        return
-
-    # r2: under human ownership the note is recorded only.
-    _ok(response, generation + 1)
-    assert row["control_generation"] == generation + 1
-    audit = _controls(env)
-    assert audit[: len(controls_before)] == controls_before
-    added = audit[len(controls_before) :]
-    assert [(r["action"], r["resulting_generation"]) for r in added] == [
-        (action, generation + 1)
-    ]
-    assert (added[0]["payload"] or {}).get("text") == text
-    assert ("takeover", 1) in [(r["action"], r["resulting_generation"]) for r in audit]
-    notes = _inputs(env)
-    assert notes[: len(inputs_before)] == inputs_before
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"])
-        for i in notes[len(inputs_before) :]
-    ] == [(action, text, generation + 1)]
-
-
 # --------------------------------------------------------------------------
 # 5. human_owned with a conclusion: notes are only recorded (U7-A)
 # --------------------------------------------------------------------------
-
-
-def test_notes_under_human_ownership_after_conclusion_are_recorded_only():
-    env = _concluded("human-owned")
-    _ok(_act(env, "takeover", 0), 1)
-    after_takeover = _runs(env)
-    assert set(after_takeover) == {env.old_run}
-
-    notes = [
-        ("correct", "Added fact: the payments pod restarted at 10:02."),
-        ("follow_up", "Did the restart line up with the error spike?"),
-    ]
-    for offset, (action, text) in enumerate(notes):
-        _ok(_act(env, action, 1 + offset, text), 2 + offset)
-        row = _incident(env)
-        assert row["mode"] == "human_owned"
-        assert row["control_generation"] == 2 + offset
-        assert row["current_run_id"] == env.old_run
-        assert set(_runs(env)) == {env.old_run}
-        assert _runs(env)[env.old_run]["state"] == after_takeover[env.old_run]["state"]
-        assert not _claimable(env)
-        with pytest.raises(PersistenceError):
-            env.store.claim(
-                env.subject, env.old_run, uuid4(), {"state": "v1"}, lease_seconds=30
-            )
-
-    audit = _controls(env)
-    assert [(r["action"], r["resulting_generation"]) for r in audit] == [
-        ("takeover", 1),
-        ("correct", 2),
-        ("follow_up", 3),
-    ]
-    assert [(r["payload"] or {}).get("text") for r in audit[1:]] == [
-        t for _, t in notes
-    ]
-    recorded = _inputs(env)
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"]) for i in recorded
-    ] == [
-        ("correct", notes[0][1], 2),
-        ("follow_up", notes[1][1], 3),
-    ]
 
 
 # --------------------------------------------------------------------------

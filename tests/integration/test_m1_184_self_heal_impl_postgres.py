@@ -141,6 +141,14 @@ def _publish(owner: DurableStore, incident: UUID) -> None:
             "UPDATE opspilot_runs r SET state='completed',control_generation=i.control_generation FROM opspilot_incidents i WHERE i.incident_id=%s AND r.run_id=i.current_run_id",
             (incident,),
         )
+        # publish() leaves the committed conclusion step it published
+        # (workbench contract A7 reads "published here" from that step).
+        conn.execute(
+            "INSERT INTO opspilot_steps(step_id,run_id,logical_key,status,response,control_generation) "
+            "SELECT %s,i.current_run_id,'heal-fixture:conclusion','response_committed',i.conclusion,i.control_generation "
+            "FROM opspilot_incidents i WHERE i.incident_id=%s",
+            (uuid4(), incident),
+        )
 
 
 def _rows(owner: DurableStore, query: str, incident: UUID) -> list[dict[str, Any]]:

@@ -164,8 +164,9 @@ def self_heal_loop(
     workbench: Workbench, interval: float, stop: threading.Event
 ) -> None:
     """Run ``workbench.self_heal_pass()``,
-    ``workbench.release_authorize_pass()`` and then
-    ``workbench.release_anomaly_pass()`` every ``interval`` seconds until
+    ``workbench.release_authorize_pass()``,
+    ``workbench.release_anomaly_pass()`` and then ``workbench.relay_pass()``
+    every ``interval`` seconds until
     ``stop`` is set. Each pass catches its own failure, which is logged; the
     others still run and the next round runs on time: every decision is
     durable and keyed, so nothing is lost by retrying."""
@@ -182,6 +183,13 @@ def self_heal_loop(
             workbench.release_anomaly_pass()
         except Exception:
             _log.exception("release anomaly pass failed")
+        try:
+            # Workbench contract R2: the fallback that opens a continuation
+            # Run for unread messages on an idle incident (the message
+            # request itself relays first).
+            workbench.relay_pass()
+        except Exception:
+            _log.exception("relay pass failed")
 
 
 def _target_registry() -> MappingTargetRegistry | None:

@@ -170,8 +170,20 @@ _HUMAN_OR_BLOCKED = frozenset({"paused", "cancelled", "blocked"})
 # ``queued``/``running`` are not outcomes and are refused, as is anything
 # no product path writes to the row.
 _FINAL_ROW_STATES = frozenset({"completed", "waiting_human"}) | _HUMAN_OR_BLOCKED
+# ``message`` (workbench contract O2): a human message is an input, never a
+# controls row, so it can never be the decision in force; listed with the
+# old note actions it replaces so the human-interaction names stay one set.
 _HUMAN_ACTIONS = frozenset(
-    {"pause", "cancel", "resume", "follow_up", "correct", "rebind_target", "merge_into"}
+    {
+        "pause",
+        "cancel",
+        "resume",
+        "follow_up",
+        "correct",
+        "message",
+        "rebind_target",
+        "merge_into",
+    }
 )
 
 
