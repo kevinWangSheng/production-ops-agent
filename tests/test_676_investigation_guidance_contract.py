@@ -99,7 +99,7 @@ SEMANTIC_RULES = {
         "kubernetes_guidance",
         (
             r"\balerts?\b",
-            r"\b(?:entry|starting|start|leads?|clues?)\b",
+            r"\b(?:entry|starting|start\w*|leads?|clues?)\b",
             r"\bscope\b",
             r"\b(?:stable|steady|unchanged)\b",
             r"\b(?:before|prior|earlier)\b",
