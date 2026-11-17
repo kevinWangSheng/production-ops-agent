@@ -28,6 +28,8 @@
 
 这和 P1 证据里的 Run 1 是同一类失败（终答轮用了工具轮的 note 形式），P1 改回复说明措辞后 Run 2 成功；本次在同一份回复说明（`reply_instruction_sha256` `3c97bbac…`）下又出现了混合形式。单次样本，看不出是否由 JSON 模式引起。按 R7 本 PR 不改 P1 的解析与回复说明模板；是否处理交 lead 决定。
 
+后续：这次 `RESPONSE_INVALID` 促成了 Q2（合同 r2，提交 `9baabc3a`）——不带 `schema_version`、但含 `replies` 键的对象按 `m0-response-v1` 包装处理，回复说明文字不变。Q2 落在本证据之后，这里没有任何真实 Run 跑过 Q2；由 r3 租机冒烟覆盖。
+
 ## 运行
 
 ```
