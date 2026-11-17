@@ -41,7 +41,7 @@ coverage and ``collection_truncated`` for the Run, and which of
 ``#coverage-gaps`` / ``#collection-truncated`` the workbench page rendered
 for the incident. ``--f3-answer evals/f3/missing-source/answer.json`` also
 computes that scenario's deterministic U6-a verdict.
-``--question TEXT`` replaces the otel-demo question, and
+``--question TEXT`` replaces the question (either profile), and
 ``--first-request-out PATH`` writes the exact bytes of the Run's first model
 request (``loop.serialized_request``) to an ignored path, and the Run's
 model-visible versions next to it (``<path>.versions.json``): F14 step 3
@@ -608,7 +608,8 @@ def main() -> int:
         factory = profile.executor_factory(store, evidence, clock)
     else:
         versions = dict(VERSIONS)
-        face, target_id, question = fixture_face(), LIVE_TOOL_TARGET, QUESTION
+        face, target_id = fixture_face(), LIVE_TOOL_TARGET
+        question = args.question or QUESTION
         factory = executor_factory_for(evidence, clock, deadline)
     web = None
     if args.message is not None:
