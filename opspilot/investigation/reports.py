@@ -1547,7 +1547,8 @@ def reply_instruction(mode: str) -> str:
 class SplitResponse:
     """A final (or early, tool-free) reply split per contract C6.
 
-    ``wrapped`` is true for an ``m0-response-v1`` object; ``replies`` is its
+    ``wrapped`` is true for an ``m0-response-v1`` object, or an object with
+    no ``schema_version`` but a ``replies`` member (#686 Q2); ``replies`` is its
     raw ``replies`` member (``None`` for a bare reply). ``report_content`` is
     the text to validate as a report: the wrapper's ``report`` member
     re-serialized, ``None`` when that member is null, or the reply's own
@@ -1566,9 +1567,11 @@ def split_response(content: str | None) -> SplitResponse:
             payload = json.loads(content, object_pairs_hook=_unique_object)
         except (ValueError, RecursionError):
             payload = None
-        if (
-            isinstance(payload, dict)
-            and payload.get("schema_version") == RESPONSE_SCHEMA_VERSION
+        # #686 Q2: an object with no schema_version but a replies member is
+        # the m0-response-v1 wrapper missing its version tag.
+        if isinstance(payload, dict) and (
+            payload.get("schema_version") == RESPONSE_SCHEMA_VERSION
+            or ("schema_version" not in payload and "replies" in payload)
         ):
             report = payload.get("report")
             return SplitResponse(
