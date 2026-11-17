@@ -196,3 +196,24 @@ def test_reset_with_no_seed_rows_deletes_nothing():
     conn.SEED = []
     assert reset_rows(conn) == 0
     assert not [s for s, _ in conn.statements if s.startswith("DELETE")]
+
+
+@pytest.mark.parametrize(
+    "dsn, environ",
+    [
+        ("service=prod dbname=opspilot_dev host=localhost", {}),
+        ("postgresql://localhost/opspilot_dev?service=prod", {}),
+        ("host=localhost dbname=opspilot_dev", {"PGSERVICE": "prod"}),
+        (
+            "host=localhost dbname=opspilot_dev",
+            {"PGSERVICEFILE": "/etc/pg_service.conf"},
+        ),
+    ],
+)
+def test_libpq_service_files_are_refused(dsn, environ):
+    with pytest.raises(SystemExit):
+        check_dsn(dsn, environ=environ)
+
+
+def test_empty_service_variables_are_not_in_play():
+    assert check_dsn("host=localhost dbname=opspilot_dev", environ={"PGSERVICE": ""})

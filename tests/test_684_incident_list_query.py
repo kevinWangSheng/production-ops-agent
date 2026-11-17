@@ -481,10 +481,10 @@ def test_pg_list_page_groups_counts_and_pages_match_the_python_view():
         ("999999999", 999999999),
         ("0", 1),
         ("000", 1),
-        ("1234567890", 1),
-        ("0001234567890", 1),
+        ("1234567890", 999999999),
+        ("0001234567890", 999999999),
         ("0" * 60 + "3", 3),
-        ("0" * 70 + "3", 1),
+        ("0" * 70 + "3", 3),
         ("２", 1),  # fullwidth digit
         ("²", 1),  # superscript digit
         ("١", 1),  # Arabic-Indic digit
@@ -496,6 +496,8 @@ def test_pg_list_page_groups_counts_and_pages_match_the_python_view():
         ("1e3", 1),
         ("2.0", 1),
         ("", 1),
+        ("9" * 400, 999999999),
+        ("12a", 1),
     ],
 )
 def test_page_accepts_only_ascii_digits(raw, page):
@@ -535,3 +537,11 @@ def test_page_past_the_end_shows_the_last_page():
         _set(workbench, incident_id, run="waiting_human")
     html = _get(app, "/?page=999999999")
     assert "26–30 of 30" in html
+
+
+@pytest.mark.parametrize("raw", ["1000000000", "0001000000000", "9" * 400])
+def test_overlong_page_number_saturates_to_the_last_page(raw):
+    app, workbench, ids = _many(30)
+    for incident_id in ids:
+        _set(workbench, incident_id, run="waiting_human")
+    assert "26–30 of 30" in _get(app, f"/?page={raw}")

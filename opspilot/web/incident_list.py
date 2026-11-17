@@ -44,8 +44,9 @@ TAB_TITLES = {
 TITLE_CHARS = 500
 
 _ACTIVE_RUN = {"queued", "running"}
-_PAGE = re.compile(r"[0-9]{1,64}")
-_SIGNIFICANT = re.compile(r"[0-9]{0,9}")
+_PAGE = re.compile(r"[0-9]+")
+#: The largest page a query string asks for; longer numbers saturate here.
+PAGE_MAX = 999_999_999
 
 
 def status_of(item: IncidentListItem) -> dict[str, Any]:
@@ -194,10 +195,14 @@ def parse_query(params: Mapping[str, str]) -> dict[str, Any]:
     q = text.strip()[:LIST_QUERY_CHARS].strip() or None
     raw = params.get("page") or ""
     # ASCII digits only: str.isdigit() and int() also take fullwidth and
-    # superscript digits. Leading zeros are ignored; at most nine
-    # significant digits; past the last page is the store's to clamp.
-    digits = raw.lstrip("0") if _PAGE.fullmatch(raw) else "x"
-    page = int(digits or "0") if _SIGNIFICANT.fullmatch(digits) else 1
+    # superscript digits. Leading zeros are ignored; a number too long to
+    # be a page saturates, so it reads like any page past the end, which
+    # the store clamps to the last page.
+    if _PAGE.fullmatch(raw):
+        digits = raw.lstrip("0")
+        page = PAGE_MAX if len(digits) > 9 else int(digits or "0")
+    else:
+        page = 1
     return {"tab": tab, "service": service, "q": q, "page": max(page, 1)}
 
 

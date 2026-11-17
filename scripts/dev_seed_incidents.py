@@ -41,7 +41,8 @@ Usage::
 
 The database must already be migrated and local (Unix socket, localhost,
 127.0.0.1 or ::1), and its name must hold ``dev``, ``test`` or ``seed`` as a
-whole ``_``-separated token; there is no override. Seeding refuses when
+whole ``_``-separated token; ``service=`` in the DSN and ``PGSERVICE`` /
+``PGSERVICEFILE`` are refused. There is no override. Seeding refuses when
 seed rows exist; pass ``--reset`` to replace them. Non-seed incidents are
 left alone and show up in the printed counts.
 """
@@ -191,6 +192,13 @@ def check_dsn(dsn: str, environ: Mapping[str, str] | None = None) -> str:
 
     env = os.environ if environ is None else environ
     info = conninfo_to_dict(dsn)
+    # A libpq service file can supply host and dbname over everything
+    # checked below (and point anywhere), so none may be in play.
+    if info.get("service"):
+        raise SystemExit("refusing a DSN with service=: give host and dbname directly")
+    for var in ("PGSERVICE", "PGSERVICEFILE"):
+        if env.get(var):
+            raise SystemExit(f"refusing to run with {var} set: unset it first")
     name = str(info.get("dbname") or env.get("PGDATABASE") or "")
     if not _DEV_NAME.fullmatch(name):
         raise SystemExit(
