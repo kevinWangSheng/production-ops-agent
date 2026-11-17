@@ -344,6 +344,9 @@ def list_page(
             "first": f"{first:,}",
             "last": f"{last:,}",
             "total": f"{total:,}",
+            "page": f"{result.page:,}",
+            "pages": f"{result.pages:,}",
+            "many": result.pages > 1,
             "prev": None
             if result.page <= 1
             else _href(tab, service, q, result.page - 1),

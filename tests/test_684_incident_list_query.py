@@ -545,3 +545,74 @@ def test_overlong_page_number_saturates_to_the_last_page(raw):
     for incident_id in ids:
         _set(workbench, incident_id, run="waiting_human")
     assert "26–30 of 30" in _get(app, f"/?page={raw}")
+
+
+# -- usability fixes (#684 browser run) --------------------------------------
+
+
+def test_next_step_is_a_label_not_a_button():
+    app, workbench, ids = _many(1)
+    _set(workbench, ids[0], run="waiting_human")
+    html = _get(app, "/")
+    # The pill text itself is unchanged; the "Next:" prefix is CSS.
+    assert '<span class="pill todo">Ask or take over</span>' in html
+    rule = re.search(r"\.lt \.pill\.todo, dl\.sm \.pill\.todo \{([^}]*)\}", html)
+    assert rule and "background: none" in rule.group(1)
+    assert re.search(r'\.pill\.todo::before[^{]*\{[^}]*content: "Next: "', html)
+
+
+def test_short_tab_note():
+    app, workbench, ids = _many(1)
+    _set(workbench, ids[0], run="waiting_human")
+    html = _get(app, "/")
+    assert "Resolved incidents also appear under Needs a human." in html
+    assert "by lifecycle" not in html
+
+
+def test_filtered_line_names_the_filters_above_the_tabs():
+    app, workbench, ids = _many(3)
+    for incident_id in ids:
+        _set(workbench, incident_id, run="waiting_human")
+    plain = _get(app, "/")
+    assert "Filtered:" not in plain
+    html = _get(app, "/?service=checkout-prod&q=question")
+    line = re.search(r'<p class="filtered">(.*?)</p>', html, re.S)
+    assert line
+    assert "service <code>checkout-prod</code>" in line.group(1)
+    assert "“question”" in line.group(1)
+    assert 'href="/?tab=needs_human">Clear filters</a>' in line.group(1)
+    assert html.index('class="filtered"') < html.index('<nav class="tabs"')
+    # The service select applies itself; Apply stays for no-script use.
+    assert 'service.addEventListener("change"' in html
+    assert '<button type="submit">Apply</button>' in html
+
+
+def test_pager_shows_page_of_pages_and_a_compact_pager_above_the_table():
+    app, workbench, ids = _many(30)
+    for incident_id in ids:
+        _set(workbench, incident_id, run="waiting_human")
+    html = _get(app, "/?page=2")
+    assert "26–30 of 30" in html and "Page 2 of 2" in html
+    top = re.search(r'<p class="pager top">(.*?)</p>', html, re.S)
+    assert top and html.index('class="pager top"') < html.index('<table class="lt">')
+    # Arrows only on top, so "Prev" and "Next" each name one link.
+    assert 'aria-label="Previous page"' in top.group(1)
+    assert "Prev" not in re.sub(r"<[^>]+>", "", top.group(1))
+    assert html.count(">‹ Prev</a>") == 1
+    one_page = _get(app, "/?tab=in_progress")
+    assert 'class="pager top"' not in one_page
+
+
+def test_service_without_a_target_reads_no_target():
+    app, workbench, ids = _many(1)
+    _set(workbench, ids[0], run="waiting_human")
+    workbench.incidents.incidents[UUID(ids[0])]["target_id"] = None
+    html = _get(app, "/")
+    assert '<td class="c-sv"><span class="nt">No target</span></td>' in html
+
+
+def test_detail_crumb_follows_the_list_referrer_by_script_only():
+    app, _, ids = _many(1)
+    first = _get(app, f"/incidents/{ids[0]}")
+    assert '<a href="/" data-list-crumb>Incidents</a>' in first
+    assert 'from.pathname !== "/"' in first

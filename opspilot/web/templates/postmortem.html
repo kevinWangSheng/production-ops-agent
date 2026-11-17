@@ -174,7 +174,7 @@
 } -%}
 {%- set inc8 = (page.incident_id | string)[:8] -%}
 
-<p class="crumb"><a href="/">Incidents</a> / <a href="/incidents/{{ page.incident_id }}"><code>{{ inc8 }}</code></a> / Postmortem</p>
+<p class="crumb"><a href="/" data-list-crumb>Incidents</a> / <a href="/incidents/{{ page.incident_id }}"><code>{{ inc8 }}</code></a> / Postmortem</p>
 <div class="ptitle">
   <h1>{% if v.state in ("under_review", "draft") %}Postmortem draft, version {{ v.version }}{% else %}Postmortem, version {{ v.version }}{% endif %}</h1>
   {{ ui.pill(state_pill.get(v.state, v.state), todo=(v.state == "under_review")) }}
@@ -502,4 +502,5 @@
   });
 })();
 </script>
+{{ ui.list_crumb_script() }}
 {% endblock %}

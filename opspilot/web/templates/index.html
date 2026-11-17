@@ -35,6 +35,8 @@
   .tabs a[aria-current] { color: var(--ink); border-bottom-color: var(--ink); }
   .tabs .n { font-variant-numeric: tabular-nums; font-weight: 400; }
   .tabnote { font-size: 12px; color: var(--ink3); margin: 6px 0 0; }
+  .filtered { font-size: 13px; color: var(--ink2); margin: 14px 0 0; }
+  .filtered code { font-size: 12.5px; }
 
   .flt { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 14px 0 4px; }
   .flt input[type="search"] { width: min(360px, 100%); font-family: var(--sans); font-size: 13px; }
@@ -49,7 +51,12 @@
   .svc { font-size: 14px; font-weight: 500; line-height: 1.4; }
   .meta { font-size: 12px; color: var(--ink2); margin-top: 3px; line-height: 1.4; }
   .meta code { font-size: 12px; }
+  /* The next step is a label, not a button: outlined grey text, "Next:" in front. */
+  .lt .pill.todo, dl.sm .pill.todo { background: none; border: 1px solid var(--line2); border-radius: 3px; color: var(--ink2); font-size: 12px; font-weight: 500; padding: 0 6px; }
+  .lt .pill.todo::before, dl.sm .pill.todo::before { content: "Next: "; color: var(--ink3); font-weight: 400; }
+  .lt a.pill.todo, .lt a.pill.todo:hover { color: var(--acc); }
   .lt .pill.todo { margin-bottom: 4px; }
+  .lt .nt { font-family: var(--sans); color: var(--ink3); }
   .st { font-size: 13.5px; line-height: 1.4; }
   .st code { font-size: 12px; }
   .sd { margin-top: 3px; }
@@ -59,6 +66,8 @@
   .pager { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; color: var(--ink2); margin-top: 12px; }
   .pager .off { color: var(--ink4); }
   .pager .sep { color: var(--ink4); }
+  .pager.top { margin: 10px 0 0; font-size: 12.5px; }
+  .pager.top a, .pager.top .off { padding: 0 4px; }
 
   .empty { padding: 32px 0 12px; max-width: 60ch; }
   .empty .e1 { font-size: 16px; font-weight: 600; margin: 0; }
@@ -71,7 +80,7 @@
   dl.sm { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 6px 12px; margin: 10px 0 0; font-size: 12.5px; }
   dl.sm dt { font-weight: 500; }
   dl.sm dd { margin: 0; color: var(--ink2); }
-  dl.sm .pill.todo { font-size: 11.5px; padding: 0 7px; white-space: normal; }
+  dl.sm .pill.todo { font-size: 11.5px; white-space: normal; }
   .kh { font-size: 13px; font-weight: 600; margin: 16px 0 0; }
 
   @media (max-width: 720px) {
@@ -125,12 +134,15 @@
 </div>
 {%- else %}
 {%- set f = listing.filters %}
+{%- if f.active %}
+<p class="filtered">Filtered:{% if f.service %} service <code>{{ f.service }}</code>{% endif %}{% if f.service and f.q %} ·{% endif %}{% if f.q %} “{{ f.q }}”{% endif %} · <a href="{{ f.clear_href }}">Clear filters</a></p>
+{%- endif %}
 <nav class="tabs" aria-label="Incident status">
   {%- for t in listing.tabs %}
   <a href="{{ t.href }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.title }} <span class="n">({{ t.count }})</span></a>
   {%- endfor %}
 </nav>
-<p class="tabnote">Resolved and Closed list incidents by lifecycle, so a resolved incident, or a closed one whose postmortem waits for review, also appears under Needs a human. Counts cover every stored incident{% if f.active %} that matches the filters{% endif %}.</p>
+<p class="tabnote">Resolved incidents also appear under Needs a human.</p>
 
 <form class="flt" method="get" action="/" role="search">
   <input type="hidden" name="tab" value="{{ listing.tab }}">
@@ -140,7 +152,6 @@
   </select>
   <input type="search" name="q" value="{{ f.q }}" maxlength="200" placeholder="Search title, alert or question" aria-label="Search">
   <button type="submit">Apply</button>
-  {%- if f.active %}<a href="{{ f.clear_href }}" class="small">Clear filters</a>{% endif %}
 </form>
 
 {%- if listing.empty == "filtered" %}
@@ -148,6 +159,13 @@
 {%- elif listing.empty == "tab" %}
 <div class="empty"><p class="e1">{% if listing.tab == "needs_human" %}Nothing needs a human right now.{% else %}No incidents here.{% endif %}</p></div>
 {%- else %}
+{%- set p = listing.pager %}
+{%- if p.many %}
+{#- Compact pager: arrows only, so the one "Prev" and "Next" link is the one below the table. -#}
+<p class="pager top"><span>{{ p.first }}–{{ p.last }} of {{ p.total }}</span><span class="sep">·</span><span>Page {{ p.page }} of {{ p.pages }}</span>
+  {%- if p.prev %}<a href="{{ p.prev }}" aria-label="Previous page">‹</a>{% else %}<span class="off" aria-disabled="true">‹</span>{% endif %}
+  {%- if p.next %}<a href="{{ p.next }}" aria-label="Next page">›</a>{% else %}<span class="off" aria-disabled="true">›</span>{% endif %}</p>
+{%- endif %}
 <div class="tw">
 <table class="lt">
   <colgroup><col class="c-ti"><col class="c-st"><col class="c-sv"><col class="c-age"></colgroup>
@@ -168,7 +186,7 @@
         <div class="sd"><span class="pill refired-after-resolved">alert re-fired after resolved</span></div>
         {%- endif %}
       </td>
-      <td class="c-sv">{% if row.service %}{{ row.service }}{% else %}{{ ui.missing() }}{% endif %}</td>
+      <td class="c-sv">{% if row.service %}{{ row.service }}{% else %}<span class="nt">No target</span>{% endif %}</td>
       <td class="c-age">{{ ui.time(row.created) }}</td>
       <td class="rawc">{{ item.run_state or "" }}</td>
       <td class="rawc">{{ item.control or "" }}</td>
@@ -179,9 +197,8 @@
   </tbody>
 </table>
 </div>
-{%- set p = listing.pager %}
 <p class="pager">
-  <span>{{ p.first }}–{{ p.last }} of {{ p.total }}</span><span class="sep">·</span>
+  <span>{{ p.first }}–{{ p.last }} of {{ p.total }}</span><span class="sep">·</span><span>Page {{ p.page }} of {{ p.pages }}</span><span class="sep">·</span>
   {%- if p.prev %}<a href="{{ p.prev }}" rel="prev">‹ Prev</a>{% else %}<span class="off" aria-disabled="true">‹ Prev</span>{% endif %}<span class="sep">·</span>
   {%- if p.next %}<a href="{{ p.next }}" rel="next">Next ›</a>{% else %}<span class="off" aria-disabled="true">Next ›</span>{% endif %}
 </p>
@@ -236,6 +253,11 @@
     }
     if (key && key.value && field) field.hidden = true;
   } catch (e) { /* the field stays visible for a person to fill */ }
+  // Choosing a service applies it at once; Apply stays for no-script use.
+  var service = document.getElementById("flt-service");
+  if (service && service.form) {
+    service.addEventListener("change", function () { service.form.submit(); });
+  }
   // The whole row opens the incident through the row's one link.
   document.querySelectorAll(".lt tbody tr.r").forEach(function (tr) {
     tr.addEventListener("click", function (e) {
