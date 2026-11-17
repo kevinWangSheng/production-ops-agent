@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r6 已定，P1 待开工
+- 状态：合同 r7 已定，P1 待开工
 - 更新日期：2026-11-17
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
@@ -23,14 +23,14 @@
 - D10 观察期间的消息或报告修订不停观察；D19 不显示 `reasoning_content`；D20 消息（Chat 面板或调查输入框）不算 #184 的「人工处理」，只有控制动作算（用户明确「不算」）。
 - 页面以原型 v2 为准；v1 标签页式原型被否。
 
-## 合同（r6）
+## 合同（r7）
 
 完整决定表（选项、代价、代码出处）见 [合同决定表](2026-11-17-workbench-redesign-contract.md)。预审需用户裁决 0 项；以下全部按推荐采纳，lead 2026-11-17 裁决。
 
 | 编号 | 裁决要点 |
 |---|---|
 | A1–A2 | 续接 Run 成为当前 Run，由 web 接力事务指过去；worker 候选去掉 `conclusion IS NULL` |
-| A3–A4 | 不加 Run 状态、不迁移；只回复 = Run `completed` + 结论步骤 `execution="answered"`，新增带栅栏的 `settle_answered`；回复合法报告不合格按只回复结束并记拒绝原因；都不合格交接 `RESPONSE_INVALID`；取代设计 D27 |
+| A3–A4 | 不加 Run 状态、不迁移；只回复 = Run `completed` + 结论步骤 `execution="answered"`，新增带栅栏的 `settle_answered`；回复合法报告不合格按只回复结束并记拒绝原因；都不合格交接 `RESPONSE_INVALID`；没有回复但报告合法只是自评不完整，走现有不完整交接（r7）；取代设计 D27 |
 | A5 | 重启补发布条件改为「事故当前结论不等于这一行」 |
 | A6 | 已恢复/已关闭上的续接 Run 为 `reply_only`：不给工具、1 次请求、报告丢弃 |
 | A7 | 自动恢复观察判定看「发布当前结论的那个 Run」，不看当前 Run |
@@ -48,7 +48,7 @@
 | O1–O4 | 复盘草稿过期保持现状；`follow_up`/`correct` HTTP 别名保留一版，存储层分支和 `m1_live_runner` 两个开关在 P2 删；反馈每个调查一份（照 AWS，取代 D25）；F7 第 5 步审计重建补输入表来源 |
 | T | 整个重设计最多 8 个场景测试（`tests/acceptance/test_workbench_conversation.py`）+ 3 条浏览器路径，一个共用驱动；不测清单与旧测试删除清单见决定表第五节 |
 
-修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）。
+修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）；r7 = A3 补「无回复 + 不完整报告」走不完整交接（P1 独立审查）。
 
 ## PR 顺序
 
