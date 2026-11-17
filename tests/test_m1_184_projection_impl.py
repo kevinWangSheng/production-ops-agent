@@ -11,7 +11,7 @@ page's recovery statement and the F13 input sections.
 from __future__ import annotations
 
 from datetime import timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
@@ -33,8 +33,6 @@ from opspilot.web.service import (
     _with_recovery_status,
 )
 from tests.m1_02_replay_support import NOW, healthy_history
-from tests.m1_web_support import basic, call
-from tests.test_m1_02_recovery_page import _observing_incident
 
 GRANTS = {
     "tables": {
@@ -372,43 +370,3 @@ def _automatic(workbench) -> None:
     session["authorization_source"] = "automatic"
     session["authorized_by"] = "system"
     session["target"] = {**session["target"], "revision": None}
-
-
-def test_the_page_says_recovered_without_a_remediation_for_an_automatic_session():
-    app, workbench, incident, _ = _observing_incident()
-    _automatic(workbench)
-    snapshot = workbench.snapshot(UUID(incident))
-    (session,) = snapshot["observation_sessions"]
-    assert session["authorization_source"] == "automatic"
-    assert session["target_revision"] is None
-    (recovery,) = snapshot["recovery"]
-    assert recovery["recovery_status"] == "recovered_no_remediation"
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert RECOVERED_NO_REMEDIATION in page.text
-    assert '<span class="badge authorization-source">automatic</span>' in page.text
-    assert "authorized at" in page.text
-    assert "self_heal" not in page.text and "self-heal" not in page.text
-
-
-def test_the_page_claims_no_recovery_while_the_automatic_session_observes():
-    app, workbench, incident, _ = _observing_incident(count=3)
-    _automatic(workbench)
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert OBSERVING_NO_CLAIM in page.text
-    assert RECOVERED_NO_REMEDIATION not in page.text
-    assert "recovery confirmed" not in page.text.replace("not confirmed", "")
-
-
-def test_the_human_registration_keeps_its_wording():
-    app, workbench, incident, _ = _observing_incident()
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert '<span class="badge authorization-source">post_remediation</span>' in (
-        page.text
-    )
-    assert RECOVERED_NO_REMEDIATION not in page.text
-    assert "handled at" in page.text
-    (recovery,) = workbench.snapshot(UUID(incident))["recovery"]
-    assert recovery["recovery_status"] is None

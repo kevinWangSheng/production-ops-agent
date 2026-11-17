@@ -2,75 +2,44 @@
 {% set nav = "incidents" %}
 {% import "_ui.html" as ui %}
 {% set inc = snapshot.incident %}
+{% set st = view.status %}
 {% set hd = view.header %}
-{% block title %}{{ hd.summary or ("Incident " ~ inc.incident_id) }} · OpsPilot{% endblock %}
-{% block body %}
-{% include "_incident_css.html" %}
-<div class="crumb"><a href="/" data-list-crumb>Incidents</a> / <span class="mono">{{ (inc.incident_id|string)[:8] }}</span></div>
-<h1>{% if hd.summary %}<i class="m m-alert" aria-hidden="true"></i>{{ hd.summary }}{% else %}Incident <code>{{ inc.incident_id }}</code>{% endif %}</h1>
-{% if snapshot.alert %}
-<div class="alert-name">{{ ui.source("alert", "Alert source (Alertmanager):") }} {% if hd.summary %}the title is the alert's <code>summary</code> text, verbatim and untrusted{% else %}the alert has no <code>summary</code> text{% endif %}{% if hd.alertname %} · alert <code>{{ hd.alertname }}</code>{% endif %}</div>
-{% endif %}
-<p class="ids">{% if hd.service %}Service <code>{{ hd.service }}</code> · {% endif %}target: none resolved · incident <code>{{ inc.incident_id }}</code></p>
-<p class="stored">Stored record: lifecycle <span class="badge">{{ inc.lifecycle }}</span>
-  · <span class="badge" id="handoff-only">handed to a human</span>
-  · reason <code id="handoff-reason">{{ inc.handoff_reason }}</code>
-  · no Run</p>
-<div class="when">{{ view.day or ui.missing("date: no data") }} · times in UTC</div>
-
-<div class="band">
-  <a href="#conclusion">
-    <div class="q">Conclusion</div>
-    <div class="a">None: no Run was started</div>
-    <div class="who"><i class="m m-code" aria-hidden="true"></i>System rule (code)</div>
-  </a>
-  <a href="#conclusion">
-    <div class="q">Grounds</div>
-    <div class="a">None: nothing was investigated</div>
-    <div class="who"><i class="m m-code" aria-hidden="true"></i>System rule (code)</div>
-  </a>
-  <a href="#conclusion">
-    <div class="q">Blind spots</div>
-    <div class="a">Everything: no target was resolved, so nothing was queried</div>
-    <div class="who"><i class="m m-code" aria-hidden="true"></i>System rule (code)</div>
-  </a>
-  <a href="#conclusion">
-    <div class="q">Recovery watch</div>
-    <div class="a">No Recovery watch</div>
-    <div class="who"><i class="m m-code" aria-hidden="true"></i>Observer (code, no model)</div>
-  </a>
-  <a href="#conclusion">
-    <div class="q">Human control</div>
-    <div class="a">Handed to a human at intake · no actions here</div>
-    <div class="who"><i class="m m-code" aria-hidden="true"></i>System rule (code)</div>
-  </a>
-</div>
-
-<section class="tl-sec" aria-labelledby="h-what">
-  <div class="tl-h"><h2 id="h-what">What happened</h2></div>
-  <ol class="tl">
-    {% for item in view.timeline["items"] %}
-    <li><i class="m m-{{ item.kind }}" aria-hidden="true"></i><div class="t">{{ item.time }}</div><div class="e">{{ item.text }}</div></li>
-    {% endfor %}
-    <li><i class="m m-code" aria-hidden="true"></i><div class="t">{{ view.timeline["items"][0].time if view.timeline["items"] else "" }}</div><div class="e">Handed to a human at intake, no Run</div></li>
-  </ol>
-</section>
-
-<div class="grid">
-<section class="s first" id="conclusion" aria-labelledby="h-concl">
-  <div class="s-h"><h2 id="h-concl">No investigation</h2></div>
-  <div class="prov">{{ ui.source("code", "System rule (code)") }}<span>Handed to a human at intake · no Run</span></div>
-  <p class="lede">Nothing was investigated: {% if inc.handoff_reason == "TARGET_AMBIGUOUS" %}more than one registered target matched this alert{% elif inc.handoff_reason == "RELEASE_TARGET_UNRESOLVED" %}the release's target no longer matches its registered record{% else %}no registered target matched this alert{% endif %}.</p>
-  {% if inc.handoff_reason == "RELEASE_TARGET_UNRESOLVED" %}<p class="small">A post-release observation ended anomalous, but the release's target identity no longer matches the registered target record, so nothing was investigated automatically and no target was assumed. A human must confirm the target and handle it outside the system.</p>{% else %}<p class="small">The alert's labels matched {% if inc.handoff_reason == "TARGET_AMBIGUOUS" %}more than one{% else %}no{% endif %} registered target, so nothing was investigated automatically and no target was assumed. Handle it outside the system; repeated notifications of the same alert are recorded below.</p>{% endif %}
-  <p class="disclaim">There is no Run, so there is no evidence, no report and no Recovery watch, and OpsPilot offers no action on this page. Handle it outside OpsPilot.</p>
-</section>
-
-<section class="s" id="raw" aria-labelledby="h-raw">
-  <div class="s-h"><h2 id="h-raw">Raw records</h2></div>
-  {% if snapshot.alert %}
-  <details class="raw" open><summary>Alert as received (untrusted text)</summary><div class="body">{% include "_alert.html" %}</div></details>
-  {% else %}<p class="small">{{ ui.missing("alert record: no data") }}</p>{% endif %}
-</section>
+{% block title %}{{ hd.title }} · OpsPilot{% endblock %}
+{% block body_attrs %} class="wb"{% endblock %}
+{% block head %}
+{% include "_wb_css.html" %}
+{% include "_incident_page_css.html" %}
+{% endblock %}
+{#- An alert incident handed to a human at intake (contract D9): no Run, so
+    no result, log, composer or Chat; only what arrived. -#}
+{% block main %}
+<div class="shell chat-closed">
+<main class="main"><div class="col">
+  <div>
+    <div class="crumb"><a href="/" data-list-crumb>Incidents</a> / <span class="mono">{{ (inc.incident_id|string)[:8] }}</span></div>
+    <div class="head"><div class="ttl">
+      <h1>{{ hd.title }}</h1>
+      <div class="meta">Alertmanager{% if hd.alertname %} · <span class="mono">{{ hd.alertname }}</span>{% endif %}{% if hd.service %} · service <span class="mono">{{ hd.service }}</span>{% endif %} · no target resolved{% if inc.created_at %} · opened {{ view.clock(inc.created_at) }} UTC{% endif %}</div>
+    </div></div>
+  </div>
+  <div class="status">
+    <span class="stat t-{{ st.tone }}" id="incident-status" data-status="{{ st.key }}"><span class="ic" aria-hidden="true">{{ st.icon }}</span>{{ st.label }}</span>
+    <span id="handoff-only">Handed to a person at intake, no Run</span>
+    <span class="muted">reason <code id="handoff-reason">{{ inc.handoff_reason }}</code></span>
+    <span class="muted">incident <span class="mono">{{ inc.incident_id }}</span></span>
+  </div>
+  <section id="conclusion" aria-labelledby="h-concl">
+    <h2 id="h-concl">No investigation</h2>
+    <p>Nothing was investigated: {% if inc.handoff_reason == "TARGET_AMBIGUOUS" %}more than one registered target matched this alert{% elif inc.handoff_reason == "RELEASE_TARGET_UNRESOLVED" %}the release's target no longer matches its registered record{% else %}no registered target matched this alert{% endif %}.</p>
+    <p class="small">No target was assumed, so there is no evidence, no report and no recovery watch, and OpsPilot offers no action here. Handle it outside OpsPilot; repeated notifications of the same alert are recorded below.</p>
+  </section>
+  <section id="raw" aria-labelledby="h-raw">
+    <h2 id="h-raw">Raw records</h2>
+    {%- if snapshot.alert %}
+    <div class="rows"><details class="crow" open><summary><span class="n" aria-hidden="true">·</span><span>Alert as received <span class="muted">(untrusted text)</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">{% include "_alert.html" %}</div></div></details></div>
+    {%- else %}<p class="small">{{ ui.missing("alert record: no data") }}</p>{% endif %}
+  </section>
+</div></main>
 </div>
 {{ ui.list_crumb_script() }}
 {% endblock %}

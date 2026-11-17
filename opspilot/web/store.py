@@ -1076,17 +1076,17 @@ _ITEM_JOINS = (
 
 _SERVICE_LIMIT = 200
 #: The list group ``incident_list.status_of`` gives a row, in SQL, in the
-#: same first-match order (web UX spec 3.7). Change both together; the
-#: consistency test compares them over every status.
+#: same first-match order as ``status.incident_status`` (redesign contract
+#: A8). Change both together.
 _PAGE_GROUP = (
     "CASE"
     " WHEN i.lifecycle='closed' THEN CASE WHEN pm.state='under_review'"
     " AND pm.postmortem_id IS NOT NULL THEN 'needs_human' ELSE 'closed' END"
-    f" WHEN COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) IS NOT NULL THEN 'needs_human'"
-    " WHEN i.state='paused' OR r.state='paused' THEN 'needs_human'"
-    " WHEN r.state='blocked' OR i.mode='human_owned' OR r.state='waiting_human'"
-    " OR i.lifecycle='resolved' THEN 'needs_human'"
-    " WHEN i.lifecycle='observing_recovery' OR r.state IN ('queued','running')"
+    " WHEN i.lifecycle='resolved' THEN 'needs_human'"
+    " WHEN i.state IN ('cancelled','paused') OR r.state='paused' THEN 'needs_human'"
+    " WHEN i.mode='human_owned' THEN 'needs_human'"
+    " WHEN r.state IN ('queued','running') THEN 'in_progress'"
+    " WHEN i.conclusion IS NOT NULL AND i.lifecycle='observing_recovery'"
     " THEN 'in_progress'"
     " ELSE 'needs_human' END"
 )

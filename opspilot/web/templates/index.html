@@ -2,6 +2,8 @@
 {% set nav = "incidents" %}
 {% import "_ui.html" as ui %}
 {% block title %}OpsPilot · incidents{% endblock %}
+{% block body_attrs %} class="wb"{% endblock %}
+{% block head %}{% include "_wb_css.html" %}{% endblock %}
 {% block body %}
 {#- List page (web UX spec 2026-11-16, section 3). Rules this template keeps:
     - one <th> row (the thead); each incident is one <tr class="r">, no group rows;
@@ -20,7 +22,7 @@
   .askd { position: relative; }
   .askd > summary { list-style: none; }
   .askd > summary::-webkit-details-marker { display: none; }
-  .askp { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: min(440px, calc(100vw - 32px)); background: #fff; border: 1px solid var(--line2); border-radius: 6px; padding: 16px 18px 18px; box-shadow: 0 6px 24px rgba(0, 0, 0, .08); }
+  .askp { position: absolute; right: 0; top: calc(100% + 8px); z-index: 10; width: min(440px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 18px; box-shadow: 0 6px 24px rgba(0, 0, 0, .08); }
   .askp .kh { margin-top: 0; }
   .askp form { margin-top: 4px; }
   .askp label { display: block; font-size: 12.5px; color: var(--ink2); margin-top: 12px; font-weight: 500; }
@@ -30,9 +32,9 @@
   .askp .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 
   .tabs { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: 18px; border-bottom: 1px solid var(--line2); }
-  .tabs a { color: var(--ink3); padding: 8px 0 9px; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+  body.wb .tabs a { color: var(--muted); padding: 8px 0 9px; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
   .tabs a:hover { color: var(--ink); text-decoration: none; }
-  .tabs a[aria-current] { color: var(--ink); border-bottom-color: var(--ink); }
+  body.wb .tabs a[aria-current] { color: var(--ink); border-bottom-color: var(--ink); }
   .tabs .n { font-variant-numeric: tabular-nums; font-weight: 400; }
   .tabnote { font-size: 12px; color: var(--ink3); margin: 6px 0 0; }
   .filtered { font-size: 13px; color: var(--ink2); margin: 14px 0 0; }
@@ -42,12 +44,14 @@
   .flt input[type="search"] { width: min(360px, 100%); font-family: var(--sans); font-size: 13px; }
   .flt select { max-width: min(280px, 100%); }
 
-  table.lt { table-layout: fixed; margin-top: 8px; }
+  body.wb table.lt { width: 100%; table-layout: fixed; margin-top: 8px; }
   .lt th, .lt td { padding: 10px 18px 10px 0; }
   .lt col.c-st { width: 28%; } .lt col.c-sv { width: 20%; } .lt col.c-age { width: 136px; }
   .lt .rawc { display: none; }
   .lt tbody tr.r { cursor: pointer; }
   .lt tbody tr.r:hover { background: var(--tint); }
+  body.wb a.svc { color: var(--ink); }
+  body.wb a.svc:hover { color: var(--accent); }
   .svc { font-size: 14px; font-weight: 500; line-height: 1.4; }
   .meta { font-size: 12px; color: var(--ink2); margin-top: 3px; line-height: 1.4; }
   .meta code { font-size: 12px; }
@@ -58,6 +62,8 @@
   .lt .pill.todo { margin-bottom: 4px; }
   .lt .nt { font-family: var(--sans); color: var(--ink3); }
   .st { font-size: 13.5px; line-height: 1.4; }
+  .st .stat { font-weight: 600; white-space: normal; }
+  .st .sdet { color: var(--muted); font-weight: 400; }
   .st code { font-size: 12px; }
   .sd { margin-top: 3px; }
   .lt td.c-sv { font-family: var(--mono); font-size: 12px; color: var(--ink2); overflow-wrap: anywhere; }
@@ -102,7 +108,7 @@
 <div class="lhead">
   <h1>Incidents</h1>
   <details class="askd" id="ask">
-    <summary class="btn primary">Ask OpsPilot</summary>
+    <summary class="btn primary">Start investigation</summary>
     <div class="askp">
       <p class="kh">Ask OpsPilot to investigate</p>
       <p class="small">Incidents usually arrive from alerts on their own; use this to ask when no alert fired. It opens an incident and a Run; the Agent investigates with read-only queries and you land on the incident page.</p>
@@ -130,7 +136,7 @@
 {%- if listing.empty == "none" %}
 <div class="empty">
   <p class="e1">No incidents yet.</p>
-  <p class="muted">An incident appears here when Alertmanager sends an alert for a registered target, or when someone asks with Ask OpsPilot at the top right.</p>
+  <p class="muted">An incident appears here when Alertmanager sends an alert for a registered target, or when someone starts an investigation at the top right.</p>
 </div>
 {%- else %}
 {%- set f = listing.filters %}
@@ -142,7 +148,7 @@
   <a href="{{ t.href }}"{% if t.current %} aria-current="page"{% endif %}>{{ t.title }} <span class="n">({{ t.count }})</span></a>
   {%- endfor %}
 </nav>
-<p class="tabnote">Resolved incidents also appear under Needs a human.</p>
+<p class="tabnote">Resolved incidents also appear under Needs attention.</p>
 
 <form class="flt" method="get" action="/" role="search">
   <input type="hidden" name="tab" value="{{ listing.tab }}">
@@ -157,7 +163,7 @@
 {%- if listing.empty == "filtered" %}
 <div class="empty"><p class="e1">No incidents match these filters.</p><p class="muted"><a href="{{ f.clear_href }}">Clear filters</a></p></div>
 {%- elif listing.empty == "tab" %}
-<div class="empty"><p class="e1">{% if listing.tab == "needs_human" %}Nothing needs a human right now.{% else %}No incidents here.{% endif %}</p></div>
+<div class="empty"><p class="e1">{% if listing.tab == "needs_human" %}Nothing needs attention right now.{% else %}No incidents here.{% endif %}</p></div>
 {%- else %}
 {%- set p = listing.pager %}
 {%- if p.many %}
@@ -179,9 +185,10 @@
         <div class="meta"><code>{{ row.short_id }}</code>{% if row.alert_name %} · <code>{{ row.alert_name }}</code>{% endif %}{% if row.related_short %} · after <code>{{ row.related_short }}</code>{% endif %}</div>
       </td>
       <td class="c-st">
-        {%- if row.postmortem_href %}{{ ui.pill(row.status.todo, todo=true, href=row.postmortem_href) }}
-        {%- elif row.status.todo %}{{ ui.pill(row.status.todo, todo=true) }}{% endif %}
-        <div class="st">{{ row.status.words }}{% if item.handoff_reason %} · <code>{{ item.handoff_reason }}</code>{% endif %}</div>
+        {%- set stv = row.status.status %}
+        <div class="st"><span class="stat t-{{ stv.tone }}"><span class="ic{% if stv.key == 'investigating' %} pulse{% endif %}" aria-hidden="true">{{ stv.icon }}</span>{{ row.status.words }}</span>{% if row.status.detail %} <span class="sdet">· {{ row.status.detail }}</span>{% endif %}{% if item.handoff_reason %} · <code>{{ item.handoff_reason }}</code>{% endif %}</div>
+        {%- if row.postmortem_href %}<div class="sd">{{ ui.pill(row.status.todo, todo=true, href=row.postmortem_href) }}</div>
+        {%- elif row.status.todo %}<div class="sd">{{ ui.pill(row.status.todo, todo=true) }}</div>{% endif %}
         {%- if item.refired_after_resolved %}
         <div class="sd"><span class="pill refired-after-resolved">alert re-fired after resolved</span></div>
         {%- endif %}
@@ -209,29 +216,17 @@
 <div class="legend">
   <details class="tog">
     <summary>What each status means</summary>
-    <p class="kh">Needs a human: the black label says what to do</p>
     <dl class="sm">
-      <dt>{{ ui.pill("Review postmortem", todo=true) }}</dt><dd>Closed; a postmortem version waits for approve, return or reject.</dd>
-      <dt>{{ ui.pill("Handle outside OpsPilot", todo=true) }}</dt><dd>The alert matched no single registered target, so no Run started. The incident page offers no actions for it.</dd>
-      <dt>{{ ui.pill("Resume", todo=true) }}</dt><dd>Paused by an Operator, or by a suspension. Releasing a suspension resumes nothing.</dd>
-      <dt>{{ ui.pill("Cancel or take over", todo=true) }}</dt><dd>The Run is blocked; only cancel moves it on.</dd>
-      <dt>{{ ui.pill("Register or close", todo=true) }}</dt><dd>Taken over: a human owns the incident. Registering a remediation starts a Recovery watch.</dd>
-      <dt>{{ ui.pill("Ask or take over", todo=true) }}</dt><dd>The Agent stopped and handed the Run to a human. Ask or add a correction to let it continue.</dd>
-      <dt>{{ ui.pill("Close or reopen", todo=true) }}</dt><dd>The Recovery watch confirmed recovery and nobody closed the incident yet. A marker shows when the alert fired again afterwards.</dd>
-      <dt>{{ ui.pill("New Run or close", todo=true) }}</dt><dd>Open after cancel, with no Run in progress.</dd>
-      <dt>{{ ui.pill("Close or register", todo=true) }}</dt><dd>The report is published and no Recovery watch is running.</dd>
+      <dt>Investigating</dt><dd>The Agent's Run is waiting for a worker or running. An earlier report stays on the incident page while it works.</dd>
+      <dt>Root cause found</dt><dd>A report is published and no recovery watch is running.</dd>
+      <dt>Watching recovery</dt><dd>The Observer (code, no model) samples health after a published report or a person marked it remediated.</dd>
+      <dt>Needs attention</dt><dd>The Agent stopped without a report, the Run was canceled, or no single target matched the alert.</dd>
+      <dt>Paused</dt><dd>Paused by a person or a suspension; no investigation until resumed.</dd>
+      <dt>Human-owned</dt><dd>A person took over; the Agent does not investigate.</dd>
+      <dt>Resolved</dt><dd>The recovery watch confirmed recovery and nobody closed it yet.</dd>
+      <dt>Closed / Merged</dt><dd>Closed by a person, or folded into another incident. One whose postmortem waits for review also appears under Needs attention.</dd>
     </dl>
-    <p class="kh">In progress, no action needed</p>
-    <dl class="sm">
-      <dt>Investigating</dt><dd>An Agent Run is waiting for a worker or in progress.</dd>
-      <dt>Watching recovery</dt><dd>The Observer (code, no model) samples health after a conclusion or a registered remediation.</dd>
-    </dl>
-    <p class="kh">Resolved and Closed tabs</p>
-    <dl class="sm">
-      <dt>Resolved</dt><dd>Recovery confirmed and not closed yet; these also wait under Needs a human for someone to close them.</dd>
-      <dt>Closed</dt><dd>Closed by an Operator. One whose postmortem waits for review also appears under Needs a human.</dd>
-    </dl>
-    <p class="small">The incident page shows the Agent's conclusion, the recovery watch and the stored records of each incident.</p>
+    <p class="small">The label under a status says the usual next step; the incident page has the actions.</p>
   </details>
 </div>
 

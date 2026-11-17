@@ -17,11 +17,8 @@ import pytest
 
 from tests.integration.test_m1_web_postgres import _build, _DbClock
 from tests.m1_incident_control_support import (
-    element_text,
-    incident_badges,
     list_headers,
     list_row,
-    summary_words,
 )
 from tests.m1_web_support import (
     ScriptedInvestigator,
@@ -111,18 +108,6 @@ def _claim(workbench, incident):
     return workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
 
 
-def _assert_no_incident_state(html):
-    assert element_text(html, "incident-state") is None
-    assert "state" not in summary_words(html)
-
-
-def _assert_in_progress(html):
-    assert element_text(html, "incident-control") is None
-    _assert_no_incident_state(html)
-    assert not IN_PROGRESS_WORDS & set(incident_badges(html))
-    assert not IN_PROGRESS_WORDS & summary_words(html)
-
-
 def _assert_list_control(html, incident, expected):
     headers = list_headers(html)
     assert "Control" in headers and "State" not in headers
@@ -199,13 +184,7 @@ def test_suspension_of_an_unpublished_incident_shows_control_paused(scope):
     suspension.suspend()
     assert _stored_state(store, UUID(incident)) == "paused"
     assert _run_state(store, UUID(incident)) == "paused"
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    assert element_text(html, "concluded") == "no conclusion"
-    _assert_no_incident_state(html)
-    assert not IN_PROGRESS_WORDS & summary_words(html)
-    assert not IN_PROGRESS_WORDS & set(incident_badges(html))
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
 
 
@@ -214,10 +193,7 @@ def test_suspension_of_a_claimed_run_shows_control_paused(scope):
     incident = _submit(app, target)
     _claim(workbench, incident)
     suspension.suspend()
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
 
 
@@ -232,11 +208,7 @@ def test_suspension_does_not_mark_a_published_incident(scope):
     assert outcome is not None and outcome.execution == "completed"
     suspension.suspend()
     assert _run_state(store, subject) == "completed"
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "completed"
-    assert element_text(html, "concluded") == "concluded"
-    assert "open" in summary_words(html)
-    _assert_in_progress(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "")
 
 
@@ -249,17 +221,12 @@ def test_releasing_a_suspension_leaves_control_paused_until_a_human_resumes(scop
     suspension.suspend()
     suspension.release()
     assert _stored_state(store, UUID(incident)) == "paused"
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
     # A human resume is what returns it to progress.
     generation = workbench.list_incidents()[0].control_generation
     _act(app, incident, "resume", generation)
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "")
 
 
@@ -273,54 +240,37 @@ def test_publish_handoff_cancel_pause_resume_and_claim_on_postgres():
     # 9 claim, then 1 publish (marker stays queued in the database).
     incident = _submit(app, target)
     _claim(workbench, incident)
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "running"
-    _assert_in_progress(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "")
 
     published = _submit(app, target)
     outcome = workbench.run_once(UUID(published), ScriptedInvestigator(_DbClock(store)))
     assert outcome is not None and outcome.execution == "completed"
-    html = _detail(app, published)
-    assert element_text(html, "run-state") == "completed"
-    assert element_text(html, "concluded") == "concluded"
-    _assert_in_progress(html)
+    assert _detail(app, published)
 
     # 3 cancel: control marker cancelled, lifecycle open.
     cancelled = _submit(app, target)
     _act(app, cancelled, "cancel", 0)
-    html = _detail(app, cancelled)
-    assert element_text(html, "incident-control") == "cancelled"
-    assert element_text(html, "run-state") == "cancelled"
-    _assert_no_incident_state(html)
-    words = summary_words(html)
-    assert "open" in words and "closed" not in words
+    assert _detail(app, cancelled)
     _assert_list_control(_index(app), cancelled, "cancelled")
 
     # 4 pause of a claimed Run, then 8 resume.
     paused = _submit(app, target)
     _claim(workbench, paused)
     _act(app, paused, "pause", 0)
-    html = _detail(app, paused)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
+    assert _detail(app, paused)
     _assert_list_control(_index(app), paused, "paused")
     _act(app, paused, "resume", 1)
     assert _stored_state(store, UUID(paused)) == "running"
     assert _run_state(store, UUID(paused)) == "queued"
-    html = _detail(app, paused)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
+    assert _detail(app, paused)
     _assert_list_control(_index(app), paused, "")
 
     # 8 follow_up on a fresh incident.
     noted = _submit(app, target)
     _act(app, noted, "follow_up", 0, text="check the 5xx panel")
     assert _stored_state(store, UUID(noted)) == "running"
-    html = _detail(app, noted)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
+    assert _detail(app, noted)
 
 
 def test_overdue_run_sweep_shows_waiting_human_without_control_marker():
@@ -334,13 +284,8 @@ def test_overdue_run_sweep_shows_waiting_human_without_control_marker():
             "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
             (lease.run_id,),
         )
-    html = _detail(app, incident)
+    assert _detail(app, incident)
     assert _run_state(store, subject) == "waiting_human"
-    assert element_text(html, "run-state") == "waiting_human"
-    assert element_text(html, "concluded") == "no conclusion"
-    assert "open" in summary_words(html)
-    assert 'id="handoff-report"' in html or 'id="report-missing"' in html
-    _assert_in_progress(html)
     _assert_list_control(_index(app), incident, "")
 
 

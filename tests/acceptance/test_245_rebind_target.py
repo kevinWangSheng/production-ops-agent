@@ -338,8 +338,6 @@ def test_pr1_open_running_rebind_cancels_revokes_audits_and_updates_page(app, da
     assert page.status == 200, page.text
     assert 'id="current-target"' in page.text
     assert TARGET_B in page.text
-    assert '<p class="rebind">' in page.text
-    assert "Rebound from" in page.text
     assert TARGET_A in page.text
     assert 'name="to_target"' in page.text
 

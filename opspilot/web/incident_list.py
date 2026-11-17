@@ -2,9 +2,9 @@
 
 Pure functions over one page the store read
 (``DurableIncidentStore.list_page``): no store access, so the page costs the
-same three queries whatever the row count. ``status_of`` is the D11 mapping
-(task record ``docs/tasks/2026-11-15-web-ui-redesign.md``); the store's SQL
-``CASE`` mirrors its group, and a contract test holds the two together.
+same three queries whatever the row count. ``status_of`` is the shared
+incident status (``status.incident_status``, redesign contract A8); the
+store's SQL ``CASE`` mirrors its group.
 
 Nothing here depends on the request time: two renders of the same rows are
 identical text (``tests/acceptance/test_m1_04_alert_intake.py``, D13). Ages
@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
+from opspilot.web.status import IN_PROGRESS, NEEDS_HUMAN, incident_status
 from opspilot.web.store import (
     LIST_PER_PAGE,
     LIST_QUERY_CHARS,
@@ -27,12 +28,8 @@ from opspilot.web.store import (
     IncidentPage,
 )
 
-NEEDS_HUMAN = "needs_human"
-IN_PROGRESS = "in_progress"
-CLOSED = "closed"
-
 TAB_TITLES = {
-    "needs_human": "Needs a human",
+    "needs_human": "Needs attention",
     "in_progress": "In progress",
     "resolved": "Resolved",
     "closed": "Closed",
@@ -43,101 +40,79 @@ TAB_TITLES = {
 #: whole, up to this many characters, in the ``title`` attribute.
 TITLE_CHARS = 500
 
-_ACTIVE_RUN = {"queued", "running"}
 _PAGE = re.compile(r"[0-9]+")
 #: The largest page a query string asks for; longer numbers saturate here.
 PAGE_MAX = 999_999_999
 
 
 def status_of(item: IncidentListItem) -> dict[str, Any]:
-    """Group, the one to-do label (or ``None``) and the status words of a row.
+    """Group, the one to-do label (or ``None``), the status and a short
+    detail of a row.
 
-    First match wins (D11 mapping table in the task record). Closed comes
-    first so a cancelled-then-closed incident reads as closed; ownership is
-    checked before ``waiting_human`` because a take-over parks the Run there.
-    The store's ``_PAGE_GROUP`` SQL repeats the group column of this order.
+    The status is the page header's (``status.incident_status``, contract
+    A8); the store's ``_PAGE_GROUP`` SQL repeats its group. A closed
+    incident whose postmortem waits for review is grouped under Needs a
+    human with that to-do.
     """
     s = item.summary
-    run = s.run_state
-    if s.lifecycle == "closed":
+    status = incident_status(
+        merged=s.merged_into_incident_id is not None,
+        lifecycle=s.lifecycle,
+        state=s.state,
+        run_state=s.run_state,
+        mode=s.mode,
+        concluded=s.concluded,
+    )
+    group = status.group
+    todo: str | None = None
+    detail: str | None = None
+    key = status.key
+    if key in ("closed", "merged"):
         if item.postmortem_state == "under_review" and item.postmortem_id:
-            return _status(
-                NEEDS_HUMAN,
-                "Review postmortem",
-                "Closed",
-                f"postmortem version {item.postmortem_version} waits for review",
-            )
-        detail = None
-        if s.merged_into_incident_id is not None:
-            detail = f"merged into {str(s.merged_into_incident_id)[:8]}"
-        return _status(CLOSED, None, "Closed", detail)
-    if s.handoff_only:
-        return _status(
-            NEEDS_HUMAN,
-            "Handle outside OpsPilot",
-            "Handed to a human, no Run",
-            "no single registered target matched",
+            group = NEEDS_HUMAN
+            todo = "Review postmortem"
+            detail = f"postmortem version {item.postmortem_version} waits for review"
+        elif s.merged_into_incident_id is not None:
+            detail = f"into {str(s.merged_into_incident_id)[:8]}"
+    elif s.handoff_only:
+        todo = "Handle outside OpsPilot"
+        detail = "no single registered target matched, no Run"
+    elif key == "resolved":
+        todo = "Close or reopen"
+        detail = "recovery confirmed"
+    elif key == "canceled":
+        todo = "Re-investigate or close"
+        detail = "the Run was canceled"
+    elif key == "paused":
+        todo = "Resume"
+        detail = "no investigation until resumed"
+    elif key == "human_owned":
+        todo = "Mark remediated or close"
+        detail = "the Agent does not investigate"
+    elif key == "investigating":
+        detail = "waiting for a worker" if s.run_state == "queued" else "in progress"
+    elif key == "watching":
+        detail = (
+            f"{item.recovery_samples} samples so far"
+            if item.recovery_samples
+            else "the Observer samples health"
         )
-    if s.control == "paused" or run == "paused":
-        return _status(
-            NEEDS_HUMAN, "Resume", "Paused", "no investigation until resumed"
-        )
-    if run == "blocked":
-        return _status(
-            NEEDS_HUMAN, "Cancel or take over", "Blocked", "only cancel moves it on"
-        )
-    if s.mode == "human_owned":
-        return _status(
-            NEEDS_HUMAN, "Register or close", "Taken over", "a human owns this incident"
-        )
-    if run == "waiting_human":
-        return _status(
-            NEEDS_HUMAN,
-            "Ask or take over",
-            "Waiting for a human",
-            "the Agent handed the Run back",
-        )
-    if s.lifecycle == "resolved":
-        return _status(
-            NEEDS_HUMAN,
-            "Close or reopen",
-            "Recovered",
-            "recovery confirmed, not closed",
-        )
-    if s.lifecycle == "observing_recovery":
-        return _status(
-            IN_PROGRESS,
-            None,
-            "Watching recovery",
-            "the Observer samples health",
-        )
-    if run in _ACTIVE_RUN:
-        return _status(
-            IN_PROGRESS,
-            None,
-            "Investigating",
-            "Agent Run waiting for a worker"
-            if run == "queued"
-            else "Agent Run in progress",
-        )
-    if s.control == "cancelled":
-        return _status(
-            NEEDS_HUMAN, "New Run or close", "Open, Run cancelled", "no Run in progress"
-        )
-    if s.concluded:
-        return _status(
-            NEEDS_HUMAN,
-            "Close or register",
-            "Report published",
-            "no recovery watch running",
-        )
-    return _status(NEEDS_HUMAN, "Take over or close", "Open", "no Run in progress")
-
-
-def _status(
-    group: str, todo: str | None, words: str, detail: str | None
-) -> dict[str, Any]:
-    return {"group": group, "todo": todo, "words": words, "detail": detail}
+    elif key == "root_cause":
+        todo = "Mark remediated or close"
+        detail = "no recovery watch running"
+    else:
+        todo = "Re-investigate or take over"
+        detail = {
+            "waiting_human": "the Agent stopped and handed it back",
+            "blocked": "the Run was blocked",
+        }.get(s.run_state or "", "no Run in progress")
+    return {
+        "group": group,
+        "todo": todo,
+        "words": status.label,
+        "detail": detail,
+        "status": status,
+    }
 
 
 def service_of(item: IncidentListItem) -> str | None:

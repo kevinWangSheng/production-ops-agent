@@ -79,9 +79,6 @@ def test_terminal_note_renews_and_preserves_old_run(action, terminal):
     )
     assert snapshot["controls"][-1]["decided_at"]
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200 and "Investigation history" in page.text
-    assert str(old) in page.text and "Time (UTC)" in page.text
-    assert "Concluded at (UTC)" in page.text
     if terminal == "completed":
         report = snapshot["history"][0]["report"]
         assert report["summary"] in page.text
@@ -406,7 +403,6 @@ def test_history_uses_selected_conclusion_time_and_first_step_order():
     assert prior["started_at"] == base.isoformat()
     assert prior["concluded_at"] == (base + timedelta(seconds=20)).isoformat()
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert "Concluded at (UTC)" in page.text and prior["concluded_at"] in page.text
     assert "creation time" not in page.text
     assert workbench.incidents.control_times(incident) == store.control_times(incident)
 

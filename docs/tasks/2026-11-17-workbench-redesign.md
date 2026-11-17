@@ -56,6 +56,7 @@ P1 回复合同 → P2 消息输入与接力 → P3 日志投影与 SSE → P4 �
 
 ## 执行进展与证据
 
+- 2026-11-17 P4 页面（分支 `feature/workbench-p4-incident-pages`，worktree `poa-wb-p4`，本地提交未推送）：列表与详情按原型 v2 重写；A8 九级状态一条函数（`opspilot/web/status.py`）列表与页头共用，列表分组 SQL 同步改；详情页结果在前 + 可展开日志（每次工具调用展开看查询/来源/目标/时间窗/新鲜度/耗时/脱敏结果）+ Chat 面板外壳；输入框按 D 表显示但在 P2 `message` 动作前禁用，不走旧 follow_up/correct；回复、排队请求读步骤行 `replies` 与 `queued_requests`，main 上为空。截图存 `~/.agent/diagrams/opspilot-workbench-p4-shots/`（不入库）。
 - 2026-11-17：合同预审完成（全新上下文 Fable，只读）。全量探针：推荐做法 6 个受影响文件 0 失败；改版本号做法 12 失败（含 3 条 F3 第 5 步真实 Run 证据）。PG 门控验收未跑，留给 P1/P2 CI。
 
 ## 下一步与交接

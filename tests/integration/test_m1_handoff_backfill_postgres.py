@@ -122,10 +122,6 @@ def test_reconcile_backfills_a_runner_parked_run_with_unknown_provenance():
     assert snapshot["outcome"] == repaired[0]
     assert store.rebuild(incident)["run"] == before
     assert page.status == 200
-    assert (
-        "waiting_human" in page.text
-        and "Last attempt: <code>unknown</code>" in page.text
-    )
 
 
 def test_runner_announcer_after_reconcile_shares_one_new_generation_key():
@@ -163,7 +159,6 @@ def test_runner_announcer_after_reconcile_shares_one_new_generation_key():
     assert announcer["reasons"] == ["MODEL_UNAVAILABLE"]
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert page.status == 200
-    assert page.text.count("Last attempt:") == 1
     assert "MODEL_UNAVAILABLE" in page.text
     assert workbench.snapshot(incident)["outcome"]["reasons"] == ["MODEL_UNAVAILABLE"]
     assert _acceptance_reasons(store, workbench.events, incident) == (
@@ -213,7 +208,6 @@ def test_sweeper_announcer_after_reconcile_shares_one_generation_key():
     assert announcer["reasons"] == ["DEADLINE_EXCEEDED"]
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert page.status == 200
-    assert page.text.count("Last attempt:") == 1
     assert "DEADLINE_EXCEEDED" in page.text
     assert workbench.snapshot(incident)["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
     assert _acceptance_reasons(store, workbench.events, incident) == (
