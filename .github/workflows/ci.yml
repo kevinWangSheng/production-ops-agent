@@ -217,4 +217,19 @@ jobs:
           M1_DURABLE_POSTGRES: "1"
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
         # Native local cluster restart is independently tested on macOS, not this service.
-        run: .venv/bin/python -m pytest tests/integration tests/acceptance/test_f6_recovery.py tests/acceptance/test_f13_postmortem.py tests/acceptance/test_f7_step4_suspension_postgres.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q
+        run: .venv/bin/python -m pytest tests/integration tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q
+      # #673: every acceptance file gated on M1_DURABLE_POSTGRES, directly or via
+      # f11_steps_support's s.PG marker, selected by that gate so new PG files
+      # join automatically. The rest of tests/acceptance already runs in checks.
+      - name: PG acceptance
+        if: steps.scope.outputs.full != 'false'
+        env:
+          M0_B_POSTGRES: "1"
+          M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: |
+          mapfile -t files < <(grep -lE 'M1_DURABLE_POSTGRES|\bs\.PG\b' tests/acceptance/test_*.py | sort)
+          echo "PG acceptance files (${#files[@]}):"
+          printf '  %s\n' "${files[@]}"
+          test "${#files[@]}" -gt 0
+          .venv/bin/python -m pytest "${files[@]}" -q -rs
