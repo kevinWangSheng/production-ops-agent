@@ -190,7 +190,7 @@
   <ol class="kev" id="key-evidence">
     {% for item in kev %}{% set claim = item.claim %}{% set eids = claim.evidence_ids or [] %}
     <li{% if loop.index > view.evidence_shown %} class="rest"{% endif %}><details class="ev" id="claim-{{ item.id }}">
-      <summary><span class="n">{{ loop.index }}</span><span class="tx">{% if item.counter %}<span class="tag">Counter-evidence</span> {% endif %}{{ claim.text }}</span><span class="src">{% for eid in eids %}{{ labels_by_eid.get(eid|string, ev_fallback) }}{% if not loop.last %}, {% endif %}{% else %}no evidence cited{% endfor %}</span></summary>
+      <summary><span class="n">{{ loop.index }}</span><span class="tx">{% if item.counter %}<span class="tag">Counter-evidence</span> {% endif %}{{ claim.text }}</span><span class="src">{{ item.sources | join(", ") if item.sources else "no evidence cited" }}</span></summary>
       <div class="evx">
         {% for eid in eids %}
         <div class="evi" data-href="/incidents/{{ iid }}/evidence/{{ eid }}"><div class="evr" aria-live="polite"></div><a href="/incidents/{{ iid }}/evidence/{{ eid }}">Open full evidence{% if eids | length > 1 %} · {{ labels_by_eid.get(eid|string, ev_fallback) }}{% endif %}</a></div>

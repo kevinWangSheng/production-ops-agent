@@ -749,6 +749,18 @@ def _shown_report(
     }
 
 
+def _sources(
+    item: Mapping[str, Any], labels: Mapping[str, str], fallback: str
+) -> list[str]:
+    """A statement's source labels (``R3 · metrics.range_query``), each once."""
+    out: list[str] = []
+    for eid in item["claim"].get("evidence_ids") or []:
+        label = labels.get(str(eid), fallback)
+        if label not in out:
+            out.append(label)
+    return out
+
+
 def _owner(snapshot: Mapping[str, Any]) -> str | None:
     """Who took a human-owned incident over (the latest takeover row)."""
     if snapshot["incident"].mode != "human_owned":
@@ -930,6 +942,9 @@ def page_view(
         for a in sorted(actions, key=lambda a: ORDER.index(a) if a in ORDER else 99)
     ]
     groups = {g["key"]: g["items"] for g in claims["groups"]}
+    fallback = (
+        f"Run {shown['run_no']} evidence" if shown and shown["previous"] else "evidence"
+    )
     return {
         "day": day,
         "live": live,
@@ -950,8 +965,11 @@ def page_view(
             (snapshot.get("handoff_report") or {}).get("summary"), 480
         ),
         "no_conclusion": _no_conclusion(snapshot, current_no),
-        "key_evidence": [dict(item, counter=False) for item in groups.get("facts", [])]
-        + [dict(item, counter=True) for item in groups.get("counter_evidence", [])],
+        "key_evidence": [
+            dict(item, counter=counter, sources=_sources(item, how["labels"], fallback))
+            for counter, key in ((False, "facts"), (True, "counter_evidence"))
+            for item in groups.get(key, [])
+        ],
         "evidence_shown": EVIDENCE_SHOWN,
         "groups": groups,
         "blind": _blind(snapshot),
