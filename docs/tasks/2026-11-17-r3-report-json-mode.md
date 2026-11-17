@@ -37,6 +37,8 @@
 - 定向测试：按 U7 预期失败 2 项（`test_m1_investigation_loop.py` 钉工具轮 `json_mode is False` 的两项，由测试作者翻转）；D6 与 #456 两条既有断言冲突（`test_456_forced_final_fence_feedback.py` 的 `..._matches_what_the_citation_gate_says_unfenced`、`..._the_valid_one_is_not`），交 lead 裁决；其余定向文件全过。
 - 有界真实 Run：[证据](../evidence/686-json-mode-live/README.md)。4 个模型请求 `json_mode` 全为 true；首个 Run 纯 JSON 报告、`INCOMPLETE_INVESTIGATION`；续接 Run 终答轮返回不带 `schema_version` 的 `{note,replies,report}`，`RESPONSE_INVALID`。0.077032 CNY。
 - Q2 实现（2026-11-17）：`split_response` 把无 `schema_version`、含 `replies` 键的顶层对象按 `m0-response-v1` 包装处理（`replies`/`report` 照包装取值，其他键忽略）；`schema_version` 存在但非 `m0-response-v1` 行为不变；提示词字节与 `prompt_revision` 不变。新增 `tests/test_686_q2_split_response_impl.py`（4 项）。定向测试 154 过、2 败（`test_m1_investigation_loop.py` 两项 `json_mode is False`，按 U7 预期）、8 跳过（工作台对话 PG 门控）。
+- 租机全量（2026-11-17，`63ca3985`，root、一次性 PG 17 端口 55487，按 CI 分段）：A 并行无 PG 98 败 / 13065 过 / 2573 跳 / 6 错；B serial 16 过；C 集成 17 败 / 2184 过；D PG 验收 1 败 / 315 过。非本分支的失败全部在 main 上同样出现或属环境：installer 拒绝 root 运行、9464 被 F3 的 web 进程占用（关掉 health 监听后 18 项在本分支与 main 上全过），`test_244_pr3_read_side` 一次偶发（单独重跑通过）；唯一本分支失败是 D6 `time_scope_ref` 用例，已判为合同外并在 `719919e7` 删除，删后该文件 23 过。
+- 冒烟 lite-smoke-r3（合并 r3 `b0652dbd` = PR-G `ea2bc41b` + PR-R `719919e7`）：9/9 completed，`REPORT_INVALID` 0/9，首答被拒 4/9 均在重试后接受，所有首个终答都以 `{` 开头（未做 span 级 `json_mode` 读回）；证据随 PR-G 入库。
 
 ## 待决
 
