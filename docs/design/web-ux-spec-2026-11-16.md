@@ -52,10 +52,10 @@
 
 | 区块 | 规格 | 参照 |
 |---|---|---|
-| 标题行 | 左侧 `Incidents`。右侧 `<details id="ask">`，摘要做成按钮 `Ask OpsPilot`，展开后是右上角的浮层，窄屏下全宽。表单字段、`action`、Target 下拉、幂等键脚本全部不变（`index.html:226-246,289-305`）。这取代 #572 的 U6「放在列表下方并带跳转链接」，属于负责人 2026-11-16 的裁定 | incident.io「Declare incident」、Rootly「New incident」右上角主按钮 |
-| 状态页签 | `Needs a human (30) · In progress (12) · Resolved (3) · Closed (1,958) · All (2,003)`。每个页签是链接 `?tab=…`，当前页签带 `aria-current`。计数覆盖全库，并且受当前筛选影响 | PagerDuty 事故列表的 Open/Triggered/Acknowledged/Resolved/Any 页签 |
-| 筛选条 | `<form method="get">`：Service 下拉，第一项是 `All services`；文字搜索 `q`，占位符 `Search title, alert or question`；`Apply` 按钮。切换页签时保留筛选条件，页码回到 1 | PagerDuty 的 Services 筛选，Datadog 的搜索框 |
-| 表格 | 4 列：`Title`、`Status`、`Service`、`Age`。只有 thead 一行 `<th>`，每个事故一行 `<tr>`，不再有分组行 | PagerDuty、incident.io 的少列分页表 |
+| 标题行 | 左侧 `Incidents`。右侧 `<details id="ask">`，默认收起，摘要做成按钮 `Ask OpsPilot`，展开后是右上角的浮层，窄屏下全宽。浮层第一行是标题 `Ask OpsPilot to investigate`，`tests/test_572_incident_list_page.py:277` 按这段文字断言。浮层里是原来那个表单，`method`、`action="/intake/ui"`、字段 `target_id`/`question`/`idempotency_key`、Target 下拉和幂等键脚本全部不变（`index.html:226-246,289-305`）。DOM 顺序上，这个表单排在筛选表单之前，这样 `page.forms[0]` 仍然是它（`:297`）。删去 `#ask-jump` 和 `.ask-open` 两个跳转链接。这取代 #572 的 U6「放在列表下方」，属于负责人 2026-11-16 的裁定 | incident.io「Declare incident」、Rootly「New incident」右上角主按钮 |
+| 状态页签 | `Needs a human (30) · In progress (12) · Resolved (3) · Closed (1,958) · All (2,003)`。每个页签是链接 `?view=…`，当前页签带 `aria-current`。计数覆盖全库，并且受当前筛选影响 | PagerDuty 事故列表的 Open/Triggered/Acknowledged/Resolved/Any 页签 |
+| 筛选条 | `<form method="get">`：Service（目标）下拉，第一项是 `All services`，取值见 §3.7 Q3；文字搜索 `q`，占位符 `Search title, alert or question`；`Apply` 按钮。切换页签时保留筛选条件，页码回到 1 | PagerDuty 的 Services 筛选，Datadog 的搜索框 |
+| 表格 | 可见 4 列：`Title`、`Status`、`Service`、`Age`。另外四个原值列 `Run`、`Control`、`Lifecycle`、`Concluded` 的 `<th>` 和 `<td>` 继续留在 DOM 里，内容与现在一致（`index.html:159,195-198`），用 `class="rawc"` 默认隐藏（`display:none`），页面不提供开关；保留它们是因为测试助手要用（§3.6）。只有 thead 一行 `<th>`，每个事故一行 `<tr>`，不再有分组行 `tr.gh` | PagerDuty、incident.io 的少列分页表 |
 | 分页 | 每页 25 行。表格下方显示 `1–25 of 1,958 · ‹ Prev · Next ›`；第一页的 Prev 和最后一页的 Next 显示为禁用文字 | PagerDuty 分页表 |
 | 状态说明 | 现有的「What each status means」保留，默认折叠，放在分页下方。删除现有的「Other controls」侧栏，因为它和顶栏重复 | — |
 
@@ -70,7 +70,7 @@
 
 从列表移走的内容（移到详情页，不删数据）：
 - `Agent conclusion` 列和 `Recovery` 列。详情页首屏有这两项。
-- 四个原值列 `Run`、`Control`、`Lifecycle`、`Concluded`。详情页的 `Stored record` 已经有对应的 id：`run-state`、`incident-control`、`incident-lifecycle`、`concluded`（`incident.html:51-56`）。这取代 #572 的 U5「原值不可被替代」，同样是负责人的裁定。
+- 四个原值列在列表上不再可见，只保留在 DOM 里。要看原值，到详情页的 `Stored record`，那里已有 `run-state`、`incident-control`、`incident-lifecycle`、`concluded` 这几个 id（`incident.html:51-56`）。这取代 #572 的 U5「原值与人话并列显示」，同样是负责人的裁定。
 
 ### 3.3 页签成员规则
 
@@ -90,7 +90,7 @@ Resolved 和 Closed 是按生命周期看的视图，所以与「Needs a human�
 
 | 参数 | 取值 | 非法值的处理 |
 |---|---|---|
-| `tab` | `needs_human`（默认）、`in_progress`、`resolved`、`closed`、`all` | 按默认处理，不返回 400 |
+| `view` | `needs_human`（默认）、`in_progress`、`resolved`、`closed`、`all` | 按默认处理，不返回 400 |
 | `service` | 下拉里的某个值 | 不在下拉值里时忽略 |
 | `q` | 去掉首尾空白，最多 200 字 | 超出部分截断 |
 | `page` | 正整数 | 超过最后一页时显示最后一页 |
@@ -103,8 +103,8 @@ Resolved 和 Closed 是按生命周期看的视图，所以与「Needs a human�
 |---|---|
 | 库里没有事故 | 保留现有空态 `No incidents yet.`，加一个 `Ask OpsPilot` 入口 |
 | 当前页签为空，且没有筛选 | Needs a human：`Nothing needs a human right now.`；其他页签：`No incidents here.` |
-| 有筛选但没有结果 | `No incidents match these filters.`，后面接 `Clear filters` 链接到 `/?tab=<当前>` |
-| 存储不可用 | 503 HTML 错误页，见 §2 |
+| 有筛选但没有结果 | `No incidents match these filters.`，后面接 `Clear filters` 链接到 `/?view=<当前>` |
+| 存储不可用 | 列表 PR 里维持现状（返回 503 JSON）；HTML 错误页随 PR 2 上线 |
 | 规模：2000 个事故，30 个等人处理（最旧的排在第 1500 位），1958 个已关闭 | 默认页签分两页显示全部 30 个；计数正确；HTML 不超过 120 KB；SQL 共 3 条，不随行数增长 |
 | 规模：40 行 | 每页 25 行，表格只有 4 列，标题限两行，页面上看不到展开的长文本 |
 
@@ -123,16 +123,20 @@ Resolved 和 Closed 是按生命周期看的视图，所以与「Needs a human�
 
 | 文件与位置 | 会失效的点 | 改写方向 |
 |---|---|---|
-| `tests/test_572_incident_list_page.py:93-101,160-238` | 分组行 `tr.gh`；`Run`/`Control`/`Concluded`/`Agent conclusion` 列；`question[:48]` 在 Incident 列 | 改为按页签和 4 列断言；原值改到详情页上断言 |
-| `tests/test_572_incident_list_page.py:261-282` | 页面上「恰好 1 个 `<form>`」。新增的 GET 筛选表单让数量变成 2 | 改为按 `action="/intake/ui"` 定位人工提问表单；该表单的字段集合与空幂等键断言保持不变 |
+| `tests/test_572_incident_list_page.py:93-101`（解析器在 `tr.gh` 上记分组名）、`:160-173`（`assert "in progress" in _row_group(...)`）、`:176-189`（`"need" in group and "human" in group`） | 分组布局：页面不再有 `tr.gh` 分组行，Needs a human / In progress / Closed 也不再是同一页上的分组标题，而是页签 | 改为断言事故落在哪个页签：取 `/?view=in_progress` 和 `/?view=needs_human` 的行，或者读当前页签的 `aria-current` |
+| `tests/test_572_incident_list_page.py:192-238` | `question[:48]` 应出现在 `Incident` 列；`Agent conclusion` 列的文字（`:225-238`） | 问题文字改为断言在 `Title` 列；结论文字改到详情页上断言 |
+| `tests/test_572_incident_list_page.py:170,186,212` | 按表头名取 `Run`、`Control`、`Concluded` 的值 | 原值单元格保留在 DOM 里，这几处不用改 |
+| `tests/test_572_incident_list_page.py:261`（`len(page.forms) == 1`） | 新增 GET 筛选表单后，页面上有 2 个表单 | 改为按 `action="/intake/ui"` 定位表单；`:263-276` 的字段集合与空幂等键断言不变 |
+| `tests/test_572_incident_list_page.py:277,297` | 页面文字含 `Ask OpsPilot to investigate`；`page.forms[0]` 是提问表单 | 按 §3.1 的做法即可通过，可以不改 |
+| `tests/test_572_incident_list_page.py:315-323` | 只有一个 `<th>` 行，且在 `<thead>` 里 | 新表头只有一行，原值 `<th>` 在同一行里，不用改 |
 | `tests/test_572_incident_list_page.py:244-253` | D13 | 保持不变，并加上带参数的情形 |
-| `tests/m1_incident_control_support.py:157-174`（`list_row`），被 `tests/test_m1_incident_control_contract.py:103-109,205,353-374`（8 处）、`tests/integration/test_m1_incident_control_postgres.py:80`、`tests/integration/test_m1_list_run_state_postgres.py:160-173,291`（5 处）使用 | 要求有 `Run`/`Control`/`Lifecycle`/`Concluded` 表头；还假设 queued、running、completed、cancelled 等各种状态都出现在同一个 `GET /` 上 | 原值断言改读详情页的 id。需要跨页签的断言改用 `/?tab=all`；依赖「每页显示全部」的夹具，行数要控制在 25 以内 |
+| `tests/m1_incident_control_support.py:157-174`（`list_row`），被 `tests/test_m1_incident_control_contract.py:103-109,205,353-374`（8 处）、`tests/integration/test_m1_incident_control_postgres.py:80`、`tests/integration/test_m1_list_run_state_postgres.py:160-173,291`（5 处）使用 | 表头和单元格都还在，`list_row` 本身不受影响。会失效的是夹具：queued 或 running 的事故在 `In progress` 页签，不在默认页签 | 测试改用 `/?view=all` 查找；夹具行数控制在 25 以内 |
 
 PRD 和 `feature_list.json` 都没有提到列表的列（grep 结果为空）。
 
 ### 3.7 数据与查询改动 [b]，无迁移
 
-**接口**：`Workbench.incident_list(tab, service, q, page)` 返回：
+**接口**：`Workbench.incident_list(view, service, q, page)` 返回：
 - `rows`：当前页最多 25 行
 - `counts`：五个页签的计数
 - `services`：Service 下拉的取值
@@ -165,7 +169,7 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 | 查询 | 内容 |
 |---|---|
 | Q1 计数 | `SELECT count(*) FILTER (WHERE grp='needs_human'), … FILTER (WHERE grp='in_progress'), … FILTER (WHERE lifecycle='resolved'), … FILTER (WHERE lifecycle='closed'), count(*) FROM base WHERE <筛选>` |
-| Q2 当前页 | `SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id IN (SELECT incident_id FROM base WHERE <页签谓词> AND <筛选> ORDER BY created_at DESC, incident_id LIMIT 25 OFFSET %s) ORDER BY i.created_at DESC, i.incident_id` |
+| Q2 当前页 | `SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id IN (SELECT incident_id FROM base WHERE <view 谓词> AND <筛选> ORDER BY created_at DESC, incident_id LIMIT 25 OFFSET %s) ORDER BY i.created_at DESC, i.incident_id` |
 | Q3 下拉值 | `SELECT DISTINCT service FROM base WHERE service IS NOT NULL ORDER BY 1 LIMIT 200` |
 
 筛选条件：
@@ -216,7 +220,7 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 
 | 编号 | 决定 | 理由 | 备选及其代价 |
 |---|---|---|---|
-| D-L1 | Resolved 和 Closed 两个页签与 Needs a human 允许重叠（§3.3） | 已恢复但未关闭的事故确实还在等人处理；这样做不需要改任何验收断言 | 改成互斥（PagerDuty 的做法）：要把 `tests/acceptance/test_f2_alert_correlation.py:588,593` 里的 `GET /` 改成 `GET /?tab=resolved`，这算修改验收断言，届时再问用户 |
+| D-L1 | Resolved 和 Closed 两个页签与 Needs a human 允许重叠（§3.3） | 已恢复但未关闭的事故确实还在等人处理；这样做不需要改任何验收断言 | 改成互斥（PagerDuty 的做法）：要把 `tests/acceptance/test_f2_alert_correlation.py:588,593` 里的 `GET /` 改成 `GET /?view=resolved`，这算修改验收断言，届时再问用户 |
 | D-L2 | 新增 `GET /knowledge` 列表页，顶栏加 Knowledge 入口 | 只读页面，不含 `MUTATION_WORDS`；按测试自身的设计，在 `tests/acceptance/test_f7_step1_entry_points.py:68-91` 登记 `read: knowledge list` 即可，由独立测试作者完成 | 不加：知识页只能从复盘页进入 |
 
 第一阶段不删除也不放宽任何验收断言。§3.6 列出的普通测试，由独立测试作者按新页面改写。U5、U6 被取代，这一点已由产品负责人裁定。
@@ -227,8 +231,8 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 
 | PR | 内容 | 依赖 |
 |---|---|---|
-| 1 `feature/ux-list` | §2 的外壳与导航、HTML 错误页、§3 全部内容 | — |
-| 2 `feature/ux-incident-detail` | §4 的事故详情和交接页 | 1 |
+| 1 `feature/ux-list` | 只含列表需要的部分：§3 全部内容；§2 中的 `time`、`.clamp2`；顶栏去掉 `ui_basic`。不依赖任何共享框架 PR，可以单独合并 | — |
+| 2 `feature/ux-incident-detail` | §4 的事故详情和交接页；§2 的其余部分：各页 `nav` 高亮、面包屑宏、页面 GET 的 HTML 错误页 | 1 |
 | 3 `feature/ux-postmortem-pages` | §4 的复盘、证据、知识（含 D-L2）、版本变更、暂停控制 | 1，可以和 2 并行 |
 
 **PR 1 验收**（全部是用户任务；夹具用内存 store，PG 部分由 CI 的 m0-postgres 跑）：
@@ -237,8 +241,8 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 3. 筛选没有结果：显示 `No incidents match these filters.`，点 `Clear filters` 回到全量。
 4. 40 行数据，1440 和 400 两种宽度：表格只有 4 列，标题最多两行，悬停能看到全文，Age 显示相对时间、悬停显示绝对时间，页面不横向滚动。
 5. 点右上角 `Ask OpsPilot`：表单展开，选目标、填问题、提交，跳到新事故页；表单字段与之前一致。
-6. `?tab=bogus&page=999`：显示默认页签的最后一页，不报错。
-7. 访问不存在的事故 URL：浏览器看到 HTML 404 页和返回链接；不带 Accept 的请求仍返回 JSON。
+6. `?view=bogus&page=999`：显示默认页签的最后一页，不报错。
+7. 隐藏的原值列：浏览器里看不到 `Run`、`Control`、`Lifecycle`、`Concluded` 这四列，但 `list_row` 助手仍能读到。
 8. 新增的 SQL 与 `status_of` 一致性测试通过；`tests/acceptance/` 全部原样通过；D13 测试通过。
 
 ## 8. 未确认
