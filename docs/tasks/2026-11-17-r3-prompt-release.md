@@ -1,0 +1,44 @@
+# r3 提示词与报告校验发布（#695 + #690，#686）
+
+- 状态：进行中（PR-G 实施中；PR-R 待工作台 P1 合并后开工）
+- 合同修订：r1（2026-11-17 用户「按推荐开始吧」）
+- 依据：lite-full-1117 失败分类（54/105，51 次失败中 36 次为「读到非 off 故障设置、根因写成被模板未变重启的 Deployment 或 null」），证据 [run.md](../evidence/itbench-lite-sre-lite-full-1117/run.md)；issue #695、#690、#686。
+
+## 目标
+
+一次发布修两件事，再用一次租机按「冒烟 → 集成批 → F3 → 全量」验收；之后停止为 ITBench 分数调指导，转拓宽只读数据面。
+
+1. **PR-G 调查指导**（#695 + #690）：`KUBERNETES_GUIDANCE` 替换一句并加两句（23→25），`INVESTIGATION_METHOD` 加两句（8→10）；更新 revision 钉值；F3 第 3、5 步证据随租机重做。
+2. **PR-R 报告校验**（#686）：解析前去一层前置文字/代码围栏，剩余必须正好是一个合法 JSON 对象；在工作台 P1（m0-response-v1 包装）合并后基于它实施。
+
+## 合同（r1）
+
+PR-G 决定表全文：[2026-11-17-r3-prompt-release-contract.md](2026-11-17-r3-prompt-release-contract.md)（预审 r0，D1–D22 可逆默认按推荐）。要点：
+
+- U2(#690 后半句)：b，「…is unchecked, not unobservable」，不与 #310 U1-a「not checked is a gap」冲突。
+- D2 按取值判断「不是 off/0/false」，K8s 段不得出现 enabled；D4 只算模板未变的重启或正在出错，且无其他施加者；D6 根因是持有设置的对象；D7 结论强度写条件、不提 hypothesis；D8 不写「已确认未变」例外。
+- D11 #690 两句放在 INVESTIGATION_METHOD 第 92 行后；D14 无样本时段是 unknown 不是 zero。
+- D16 test_676 两条被取代的断言由独立测试作者改写；D17 新合同测试 K1–K3、M1–M2 单句正则 + 删除变异 + 削弱反例；D18 不加固定回放行为测试，行为证据靠租机。
+- D20 实现者只改钉值；D21 F3 旧证据移入 `prompt-8688f6e52275/`，新证据与代码同 PR；D22 一个 PR。
+
+PR-R（#686）用户裁决：U1=a（#456 七项断言由独立测试作者改写为「合法带壳当轮接受」）、U2=a（hypothesis/recommendation 缺 evidence_ids 默认空列表，fact 缺键由 FACT_SCOPE_REQUIRED 拒）、U3=a（缺 next_steps 默认空列表，gaps 不放宽）、U4=a（不剥后置文字）。决定表在 PR-R 开工时入库。
+
+## 分工与 worktree
+
+| 角色 | 执行者 | worktree / 分支 |
+|---|---|---|
+| PR-G 实现 | Claude Opus 5.5 子 Agent | `../poa-695-impl` / `feature/695-setting-restart-guidance` |
+| PR-G 验收与合同测试 | Codex（codex-role test），不看实现 | `../poa-695-tests` / `test/695-guidance-contract` |
+| 独立审查 | Codex（codex-role review） | 只读 |
+
+## 验收计划（租机，两个 PR 合并后一次）
+
+阶段与通过条件见交接中的验收表（冒烟 9 次：S8、S14、S16 各 3；集成批 16 次；F3 ×3；全量 105）。全量门：root_cause_entity_pass ≥ 54/105、REPORT_INVALID ≤ 2、首答被拒 < 39。
+
+## 证据
+
+（实施后填写）
+
+## 待决
+
+- F3 重做后 `passes` 是否翻转：用户按两位审查者结论裁决。
