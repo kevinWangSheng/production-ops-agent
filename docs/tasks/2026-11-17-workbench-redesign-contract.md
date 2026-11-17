@@ -79,6 +79,7 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 | A9 | 续接期间显示 Investigating 是什么意思 | AWS：给已完成的调查发消息后「returns to a running state」。 | 状态条显示 Investigating；结论、证据等结果区**继续显示上一份已发布的报告**，加一行「Agent is responding — the report may be revised」；恢复观察卡片照常显示进度。Run 结束后状态回到 A8 的 ⑧。 | P4。 | |
 | A10 | 上一个续接 Run 交接了（等人状态），又来新消息 | 事故不该同时有两个没结束的 Run。范围挂起会把续接 Run 写成 paused，而解除挂起不会把它排回去（`controls.py:78-87` 只有挂起分支动 Run），对有结论的事故 resume 又被拒绝（`controls.py:588`）。 | 接力事务里先把本事故遗留的未结束且不活跃的 Run（`waiting_human`、`blocked`，以及事故未暂停、范围未挂起时仍是 `paused` 的）写成 cancelled，再插新 Run。和现有续开的写法一致（`controls.py:672-675`）。 | P2 接力事务。 | |
 
+| A11 | 续接 Run 活跃时的人工控制（r4，PR #694 机器人发现） | 现状 `controls.py:565-588` 把「结论不为空」一律当已结论，pause/resume/cancel 报 `ILLEGAL_TRANSITION`。按 A1 保留结论后，正在查询的续接 Run 就没法暂停或取消，违反人工控制优先。 | **控制闸里的「已结论」改成「有结论且当前 Run 已不活跃」。** 当前 Run 在排队、运行或暂停时，pause/resume/cancel 照对普通 Run 的规则作用在续接 Run 上：pause 暂停事故和续接 Run，resume 让它重新排队；cancel 只取消这个续接 Run，**事故结论、lifecycle、恢复观察保留**，事故 state 不写成 cancelled（页面回到 A8 的 ⑧）。场景 1 或 4 里加一句断言：续接 Run 运行中 pause 成功、Run 不再被领取。 | P2：`controls.py` 控制闸与 cancel 分支。 | lead 采纳 |
 ### B 组：消息输入与「哪些是新的」（审查项 3）
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
