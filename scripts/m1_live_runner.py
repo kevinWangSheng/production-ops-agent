@@ -50,6 +50,16 @@ request (``loop.serialized_request``) to an ignored path, and the Run's
 model-visible versions next to it (``<path>.versions.json``): F14 step 3
 (#385, S7/L5) freezes its sha256, ``data_sources`` projection and versions
 from them. Both are opt-in; without them nothing changes.
+``--message TEXT`` (workbench redesign P1 evidence): after a first Run that
+published, or ended with a valid but incomplete report (contract D7a), seed
+the continuation state P2's relay will create -- the parked Run cancelled
+(A10), one
+``message`` input, a queued current Run at the same control generation whose
+input is the C3 continuation plus ``scope_facts["conversation"]`` (floor =
+the highest watermark earlier Runs read, ``--message-mode``) -- and resume
+once more, so the real model answers the message (contract A3-A6, C1-C6).
+The summary's ``conversation`` block records the continuation Run's ending,
+its replies and whether the published conclusion stayed byte-identical.
 ``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
 Run: control() records the note and starts a fresh Run (user decision
 2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
@@ -326,6 +336,166 @@ class FirstRequestTap:
         return self.inner.complete(call)
 
 
+def seed_continuation(store, incident, text, mode, target_id, deadline):
+    """P1 evidence setup only: the A1/R4/B4 state P2's relay will write.
+
+    One transaction under the scope and incident locks: append a
+    ``message`` input, insert a queued Run at the incident's generation
+    with the continuation input plus the conversation fact, point the
+    incident at it. Conclusion, lifecycle and generation are untouched.
+    """
+    from psycopg.types.json import Jsonb
+
+    snapshot = store.rebuild(incident)
+    run_id = uuid4()
+    run_input = successor_input(store, incident, run_id, deadline, target_id)
+    with store.transaction() as conn:
+        conn.execute(
+            "SELECT 1 FROM opspilot_scope_controls WHERE scope_id=1 FOR UPDATE"
+        )
+        row = conn.execute(
+            "SELECT control_generation,conclusion::text AS conclusion_bytes,lifecycle "
+            "FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (incident,),
+        ).fetchone()
+        # A10: a parked earlier Run is cancelled before the new one is queued.
+        conn.execute(
+            "UPDATE opspilot_runs SET state='cancelled' "
+            "WHERE incident_id=%s AND state IN ('waiting_human','blocked')",
+            (incident,),
+        )
+        floor = conn.execute(
+            "SELECT COALESCE(max(input_watermark),0) AS n FROM opspilot_runs "
+            "WHERE incident_id=%s",
+            (incident,),
+        ).fetchone()["n"]
+        seq = conn.execute(
+            "SELECT COALESCE(max(sequence),0)+1 AS n FROM opspilot_inputs "
+            "WHERE incident_id=%s",
+            (incident,),
+        ).fetchone()["n"]
+        facts = {
+            **run_input.scope_facts,
+            "conversation": {"floor": int(floor), "mode": mode},
+        }
+        conn.execute(
+            "INSERT INTO opspilot_inputs "
+            "(input_id,incident_id,sequence,kind,content,actor,control_generation) "
+            "VALUES (%s,%s,%s,'message',%s,%s,%s)",
+            (
+                uuid4(),
+                incident,
+                seq,
+                Jsonb(
+                    {
+                        "text": text,
+                        "channel": "investigation",
+                        "idempotency_key": f"live-runner-message-{run_id}",
+                    }
+                ),
+                "live-runner-operator",
+                row["control_generation"],
+            ),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_runs "
+            "(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) "
+            "VALUES (%s,%s,'queued',%s,%s,%s,%s,%s)",
+            (
+                run_id,
+                incident,
+                row["control_generation"],
+                snapshot["run"]["budget_limit"],
+                deadline,
+                Jsonb(snapshot["run"]["versions"]),
+                Jsonb(replace(run_input, scope_facts=facts).as_json()),
+            ),
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+            (run_id, incident),
+        )
+    return {
+        "run_id": str(run_id),
+        "mode": mode,
+        "floor": int(floor),
+        "input_seq": int(seq),
+        "text": text,
+        "before": {
+            "control_generation": row["control_generation"],
+            "lifecycle": row["lifecycle"],
+            "conclusion_sha256": _sha_or_none(row["conclusion_bytes"]),
+        },
+    }
+
+
+def _sha_or_none(text: str | None) -> str | None:
+    return None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def conversation_result(store, incident, seeded) -> dict:
+    """What the continuation Run left in the rows: its ending, every reply
+    (tool steps and the final output), and whether the published conclusion,
+    lifecycle and generation stayed as they were."""
+    snapshot = store.rebuild(incident)
+    with store.transaction(snapshot=True) as conn:
+        row = conn.execute(
+            "SELECT control_generation,conclusion::text AS conclusion_bytes,lifecycle "
+            "FROM opspilot_incidents WHERE incident_id=%s",
+            (incident,),
+        ).fetchone()
+    steps = []
+    terminal = None
+    for step in _live_steps(snapshot):
+        response = step["response"] or {}
+        context = response.get("context") or {}
+        if response.get("kind") == "conclusion":
+            body = response.get("conclusion") or {}
+            terminal = {
+                key: body.get(key)
+                for key in (
+                    "execution",
+                    "handoff",
+                    "handoff_reasons",
+                    "replies",
+                    "report_rejected_reason",
+                    "report_content_sha256",
+                    "model_requests_used",
+                    "prompt_revision",
+                )
+            }
+            continue
+        steps.append(
+            {
+                "logical_key": step["logical_key"],
+                "input_watermark": context.get("input_watermark"),
+                "reply_instruction_sha256": context.get("reply_instruction_sha256"),
+                "tool_calls": len(
+                    (response.get("assistant") or {}).get("tool_calls") or ()
+                ),
+                "note": response.get("note"),
+                "replies": response.get("replies"),
+                "final": context.get("final"),
+            }
+        )
+    after = {
+        "control_generation": row["control_generation"],
+        "lifecycle": row["lifecycle"],
+        "conclusion_sha256": _sha_or_none(row["conclusion_bytes"]),
+    }
+    return {
+        **{k: v for k, v in seeded.items()},
+        "run_state": snapshot["run"]["state"],
+        "tool_operations_used": store.run_usage(seeded["run_id"])[
+            "tool_operations_used"
+        ],
+        "steps": steps,
+        "terminal": terminal,
+        "after": after,
+        "conclusion_unchanged": after == seeded["before"],
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-requests", type=int, default=2)
@@ -350,6 +520,12 @@ def main() -> int:
     parser.add_argument("--f3-answer", type=Path, default=None)
     parser.add_argument("--question", default=None)
     parser.add_argument("--first-request-out", type=Path, default=None)
+    parser.add_argument("--message", default=None)
+    parser.add_argument(
+        "--message-mode",
+        choices=("report_optional", "reply_only"),
+        default="report_optional",
+    )
     args = parser.parse_args()
     if args.f3_answer is not None and not args.f3_coverage:
         raise SystemExit("--f3-answer requires --f3-coverage")
@@ -467,6 +643,28 @@ def main() -> int:
             {"label": "after-follow-up", "outcome": _outcome(runner.resume(incident))}
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
+    conversation = None
+    first_outcome = attempts[-1]["outcome"]
+    if args.message is not None and (
+        first_outcome["status"] == "published"
+        or (
+            first_outcome["status"] == "handed_off"
+            and first_outcome["reason"] == "INCOMPLETE_INVESTIGATION"
+        )
+    ):
+        seeded = seed_continuation(
+            store,
+            incident,
+            args.message,
+            args.message_mode,
+            target_id,
+            _db_now(store) + timedelta(seconds=args.renew_seconds),
+        )
+        attempts.append(
+            {"label": "after-message", "outcome": _outcome(runner.resume(incident))}
+        )
+        attempts[-1]["rows_after"] = _rows(store, incident)
+        conversation = conversation_result(store, incident, seeded)
     if args.sweep:
         # Wait on the database clock, the one the sweep reads.
         while store.rebuild(incident)["run"]["deadline"] > _db_now(store):
@@ -552,6 +750,7 @@ def main() -> int:
         **run_usages(store, incident, run_id),
         "attempts": attempts,
         "control": control,
+        "conversation": conversation,
         "events": _events(log, incident),
         "trace": trace_record,
     }
@@ -624,6 +823,7 @@ def main() -> int:
                 client_factory=langsmith_client,
             ),
             **({} if f3 is None else {"f3_coverage": f3}),
+            **({} if conversation is None else {"conversation": conversation}),
         },
     )
     summary = {
@@ -634,6 +834,7 @@ def main() -> int:
         "offline_rebuild": compaction_fields["offline_rebuild"],
         "trace": frozen["trace"],
         "f3_coverage": frozen.get("f3_coverage"),
+        "conversation": frozen.get("conversation"),
         "ledger_sha256": frozen["raw_ledger"]["sha256"],
         "summary": str(summary_path.relative_to(ROOT))
         if summary_path.is_relative_to(ROOT)

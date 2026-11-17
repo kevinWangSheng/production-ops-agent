@@ -448,3 +448,73 @@ class _StepOps(_StoreBase):
                 (lease.run_id,),
             )
             return True
+
+    def settle_answered(self, lease: Lease, *, step_id: UUID) -> bool:
+        """Complete the leased Run on an ``answered`` conclusion step.
+
+        Workbench redesign contract A4: the Run replied to the messages it
+        read and publishes nothing, so only the Run row moves (``running ->
+        completed``, lease released); the incident's conclusion, lifecycle,
+        generation and observation stay as they are (ADR-0005 item 1).
+        Fenced exactly like ``publish()``: the current Run, still running,
+        incident not completed/cancelled/paused, lease valid, and the step
+        is this Run's committed ``answered`` conclusion of the lease's
+        generation. A fenced attempt records the step as a late result and
+        returns False; a repeat after success returns True.
+        """
+        with self.transaction() as conn:
+            self._lock_scope(conn, lease.incident_id)
+            row = conn.execute(
+                "SELECT i.current_run_id,i.state AS incident_state,i.control_generation AS incident_generation,r.owner,r.epoch,r.lease_until,r.deadline,r.state AS run_state,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE i.incident_id=%s FOR UPDATE OF i,r",
+                (lease.incident_id,),
+            ).fetchone()
+            final_step = conn.execute(
+                "SELECT response,status,control_generation FROM opspilot_steps WHERE step_id=%s AND run_id=%s FOR UPDATE",
+                (step_id, lease.run_id),
+            ).fetchone()
+            if final_step is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            response = final_step["response"]
+            body = response.get("conclusion") if isinstance(response, dict) else None
+            answered = (
+                isinstance(response, dict)
+                and response.get("kind") == "conclusion"
+                and isinstance(body, dict)
+                and body.get("execution") == "answered"
+                and body.get("handoff") is False
+            )
+            if (
+                row
+                and row["current_run_id"] == lease.run_id
+                and row["run_state"] == "completed"
+                and answered
+                and final_step["status"] != "late_result"
+            ):
+                return True
+            if (
+                not row
+                or row["current_run_id"] != lease.run_id
+                or row["run_state"] != "running"
+                or row["incident_state"] in {"completed", "cancelled", "paused"}
+                or self._lease_revoked(row, lease, self._db_now(conn))
+            ):
+                self._late_result(
+                    conn,
+                    lease.run_id,
+                    f"{_LATE_RESULT_KEY_PREFIX}answered:{step_id}:e{lease.epoch}",
+                    response,
+                    lease.control_generation,
+                )
+                return False
+            if (
+                not answered
+                or final_step["control_generation"] != lease.control_generation
+                or final_step["status"]
+                not in {"response_committed", "tool_result_committed"}
+            ):
+                raise PersistenceError("FINAL_STEP_REQUIRED")
+            conn.execute(
+                "UPDATE opspilot_runs SET state='completed',owner=NULL,lease_until=NULL WHERE run_id=%s",
+                (lease.run_id,),
+            )
+            return True
