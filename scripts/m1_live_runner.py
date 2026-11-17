@@ -50,8 +50,10 @@ request (``loop.serialized_request``) to an ignored path, and the Run's
 model-visible versions next to it (``<path>.versions.json``): F14 step 3
 (#385, S7/L5) freezes its sha256, ``data_sources`` projection and versions
 from them. Both are opt-in; without them nothing changes.
-``--message TEXT`` (workbench redesign P1 evidence): after a published
-first Run, seed the continuation state P2's relay will create -- one
+``--message TEXT`` (workbench redesign P1 evidence): after a first Run that
+published, or ended with a valid but incomplete report (contract D7a), seed
+the continuation state P2's relay will create -- the parked Run cancelled
+(A10), one
 ``message`` input, a queued current Run at the same control generation whose
 input is the C3 continuation plus ``scope_facts["conversation"]`` (floor =
 the highest watermark earlier Runs read, ``--message-mode``) -- and resume
@@ -356,6 +358,12 @@ def seed_continuation(store, incident, text, mode, target_id, deadline):
             "FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
             (incident,),
         ).fetchone()
+        # A10: a parked earlier Run is cancelled before the new one is queued.
+        conn.execute(
+            "UPDATE opspilot_runs SET state='cancelled' "
+            "WHERE incident_id=%s AND state IN ('waiting_human','blocked')",
+            (incident,),
+        )
         floor = conn.execute(
             "SELECT COALESCE(max(input_watermark),0) AS n FROM opspilot_runs "
             "WHERE incident_id=%s",
@@ -416,11 +424,13 @@ def seed_continuation(store, incident, text, mode, target_id, deadline):
         "before": {
             "control_generation": row["control_generation"],
             "lifecycle": row["lifecycle"],
-            "conclusion_sha256": hashlib.sha256(
-                row["conclusion_bytes"].encode("utf-8")
-            ).hexdigest(),
+            "conclusion_sha256": _sha_or_none(row["conclusion_bytes"]),
         },
     }
+
+
+def _sha_or_none(text: str | None) -> str | None:
+    return None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def conversation_result(store, incident, seeded) -> dict:
@@ -471,9 +481,7 @@ def conversation_result(store, incident, seeded) -> dict:
     after = {
         "control_generation": row["control_generation"],
         "lifecycle": row["lifecycle"],
-        "conclusion_sha256": hashlib.sha256(
-            row["conclusion_bytes"].encode("utf-8")
-        ).hexdigest(),
+        "conclusion_sha256": _sha_or_none(row["conclusion_bytes"]),
     }
     return {
         **{k: v for k, v in seeded.items()},
@@ -636,7 +644,14 @@ def main() -> int:
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
     conversation = None
-    if args.message is not None and attempts[-1]["outcome"]["status"] == "published":
+    first_outcome = attempts[-1]["outcome"]
+    if args.message is not None and (
+        first_outcome["status"] == "published"
+        or (
+            first_outcome["status"] == "handed_off"
+            and first_outcome["reason"] == "INCOMPLETE_INVESTIGATION"
+        )
+    ):
         seeded = seed_continuation(
             store,
             incident,
