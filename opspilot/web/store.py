@@ -969,6 +969,29 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(rows)
 
+    def latest_incomplete_report(
+        self, incident_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        """The newest conclusion step of any Run of this incident that ended
+        with a validated report the Agent marked incomplete: execution
+        ``completed`` and handoff reasons exactly ``INCOMPLETE_INVESTIGATION``
+        (the loop sets that reason only after the report validated).
+        Redesign contract A8/D7a: the page keeps showing it after a later
+        Run (a reply-only continuation) ends without a report of its own."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT s.run_id,s.response FROM opspilot_steps s"
+                " JOIN opspilot_runs r ON r.run_id=s.run_id"
+                " WHERE r.incident_id=%s AND s.status<>'late_result'"
+                " AND s.response->>'kind'='conclusion'"
+                " AND s.response->'conclusion'->>'execution'='completed'"
+                " AND s.response->'conclusion'->'handoff_reasons'"
+                "='[\"INCOMPLETE_INVESTIGATION\"]'::jsonb"
+                " ORDER BY s.observed_at DESC,s.sequence DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        return None if row is None else (row["run_id"], row["response"])
+
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(

@@ -2496,6 +2496,17 @@ class Workbench:
         if report is None and outcome is not None and outcome.kind == "run_handoff":
             shown_conclusion = _last_live_response(rebuilt["steps"])
             handoff_report = _report_view(shown_conclusion)
+        # Redesign A8/D7a: with no published report, the newest validated
+        # report any Run of this incident marked incomplete, looked up across
+        # Runs (a later continuation Run may end with none of its own).
+        incomplete_report = None
+        reader = getattr(self.incidents, "latest_incomplete_report", None)
+        if report is None and reader is not None:
+            found = reader(incident_id)
+            if found is not None:
+                view = _report_view(found[1])
+                if view is not None and view.get("parsed"):
+                    incomplete_report = {"run_id": str(found[0]), "report": view}
         # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
         # never shown to the model.
         coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
@@ -2530,6 +2541,7 @@ class Workbench:
             "report": report,
             "knowledge": knowledge_view,
             "handoff_report": handoff_report,
+            "incomplete_report": incomplete_report,
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": controls,

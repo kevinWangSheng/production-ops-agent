@@ -10,16 +10,21 @@ read through ``GET /`` and ``GET /incidents/{id}``.
 
 from __future__ import annotations
 
+import json
 import os
 from uuid import UUID, uuid4
 
 import pytest
 
+from opspilot.web.incident_list import status_of
+from opspilot.web.incident_view import page_view
+from opspilot.web.service import available_actions
 from tests.integration.test_m1_web_postgres import _build, _DbClock
 from tests.m1_incident_control_support import (
     list_headers,
     list_row,
 )
+from tests.m1_investigation_support import ModelError, reply, report_json, tool_call
 from tests.m1_web_support import (
     ScriptedInvestigator,
     basic,
@@ -298,3 +303,120 @@ def test_rendering_pages_does_not_change_the_stored_rows():
         _detail(app, incident)
         _index(app)
     assert _rows(store, UUID(incident)) == before
+
+
+# -- redesign A8: one status rule for the page header and the list tabs ---------
+
+
+#: (lifecycle, incident state, mode, current Run state, concluded, merged):
+#: every A8 rule and the ties between neighbouring rules.
+_A8_ROWS = (
+    ("closed", "queued", "automatic", "completed", True, True),  # merged
+    ("closed", "cancelled", "automatic", "cancelled", False, False),  # closed
+    ("resolved", "paused", "automatic", "completed", True, False),  # resolved
+    ("open", "cancelled", "automatic", "cancelled", False, False),  # canceled
+    ("open", "paused", "human_owned", "paused", False, False),  # paused
+    ("open", "queued", "automatic", "paused", False, False),  # suspended Run
+    ("open", "queued", "human_owned", "waiting_human", True, False),  # human
+    ("open", "queued", "automatic", "queued", True, False),  # investigating
+    ("observing_recovery", "running", "automatic", "running", True, False),
+    ("observing_recovery", "queued", "automatic", "completed", True, False),
+    ("open", "queued", "automatic", "completed", True, False),  # root cause
+    ("observing_recovery", "queued", "automatic", "waiting_human", False, False),
+    ("open", "queued", "automatic", "waiting_human", False, False),
+    ("open", "queued", "automatic", "blocked", False, False),
+)
+
+
+def test_list_tab_sql_matches_the_shared_status_rule_for_every_a8_row():
+    app, workbench, store = _build()
+    target = f"tgt-{uuid4()}"
+    survivor = UUID(_submit(app, target))
+    seeded = []
+    for lifecycle, state, mode, run_state, concluded, merged in _A8_ROWS:
+        incident = UUID(_submit(app, target))
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET state=%s WHERE run_id="
+                "(SELECT current_run_id FROM opspilot_incidents WHERE incident_id=%s)",
+                (run_state, incident),
+            )
+            conn.execute(
+                "UPDATE opspilot_incidents SET lifecycle=%s,state=%s,mode=%s,"
+                'conclusion=CASE WHEN %s THEN \'{"kind":"conclusion"}\'::jsonb END,'
+                "merged_into_incident_id=CASE WHEN %s THEN %s::uuid END"
+                " WHERE incident_id=%s",
+                (lifecycle, state, mode, concluded, merged, survivor, incident),
+            )
+        seeded.append(incident)
+    groups = workbench.incidents.page_groups()
+    items = {
+        item.summary.incident_id: item
+        for item in workbench.incidents.list_incident_items(limit=100_000)
+    }
+    seen = {}
+    for incident in seeded:
+        status = status_of(items[incident])
+        seen[status["status"].key] = True
+        assert groups[incident] == status["group"], (incident, status)
+    # Every A8 outcome was produced by at least one seeded row.
+    assert set(seen) == {
+        "merged",
+        "closed",
+        "resolved",
+        "canceled",
+        "paused",
+        "human_owned",
+        "investigating",
+        "watching",
+        "root_cause",
+        "needs_attention",
+    }
+
+
+def test_an_earlier_incomplete_report_stays_shown_after_a_later_run_without_one():
+    """A8/D7a look-back: Run 1 ends with a validated report the Agent marked
+    incomplete; Run 2 ends with none. The page keeps Run 1's report as
+    Incomplete and the message box stays open (D7a, not D7b)."""
+
+    def incomplete(call):
+        evidence = None
+        for message in reversed(call.messages):
+            if message.get("role") == "tool":
+                evidence = json.loads(message["content"])["evidence_id"]
+                break
+        return reply(content=report_json(evidence_id=evidence, status="incomplete"))
+
+    app, workbench, store = _build()
+    incident = _submit(app, f"tgt-{uuid4()}")
+    subject = UUID(incident)
+    first = ScriptedInvestigator(_DbClock(store))
+    first.replies = [
+        reply(tool_calls=[tool_call()], finish="tool_calls"),
+        incomplete,
+    ]
+    workbench.run_once(subject, first)
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["outcome"]["reasons"] == ["INCOMPLETE_INVESTIGATION"]
+    view = page_view(snapshot, None, available_actions(snapshot))
+    assert view["report"]["kind"] == "incomplete"
+
+    # Run 2 (cancel, then a new Run) ends without any report.
+    _act(app, incident, "cancel", 0)
+    _act(app, incident, "new_run", 1)
+    workbench.run_once(
+        subject,
+        ScriptedInvestigator(
+            _DbClock(store), replies=[ModelError("MODEL_UNAVAILABLE")]
+        ),
+    )
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["report"] is None
+    assert snapshot["outcome"]["reasons"] != ["INCOMPLETE_INVESTIGATION"]
+    view = page_view(snapshot, None, available_actions(snapshot))
+    assert view["status"].key == "needs_attention"
+    assert view["report"] is not None and view["report"]["kind"] == "incomplete"
+    assert view["report"]["summary"] == (
+        "Visible evidence is insufficient to support a cause."
+    )
+    assert view["composer"]["accepts"] is True

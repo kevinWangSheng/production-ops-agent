@@ -1051,8 +1051,9 @@ def _day(snapshot: Mapping[str, Any]) -> str | None:
 def _shown_report(
     snapshot: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any] | None, str | None]:
-    """The report the result area shows: the published one, else (A8) a
-    validated report the Agent marked incomplete."""
+    """The report the result area shows: the published one, else (A8) the
+    newest validated report the Agent marked incomplete -- the current
+    Run's, or an earlier Run's when the current one has none."""
     report = snapshot.get("report")
     if report is not None:
         return report, "published"
@@ -1064,6 +1065,10 @@ def _shown_report(
         and list(reasons) == ["INCOMPLETE_INVESTIGATION"]
     ):
         return handoff, "incomplete"
+    # A8/D7a look-back: the current Run has none, an earlier one does.
+    earlier = snapshot.get("incomplete_report")
+    if earlier and (earlier.get("report") or {}).get("parsed"):
+        return earlier["report"], "incomplete"
     return None, None
 
 
