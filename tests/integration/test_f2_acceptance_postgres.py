@@ -1373,7 +1373,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
         assert outcome.human_interaction == "handoff"
         assert outcome.report_available is False and outcome.evidence_ids == ()
 
-        # A human follow_up re-queues a parked Run; it is never parked again.
+        # A human resume re-queues a parked Run; it is never parked again
+        # (workbench contract D7b: a parked Run without a validated report
+        # takes no message).
         revived = parked[0]
         generation = storm_conn.execute(
             "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s",
@@ -1384,10 +1386,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
             app,
             f"/incidents/{revived}/control",
             {
-                "action": "follow_up",
+                "action": "resume",
                 "expected_generation": str(generation),
                 "idempotency_key": uuid4().hex,
-                "text": "Please look at this one now.",
             },
             headers={**basic(), **same_origin(), "accept": "application/json"},
         )

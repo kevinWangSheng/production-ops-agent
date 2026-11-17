@@ -211,7 +211,8 @@ def test_durable_handoff_parks_the_run_for_a_human():
     assert again.epoch is None
     assert h.store.rebuild(h.incident)["run"]["state"] == "waiting_human"
     # ...and a human can still act on it (ADR-0005 decision 1).
-    assert h.store.control(h.incident, 0, "follow_up", "operator", {"q": "x"}) == 1
+    # (Workbench contract D7b: resume, since a note is a message input.)
+    assert h.store.control(h.incident, 0, "resume", "operator") == 1
     assert h.store.rebuild(h.incident)["run"]["state"] == "queued"
 
 
