@@ -43,7 +43,7 @@ SEGMENT_SHA256 = {
     "missing_series": "3d436dc2c53a61b6215370ec965a285e1bbd6b2c4e8e7a35d08490ba00034ac9",
 }
 REPORT_CONTRACT_SHA256 = (
-    "a09daa61344d222d6453d3900e7d7acf0d47dcc67258bb1abbf145b166a5a001"
+    "08f80b4a5014f31d7b9d079299f4f3b328dc2cafe19b0323e66efa5abd65c571"
 )
 BASELINE_DISCIPLINE_REVISIONS = {
     "baseline-multi-step": "l1a-baseline-multi-step-1a7fad1f7bf9",
@@ -54,16 +54,16 @@ SERVICES = ("cartservice", "checkoutservice")
 # authorized_services=...)) on main.
 BASELINE_RENDER_SHA256 = {
     ("baseline-multi-step", 7, ()): (
-        "f994619811189d12afb9441ec0c56c1e54e626218fbce2911769cfc82c7296e4"
+        "98035d6853f85834d3fdd8939a2a6bd055669ae8688054f3654f646336efaf1c"
     ),
     ("baseline-multi-step", 7, SERVICES): (
-        "eb22aa7780803b963b5916ba7bc00dcebb34514fb75dc06d35b2d2e419d34fc0"
+        "0ad06307e457fe9855ecaa68e7f7e1634fa099fe39f8fac0bed6f96fcc11cf3a"
     ),
     ("baseline-final-report", 1, ()): (
-        "79511993d8ea4d22f99bba108355d4b13148a7acd678ecf9876075d52e75beef"
+        "d107fe50defe93777b5dcd7f13270c803a0f7282433494defe85bd5d0f190ec2"
     ),
     ("baseline-final-report", 1, SERVICES): (
-        "98346624a17271f206bab6a74245699aba182e84c6c624a4d6d15f07f74c4b84"
+        "27495279b3676ecf11ce6b9f59442676c32c1b940d1158c582d3bfbaaa192618"
     ),
 }
 

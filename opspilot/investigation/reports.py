@@ -88,7 +88,7 @@ REPORT_CONTRACT = (
     "true. A view whose status is no_data, error, timeout or denied never "
     "supports a fact, counter_evidence or rejected_hypothesis, including a "
     "statement that something is absent, healthy or free of errors: an empty "
-    "result shows only that this query matched nothing. Write what the query "
+    "result shows only that this query matched nothing; write what the query "
     "was and that it returned nothing in gaps, or cite an ok view that shows "
     "it directly. Permission to query a target is not observed "
     "evidence. Missing policy or source timing cannot support a current fact; "
