@@ -1216,6 +1216,12 @@ class InvestigationLoop:
         )
         if projected <= budget * CONTEXT_POLICY.compaction_pct:
             return False
+        if state.mode == "reply_only":
+            # Contract A6: the only request is the answer, never a
+            # compaction. Send it if it fits the window, else hand off.
+            if projected > budget:
+                raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+            return False
         if state.request.model_requests - state.used < 2:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
         self._compact(state)
