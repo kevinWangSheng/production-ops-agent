@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r5 已定，P1 待开工
+- 状态：合同 r6 已定，P1 待开工
 - 更新日期：2026-11-17
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
@@ -23,7 +23,7 @@
 - D10 观察期间的消息或报告修订不停观察；D19 不显示 `reasoning_content`；D20 消息（Chat 面板或调查输入框）不算 #184 的「人工处理」，只有控制动作算（用户明确「不算」）。
 - 页面以原型 v2 为准；v1 标签页式原型被否。
 
-## 合同（r5）
+## 合同（r6）
 
 完整决定表（选项、代价、代码出处）见 [合同决定表](2026-11-17-workbench-redesign-contract.md)。预审需用户裁决 0 项；以下全部按推荐采纳，lead 2026-11-17 裁决。
 
@@ -37,7 +37,7 @@
 | A8–A9 | 页面与列表共用一条九级状态判定；续接期间显示 Investigating，结果区继续显示上一份报告 |
 | A10 | 接力前把遗留的未结束不活跃 Run 写成 cancelled |
 | A11 | 续接 Run 活跃时 pause/resume/cancel 照常作用在它上面；cancel 只取消续接 Run，结论、lifecycle、观察保留（r4）；有结论时 close 同样只取消续接 Run、不写 cancelled，关闭后仍可只回复（r5） |
-| B1–B7 | 新输入类型 `message`；Run 输入 `scope_facts["conversation"]={floor, mode}`，新消息带 `new: true`；旧类型渲染字节不变；未读 = 序号大于所有 Run 已提交水位最大值 |
+| B1–B7 | 新输入类型 `message`；Run 输入 `scope_facts["conversation"]={floor, mode}`，新消息带 `new: true`；旧类型渲染字节不变；未读 = 序号大于所有 Run 已提交水位最大值；B8 后继输入带上此前通过校验的回复正文（不带 assistant 原文和 reasoning_content），对话跨 Run 连贯（r6） |
 | C1–C3 | 工具轮回复写在可见 content 的 JSON `{note, replies}` 里，解析不出不算错；校验结果另存步骤行顶层字段，`assistant` 字节不动；回复只查证据编号存在，不认识的去掉并标 unsupported |
 | C4–C5 | 回复说明作为独立尾随模板，只在有新消息的轮次发送；**不进 `prompt_revision`，只在步骤行记哈希**（做法③），P1 PR 给 C3 §5 加一句增补并在简报单列 |
 | C6–C9 | 最终输出 `m0-response-v1` 包装，仍接受裸报告；最后一轮才读到的消息由最终输出回答；not answered 读取时计算；P1 不改纪律提示词 |
@@ -48,7 +48,7 @@
 | O1–O4 | 复盘草稿过期保持现状；`follow_up`/`correct` HTTP 别名保留一版，存储层分支和 `m1_live_runner` 两个开关在 P2 删；反馈每个调查一份（照 AWS，取代 D25）；F7 第 5 步审计重建补输入表来源 |
 | T | 整个重设计最多 8 个场景测试（`tests/acceptance/test_workbench_conversation.py`）+ 3 条浏览器路径，一个共用驱动；不测清单与旧测试删除清单见决定表第五节 |
 
-修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）。
+修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）。
 
 ## PR 顺序
 
