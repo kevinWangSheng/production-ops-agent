@@ -37,7 +37,14 @@ the runtime web role does not).
 Usage::
 
     OPSPILOT_DSN="host=127.0.0.1 port=55431 dbname=opspilot_dev user=..." \
-        .venv/bin/python scripts/dev_seed_incidents.py [--reset] [--reset-only]
+        .venv/bin/python scripts/dev_seed_incidents.py [--reset] [--reset-only] \
+        [--detail | --detail-only]
+
+``--detail`` adds the incident page fixture (``seed_detail``: one incident
+per page state, 80-round Run, 20 Runs, running, paused, taken over, recovery
+watch, resolved, closed, no report); ``--detail-only`` seeds only that. It
+imports the test suite's scripted model and tool doubles, so run it from the
+repository root with ``PYTHONPATH=.``.
 
 The database must already be migrated and local (Unix socket, localhost,
 127.0.0.1 or ::1), and its name must hold ``dev``, ``test`` or ``seed`` as a
@@ -257,6 +264,13 @@ def _purge(
     (the seed creates none)."""
     if depth > 12:
         raise SystemExit(f"foreign-key chain too deep at {table}")
+    # Append-only tables refuse any DELETE statement, even one that matches
+    # no row; with no matching row there are no children to reach either.
+    if (
+        conn.execute(f"SELECT 1 FROM {table} WHERE {where} LIMIT 1", params).fetchone()
+        is None
+    ):
+        return 0
     for fk in fks:
         if fk["parent"] != table or fk["child"] == table:
             continue
@@ -320,6 +334,9 @@ def reset_rows(conn: Any) -> int:
     ]
     for table in tables:
         _purge(conn, fks, table, "incident_id = ANY(%s)", (ids,))
+    # Evidence rows name their incident as ``subject_id`` text (no foreign
+    # key), so the loop above does not reach them.
+    _purge(conn, fks, "opspilot_evidence", "subject_id = ANY(%s)", (texts,))
     # The web ledger rows of these incidents (``Workbench.submit``,
     # ``intake_alert`` and ``control`` key them so): the intake envelope
     # under the incident's intake key, the intake sequence under its id,

@@ -31,7 +31,7 @@
 {#- Spec 4.5/4.7/4.8: one element for live and finished Runs; no nested
     <details> inside it (tests read up to its first </details>). -#}
 <details class="how" id="how">
-  <summary><span class="hs">{% if live %}Rounds{% else %}Run {{ view.run_no }}{% endif %} · {{ how.rounds | length }} round{{ "" if how.rounds | length == 1 else "s" }} · {{ how.total }} quer{{ "y" if how.total == 1 else "ies" }} · {{ how.problems }} with a problem</span><span class="meta">{{ how.cited }} cited by the report · {{ run.budget_spent }} of {{ run.budget_limit }} model requests</span></summary>
+  <summary><span class="hs">{% if live %}Rounds{% else %}Run {{ view.run_no }}{% endif %} · <span id="how-count">{{ how.rounds | length }} round{{ "" if how.rounds | length == 1 else "s" }}</span> · {{ how.total }} quer{{ "y" if how.total == 1 else "ies" }} · {{ how.problems }} with a problem</span><span class="meta">{{ how.cited }} cited by the report · {{ run.budget_spent }} of {{ run.budget_limit }} model requests</span></summary>
   {% if snapshot.steps %}
   <div class="filt" role="group" aria-label="Filter queries">
     <button type="button" aria-pressed="true" data-f="all">All {{ how.total }}</button>
@@ -42,7 +42,7 @@
   <ol class="rnds" id="rounds">
     {% for r in how.rounds %}{% set step = r.step %}
     {% if r.rest and not how.rounds[loop.index0 - 1].rest %}<li class="rmore"><button type="button" class="lnk" data-more-rounds>Show {{ how.hidden }} more rounds</button></li>{% endif %}
-    <li class="rnd{% if r.rest %} rest{% endif %}" id="{{ r.anchor }}" data-step="{{ step.step_id }}"><span class="rn">{{ r.label }}{% if r.time %}<time>{{ r.time }}</time>{% endif %}<span class="tc">{{ step.tools | length }} of {{ step.planned_tools }} tools</span></span>
+    <li class="rnd{% if r.rest %} rest{% endif %}" id="{{ r.anchor }}" data-step="{{ step.step_id }}"><span class="rn">{{ r.label }}{% if r.time %}<time>{{ r.time }}</time>{% endif %}<span class="tc" data-planned="{{ step.planned_tools }}">{{ step.tools | length }} of {{ step.planned_tools }} tools</span></span>
       <ul class="calls">
         <li class="call"><span class="st"><code>{{ step.logical_key }}</code> · <span class="badge">{{ step.status }}</span>{% if step.history_only %} history only{% endif %} · generation {{ step.control_generation }}{% if step.finish_reason %} · finish {{ step.finish_reason }}{% endif %}</span></li>
         {% for call in r.calls %}{% set tool = call.tool %}
@@ -158,7 +158,7 @@
   <h2 id="investigation-report">{% if shown and shown.previous %}Previous conclusion <span class="sub">stays until Run {{ view.run_no }} publishes</span>{% else %}Conclusion{% endif %}</h2>
   {% if shown %}{% set report = shown.report %}
     {% if not report.parsed %}
-    <p id="report-unparseable">The published conclusion could not be parsed as <code>m0-report-v2</code> or <code>m0-report-v3</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
+    <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> or <code>m0-report-v3</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
     {% else %}
     <p class="concl">{{ view.lede or report.summary }}</p>
     {% if view.lede and view.lede != report.summary %}<details class="more"><summary>Full summary</summary><p>{{ report.summary }}</p></details>{% endif %}
@@ -639,10 +639,29 @@
     head.appendChild(st); calls.appendChild(head); li.appendChild(calls);
     var wait = document.getElementById("how-wait");
     rounds.insertBefore(li, wait);
+    refold();
     var none = document.getElementById("no-steps"); if (none) none.hidden = true;
     var lr = document.getElementById("live-round") || document.getElementById("live-sub");
     if (lr) lr.textContent = "Round " + (n + 1);
     if (wait) { var t = wait.querySelector("time"); if (t) t.setAttribute("datetime", new Date().toISOString()); }
+  }
+  function refold() {
+    /* Spec 4.7 for rounds added live: first 3 and last 5 show, the middle
+       folds behind one button until the reader opens it. */
+    var all = rounds.querySelectorAll(".rnd"), n = all.length, hidden = 0;
+    var how = rounds.closest(".how");
+    var count = document.getElementById("how-count");
+    if (count) count.textContent = n + (n === 1 ? " round" : " rounds");
+    all.forEach(function (r, i) { var rest = n > 8 && i >= 3 && i < n - 5; r.classList.toggle("rest", rest); if (rest) hidden++; });
+    var more = rounds.querySelector(".rmore");
+    if (!hidden) { if (more) more.remove(); return; }
+    if (!more) {
+      more = el("li", "rmore"); var b = el("button", "lnk"); b.type = "button"; b.setAttribute("data-more-rounds", "");
+      more.appendChild(b);
+    }
+    rounds.insertBefore(more, all[3]);
+    more.firstChild.textContent = "Show " + hidden + " more rounds";
+    if (how.classList.contains("all")) more.hidden = true;
   }
   function tool(data) {
     if (!rounds) return;
@@ -745,7 +764,8 @@
     var text = JSON.stringify(view === undefined ? data : view, null, 2) || "";
     var lines = text.split("\n"), cut = false;
     if (lines.length > LINES) { text = lines.slice(0, LINES).join("\n"); cut = true; }
-    if (text.length > LIMIT) { text = text.slice(0, LIMIT); cut = true; }
+    var bytes = new TextEncoder().encode(text);
+    if (bytes.length > LIMIT) { text = new TextDecoder().decode(bytes.slice(0, LIMIT)).replace(/\uFFFD$/, ""); cut = true; }
     var pre = document.createElement("pre"); pre.textContent = text + (cut ? "\n…" : ""); out.appendChild(pre);
     if (cut) { var p = document.createElement("p"); p.className = "small"; p.textContent = "First " + LINES + " lines or 4 KiB shown."; out.appendChild(p); }
   }

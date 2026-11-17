@@ -765,14 +765,12 @@ def _owner(snapshot: Mapping[str, Any]) -> str | None:
     """Who took a human-owned incident over (the latest takeover row)."""
     if snapshot["incident"].mode != "human_owned":
         return None
-    row = next(
-        (
-            r
-            for r in reversed(snapshot.get("decision_log") or [])
-            if r.get("action") == "takeover"
-        ),
-        None,
+    # ``controls`` holds every human decision; ``decision_log`` only the
+    # latest page of them.
+    rows = list(snapshot.get("controls") or []) + list(
+        snapshot.get("decision_log") or []
     )
+    row = next((r for r in rows if r.get("action") == "takeover"), None)
     return None if row is None else row.get("actor_id")
 
 
@@ -783,16 +781,7 @@ def _no_conclusion(snapshot: Mapping[str, Any], number: int | None) -> str:
     state = run.get("state")
     label = f"Run {number}" if number else "The Run"
     if incident.mode == "human_owned":
-        takeover = next(
-            (
-                row
-                for row in reversed(snapshot.get("decision_log") or [])
-                if row.get("action") == "takeover"
-            ),
-            None,
-        )
-        actor = takeover.get("actor_id") if takeover else None
-        return f"{label} stopped when {actor or 'a human'} took over."
+        return f"{label} stopped when {_owner(snapshot) or 'a human'} took over."
     if state == "cancelled" or incident.control == "cancelled":
         return f"{label} was cancelled."
     if state == "waiting_human":
@@ -850,7 +839,9 @@ def _notes(snapshot: Mapping[str, Any], day: str | None) -> list[dict[str, Any]]
     if incident.mode != "human_owned":
         return []
     controls = snapshot.get("controls") or []
-    takeover = max(
+    # The first takeover made the incident human-owned; every note after it
+    # is recorded only (a repeated takeover does not hide earlier notes).
+    takeover = min(
         (int(c["generation"]) for c in controls if c.get("action") == "takeover"),
         default=None,
     )
@@ -913,7 +904,7 @@ def page_view(
     how = _rounds(snapshot.get("steps") or [], claims["cited"], day)
     recovery = _recovery(snapshot, day)
     status = dict(_status(snapshot, postmortem))
-    if incident_owner := _owner(snapshot):
+    if (incident_owner := _owner(snapshot)) and status["words"] == "Taken over":
         status["words"] = f"{status['words']} by {incident_owner}"
     recovery_line = _recovery_line(snapshot, recovery, day)
     if recovery_line and recovery_line.startswith(status["words"] + " · "):
