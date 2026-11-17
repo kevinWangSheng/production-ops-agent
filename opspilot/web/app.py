@@ -24,10 +24,11 @@ from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -36,6 +37,7 @@ from fastapi.responses import (
 )
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from opspilot.alertmanager import parse_payload
 from opspilot.domain.base import DomainError
@@ -56,7 +58,12 @@ from opspilot.release_intake import (
     resolve_target,
 )
 from opspilot.tools.executor import Clock
-from opspilot.web.auth import Authenticator, AuthError
+from opspilot.web.auth import (
+    SESSION_COOKIE,
+    SESSION_MAX_AGE,
+    Authenticator,
+    AuthError,
+)
 from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_view import handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
@@ -108,7 +115,34 @@ class _AntiFraming:
 _AUTH_STATUS = {
     "MISSING_CREDENTIALS": 401,
     "INVALID_CREDENTIALS": 401,
+    "INVALID_SESSION": 401,
     "ORIGIN_REJECTED": 403,
+}
+#: The login form's one refusal, whatever was wrong (#682): no enumeration.
+LOGIN_FAILED = "Wrong user name or password"
+_EVENT_PATHS = ("/intake/events", "/intake/alertmanager", "/intake/version-changes")
+#: The sentence an HTML page shows for a refused page GET; the code stays
+#: in small secondary text. JSON clients still get the JSON body.
+_PAGE_ERRORS = {
+    "UNKNOWN_INCIDENT": "This incident does not exist.",
+    "UNKNOWN_RELEASE": "This version change does not exist.",
+    "UNKNOWN_EVIDENCE": "This evidence record does not exist.",
+    "UNKNOWN_TARGET": "This target is not registered.",
+    "NOT_FOUND": "This page does not exist.",
+    "CHANNEL_MISMATCH": "These credentials cannot open the workbench.",
+    "MISSING_CREDENTIALS": "Sign in to continue.",
+    "INVALID_CREDENTIALS": "Sign in to continue.",
+    "INVALID_SESSION": "Your session has ended. Sign in again.",
+}
+_FRAMEWORK_CODES = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED"}
+_STATUS_ERRORS = {
+    400: "This address is not valid.",
+    401: "Sign in to continue.",
+    403: "You cannot open this page.",
+    404: "This page does not exist.",
+    405: "This page does not exist.",
+    409: "This page cannot be shown in its current state. Reload and try again.",
+    503: "The workbench cannot reach its storage right now. Try again shortly.",
 }
 _WORKBENCH_STATUS = {
     "UNKNOWN_INCIDENT": 404,
@@ -221,25 +255,112 @@ def create_app(
     def render(name: str, **context: Any) -> HTMLResponse:
         return HTMLResponse(env.get_template(name).render(**context))
 
+    def set_session(response: Response, value: str | None) -> None:
+        options: dict[str, Any] = {
+            "path": "/",
+            "httponly": True,
+            "samesite": "lax",
+            "secure": authenticator.secure_cookie,
+        }
+        if value is None:
+            response.delete_cookie(SESSION_COOKIE, **options)
+        else:
+            response.set_cookie(
+                SESSION_COOKIE,
+                value,
+                max_age=int(SESSION_MAX_AGE.total_seconds()),
+                **options,
+            )
+
+    def error_page(request: Request, exc: _Refusal) -> HTMLResponse:
+        message = _PAGE_ERRORS.get(exc.code) or _STATUS_ERRORS.get(
+            exc.status, "This page could not be shown."
+        )
+        response = render(
+            "error.html",
+            principal=getattr(request.state, "principal", None),
+            message=message,
+            code=exc.code,
+            sign_in=exc.status == 401,
+        )
+        response.status_code = exc.status
+        return response
+
+    @app.exception_handler(StarletteHTTPException)
+    async def framework_error(
+        request: Request, exc: StarletteHTTPException
+    ) -> Response:
+        """Starlette's own 404/405 (an unknown path or method): the HTML
+        error page for a page GET, FastAPI's JSON otherwise."""
+        if request.method == "GET" and wants_html(request):
+            response = error_page(
+                request,
+                _Refusal(
+                    exc.status_code,
+                    _FRAMEWORK_CODES.get(exc.status_code, f"HTTP_{exc.status_code}"),
+                ),
+            )
+            for name, value in (exc.headers or {}).items():
+                response.headers[name] = value
+            return response
+        return await http_exception_handler(request, exc)
+
     @app.exception_handler(_Refusal)
     async def refused(request: Request, exc: _Refusal) -> Response:
-        headers = {}
-        if exc.status == 401 and not request.url.path.startswith(
-            ("/intake/events", "/intake/alertmanager", "/intake/version-changes")
+        event_path = request.url.path.startswith(_EVENT_PATHS)
+        if (
+            wants_html(request)
+            and not event_path
+            and (request.method == "GET" or exc.status == 401)
         ):
+            # A browser: never the Basic dialog. An unauthenticated page
+            # GET goes to the login form and comes back afterwards; a
+            # refused page GET (or a form post whose session ended) gets a
+            # sentence, not JSON.
+            if exc.status == 401 and request.method == "GET":
+                target = request.url.path
+                if request.url.query:
+                    target += "?" + request.url.query
+                response: Response = RedirectResponse(
+                    "/login?next=" + quote(target, safe=""), status_code=302
+                )
+            else:
+                response = error_page(request, exc)
+            if exc.code == "INVALID_SESSION":
+                set_session(response, None)
+            return response
+        headers = {}
+        if exc.status == 401 and not event_path:
             headers["WWW-Authenticate"] = 'Basic realm="opspilot"'
         return JSONResponse(
             {"code": exc.code, **exc.extra}, status_code=exc.status, headers=headers
         )
 
     async def ui(request: Request) -> Principal:
+        cookie = request.cookies.get(SESSION_COOKIE)
         try:
-            principal = authenticator.ui_principal(request.headers)
-            return verify_channel(principal, expected="ui_basic")
+            principal: Principal | None = None
+            if cookie is not None:
+                # A valid session wins over a Basic header the browser may
+                # still cache for another user: the form login is who is
+                # signed in. The database clock, as every product time.
+                now = await asyncio.to_thread(clock.now)
+                try:
+                    principal = authenticator.session_principal(cookie, now)
+                except AuthError:
+                    if request.headers.get("authorization") is None:
+                        raise
+            if principal is None:
+                principal = authenticator.ui_principal(request.headers)
+            principal = verify_channel(principal, expected="ui_basic")
         except AuthError as exc:
             raise _Refusal(_AUTH_STATUS.get(exc.code, 401), exc.code) from None
         except DomainError:
             raise _Refusal(403, "CHANNEL_MISMATCH") from None
+        except PersistenceError:
+            raise _Refusal(503, "STORAGE_UNAVAILABLE") from None
+        request.state.principal = principal
+        return principal
 
     async def ui_mutation(request: Request) -> Principal:
         principal = await ui(request)
@@ -360,6 +481,74 @@ def create_app(
         if review is None:
             raise _Refusal(404, "NOT_FOUND")
         return review
+
+    # -- sign-in (#682) ----------------------------------------------------
+
+    def login_page(target: str, *, error: str | None, status: int) -> HTMLResponse:
+        response = render(
+            "login.html",
+            principal=None,
+            next=target,
+            error=error,
+            sessions_enabled=authenticator.sessions_enabled,
+        )
+        response.status_code = status
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/login", response_class=HTMLResponse)
+    async def login_form(request: Request) -> Response:
+        return login_page(
+            safe_next(request.query_params.get("next")), error=None, status=200
+        )
+
+    @app.post("/login")
+    async def login(request: Request) -> Response:
+        try:
+            authenticator.check_origin(request.headers)
+        except AuthError as exc:
+            raise _Refusal(403, exc.code) from None
+        if not authenticator.sessions_enabled:
+            raise _Refusal(503, "SESSIONS_DISABLED")
+        fields = await form_of(request)
+        target = safe_next(fields.get("next"))
+        try:
+            principal = await asyncio.to_thread(
+                authenticator.login,
+                fields.get("username", ""),
+                fields.get("password", ""),
+            )
+            principal = verify_channel(principal, expected="ui_basic")
+        except (AuthError, DomainError):
+            # Never the user name or password back, and no WWW-Authenticate.
+            return login_page(target, error=LOGIN_FAILED, status=401)
+        try:
+            issued_at = await asyncio.to_thread(clock.now)
+        except PersistenceError:
+            raise _Refusal(503, "STORAGE_UNAVAILABLE") from None
+        response = RedirectResponse(target, status_code=303)
+        set_session(response, authenticator.issue_session(principal, issued_at))
+        return response
+
+    @app.get("/logout", response_class=HTMLResponse)
+    async def logout_confirm(request: Request) -> Response:
+        # A link cannot carry Origin; the state change is the POST below.
+        # Without a valid session there is nothing to end: like every page,
+        # an HTML GET goes to /login?next=/logout.
+        principal = await ui(request)
+        response = render("logout.html", principal=principal)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.post("/logout")
+    async def logout(request: Request) -> Response:
+        try:
+            authenticator.check_origin(request.headers)
+        except AuthError as exc:
+            raise _Refusal(403, exc.code) from None
+        response = RedirectResponse("/login", status_code=303)
+        set_session(response, None)
+        return response
 
     # -- pages ----------------------------------------------------------
 
@@ -1058,6 +1247,24 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
             else {}
         ),
     }
+
+
+def safe_next(raw: str | None) -> str:
+    """Where the login form sends the browser back: a path on this site.
+
+    Anything else (another host, ``//host``, ``/\\host``, a control
+    character a browser would strip into one of those) is ``/``.
+    """
+    if (
+        not raw
+        or len(raw) > 2048
+        or not raw.startswith("/")
+        or raw.startswith(("//", "/\\"))
+        or "\\" in raw
+        or any(ord(c) < 0x20 or ord(c) == 0x7F for c in raw)
+    ):
+        return "/"
+    return raw
 
 
 def _review_extra(exc: ReviewError) -> dict[str, Any]:

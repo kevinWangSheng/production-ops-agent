@@ -9,6 +9,11 @@ Configuration comes from the environment only, and only as hashes:
 * ``OPSPILOT_EVENT_TOKENS``   ``<sha256 hex>=<actor id>`` entries separated by ``,``.
 * ``OPSPILOT_AUTH_REVISION``  identifier recorded on every principal.
 * ``OPSPILOT_ALLOWED_ORIGINS`` origins accepted for browser form posts.
+* ``OPSPILOT_SESSION_SECRET`` HMAC key of the login form's session cookie
+  (at least 16 bytes; #682). Optional: unset, a random key is generated in
+  this process (one warning at start) and every browser signs in again
+  after a restart. Changing it, or the credential set behind
+  ``OPSPILOT_AUTH_REVISION``, signs every browser out.
 * ``OPSPILOT_BIND``           ``host:port``; defaults to ``127.0.0.1:8080``.
 * ``OPSPILOT_RUN_SECONDS``    Run wall for new Runs (default: the frozen
   ``RUN_WALL_SECONDS``); a dev knob to exercise the deadline sweep, never
@@ -65,6 +70,7 @@ import getpass
 import logging
 import math
 import os
+import secrets
 import sys
 import threading
 from pathlib import Path
@@ -122,6 +128,21 @@ def _run_seconds() -> float:
     if not 0 < value <= RUN_WALL_SECONDS:
         raise SystemExit("OPSPILOT_RUN_SECONDS must be within the frozen wall")
     return value
+
+
+def _session_secret() -> bytes:
+    # Only unset or exactly empty is absent; any other value is the key,
+    # byte for byte (no stripping), so a short one is refused, not ignored.
+    raw = os.environ.get("OPSPILOT_SESSION_SECRET", "")
+    if raw == "":
+        _log.warning(
+            "OPSPILOT_SESSION_SECRET not set; sessions end when the web restarts"
+        )
+        return secrets.token_bytes(32)
+    secret = raw.encode("utf-8")
+    if len(secret) < 16:
+        raise SystemExit("OPSPILOT_SESSION_SECRET must be at least 16 bytes")
+    return secret
 
 
 def _self_heal_interval() -> float:
@@ -260,6 +281,7 @@ def _serve() -> int:
         event_tokens=_pairs(os.environ.get("OPSPILOT_EVENT_TOKENS", "")),
         auth_revision=os.environ.get("OPSPILOT_AUTH_REVISION", "dev"),
         allowed_origins=frozenset(filter(None, origins.split(","))),
+        session_secret=_session_secret(),
     )
     store = DurableStore(dsn)
     store.install()
