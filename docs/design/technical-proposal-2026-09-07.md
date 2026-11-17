@@ -176,6 +176,7 @@ DeepSeek 的 `reasoning_content` 仅作为受限协议状态保存，并在同 p
 
 `ModelProfile.prompt_revision` = L1a 与 L2 的复合版本；`tool_schema_revision` = L3a 的版本。
 **L1b 与 L3b 不进 `versions` 比对**，只记录。
+只在本轮输入里有值班人新消息时才发送的回复说明（工作台重设计 P1，`m0-response-v1`）同样不进 `versions` 比对：它的哈希记在发送了它的那一步的步骤行上，靠重放哈希兜底（2026-11-17 合同 C5）。
 
 L1a 不是单一文本而是一组变体（例如 final-report Run 与多轮调查 Run 的开头不同），
 `discipline_revision` 必须标识变体身份，否则两条路径共用一个版本号而内容不同。

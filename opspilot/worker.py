@@ -222,6 +222,15 @@ class RecoverySession:
             self._abandon_best_effort()
             raise
 
+    def settle_answered(self, *, step_id: UUID) -> bool:
+        """Complete the Run on its ``answered`` step (contract A4); same
+        error disposition as ``publish``."""
+        try:
+            return self.store.settle_answered(self.lease, step_id=step_id)
+        except PersistenceError:
+            self._abandon_best_effort()
+            raise
+
 
 @dataclass
 class Worker:

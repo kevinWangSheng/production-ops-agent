@@ -626,3 +626,38 @@ def test_a_small_event_landing_during_the_compaction_is_sent_with_the_round():
     assert store.steps["ctx1:round-3"]["response"]["context"]["input_watermark"] == 1
     transcript = _transcript(store, request)
     assert transcript.segment == "ctx1" and transcript.next_round == 4
+
+
+def test_a_reply_only_run_never_spends_its_one_request_on_compaction():
+    """Contract A6 (PR #698 bot finding): above the compaction threshold but
+    inside the window, a ``reply_only`` Run sends its answer request as is
+    instead of compacting with its only request."""
+    answer = json.dumps(
+        {
+            "schema_version": "m0-response-v1",
+            "replies": [{"to_input_seq": 1, "text": "hi", "evidence_ids": []}],
+            "report": None,
+        }
+    )
+
+    def run(limits):
+        loop, request, model, _, store, _ = assemble(replies=[reply(content=answer)])
+        store._inputs.append(
+            {"sequence": 1, "kind": "message", "content": {"text": "hello"}}
+        )
+        request = replace(
+            request,
+            conversation={"floor": 0, "mode": "reply_only"},
+            **({} if limits is None else {"limits": limits}),
+        )
+        return loop.run(request), model
+
+    _, dry = run(None)
+    sent = estimate_tokens(dry.calls[0].messages, dry.calls[0].tools)
+    output = 64
+    budget = int(sent / 0.97)  # projected ~97% of the budget: > 95%, fits
+    outcome, model = run(
+        RunLimits(context_tokens=budget + output, output_tokens=output)
+    )
+    assert len(model.calls) == 1 and model.calls[0].tools is None
+    assert outcome.execution == "answered", outcome.handoff_reasons
