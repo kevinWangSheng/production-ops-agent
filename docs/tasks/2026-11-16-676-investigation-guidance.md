@@ -1,7 +1,7 @@
 # #676 下一轮提示词发布：事件读法、重启找触发配置、summary 措辞、告警背景
 
-- 状态：进行中
-- 更新日期：2026-11-16
+- 状态：实现合并（PR #677 `d9af804d`）；全量 `lite-full-1117` 证据入库
+- 更新日期：2026-11-17
 - 依据：issue #676；#664（F3 第 2 步 summary 一致性）；#310（调查方法指导）；全量证据 [lite-full-1116](../evidence/itbench-lite-sre-lite-full-1116/run.md)；上一任务 [#646](2026-11-15-itbench-lite-root-cause.md)
 - 工作区：实现 `feature/676-investigation-guidance`（`../poa-676-impl`）；测试 `test/676-investigation-guidance`（`../poa-676-tests`）
 
@@ -43,6 +43,7 @@
   - 集成批 `lite-batch-676r2`（[记录](../evidence/itbench-lite-sre-lite-batch-676r2/run.md)）：`REPORT_INVALID` 0/16；root_cause_entity_pass 7/16；不含 S12 时根因非 null 14/14；首答重试 10/16，冒烟 4/4，超过约定的约 8/16，14 次重试全部通过（首答被拒原因：JSON 前有文字或用了围栏 5、`cites_non_ok_view` 4、`unknown_evidence_id` 4、缺 `next_steps` 1）。
   - F3 第 3 步 D9：Run `f93ec360`，partial，U6 通过。
   - F3 第 5 步跑了 3 次：`8b06fee1`（supported）、`41b97848`（partial）、`9d3c1236`（partial），`root_cause` 都是 Deployment payment，三次都否定了这次部署；只有 Run 3 查了 `feature_flag_*` 指标，但标签名用错了。确定性判定全过，测试 15/15。rubric 待审查者（[F3 live](../evidence/f3-acceptance-live/run.md)「#676 合同 r2」）。
+- 2026-11-17 全量 `lite-full-1117`（[记录](../evidence/itbench-lite-sre-lite-full-1117/run.md)，F = `d9af804d`，两个 driver 进程并行）：105 个 trial 都跑完并判分，没有作废；103 个 Run 发布报告，2 个 `REPORT_INVALID` 交接；root_cause_entity_pass 0.514（54/105，lite-full-1116 为 0.229）；根因非 null 91/103；结论 supported 51、partial 52；首答重试 39/105（1116 为 50/105）。集成批 8 题单列为 0.333（8/24）。DeepSeek 约 CNY 51.9。
 
 ## 待决
 
