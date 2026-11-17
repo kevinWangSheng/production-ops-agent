@@ -13,6 +13,7 @@
 - [M0 execution plan](plans/m0-validation-plan-2026-09-07.md): reviewed P2 experiment scope, upgrade/recovery and eval rules, resource planning, evidence and implementation handoff. [Isolated-context review](reviews/m0-plan-adversarial-review-2026-09-07.md) records the two closed omissions; experiments have not run.
 
 - [Approved C3 technical plan](design/technical-proposal-2026-09-07.md): current stack direction, recovery/control contracts, release observations, model adaptation, UI, eval, resource candidates and M0–M3. User-reviewed and authorized for persistence; [whole-design review](reviews/technical-design-c3-review-2026-09-07.md) records C1–C3 findings. Compatibility and runtime acceptance remain unproven.
+- [工作台重设计（对标 AWS DevOps Agent）](design/workbench-redesign-2026-11-17.md)：事故页结果在前单页 + 可展开调查日志 + Chat 面板，消息是输入不是控制动作；顶部注明被任务记录取代的条款。设计阶段（2026-11-17）。
 - [网页工作台设计说明](design/web-ui-design-spec-2026-11-15.md)：全部页面共用的颜色、字号、间距取值与版式规则，提炼自用户 2026-11-14 选定的事故页设计稿。设计阶段，未实现（#572）。
 - [DeepSeek V4.1 Flash：模型特性与 prompt / tool description 设计参考](design/deepseek-flash-prompt-tool-reference.md)：以官方模型特性为主体（无状态全量重发、上下文缓存前缀全匹配且价差 50 倍、thinking 与 `reasoning_content` 回传要求、采样参数无效、推理占用 `max_tokens`、JSON 模式硬性要求、工具调用与错误码），并由这些特性推出 prompt 排列顺序与分层、tool description 的 D1–D5、实现前检查清单。参考资料，非验收标准。
 - [ADR-0007](adr/0007-data-access-raw-sql-with-standard-tools.md): keep parameterized SQL (no ORM); Alembic migrations, psycopg_pool and state CHECK constraints as standard tools.
