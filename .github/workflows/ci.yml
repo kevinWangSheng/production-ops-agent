@@ -264,9 +264,6 @@ jobs:
           xpack.security.transport.ssl.enabled: "false"
           xpack.security.authc.api_key.enabled: "true"
           cluster.routing.allocation.disk.threshold_enabled: "false"
-          # The built-in logs-*-* template makes logs-app-a data-stream-only,
-          # so the fixture's PUT /logs-app-a would be refused (B1-20 names).
-          stack.templates.enabled: "false"
           ELASTIC_PASSWORD: changeme560
           ES_JAVA_OPTS: -Xms512m -Xmx512m
           # No built-in logs-*-* templates: the test makes its own data stream.
