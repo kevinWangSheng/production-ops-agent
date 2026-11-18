@@ -126,6 +126,12 @@
 | F12 第 2 步：更正事故关联或假设，保留更正与历史 | `acceptance/test_245_rebind_target.py`、`test_245_merge_into.py`；`test_workbench_conversation.py` 的 `correct` 消息 | `test_f12_acceptance_postgres` 本身没有第 2 步用例，精简前也没有 |
 | F2 第 1 步：重复告警与部署事件按关联策略合并，并发事件保持独立 | `integration/test_f2_acceptance_postgres.py` 的 10 个 `test_step1_*`、`acceptance/test_f2_alert_correlation.py`（19 个） | 两个文件都保留原名 |
 
+### 合并后跟进（#710、#717、#718，2026-11-18）
+
+- #710：`redact_credentials` 新增转义 JSON 规则（`_redact_escaped_quotes`，按引号前的奇数反斜杠层级读值）。`tests/safety/test_safety_tool_gateway.py` 的 CANARIES 加单层与两层转义样例，修复前 14 例红，修复后绿；变异 M36 不需 PG，被抓到。
+- #717：M31 改 `pg=True`、M32 改 `pg=False`。无 PG 跑 `--only M31,M32,M36`：M31 skipped (no PG)、M32 killed、M36 killed。
+- #718：挂起再恢复用例补断言：有 `late_result` 历史行、`late_result_rejected` 在动作里、报告不可用；PG 上 4 例通过。`M1_DURABLE_POSTGRES=1` 跑 `--suite tests/safety --only M33,M31`：M33 killed（该用例本身现在能抓到 M33）、M31 killed。
+
 ## 下一步与交接
 
 - PR1：Draft，等 CI 与独立审查。
