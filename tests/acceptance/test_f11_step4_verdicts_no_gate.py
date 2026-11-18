@@ -117,7 +117,7 @@ def _release_in(env: s.Env, status: str) -> s.Delivered:
     if status == "unknown":
         case = s.deliver(env, released_ago=s.DEADLINE - 4.0)
         env.authorize_pass()
-        env.wait_past(case.record.deadline_at)
+        env.expire_deadline(case.oid)
         env.tick(s.ReleaseWorld())
         return case
     if status == "cancelled":

@@ -188,4 +188,136 @@ MUTATIONS: tuple[Mutation, ...] = (
         '                            b"after 401", (token or "").encode()\n'
         "                        )\n",
     ),
+    Mutation(
+        "M20",
+        "report validation: a claim citing an undelivered evidence id is refused",
+        "opspilot/investigation/reports.py",
+        "        if unknown_ids:\n"
+        "            failures.append(\n"
+        "                ClaimCitationFailure(index, UNKNOWN_EVIDENCE_ID, unknown_ids)\n"
+        "            )\n"
+        "            continue\n"
+        "        if target_catalog is not None:\n",
+        "        if target_catalog is not None:\n",
+    ),
+    Mutation(
+        "M21",
+        "report validation: a fact may not cite a failed or no-data view",
+        "opspilot/investigation/reports.py",
+        "        if non_ok:\n"
+        "            failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))\n"
+        "            continue\n",
+        "",
+    ),
+    Mutation(
+        "M22",
+        "report validation: a claim's target must be one its views observed",
+        "opspilot/investigation/reports.py",
+        "        if any(ref not in observed for ref in claim.target_refs):",
+        "        if False:",
+    ),
+    Mutation(
+        "M23",
+        "report validation: an incomplete investigation is never a finding",
+        "opspilot/investigation/reports.py",
+        '        if self.assessment_status == "incomplete" and (',
+        "        if False and (",
+    ),
+    Mutation(
+        "M24",
+        "report validation: a supported conclusion needs a cited fact",
+        "opspilot/investigation/reports.py",
+        '        if self.conclusion == "supported" and not any(',
+        "        if False and not any(",
+    ),
+    Mutation(
+        "M25",
+        "recovery: the Observer imports nothing from the investigation side",
+        "opspilot/observer/loop.py",
+        "from __future__ import annotations\n",
+        "from __future__ import annotations\n\nimport opspilot.tools.executor  # noqa: F401\n",
+    ),
+    Mutation(
+        "M26",
+        "data egress: traces go only to the allowed LangSmith endpoint",
+        "opspilot/tracing.py",
+        "def _is_langsmith_endpoint(url: str) -> bool:\n",
+        "def _is_langsmith_endpoint(url: str) -> bool:\n    return True\n",
+    ),
+    Mutation(
+        "M27",
+        "credentials: the intake question is redacted before the model sees it",
+        "opspilot/investigation/context.py",
+        '        {"role": "user", "content": redact_credentials(input.question)},\n',
+        '        {"role": "user", "content": input.question},\n',
+        pg=True,
+    ),
+    Mutation(
+        "M28",
+        "credentials: Alertmanager labels and annotations are redacted",
+        "opspilot/alertmanager.py",
+        "def _redacted(value: Any, key: str | None = None) -> Any:\n",
+        "def _redacted(value: Any, key: str | None = None) -> Any:\n    return value\n",
+        pg=True,
+    ),
+    Mutation(
+        "M29",
+        "credentials: workbench messages are redacted before the model sees them",
+        "opspilot/investigation/context.py",
+        "            value = redact_credentials(value)\n",
+        "            pass\n",
+        pg=True,
+    ),
+    Mutation(
+        "M30",
+        "credentials: Observer Prometheus bodies are redacted before storage",
+        "opspilot/observer/prometheus.py",
+        "    return redact_json_bytes(body)\n",
+        "    return body\n",
+    ),
+    Mutation(
+        "M31",
+        "credentials: the evidence page shows redacted raw bytes",
+        "opspilot/web/app.py",
+        "    shown = redact_json_bytes(raw)\n",
+        "    shown = raw\n",
+    ),
+    Mutation(
+        "M32",
+        "credentials: span detail is redacted before it is truncated",
+        "opspilot/tools/otel_demo.py",
+        '    raw = redact_credentials(text).encode("utf-8")\n',
+        '    raw = redact_credentials(\n        text.encode("utf-8")[:MAX_DETAIL_BYTES_PER_FIELD].decode("utf-8", "ignore")\n    ).encode("utf-8")\n',
+        pg=True,
+    ),
+    Mutation(
+        "M33",
+        "human control: a global suspension revokes a held lease (parking and generation)",
+        "opspilot/persistence/base.py",
+        '            or int(row.get("global_generation", 0))\n            != lease.global_suspension_generation\n            or int(row.get("target_generation", 0))\n            != lease.target_suspension_generation\n',
+        "",
+        pg=True,
+        more=(
+            (
+                "opspilot/persistence/controls.py",
+                "\"UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human')\"\n",
+                '"UPDATE opspilot_runs SET state=state WHERE false"\n',
+            ),
+        ),
+    ),
+    Mutation(
+        "M34",
+        "evidence: the postmortem projection calls no model, telemetry or SQL (F13 R12)",
+        "opspilot/acceptance_postmortem.py",
+        "from __future__ import annotations\n",
+        "from __future__ import annotations\n\nimport opspilot.tracing  # noqa: F401\n",
+    ),
+    Mutation(
+        "M35",
+        "credentials: the Chat panel's model input is redacted (workbench P7)",
+        "opspilot/chat/context.py",
+        "    text = redact_credentials(str(value))\n",
+        "    text = str(value)\n",
+        pg=True,
+    ),
 )

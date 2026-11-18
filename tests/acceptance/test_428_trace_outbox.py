@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-pytest_plugins = ("tests.acceptance.test_428_outbox_postgres",)
+pytest_plugins = ("tests.acceptance.issue428_outbox_postgres_support",)
 
 # The delivery-cycle tests below use the PG scratch fixture; gate them like the
 # rest of the PG suite so the offline CI job skips them.
@@ -162,7 +162,7 @@ def test_2xx_marks_rows_delivered_and_posts_otlp(
 ):
     delivery = _delivery()
     from opspilot.persistence.outbox import OutboxStore
-    from tests.acceptance.test_428_outbox_postgres import _insert_pending
+    from tests.acceptance.issue428_outbox_postgres_support import _insert_pending
 
     server, handler = counting_endpoint
     handler.status = status
@@ -206,7 +206,7 @@ def test_2xx_marks_rows_delivered_and_posts_otlp(
 def test_http_status_classes_have_contract_result(delivery_scratch_dsn, status):
     delivery = _delivery()
     from opspilot.persistence.outbox import OutboxStore
-    from tests.acceptance.test_428_outbox_postgres import _insert_pending
+    from tests.acceptance.issue428_outbox_postgres_support import _insert_pending
 
     calls = []
     now = datetime(2026, 11, 1, tzinfo=UTC)

@@ -32,7 +32,7 @@ from opspilot.observation.release_types import (
 from opspilot.observer.prometheus import RESPONSE_LIMIT_BYTES, PrometheusReadOnlySource
 from opspilot.observer.release_evaluation import parse_vector
 from opspilot.observer.sampler import replay_sample, take_sample
-from tests.test_m1_observer import PROFILE, FakeStore, lease
+from tests.m1_observer_support import PROFILE, FakeStore, lease
 
 SECRET = "-".join(("fake", "observer", "credential", "42"))
 AT = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)

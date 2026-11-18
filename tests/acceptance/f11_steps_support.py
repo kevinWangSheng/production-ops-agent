@@ -187,6 +187,32 @@ class Env:
             assert time.monotonic() < stop, f"{moment} did not pass"
             time.sleep(0.2)
 
+    def expire_deadline(self, oid: UUID) -> datetime:
+        """Move a release's frozen deadline to just before now instead of
+        waiting for it on the wall clock (test-suite slim 2026-11-18).
+
+        The release keeps ``deadline_at = released_at + deadline_seconds``
+        (the table CHECK), so ``released_at`` moves back by the same amount;
+        its sessions' ``deadline_at`` copies move with it. Triggers that
+        freeze these columns are off for this one superuser transaction, the
+        construction ``set_authorized_at`` uses. Returns the new deadline."""
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("SET LOCAL session_replication_role = replica")
+            row = conn.execute(
+                "WITH t AS (SELECT clock_timestamp() - interval '1 millisecond' AS at) "
+                "UPDATE opspilot_release_observations SET deadline_at = t.at, "
+                "released_at = t.at - deadline_seconds * interval '1 second' "
+                "FROM t WHERE observation_id=%s RETURNING deadline_at",
+                (oid,),
+            ).fetchone()
+            assert row is not None, oid
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET deadline_at=%s "
+                "WHERE release_observation_id=%s",
+                (row[0], oid),
+            )
+        return row[0]
+
     def set_authorized_at(self, session_id: UUID, at: datetime) -> None:
         """Backdate a session's authorization so windows wholly after it can
         end in the past (the construction the PR-2a/PR-4 tests use; the
@@ -684,7 +710,7 @@ class ReleaseWorld:
         return InstantResult(expr, "no_data", None, body, 200)
 
     def instant_vector(self, expr: str, *, at: datetime, timeout_seconds: int) -> Any:
-        from tests.test_f11_pr2b_acceptance import SENT_AT, _vector_result
+        from tests.f11_pr2b_acceptance_support import SENT_AT, _vector_result
 
         with self._lock:
             self.calls.append(expr)

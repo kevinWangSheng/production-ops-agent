@@ -27,7 +27,7 @@
 | 1 | `test_step1_alert_after_a_release_incident_joins_it_and_claims_it` | 反向顺序：发布事故先开，告警 X 首投 `attached`、`run_id` 为空，Run 仍为 1，控制列不变，priority 取 min；随后 Y 另开事故；X resolved 后仍算认领，Z 也另开事故（1.6，#343 U3-A） |
 | 1 | `test_step1_duplicate_deployment_event_is_replayed_and_a_changed_one_refused` | 发布 webhook 重投返回 `replayed`，观察主体不增加；同 id 内容不同返回 409 `RELEASE_IDENTITY_CONFLICT`（1.7） |
 | 1 | `test_step1_follow_up_after_an_attachment_to_a_concluded_incident_sees_the_event` | 已结论事故收到附加后 follow_up：开出新 Run，模型首个请求含该事件 text 与追问，发布结论（1.8） |
-| 1 | `test_step1_follow_up_after_an_attachment_to_a_handed_off_run_requeues_it` | 强制最终轮 `REPORT_INVALID` 交接后附加，再 follow_up：同一 Run 重新排队，输入逐字节不变（W2-A）；worker 领取后不报 `INCOMPATIBLE_STATE`，有模型调用且含事件 text，最后发布（1.8，C4-A 断言 2，#304） |
+| 1 | ~~`test_step1_follow_up_after_an_attachment_to_a_handed_off_run_requeues_it`~~（#702 删除；附加后追问的现存用例是上一行的 `test_step1_follow_up_after_an_attachment_to_a_concluded_incident_sees_the_event`） | 强制最终轮 `REPORT_INVALID` 交接后附加，再 follow_up：同一 Run 重新排队，输入逐字节不变（W2-A）；worker 领取后不报 `INCOMPATIBLE_STATE`，有模型调用且含事件 text，最后发布（1.8，C4-A 断言 2，#304） |
 | 1（可选） | `test_step1_successor_run_after_attached_episode_reframes_on_new_episode` | #305 W1-B：cancel+new_run 后继 Run 的锚点是附加 episode 的 `startsAt`，框终点是创建时的 DB 时刻（±1 s），框长 24 h，默认窗 `[锚点−1h, 框终点]`（1.9，不作门槛） |
 | 2 | `test_step2_kill_while_the_model_request_is_in_flight_then_resume` | 断点①：同一事故同一 Run；租约未过期时领取被拒（`LEASE_ACTIVE`），过期后 epoch +1；丢失的模型请求只重发 1 次，被杀的预约仍计入用量；工具不重查；已提交的证据保留并被结论引用；`worker_resumed`（2.1–2.6） |
 | 2 | `test_step2_kill_after_the_reply_commits_before_its_tool_runs_then_resume` | 断点②：已提交的计划在恢复后只派发 1 次（`replayed_tools == 1`），模型请求多 1 次（2.1–2.3） |
@@ -49,7 +49,7 @@
 2. **第 5 步 5.5「cancel 后 follow_up 需先 reopen」没有断言。** `opspilot/persistence/controls.py:446-452` 只在 lifecycle 为 `resolved`/`closed` 时返回 `REOPEN_REQUIRED`，而 cancel 不改 lifecycle。预审这条与代码不一致，需要合同方确认。当前测试只断言 cancel 对该 Run 是终态。
 3. **第 4 步 4.7「100 次上限 → `budget_exhausted`」**：一直要工具的模型会在最后一次请求时被强制进入最终轮，结局是交接（`TOOL_PLAN_ON_FINAL`，投影为 `failed`），不是 `budget_exhausted`。`budget_exhausted` 出现在「预算已用完时重启」这条路径上。两条路径都断言了上限与交接，只对后者要求 `budget_exhausted`。
 4. **第 3 步 3.6「报告 gaps 含超时 operation」**：gaps 由模型撰写，脚本化模型下断言没有意义，所以不测；改为断言工具行状态与工作台文案。在 Run 期限之前被卡的 attempt，runner 返回 `control_denied`，明确的交接状态由清扫写出。
-5. 第 3 步 3.5 的线程回基线是进程内的 `threading` 基线，不是 kind 会话里的 `ps -M`（E-R2）。「连续 5 次卡住不累积」引用既有的 [`tests/test_f2_query_deadline_acceptance.py`](../../tests/test_f2_query_deadline_acceptance.py) `test_repeated_stalls_do_not_accumulate_threads_or_connections`，这里不重复。3.2「卡住期间的字节不形成证据」在这里表现为 timeout 结果未被采纳，字节层面由同一文件的 `test_stalled_response_bytes_are_discarded_not_returned` 覆盖。
+5. 第 3 步 3.5 的线程回基线是进程内的 `threading` 基线，不是 kind 会话里的 `ps -M`（E-R2）。原先引用的 `tests/test_f2_query_deadline_acceptance.py`（连续卡住不累积线程或连接、卡住期间的字节不返回）已在 2026-11-18 测试精简中删除；现存覆盖是本文件的 `test_step3_stalled_query_times_out_keeps_the_sibling_and_the_run_completes`（连接关闭、线程回基线、超时结果不采纳）。
 6. 第 2 步 2.5 的「租约到期 + 一个轮询周期」以直接 `resume` 表达：到期前被拒，到期后第一次领取即 epoch +1。
 
 ## 在 `main`（2cc2fcd）上的结果

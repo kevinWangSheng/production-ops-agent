@@ -241,7 +241,7 @@ def test_item3_pause_resume_restarts_tracking_keeps_the_deadline_then_unknown(
     assert fresh.healthy_window_seconds == 0.0, fresh
     assert fresh.release_status == "observing"
 
-    env.wait_past(deadline)
+    deadline = env.expire_deadline(case.oid)
     env.tick(s.ReleaseWorld())
 
     record = env.record(case.oid)
