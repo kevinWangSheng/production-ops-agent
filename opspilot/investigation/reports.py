@@ -130,7 +130,10 @@ class ClaimV2(DTO):
         "rejected_hypothesis",
     ]
     text: Text
-    evidence_ids: list[Text]
+    #: #686 U2: a missing key is an empty list. A hypothesis or
+    #: recommendation may then cite nothing; a fact-like claim without
+    #: evidence is still refused below (FACT_SCOPE_REQUIRED).
+    evidence_ids: list[Text] = Field(default_factory=list)
     target_refs: list[Text] = Field(default_factory=list)
     time_scope_ref: Text | None = None
 
@@ -178,7 +181,8 @@ class ReportV2(DTO):
     summary: Text
     claims: list[ClaimV2]
     gaps: list[Text]
-    next_steps: list[Text]
+    #: #686 U3: a missing key is an empty list (``gaps`` stays required).
+    next_steps: list[Text] = Field(default_factory=list)
     root_cause: RootCauseV3 | None = None
 
     @model_validator(mode="after")
@@ -336,6 +340,8 @@ class ClaimCitationFailure:
     #: a claim (``claim_index`` is then -1). Its only check is
     #: ``unknown_evidence_id``.
     root_cause: bool = False
+    #: #686 D6: for ``missing_target_refs``, the claim's refs that failed.
+    target_refs: tuple[str, ...] = ()
 
 
 def _citation_failures(
@@ -370,17 +376,23 @@ def _citation_failures(
             )
             continue
         if target_catalog is not None:
-            bad_refs = any(
-                ref not in target_catalog for ref in claim.target_refs
-            ) or any(
-                target_catalog[ref] is not None
-                and target_catalog[ref] not in authorized_targets
+            bad_refs = tuple(
+                ref
                 for ref in claim.target_refs
+                if ref not in target_catalog
+                or (
+                    target_catalog[ref] is not None
+                    and target_catalog[ref] not in authorized_targets
+                )
             )
         else:
-            bad_refs = any(ref not in authorized_targets for ref in claim.target_refs)
+            bad_refs = tuple(
+                ref for ref in claim.target_refs if ref not in authorized_targets
+            )
         if bad_refs:
-            failures.append(ClaimCitationFailure(index, MISSING_TARGET_REFS))
+            failures.append(
+                ClaimCitationFailure(index, MISSING_TARGET_REFS, target_refs=bad_refs)
+            )
             continue
         if claim.time_scope_ref is not None and claim.time_scope_ref not in policies:
             failures.append(ClaimCitationFailure(index, MISSING_TIME_SCOPE_REF))
@@ -571,6 +583,126 @@ def _json_parse_position_detail(
     return parse_error
 
 
+# #686 D6: the edit-distance bound for "a few characters copied wrong".
+_MAX_ID_EDITS = 3
+
+
+def _bounded_edits(a: str, b: str, limit: int) -> int | None:
+    """Levenshtein distance of ``a`` and ``b`` when it is at most ``limit``,
+    else ``None``. Only the diagonal band of width ``2 * limit + 1`` is
+    computed, so the cost is linear in the shorter string."""
+    if abs(len(a) - len(b)) > limit:
+        return None
+    big = limit + 1
+    previous = [j if j <= limit else big for j in range(len(b) + 1)]
+    for i in range(1, len(a) + 1):
+        low, high = max(1, i - limit), min(len(b), i + limit)
+        current = [big] * (len(b) + 1)
+        current[0] = i if i <= limit else big
+        for j in range(low, high + 1):
+            current[j] = min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + (a[i - 1] != b[j - 1]),
+                big,
+            )
+        if min(current) > limit:
+            return None
+        previous = current
+    return previous[-1] if previous[-1] <= limit else None
+
+
+def _nearest_evidence_id(bad: str, delivered: Sequence[str]) -> str | None:
+    """#686 D6: the one delivered evidence_id a wrong citation most likely
+    meant, or ``None`` when there is no unique one.
+
+    An operation_id cited alone names the delivered id it prefixes
+    (``f"{operation_id}:{dispatch_id}"``) when exactly one does; otherwise
+    the unique delivered id nearest by edit distance, within
+    ``_MAX_ID_EDITS``. Only ids this Run delivered are ever suggested; the
+    model-authored id is length-checked first so the comparison stays
+    bounded. Never an automatic correction: the claim still failed.
+    """
+    if not delivered or len(bad) > 2 * max(len(eid) for eid in delivered):
+        return None
+    prefixed = [eid for eid in delivered if eid.startswith(bad + ":")]
+    if prefixed:
+        return prefixed[0] if len(prefixed) == 1 else None
+    best: list[str] = []
+    best_distance = _MAX_ID_EDITS + 1
+    for eid in delivered:
+        distance = _bounded_edits(bad, eid, _MAX_ID_EDITS)
+        if distance is None or distance > best_distance:
+            continue
+        if distance < best_distance:
+            best, best_distance = [eid], distance
+        else:
+            best.append(eid)
+    return best[0] if len(best) == 1 else None
+
+
+def _listed_target_refs(
+    *,
+    views: Sequence[DeliveredView],
+    authorized_targets: frozenset[str],
+    target_catalog: Mapping[str, str | None] | None,
+) -> list[str]:
+    """#686 D6: the target_refs a claim may use, as the retry names them.
+
+    With a v4 catalog: its keys that pass the authorization check, in
+    catalog order (the projected context the model already holds). Without
+    one: the authorized registry ids that delivered views observed, sorted
+    -- never an authorized id the model has not been shown.
+    """
+    if target_catalog is not None:
+        return [
+            ref
+            for ref, mapped in target_catalog.items()
+            if mapped is None or mapped in authorized_targets
+        ]
+    observed: set[str] = set()
+    for view in views:
+        observed.update(view.target_ids)
+    return sorted(observed & authorized_targets)
+
+
+def _listed(values: Sequence[str]) -> str:
+    """Comma-joined, capped at ``_MAX_FEEDBACK_ITEMS`` with a count note."""
+    shown = ", ".join(values[:_MAX_FEEDBACK_ITEMS])
+    if len(values) > _MAX_FEEDBACK_ITEMS:
+        shown += f" (+{len(values) - _MAX_FEEDBACK_ITEMS} more not listed)"
+    return shown
+
+
+def _citation_failure_line(
+    failure: ClaimCitationFailure,
+    *,
+    delivered_ids: Sequence[str],
+    allowed_refs: Sequence[str],
+) -> str:
+    line = (
+        "root_cause" if failure.root_cause else f"claim {failure.claim_index}"
+    ) + f": {failure.reason}"
+    # The C2 item itself keeps its bytes; a D6 hint follows it as its own
+    # sentence (``_capped_items`` adds the closing period).
+    if failure.evidence_ids:
+        line += f" (evidence_id: {', '.join(failure.evidence_ids)})"
+    if failure.reason == UNKNOWN_EVIDENCE_ID:
+        hints = [
+            f"{bad} -> {nearest}"
+            for bad in failure.evidence_ids
+            if (nearest := _nearest_evidence_id(bad, delivered_ids)) is not None
+        ]
+        if hints:
+            line += f". Nearest delivered evidence_id: {', '.join(hints)}"
+    if failure.reason == MISSING_TARGET_REFS and failure.target_refs:
+        line += (
+            f". Failing target_refs: {_listed(failure.target_refs)}; allowed "
+            "target_refs: " + (_listed(allowed_refs) if allowed_refs else "none")
+        )
+    return line
+
+
 def _citation_failure_detail(
     report: ReportV2, *, views: Sequence[DeliveredView], **citation_kwargs: object
 ) -> str:
@@ -579,12 +711,27 @@ def _citation_failure_detail(
     produces), capped at 50 with a truncation note, never a view's own
     content -- only the normalized reason and, when the failure is about
     one, the evidence_id(s) implicated.
+
+    #686 D6: an unknown evidence_id also names the unique nearest delivered
+    id (``_nearest_evidence_id``), and ``missing_target_refs`` names the
+    refs that failed and the allowed ones (``_listed_target_refs``). Both
+    come only from this Run's delivered views and projected context.
     """
     failures = _citation_failures(report, views=views, **citation_kwargs)  # type: ignore[arg-type]
+    delivered_ids = [view.evidence_id for view in views]
+    allowed_refs = (
+        _listed_target_refs(
+            views=views,
+            authorized_targets=citation_kwargs.get("authorized_targets", frozenset()),  # type: ignore[arg-type]
+            target_catalog=citation_kwargs.get("target_catalog"),  # type: ignore[arg-type]
+        )
+        if any(f.reason == MISSING_TARGET_REFS for f in failures)
+        else []
+    )
     lines = [
-        ("root_cause" if f.root_cause else f"claim {f.claim_index}")
-        + f": {f.reason}"
-        + (f" (evidence_id: {', '.join(f.evidence_ids)})" if f.evidence_ids else "")
+        _citation_failure_line(
+            f, delivered_ids=delivered_ids, allowed_refs=allowed_refs
+        )
         for f in failures
     ]
     return _capped_items(lines, what="claim(s) failed citation checks")
@@ -1400,7 +1547,8 @@ def reply_instruction(mode: str) -> str:
 class SplitResponse:
     """A final (or early, tool-free) reply split per contract C6.
 
-    ``wrapped`` is true for an ``m0-response-v1`` object; ``replies`` is its
+    ``wrapped`` is true for an ``m0-response-v1`` object, or an object with
+    no ``schema_version`` but a ``replies`` member (#686 Q2); ``replies`` is its
     raw ``replies`` member (``None`` for a bare reply). ``report_content`` is
     the text to validate as a report: the wrapper's ``report`` member
     re-serialized, ``None`` when that member is null, or the reply's own
@@ -1419,9 +1567,11 @@ def split_response(content: str | None) -> SplitResponse:
             payload = json.loads(content, object_pairs_hook=_unique_object)
         except (ValueError, RecursionError):
             payload = None
-        if (
-            isinstance(payload, dict)
-            and payload.get("schema_version") == RESPONSE_SCHEMA_VERSION
+        # #686 Q2: an object with no schema_version but a replies member is
+        # the m0-response-v1 wrapper missing its version tag.
+        if isinstance(payload, dict) and (
+            payload.get("schema_version") == RESPONSE_SCHEMA_VERSION
+            or ("schema_version" not in payload and "replies" in payload)
         ):
             report = payload.get("report")
             return SplitResponse(

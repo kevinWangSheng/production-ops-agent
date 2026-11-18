@@ -822,7 +822,9 @@ class InvestigationLoop:
         call = ModelCall(
             messages=tuple(outbound),
             tools=tools,
-            json_mode=final,
+            # #686 U7/R1/R2: every investigation round (tool rounds included)
+            # asks for JSON mode; only the compaction request keeps it off.
+            json_mode=True,
             max_tokens=request.limits.output_tokens,
             timeout_seconds=timeout,
             model=self.accepted_response_model,
@@ -1282,6 +1284,7 @@ class InvestigationLoop:
         call = ModelCall(
             messages=tuple(outbound),
             tools=None,
+            # #686 R1: the summary is plain text, never JSON mode.
             json_mode=False,
             max_tokens=request.limits.output_tokens,
             timeout_seconds=self._remaining_timeout(state),
