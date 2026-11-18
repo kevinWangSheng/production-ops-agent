@@ -298,6 +298,50 @@ def _api_key(backend: Backend, name: str, indices: list[str]) -> str:
     return body["encoded"]
 
 
+DATA_STREAM = "ds-logs-app"
+LOGS_DS = {
+    "d1": (NOW - timedelta(minutes=45), "checkout", "error", "stream payment declined"),
+    "d2": (NOW - timedelta(minutes=5), "cart", "info", "stream cart updated"),
+    "d-old": (NOW - timedelta(hours=3), "checkout", "error", "stream old outage"),
+    "d-future": (NOW + timedelta(hours=1), "checkout", "error", "stream future"),
+}
+
+
+@pytest.fixture(scope="module")
+def data_stream(elastic) -> str:
+    """A real ES 8 data stream (``logs-*-*`` names are data streams there);
+    the CI container disables the built-in templates, so one is made here."""
+    elastic.call("DELETE", f"/_data_stream/{DATA_STREAM}")
+    status, body = elastic.call(
+        "PUT",
+        "/_index_template/b1-ds-logs",
+        {
+            "index_patterns": ["ds-logs-*"],
+            "data_stream": {},
+            "priority": 500,
+            "template": {
+                "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                "mappings": LOG_MAPPING,
+            },
+        },
+    )
+    assert status == 200, body
+    lines = []
+    for doc_id, source in _log_docs(LOGS_DS).items():
+        lines.append(json.dumps({"create": {"_index": DATA_STREAM, "_id": doc_id}}))
+        lines.append(json.dumps(source))
+    status, body = elastic.call(
+        "POST",
+        "/_bulk?refresh=wait_for",
+        ("\n".join(lines) + "\n").encode(),
+        ndjson=True,
+    )
+    assert status == 200 and body["errors"] is False, body
+    status, body = elastic.call("GET", f"/_data_stream/{DATA_STREAM}")
+    assert status == 200 and body["data_streams"], body
+    return DATA_STREAM
+
+
 @pytest.fixture(scope="module")
 def read_only_key(elastic) -> str:
     return _api_key(elastic, "b1-read-only", ["*"])
@@ -464,6 +508,13 @@ def test_the_time_filter_cannot_be_bypassed(tools):
         )
     )
     assert (everything.status, everything.reason) == ("error", "INVALID_PARAMS")
+
+
+def test_untimed_index_in_a_mixed_pattern_contributes_no_documents(tools):
+    outcome = tools.execute(_call(SEARCH, {"index": "logs-app-a,inventory"}))
+    assert outcome.status == "ok", _view(outcome)
+    assert _ids(outcome) == IN_DEFAULT_WINDOW
+    assert "inventory" in json.dumps(_view(outcome).get("notes"))
 
 
 def test_index_without_time_field_is_unfiltered_with_unknown_source_time(tools):
@@ -669,3 +720,35 @@ def test_read_only_holds_at_both_layers(elastic, read_only_key, es_tools):
             assert status == 403, (method, path, status, answer)
     count, indices, _ = _state(elastic)
     assert (count, indices) == before[:2]
+
+
+def test_the_three_tools_work_on_a_data_stream_with_the_time_filter(
+    es_tools, data_stream
+):
+    listing = es_tools.execute(_call(LIST, {"pattern": data_stream}))
+    assert listing.status == "ok", _view(listing)
+    assert data_stream in _text(listing)  # its backing index is .ds-<name>-...
+
+    mappings = es_tools.execute(_call(MAPPINGS, {"index": data_stream}))
+    assert mappings.status == "ok", _view(mappings)
+    assert "@timestamp" in _text(mappings)
+
+    search = es_tools.execute(_call(SEARCH, {"index": data_stream}))
+    assert search.status == "ok", _view(search)
+    assert _ids(search) == {"d1", "d2"}
+    view = _view(search)
+    assert _instant(view["source_start_at"]) == LOGS_DS["d1"][0]
+    assert _instant(view["source_end_at"]) == LOGS_DS["d2"][0]
+
+    wider = es_tools.execute(
+        _call(
+            SEARCH,
+            {
+                "index": data_stream,
+                "start_time": _z(NOW - timedelta(hours=4)),
+                "end_time": _z(NOW),
+            },
+        )
+    )
+    assert wider.status == "ok", _view(wider)
+    assert _ids(wider) == {"d1", "d2", "d-old"}

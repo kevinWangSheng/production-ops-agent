@@ -110,6 +110,11 @@ LOG_PROPERTIES = {
     "message": {"type": "text"},
     "service": {"type": "keyword"},
     "level": {"type": "keyword"},
+    # Field names that contain forbidden words as substrings (positive controls).
+    "description": {"type": "text"},
+    "subscription": {"type": "keyword"},
+    "parent": {"type": "keyword"},
+    "transcript_id": {"type": "keyword"},
 }
 INVENTORY_PROPERTIES = {
     "sku": {"type": "keyword"},
@@ -158,6 +163,7 @@ class FakeElasticsearch:
             "logs-app-b": LOG_PROPERTIES,
             "inventory": INVENTORY_PROPERTIES,
         }
+        self.runtime: dict[str, dict[str, Any]] = {}  # index -> mappings.runtime
         self.hits: list[dict[str, Any]] = []
         self.total: int | None = None
         self.timed_out = False
@@ -251,9 +257,7 @@ class FakeElasticsearch:
             return (
                 200,
                 {},
-                _json(
-                    {n: {"mappings": {"properties": self.mappings[n]}} for n in names}
-                ),
+                _json({n: {"mappings": self._mapping(n)} for n in names}),
             )
         if kind == "_search":
             if self.search_delay:
@@ -299,6 +303,12 @@ class FakeElasticsearch:
                 ),
             )
         return 405, {}, _json({"error": "method or path not served by the fake"})
+
+    def _mapping(self, name: str) -> dict[str, Any]:
+        body: dict[str, Any] = {"properties": self.mappings[name]}
+        if name in self.runtime:
+            body["runtime"] = self.runtime[name]
+        return body
 
     @staticmethod
     def _with_headers(pair: tuple[int, bytes]) -> tuple[int, dict[str, str], bytes]:
@@ -871,6 +881,89 @@ FORBIDDEN_DSL = [
         [{"_script": {"type": "number", "script": {"source": "1"}, "order": "asc"}}],
     ),
     ("source", {"includes": ["message"], "runtime_mappings": {}}),
+    # Orchestrator ruling (B1-6, C3 §8): any key containing "script", any case.
+    (
+        "query",
+        {
+            "terms_set": {
+                "level": {
+                    "terms": ["error"],
+                    "minimum_should_match_script": {
+                        "source": "Math.min(params.num_terms, 1)"
+                    },
+                }
+            }
+        },
+    ),
+    (
+        "aggregations",
+        {
+            "by_service": {
+                "terms": {"field": "service"},
+                "aggs": {
+                    "ratio": {
+                        "bucket_script": {
+                            "buckets_path": {"n": "_count"},
+                            "script": "params.n",
+                        }
+                    }
+                },
+            }
+        },
+    ),
+    ("query", {"bool": {"filter": [{"Script": {"source": "true"}}]}}),
+    # Clauses that read another index or document.
+    ("query", {"terms": {"user": {"index": "other", "id": "1", "path": "x"}}}),
+    (
+        "query",
+        {
+            "more_like_this": {
+                "fields": ["message"],
+                "like": [{"_index": "other", "_id": "1"}],
+            }
+        },
+    ),
+    (
+        "query",
+        {"percolate": {"field": "query", "index": "other", "id": "1"}},
+    ),
+    (
+        "query",
+        {
+            "geo_shape": {
+                "location": {
+                    "indexed_shape": {"index": "shapes", "id": "1", "path": "shape"}
+                }
+            }
+        },
+    ),
+    # B1-U1: aggregations that read counts or documents outside the window.
+    ("aggregations", {"sig": {"significant_terms": {"field": "service"}}}),
+    (
+        "aggregations",
+        {
+            "sig": {
+                "significant_terms": {
+                    "field": "service",
+                    "background_filter": {"match_all": {}},
+                }
+            }
+        },
+    ),
+    ("aggregations", {"sig": {"significant_text": {"field": "message"}}}),
+    (
+        "aggregations",
+        {
+            "sig": {
+                "significant_text": {
+                    "field": "message",
+                    "background_filter": {"term": {"service": "cart"}},
+                }
+            }
+        },
+    ),
+    ("aggregations", {"kids": {"children": {"type": "answer"}}}),
+    ("aggregations", {"up": {"parent": {"type": "answer"}}}),
 ]
 BAD_JSON = [
     ("query", "{not json"),
@@ -912,6 +1005,29 @@ def test_forbidden_words_as_values_are_searchable(es):
     body = es.search_body()
     assert query in _clauses(body["query"])
     assert _aggs(body)["by_scope"] == aggs["by_scope"]
+
+
+# Orchestrator ruling: the "script" rule is per ``_``-separated token, not a
+# substring, and children/parent/significant_* are refused only as
+# aggregations; field names and values that merely contain them are sent.
+@pytest.mark.parametrize(
+    ("param", "value"),
+    [
+        ("query", {"match": {"description": "timeout"}}),
+        ("query", {"term": {"subscription": "x"}}),
+        ("query", {"term": {"parent": "svc-a"}}),
+        ("sort", [{"transcript_id": "asc"}]),
+    ],
+)
+def test_keys_that_only_contain_forbidden_words_are_sent(es, param, value):
+    outcome = _run(es, SEARCH, {"index": "logs-app-a", param: json.dumps(value)})
+    assert outcome.status in ("ok", "no_data"), _view(outcome)
+    assert len(es.searches()) == 1
+    body = es.search_body()
+    if param == "query":
+        assert value in _clauses(body["query"])
+    else:
+        assert "transcript_id" in json.dumps(body["sort"])
 
 
 # -- ④ the incident-window filter (B1-U1, B1-7) -------------------------------
@@ -1002,6 +1118,67 @@ def test_attempts_to_turn_off_or_escape_the_window_never_search(es, params):
         "WINDOW_OUT_OF_SCOPE",
     )
     assert es.searches() == []
+
+
+@pytest.mark.parametrize("target", ["logs-app-a,inventory", "_all"])
+def test_pattern_mixing_timed_and_untimed_indices_keeps_the_filter(es, target):
+    # Orchestrator ruling (B1-U1): the filter stays; the untimed index adds no
+    # documents (a required range excludes documents without the field) and
+    # the notes name it.
+    es.hits = [_hit("1", NOW - timedelta(minutes=5), message="ok", service="cart")]
+    outcome = _run(es, SEARCH, {"index": target})
+    assert outcome.status == "ok", _view(outcome)
+    body = es.search_body()
+    ranges = _time_ranges(body["query"], "@timestamp")
+    assert [_bounds(r) for r in ranges] == [(DEFAULT_START, NOW)]
+    assert "inventory" in json.dumps(_view(outcome).get("notes"))
+    assert _instant(_view(outcome)["source_start_at"]) == NOW - timedelta(minutes=5)
+
+
+MULTI_FIELD_DATE = {
+    "message": {"type": "text"},
+    "event_time": {"type": "keyword", "fields": {"date": {"type": "date"}}},
+}
+
+
+@pytest.mark.parametrize(
+    ("properties", "runtime", "params", "field", "may_refuse"),
+    [
+        # A runtime @timestamp is the default time field: always filtered.
+        (
+            {"message": {"type": "text"}, "service": {"type": "keyword"}},
+            {"@timestamp": {"type": "date"}},
+            {},
+            "@timestamp",
+            False,
+        ),
+        # A date multi-field named by time_field is filtered on.
+        (
+            MULTI_FIELD_DATE,
+            None,
+            {"time_field": "event_time.date"},
+            "event_time.date",
+            False,
+        ),
+        # Not named: refusing (time field required) is allowed, searching
+        # unfiltered is not.
+        (MULTI_FIELD_DATE, None, {}, "event_time.date", True),
+    ],
+)
+def test_runtime_and_multi_field_dates_count_as_time_fields(
+    es, properties, runtime, params, field, may_refuse
+):
+    es.mappings["odd-logs"] = properties
+    if runtime is not None:
+        es.runtime["odd-logs"] = runtime
+    outcome = _run(es, SEARCH, {"index": "odd-logs", **params})
+    if not es.searches():
+        assert may_refuse, _view(outcome)
+        assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+        return
+    assert outcome.status in ("ok", "no_data"), _view(outcome)
+    ranges = _time_ranges(es.search_body()["query"], field)
+    assert [_bounds(r) for r in ranges] == [(DEFAULT_START, NOW)]
 
 
 def test_index_without_a_time_field_is_unfiltered_and_says_it_cannot_prove_the_window(
