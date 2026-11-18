@@ -1,0 +1,13 @@
+{#- The incident page's changing regions (workbench P3-14), fetched by the
+    page on each event and swapped in place by id. Same data as the page. -#}
+{% import "_incident_regions.html" as r with context -%}
+<div id="live" data-sequence="{{ snapshot.latest_sequence }}">
+<div id="status">{{ r.status() }}</div>
+<div id="actions">{{ r.actions() }}</div>
+<div id="results">{{ r.results() }}</div>
+<span id="log-sum">{{ r.log_summary() }}</span>
+<div id="log">{{ r.log_entries() }}</div>
+<div id="queue-wrap">{{ r.queue() }}</div>
+<div id="composer-wrap">{{ r.composer() }}</div>
+<div id="recovery-verdict">{{ r.recovery() }}</div>
+</div>
