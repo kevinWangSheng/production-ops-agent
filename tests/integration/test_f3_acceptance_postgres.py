@@ -535,7 +535,8 @@ def competing(env) -> dict[str, Any]:
     run_before = env["store"].rebuild(incident)["run"]["run_id"]
     text = _follow_up_text(env["starts"] - timedelta(minutes=8))
     answered = _control(env, incident, "follow_up", 0, text=text)
-    assert answered["generation"] == 1, answered
+    # Workbench contract A1/B3: the message moves no generation.
+    assert answered["generation"] == 0, answered
     provider = ScriptedProvider(
         [
             assistant(
@@ -566,7 +567,7 @@ def competing(env) -> dict[str, Any]:
 def test_step5_alert_follow_up_and_one_run_published(competing) -> None:
     sc = scenario(5, "competing-cause", str(competing["incident"]))
     record = competing["record"]
-    assert scenario_shape_problems(record) == [], sc
+    assert scenario_shape_problems(record, expected_generation=0) == [], sc
     assert record["run_id"] == str(competing["run_before"]), sc
     assert record["outcome"]["final_state"] == "completed", record["outcome"]
 

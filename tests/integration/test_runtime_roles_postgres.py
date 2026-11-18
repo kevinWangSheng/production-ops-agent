@@ -385,7 +385,9 @@ def test_intake_controls_and_investigation_run_under_the_two_roles(
     )
     ((_, outcome),) = first.poll_once()
     assert outcome.status == "handed_off"
-    _control(app, subject, "follow_up", 0, text="Query the metric and cite it.")
+    # Workbench contract D7b: a parked Run without a validated report takes
+    # no message; resume re-queues it.
+    _control(app, subject, "resume", 0)
     second, _ = _worker(
         worker_store,
         worker_events,
@@ -497,7 +499,7 @@ def test_generation_by_the_worker_and_every_review_action_by_the_web(
     h.generate(incident, model)
     assert h.review(incident, "approve").status == 200
     entry, revision, generation = _entry_of(h, incident)
-    follow_up = h.reopen_follow_up(incident, "Re-check the checkout error window.")
+    follow_up = h.reopen_and_reinvestigate(incident)
     assert follow_up.status == 200, follow_up.text
     h.finish_run(incident)
     model.payload = output(ev, supersedes_revision=revision)

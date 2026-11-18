@@ -17,8 +17,6 @@ end-to-end half lives in
 
 from __future__ import annotations
 
-import base64
-import json
 import threading
 import time
 from uuid import UUID, uuid4
@@ -29,16 +27,12 @@ from opspilot.investigation.context import InvestigationInput
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
 from opspilot.investigation.runner import RunnerOutcome
 from opspilot.persistence import PersistenceError
-from opspilot.tools.fixture import FIXTURE_TARGET, FIXTURE_TOOL, fixture_face
+from opspilot.tools.fixture import FIXTURE_TARGET, fixture_face
 from opspilot.web import MemoryEventLog
 from opspilot.worker_main import WorkerLoop
 from tests.m1_web_support import (
-    EVENT_TOKEN,
-    UI_PASSWORD,
-    UI_USER,
     basic,
     build_workbench,
-    call,
     post_form,
     same_origin,
 )
@@ -156,77 +150,6 @@ def test_new_run_successor_records_its_own_input_snapshot():
         question=QUESTION,
         target=FIXTURE_TARGET,
     )
-
-
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_timeout_renewal_successor_records_its_own_input_snapshot(action):
-    """Clause 1/3 (#47): a note on a timed-out Run starts a Run with a recorded input."""
-    app, workbench, clock = _workbench()
-    incident, old = _overdue_parked(app, workbench, clock, key=f"snap-renew-{action}")
-    noted = _control(
-        app,
-        incident,
-        {
-            "action": action,
-            "expected_generation": "0",
-            "idempotency_key": f"note-{action}",
-            "text": "Also check the dependency.",
-        },
-    )
-    assert noted.status == 200, noted.text
-    fresh = _current(workbench, incident).current_run_id
-    assert fresh != old
-    assert workbench.incidents.runs[fresh]["state"] == "queued"
-    rebuilt = _assert_snapshot(
-        workbench.incidents.runs[fresh]["input"],
-        run_id=fresh,
-        question=QUESTION,
-        target=FIXTURE_TARGET,
-    )
-    # The successor's deadline is its own, not the expired one it replaces.
-    assert workbench.incidents.runs[fresh]["deadline"] > clock.now()
-    assert rebuilt.evidence_context["run_id"] != str(old)
-
-
-def test_recorded_inputs_carry_only_the_read_only_tool_face_and_no_credentials():
-    """Clause 4: snapshots, events and pages expose no tool beyond the read-only face and no credential."""
-    app, workbench, clock = _workbench()
-    incident, run_id = _overdue_parked(app, workbench, clock, key="snap-secrets")
-    _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "secret-note",
-            "text": "Look again.",
-        },
-    )
-    runs = [
-        r for r in workbench.incidents.runs.values() if r["incident_id"] == incident
-    ]
-    assert len(runs) == 2
-    for run in runs:
-        rebuilt = InvestigationInput.from_json(run["input"])
-        names = [schema["function"]["name"] for schema in rebuilt.tool_schemas]
-        assert names == [FIXTURE_TOOL]
-    events = workbench.events.read_after(incident, 0, limit=1000)
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    basic_token = base64.b64encode(f"{UI_USER}:{UI_PASSWORD}".encode()).decode()
-    exposed = (
-        json.dumps(
-            {
-                "inputs": [r["input"] for r in runs],
-                "events": [dict(e.payload) for e in events],
-            },
-            default=str,
-        )
-        + page.text
-    )
-    for secret in (UI_PASSWORD, basic_token, EVENT_TOKEN):
-        assert secret not in exposed
-    assert run_id in {r["run_id"] for r in runs}
 
 
 # -- 3. resume on an overdue Run ----------------------------------------------

@@ -172,8 +172,8 @@
         <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
         <input type="hidden" name="idempotency_key" value="{{ action }}-{{ inc.control_generation }}-{{ form_nonce }}">
         <span class="fl">{{ item.hint }}</span>
-        {% if action in ("follow_up", "correct") %}
-          <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
+        {% if action == "message" %}
+          <input name="text" placeholder="message to the investigation" required maxlength="8192">
         {% elif action == "register_remediation" %}
           <input name="revision" placeholder="target revision after handling" required maxlength="256">
         {% elif action == "rebind_target" %}

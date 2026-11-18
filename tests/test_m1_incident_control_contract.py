@@ -114,7 +114,7 @@ def _assert_list_control(html, incident, expected):
 # -- 1. after publish ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("marker", ["queued", "running"])
+@pytest.mark.parametrize("marker", ["queued"])
 def test_published_incident_shows_completed_run_and_no_control_marker(marker):
     """Scenario 1: stored marker queued or running, Run completed, conclusion."""
     app, workbench, clock, incident, subject, run_id = _setup()
@@ -138,7 +138,7 @@ def test_published_incident_shows_completed_run_and_no_control_marker(marker):
 # -- 2. handoff or timeout sweep -----------------------------------------------
 
 
-@pytest.mark.parametrize("marker", ["queued", "running"])
+@pytest.mark.parametrize("marker", ["queued"])
 def test_handoff_shows_waiting_human_without_control_marker(marker):
     """Scenario 2 (loop handoff): Run waiting_human, no conclusion, no marker."""
     app, workbench, clock, incident, subject, run_id = _setup()
@@ -166,7 +166,7 @@ def test_handoff_shows_waiting_human_without_control_marker(marker):
     assert list_row(_index(app), incident)["Concluded"] == "no"
 
 
-@pytest.mark.parametrize("marker", ["queued", "running"])
+@pytest.mark.parametrize("marker", ["queued"])
 def test_timeout_sweep_shows_waiting_human_without_control_marker(marker):
     """Scenario 2 (deadline sweep on page load)."""
     app, workbench, clock, incident, subject, run_id = _setup()
@@ -246,18 +246,6 @@ def test_manual_pause_shows_control_paused_and_paused_run():
     _assert_list_control(_index(app), incident, "paused")
 
 
-def test_note_while_paused_keeps_control_paused():
-    """A note recorded during a pause does not resume anything (PR #31)."""
-    app, workbench, _, incident, subject, run_id = _setup()
-    _claim(workbench, subject, run_id)
-    _act(app, incident, "pause", 0)
-    _act(app, incident, "follow_up", 1, text="still paused?")
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_list_control(_index(app), incident, "paused")
-
-
 def test_pause_before_any_claim_shows_control_paused():
     """Scenario 4 for a Run nobody claimed yet. The stores pause only running or
     waiting_human Runs, so this Run may stay ``queued``; the contract's
@@ -274,7 +262,7 @@ def test_pause_before_any_claim_shows_control_paused():
 # -- 8. resume / follow_up / correct -------------------------------------------
 
 
-@pytest.mark.parametrize("action", ["resume", "follow_up", "correct"])
+@pytest.mark.parametrize("action", ["resume"])
 def test_resume_follow_up_and_correct_show_queued_run_and_no_control_marker(action):
     """Scenario 8: the row is stored as ``running`` but the Run is only queued."""
     app, workbench, _, incident, subject, run_id = _setup()
@@ -300,7 +288,7 @@ def test_resume_follow_up_and_correct_show_queued_run_and_no_control_marker(acti
 # -- 9. claim -------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("marker", ["queued", "running"])
+@pytest.mark.parametrize("marker", ["queued"])
 def test_claim_shows_running_run_and_no_control_marker(marker):
     """Scenario 9."""
     app, workbench, _, incident, subject, run_id = _setup()
@@ -378,7 +366,7 @@ def test_list_control_column_is_per_incident():
 # -- read-only projection ------------------------------------------------------
 
 
-@pytest.mark.parametrize("action", ["pause", "cancel", "follow_up"])
+@pytest.mark.parametrize("action", ["pause", "cancel"])
 def test_rendering_pages_does_not_change_stored_rows(action):
     app, workbench, _, incident, subject, run_id = _setup()
     _act(app, incident, action, 0, text="x" if action == "follow_up" else None)

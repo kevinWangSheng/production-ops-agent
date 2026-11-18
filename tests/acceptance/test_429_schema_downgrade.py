@@ -20,7 +20,7 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0024_trace_outbox"
+CURRENT = "0025_web_session_rebind"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
 

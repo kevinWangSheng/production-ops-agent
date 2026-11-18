@@ -10,8 +10,6 @@ still be registered under human ownership without a new Run.
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from tests.m1_web_support import (
     ScriptedInvestigator,
     basic,
@@ -91,104 +89,6 @@ def test_takeover_withdraws_observation_and_stops_automatic_investigation():
         "register_remediation",
         "takeover",
     ]
-
-
-def test_a_remediation_under_human_ownership_observes_without_investigating():
-    app, workbench, clock = build_workbench(targets=ANY_TARGETS)
-    incident = submit_incident(app).json()["incident_id"]
-    assert (
-        _control(
-            app,
-            incident,
-            {
-                "action": "takeover",
-                "expected_generation": "0",
-                "idempotency_key": "t-1",
-            },
-        ).status
-        == 200
-    )
-    runs_before = set(workbench.incidents.runs)
-    registered = _register(app, incident, 1, "rem-1")
-    assert registered.status == 200, registered.text
-    assert registered.json()["generation"] == 2
-    summary = workbench.list_incidents()[0]
-    assert summary.mode == "human_owned" and summary.lifecycle == "observing_recovery"
-    (session,) = workbench.incidents.sessions
-    assert (
-        session["state"] == "authorized" and session["subject_control_generation"] == 2
-    )
-    # No new Run, nothing claimable, the parked Run untouched.
-    assert set(workbench.incidents.runs) == runs_before
-    assert workbench.incidents.runs[summary.current_run_id]["state"] == "waiting_human"
-    assert workbench.run_once(summary.incident_id, ScriptedInvestigator(clock)) is None
-    # A note is recorded for the human but starts nothing.
-    noted = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "2",
-            "idempotency_key": "f-1",
-            "text": "handled by the on-call engineer",
-        },
-    )
-    assert noted.status == 200 and noted.json()["generation"] == 3
-    assert workbench.incidents.runs[summary.current_run_id]["state"] == "waiting_human"
-    assert (
-        workbench.incidents.inputs[-1]["content"]["text"]
-        == "handled by the on-call engineer"
-    )
-
-
-def test_pause_then_takeover_is_lifted_by_resume_and_notes_outlive_the_deadline():
-    """Review of PR #123, items 1 and 2 through the workbench."""
-    app, workbench, clock = build_workbench(targets=ANY_TARGETS)
-    incident = submit_incident(app).json()["incident_id"]
-    for action, generation, key in (("pause", 0, "p-1"), ("takeover", 1, "t-1")):
-        assert (
-            _control(
-                app,
-                incident,
-                {
-                    "action": action,
-                    "expected_generation": str(generation),
-                    "idempotency_key": key,
-                },
-            ).status
-            == 200
-        )
-    blocked = _register(app, incident, 2, "rem-1")
-    assert (blocked.status, blocked.json()["code"]) == (409, "ILLEGAL_TRANSITION")
-    resumed = _control(
-        app,
-        incident,
-        {"action": "resume", "expected_generation": "2", "idempotency_key": "r-1"},
-    )
-    assert resumed.status == 200 and resumed.json()["generation"] == 3
-    summary = workbench.list_incidents()[0]
-    assert (summary.state, summary.mode) == ("running", "human_owned")
-    run = workbench.incidents.runs[summary.current_run_id]
-    assert run["state"] == "waiting_human"
-    assert _register(app, incident, 3, "rem-2").status == 200
-    assert workbench.run_once(summary.incident_id, ScriptedInvestigator(clock)) is None
-    # Old Run past its deadline: the note is still recorded, nothing renewed.
-    run["deadline"] = clock.now() - timedelta(seconds=1)
-    runs_before = set(workbench.incidents.runs)
-    noted = _control(
-        app,
-        incident,
-        {
-            "action": "correct",
-            "expected_generation": "4",
-            "idempotency_key": "c-1",
-            "text": "human record",
-        },
-    )
-    assert noted.status == 200 and noted.json()["generation"] == 5
-    assert set(workbench.incidents.runs) == runs_before
-    assert run["state"] == "waiting_human"
-    assert workbench.incidents.inputs[-1]["content"]["text"] == "human record"
 
 
 def test_a_repeated_takeover_revokes_a_human_authorized_observation():

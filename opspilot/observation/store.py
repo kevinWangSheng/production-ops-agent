@@ -1450,7 +1450,7 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
             return conn.execute(
-                "SELECT i.incident_id,i.intake_key,COALESCE(a.control_generation,i.control_generation) AS control_generation FROM opspilot_incidents i LEFT JOIN opspilot_self_heal_authorizations a ON a.incident_id=i.incident_id AND a.state='retrying' AND (a.next_attempt_at<=clock_timestamp() OR a.control_generation<>i.control_generation) WHERE a.incident_id IS NOT NULL OR (i.conclusion IS NOT NULL AND i.lifecycle IN ('open','observing_recovery') AND EXISTS (SELECT 1 FROM opspilot_runs r WHERE r.run_id=i.current_run_id AND r.incident_id=i.incident_id AND r.state='completed' AND r.control_generation=i.control_generation) AND NOT EXISTS (SELECT 1 FROM opspilot_self_heal_authorizations d WHERE d.incident_id=i.incident_id AND d.control_generation=i.control_generation)) ORDER BY i.created_at,i.incident_id,control_generation LIMIT %s",
+                "SELECT i.incident_id,i.intake_key,COALESCE(a.control_generation,i.control_generation) AS control_generation FROM opspilot_incidents i LEFT JOIN opspilot_self_heal_authorizations a ON a.incident_id=i.incident_id AND a.state='retrying' AND (a.next_attempt_at<=clock_timestamp() OR a.control_generation<>i.control_generation) WHERE a.incident_id IS NOT NULL OR (i.conclusion IS NOT NULL AND i.lifecycle IN ('open','observing_recovery') AND EXISTS (SELECT 1 FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id WHERE r.incident_id=i.incident_id AND s.status<>'late_result' AND s.response=i.conclusion AND s.control_generation=i.control_generation) AND NOT EXISTS (SELECT 1 FROM opspilot_self_heal_authorizations d WHERE d.incident_id=i.incident_id AND d.control_generation=i.control_generation)) ORDER BY i.created_at,i.incident_id,control_generation LIMIT %s",
                 (limit,),
             ).fetchall()
 
@@ -1664,9 +1664,15 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
         conn: Connection, incident_id: UUID, *, skip_locked: bool
     ) -> dict[str, Any] | None:
         """The incident row an automatic-observation decision is taken under,
-        locked, with whether its current Run published at its generation."""
+        locked, with whether its conclusion was published at its generation.
+
+        Workbench contract A7: "published here" is read from the Run that
+        published the current conclusion (its conclusion step equals the
+        incident's conclusion and carries the current generation), never
+        from the current Run -- a continuation Run answering a message must
+        neither grant nor forfeit the generation's automatic decision."""
         return conn.execute(
-            "SELECT i.incident_id,i.lifecycle,i.mode,i.state,i.control_generation,i.observation_generation,i.target_id,i.conclusion IS NOT NULL AS concluded,r.state='completed' AND r.control_generation=i.control_generation AS published_here FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id WHERE i.incident_id=%s FOR UPDATE OF i"
+            "SELECT i.incident_id,i.lifecycle,i.mode,i.state,i.control_generation,i.observation_generation,i.target_id,i.conclusion IS NOT NULL AS concluded,EXISTS (SELECT 1 FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id WHERE r.incident_id=i.incident_id AND s.status<>'late_result' AND s.response=i.conclusion AND s.control_generation=i.control_generation) AS published_here FROM opspilot_incidents i WHERE i.incident_id=%s FOR UPDATE OF i"
             + (" SKIP LOCKED" if skip_locked else ""),
             (incident_id,),
         ).fetchone()

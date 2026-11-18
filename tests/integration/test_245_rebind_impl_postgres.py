@@ -431,7 +431,7 @@ def _current_input(store, incident):
     return store.rebuild(incident)["run"]["input"]
 
 
-@pytest.mark.parametrize("successor", ["follow_up", "new_run"])
+@pytest.mark.parametrize("successor", ["new_run"])
 def test_successor_after_rebind_is_fresh_over_the_new_target(env, successor):
     app, _, store, incident = env
     first = _current_input(store, incident)
@@ -455,16 +455,6 @@ def test_successor_after_rebind_is_fresh_over_the_new_target(env, successor):
         "namespace": "otel-demo",
         "workload": "checkout-canary",
     }
-
-
-def test_successor_without_rebind_is_still_a_continuation(env):
-    app, _, store, incident = env
-    assert _control(app, incident, 0, "cancel").status == 200
-    response = _control(app, incident, 1, "follow_up", text="again")
-    assert response.status == 200, response.text
-    new = _current_input(store, incident)
-    assert new["bound_target_id"] == "checkout-prod"
-    assert new["question"].startswith(QUESTION) and new["question"] != QUESTION
 
 
 def test_observation_after_rebind_resolves_the_new_target(web_dsn):

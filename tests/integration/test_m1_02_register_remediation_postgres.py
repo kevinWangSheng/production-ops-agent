@@ -464,46 +464,6 @@ def test_pause_and_cancel_revoke_the_authorization_in_their_transaction(
     assert [s["state"] for s in sessions] == ["revoked", "authorized"]
 
 
-def test_a_renewal_on_an_overdue_run_revokes_and_reopens_in_one_transaction(
-    owner: DurableStore, controller: ObservationStore
-) -> None:
-    """The step 2 risk: the renewal path writes the lifecycle back to open;
-    it must end the session in the same transaction, with the ending record
-    taken before the lifecycle moved."""
-    incident, run, _, _ = _incident(owner)
-    assert _register(controller, incident, expected=0) == 1
-    with owner.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
-            (run,),
-        )
-    fresh = uuid4()
-    assert (
-        owner.control(
-            incident,
-            1,
-            "follow_up",
-            "operator",
-            {"text": "also check the rollout", "channel": "web"},
-            renew_run_id=fresh,
-            renew_deadline=_now() + timedelta(minutes=5),
-        )
-        == 2
-    )
-    row = _incident_row(owner, incident)
-    assert (row["lifecycle"], row["control_generation"]) == ("open", 2)
-    (session,) = _sessions(owner, incident)
-    assert (session["state"], session["ended_reason"]) == (
-        "revoked",
-        "authority_revoked",
-    )
-    (ending,) = _endings(owner, incident)
-    assert (ending["lifecycle_before"], ending["lifecycle_after"]) == (
-        "observing_recovery",
-        "observing_recovery",
-    )
-
-
 def test_a_new_run_after_cancel_revokes_a_session_registered_in_between(
     owner: DurableStore, controller: ObservationStore
 ) -> None:

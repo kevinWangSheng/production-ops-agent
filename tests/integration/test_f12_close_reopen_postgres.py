@@ -17,7 +17,6 @@ from tests.integration.test_m1_02_observation_store_postgres import (
 )
 from tests.integration.test_m1_incident_control_postgres import _rows, _submit
 from tests.integration.test_m1_web_postgres import _build
-from tests.m1_web_support import basic, call, post_form, same_origin
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -99,40 +98,6 @@ def test_reopen_preserves_runs_and_mirrors(env, lifecycle, mode):
         "observation_generation",
     ):
         assert after[key] == before[key]
-
-
-def test_web_close_reopen_then_followup_starts_successor(env):
-    app, workbench, store, subject = env
-    old_run = _rows(store, subject)[0]["current_run_id"]
-    for generation, action, extra in [
-        (0, "close", {}),
-        (1, "reopen", {}),
-        (2, "follow_up", {"text": "Continue checking"}),
-    ]:
-        response = post_form(
-            app,
-            f"/incidents/{subject}/control",
-            {
-                "action": action,
-                "expected_generation": str(generation),
-                "idempotency_key": str(uuid4()),
-                **extra,
-            },
-            headers={**basic(), **same_origin()},
-        )
-        assert response.status == 200, response.text
-        assert (
-            response.json().get("run_id") is None
-            if action != "follow_up"
-            else response.json().get("run_id") is not None
-        )
-        if action == "close":
-            page = call(app, "GET", f"/incidents/{subject}", headers=basic()).text
-            assert 'id="incident-lifecycle">closed' in page
-            assert "Automatic work stopped" in page
-    inc, runs = _rows(store, subject)
-    assert len(runs) == 2 and inc["current_run_id"] != old_run
-    assert next(r for r in runs if r["run_id"] == old_run)["state"] == "cancelled"
 
 
 def test_close_revokes_observation_and_becomes_generation_candidate():

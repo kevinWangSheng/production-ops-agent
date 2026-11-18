@@ -1,0 +1,340 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "dc3efd1b-3d65-5964-8a16-21a1ecba6924",
+  "frozen_at": "2026-11-18T03:06:57.620232+00:00",
+  "incident_id": "72b54f8e-3cfe-5be2-b9ac-1c0a2103b595",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-18T03:06:20.588412+00:00",
+  "ended": "2026-11-18T03:06:51.076714+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "fixture",
+  "verdicts": {
+    "status": "published",
+    "reason": null,
+    "last_status": "answered",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": true,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      },
+      {
+        "label": "after-message",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      },
+      {
+        "label": "after-reply-only-message",
+        "status": "answered",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": {
+      "action": "close",
+      "status": 200,
+      "incident_id": "72b54f8e-3cfe-5be2-b9ac-1c0a2103b595",
+      "generation": 1,
+      "replayed": false,
+      "sequence": 13
+    },
+    "event_kinds": [
+      "intake_accepted",
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_completed",
+      "run_resumed",
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_completed",
+      "control_applied",
+      "run_resumed",
+      "run_claimed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 3,
+    "http_count": 5,
+    "prompt_tokens": 16238,
+    "completion_tokens": 5143,
+    "run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 8.322229166515172,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "current_run_id": "058e922a-ff1c-5634-afaf-3d3388ff0428",
+    "current_run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 1,
+      "model_seconds_used": 7.157517333049327,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "200f5cb7-9d31-4945-bf41-970b8cc34043-t0:3203b7db-379c-4fa9-b355-c3898ee5ded1",
+      "f81f5539-da89-44fd-b270-131d9083883c-t0:06198dae-451e-4aaa-8f4f-af61f5373c1c"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.080614
+  },
+  "report": null,
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "conclusion:g1:ctx0:round-1"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 1,
+    "next_round": 2,
+    "evidence_ids": [
+      "200f5cb7-9d31-4945-bf41-970b8cc34043-t0:3203b7db-379c-4fa9-b355-c3898ee5ded1",
+      "f81f5539-da89-44fd-b270-131d9083883c-t0:06198dae-451e-4aaa-8f4f-af61f5373c1c"
+    ]
+  },
+  "citations": null,
+  "report_content_sha256": null,
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "ef8fd5d6c9b34d4764b10369a781d80c",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-workbench-p2",
+    "project_id": "98c56dd8-ac1f-4247-8db1-8be275d09273",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-217a-8fd9119d7aad",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/98c56dd8-ac1f-4247-8db1-8be275d09273/r/00000000-0000-0000-217a-8fd9119d7aad?poll=true",
+    "read_back": "found"
+  },
+  "conversation": {
+    "run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+    "relay_run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+    "mode": "report_optional",
+    "floor": 0,
+    "input_seq": 1,
+    "text": "你好，这个结论现在还成立吗？",
+    "http": {
+      "action": "message",
+      "generation": 0,
+      "replayed": false,
+      "sequence": 1,
+      "run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+      "input_sequence": 1
+    },
+    "before": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": "14817dfd500397dabc25a9f59edae475baa0a6aab8deb9a77466e459e201fef8"
+    },
+    "run_state": "completed",
+    "tool_operations_used": 0,
+    "steps": [
+      {
+        "logical_key": "ctx0:round-1",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 1,
+        "note": null,
+        "replies": [],
+        "final": false
+      },
+      {
+        "logical_key": "ctx0:round-2",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 0,
+        "note": null,
+        "replies": null,
+        "final": false
+      }
+    ],
+    "terminal": {
+      "execution": "completed",
+      "handoff": false,
+      "handoff_reasons": [],
+      "replies": [
+        {
+          "text": "结论仍然成立，并且本次重新查询得到的数值没有变化。在本 Run 中对 checkout-prod 重新执行一次 rate(http_errors[5m])（授权窗口 2026-09-14T00:00:00Z 至 2026-09-14T01:00:00Z），返回 1 条结果，指标名 http_errors_rate，值 0.042，与该视图此前 adopted view 中的读数一致（同为单条读数，不是多采样点时间序列）。因此“checkout 在授权窗口内的 HTTP 错误率为 0.042”这一事实仍然成立；但仍然没有可比基线，也没有 operation/路由/状态码标签拆分，证据中亦未说明该值的单位（每秒错误数还是错误比例），所以不能判断 0.042 是高还是低，也不能归因到具体的 checkout 接口。",
+          "evidence_ids": [
+            "f81f5539-da89-44fd-b270-131d9083883c-t0:06198dae-451e-4aaa-8f4f-af61f5373c1c",
+            "200f5cb7-9d31-4945-bf41-970b8cc34043-t0:3203b7db-379c-4fa9-b355-c3898ee5ded1"
+          ],
+          "to_input_seq": 1
+        }
+      ],
+      "report_rejected_reason": null,
+      "report_content_sha256": "0f379d4005a4af06f190e9da06100f1dc1b2125ab952f64e33012b6c02f2f50e",
+      "model_requests_used": 2,
+      "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+    },
+    "after": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": "0a0d6f9e1421261784ebd51bd8a7dd589fbec97a8d51fd47e35d6b1685df4657"
+    },
+    "conclusion_unchanged": false
+  },
+  "conversations": [
+    {
+      "run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+      "relay_run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+      "mode": "report_optional",
+      "floor": 0,
+      "input_seq": 1,
+      "text": "你好，这个结论现在还成立吗？",
+      "http": {
+        "action": "message",
+        "generation": 0,
+        "replayed": false,
+        "sequence": 1,
+        "run_id": "04ca0778-b490-5143-b85c-f4bf2e36fe83",
+        "input_sequence": 1
+      },
+      "before": {
+        "control_generation": 0,
+        "lifecycle": "open",
+        "conclusion_sha256": "14817dfd500397dabc25a9f59edae475baa0a6aab8deb9a77466e459e201fef8"
+      },
+      "run_state": "completed",
+      "tool_operations_used": 0,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "input_watermark": 1,
+          "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+          "tool_calls": 1,
+          "note": null,
+          "replies": [],
+          "final": false
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "input_watermark": 1,
+          "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+          "tool_calls": 0,
+          "note": null,
+          "replies": null,
+          "final": false
+        }
+      ],
+      "terminal": {
+        "execution": "completed",
+        "handoff": false,
+        "handoff_reasons": [],
+        "replies": [
+          {
+            "text": "结论仍然成立，并且本次重新查询得到的数值没有变化。在本 Run 中对 checkout-prod 重新执行一次 rate(http_errors[5m])（授权窗口 2026-09-14T00:00:00Z 至 2026-09-14T01:00:00Z），返回 1 条结果，指标名 http_errors_rate，值 0.042，与该视图此前 adopted view 中的读数一致（同为单条读数，不是多采样点时间序列）。因此“checkout 在授权窗口内的 HTTP 错误率为 0.042”这一事实仍然成立；但仍然没有可比基线，也没有 operation/路由/状态码标签拆分，证据中亦未说明该值的单位（每秒错误数还是错误比例），所以不能判断 0.042 是高还是低，也不能归因到具体的 checkout 接口。",
+            "evidence_ids": [
+              "f81f5539-da89-44fd-b270-131d9083883c-t0:06198dae-451e-4aaa-8f4f-af61f5373c1c",
+              "200f5cb7-9d31-4945-bf41-970b8cc34043-t0:3203b7db-379c-4fa9-b355-c3898ee5ded1"
+            ],
+            "to_input_seq": 1
+          }
+        ],
+        "report_rejected_reason": null,
+        "report_content_sha256": "0f379d4005a4af06f190e9da06100f1dc1b2125ab952f64e33012b6c02f2f50e",
+        "model_requests_used": 2,
+        "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+      },
+      "after": {
+        "control_generation": 0,
+        "lifecycle": "open",
+        "conclusion_sha256": "0a0d6f9e1421261784ebd51bd8a7dd589fbec97a8d51fd47e35d6b1685df4657"
+      },
+      "conclusion_unchanged": false
+    },
+    {
+      "run_id": "058e922a-ff1c-5634-afaf-3d3388ff0428",
+      "relay_run_id": "058e922a-ff1c-5634-afaf-3d3388ff0428",
+      "mode": "reply_only",
+      "floor": 1,
+      "input_seq": 2,
+      "text": "谢谢。关闭之后还有需要注意的吗？",
+      "http": {
+        "action": "message",
+        "generation": 1,
+        "replayed": false,
+        "sequence": 2,
+        "run_id": "058e922a-ff1c-5634-afaf-3d3388ff0428",
+        "input_sequence": 2
+      },
+      "before": {
+        "control_generation": 1,
+        "lifecycle": "closed",
+        "conclusion_sha256": "0a0d6f9e1421261784ebd51bd8a7dd589fbec97a8d51fd47e35d6b1685df4657"
+      },
+      "run_state": "completed",
+      "tool_operations_used": 0,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "input_watermark": 2,
+          "reply_instruction_sha256": "24286dd5284d4d015afea31e6819b1107ab7ae893a40a11c24e8e3359f6233a3",
+          "tool_calls": 0,
+          "note": null,
+          "replies": null,
+          "final": true
+        }
+      ],
+      "terminal": {
+        "execution": "answered",
+        "handoff": false,
+        "handoff_reasons": [],
+        "replies": [
+          {
+            "text": "不客气。本 Run 没有工具可用，以下基于已经交付的证据，并区分事实与建议。\n\n事实层面：此前对 checkout-prod 的查询返回一条结果，指标 http_errors_rate，值 0.042（授权窗口 2026-09-14T00:00:00Z 至 2026-09-14T01:00:00Z，单个读数而非多采样点时间序列）。\n\n关闭后仍建议留意（均为未知项/建议，不是已观测事实）：\n1) 该读数没有可比基线（前一窗口或同侪服务），因此 0.042 的高低与走向仍无法判断；若后续要判断健康度，需在同一 target 上补一个相邻基线窗口做对比。\n2) 只返回了聚合值，没有 operation、路由、状态码等标签拆分，无法归因到某个具体 checkout 接口。\n3) 证据未说明 http_errors_rate 的单位与聚合语义，对外汇报时不要自行表述为百分比或每秒错误数，建议先与指标负责人确认。\n4) 该读数代表整个一小时窗口还是窗口内某一点尚不清楚（data_as_of 与窗口起点的关系），重复关闭后再开单时请重新查询当前状态，而不是沿用这条读数。\n5) traces、kubernetes_state、pod_logs、change_history 在本 Run 均未接入，所以 span 级错误归因、Pod/工作负载状态、日志文本和部署变更都未被检查过——它们的缺失不代表健康；若之后错误率异常，需要另开 Run 拉取这些证据。",
+            "evidence_ids": [
+              "200f5cb7-9d31-4945-bf41-970b8cc34043-t0:3203b7db-379c-4fa9-b355-c3898ee5ded1",
+              "f81f5539-da89-44fd-b270-131d9083883c-t0:06198dae-451e-4aaa-8f4f-af61f5373c1c"
+            ],
+            "to_input_seq": 2
+          }
+        ],
+        "report_rejected_reason": null,
+        "report_content_sha256": null,
+        "model_requests_used": 1,
+        "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+      },
+      "after": {
+        "control_generation": 1,
+        "lifecycle": "closed",
+        "conclusion_sha256": "0a0d6f9e1421261784ebd51bd8a7dd589fbec97a8d51fd47e35d6b1685df4657"
+      },
+      "conclusion_unchanged": true
+    }
+  ],
+  "raw_ledger": {
+    "sha256": "66652a68b7bf0283c59e41fa7c61fb689538e35b6fc3e4d279fabfb0ba1f7dd2",
+    "bytes": 24486,
+    "path": "m1-01-handoff-runner/dc3efd1b-3d65-5964-8a16-21a1ecba6924/ledger.json",
+    "in_repository": false
+  }
+}

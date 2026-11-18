@@ -119,7 +119,6 @@ def _audit_rows(store, incident):
         ("cancel", (), {}),
         ("resume", (), {}),
         ("new_run", ("cancel",), {}),
-        ("correct", (), {"text": "Same note twice."}),
     ],
 )
 def test_crash_recovery_on_postgres_confirms_only_the_key_on_the_audit_row(

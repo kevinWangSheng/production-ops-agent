@@ -136,7 +136,9 @@ def test_a_human_requeue_counts_but_is_never_parked_again(store):
     high = _accept(store, priority=0, minutes=30)
     [(parked, _, generation)] = store.park_backlog(max_queued=1)
     assert parked == low and generation == 0
-    store.control(low, _generation(low), "follow_up", "oncall", {"note": "look again"})
+    # Workbench contract D7b: resume re-queues the parked Run (a note is a
+    # message input since P2 and re-queues nothing).
+    store.control(low, _generation(low), "resume", "oncall")
     assert _states([low])[low] == "queued"
     # Two queued over a cap of one: the only Run a human never touched is
     # the critical one, so it is the one parked; the re-queued one stays.

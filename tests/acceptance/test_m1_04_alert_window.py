@@ -60,9 +60,7 @@ from tests.m1_web_support import (
     basic,
     bearer,
     call,
-    post_form,
     post_json,
-    same_origin,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -438,103 +436,6 @@ def test_j4_public_scope_readers_preserve_default_alert_query_window(harness, da
     with pytest.raises(ContextError) as excinfo:
         scope_default_query_window(InvestigationInput.from_json(invalid))
     assert getattr(excinfo.value, "code", None) == "SCOPE_WINDOW_MISSING"
-
-
-def test_j5_timeout_continuation_and_fresh_fallback_keep_alert_anchor(
-    harness, database
-):
-    # Timeout continuation: the public control route creates a successor and
-    # r7's run_inputs exposes both committed snapshots in run_ids order.
-    starts_at = (_db_now(database) - timedelta(minutes=30)).replace(microsecond=0)
-    alert = _alert(starts_at=starts_at.isoformat().replace("+00:00", "Z"))
-    created = _send(harness, alert)
-    assert created.status == 200
-    incident_id = created.json()["results"][0]["incident_id"]
-    before = _project(database, incident_id)
-    assert len(before.run_ids) == 1 and len(before.run_inputs) == 1
-    first_input = before.run_inputs[0]
-    assert first_input is not None
-
-    with psycopg.connect(database) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline = clock_timestamp() "
-            "- interval '1 second' WHERE run_id = %s",
-            (before.run_ids[0],),
-        )
-    generation = _generation(harness, incident_id)
-    renewed = post_form(
-        harness,
-        f"/incidents/{incident_id}/control",
-        {
-            "action": "follow_up",
-            "text": "continue from the alert evidence",
-            "expected_generation": str(generation),
-            "idempotency_key": f"alert-renew-{uuid4().hex}",
-        },
-        headers={**basic(), **same_origin(), "accept": "application/json"},
-    )
-    assert renewed.status == 200, renewed.text
-    after = _project(database, incident_id)
-    assert len(after.run_ids) == 2
-    assert len(after.run_inputs) == 2
-    successor = after.run_inputs[1]
-    assert successor is not None
-    assert _time_contract(successor) == _time_contract(first_input)
-    assert successor["version"] == "opspilot-investigation-input-v4"
-    assert successor["evidence_context"]["run_id"] == after.run_ids[1]
-    assert successor["question"].startswith(first_input["question"])
-
-    # Fresh fallback: erase only the current input snapshot, then replay the
-    # identity before renewal.  The rebuilt frame must use the first delivery.
-    fresh_alert = _alert(
-        starts_at=(
-            (_db_now(database) - timedelta(minutes=45))
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
-    )
-    fresh_created = _send(harness, fresh_alert)
-    assert fresh_created.status == 200
-    fresh_incident = fresh_created.json()["results"][0]["incident_id"]
-    initial = _project(database, fresh_incident)
-    original_input = initial.run_inputs[0]
-    assert original_input is not None
-    first_received = initial.deliveries[0].received_at
-    replay = _send(harness, fresh_alert)
-    assert replay.status == 200
-    assert replay.json()["results"][0]["outcome"] == "replayed"
-    with psycopg.connect(database) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET input = NULL, deadline = clock_timestamp() "
-            "- interval '1 second' WHERE run_id = %s",
-            (initial.run_ids[0],),
-        )
-    generation = _generation(harness, fresh_incident)
-    fallback = post_form(
-        harness,
-        f"/incidents/{fresh_incident}/control",
-        {
-            "action": "follow_up",
-            "text": "rebuild the alert run",
-            "expected_generation": str(generation),
-            "idempotency_key": f"alert-fresh-{uuid4().hex}",
-        },
-        headers={**basic(), **same_origin(), "accept": "application/json"},
-    )
-    assert fallback.status == 200, fallback.text
-    rebuilt = _project(database, fresh_incident)
-    assert len(rebuilt.run_ids) == 2
-    assert rebuilt.run_inputs[0] is None
-    fresh_input = rebuilt.run_inputs[1]
-    assert fresh_input is not None
-    assert _time_contract(fresh_input) == _time_contract(original_input)
-    assert fresh_input["scope_facts"]["affected_service"] == {
-        "namespace": "otel-demo",
-        "workload": "checkout",
-    }
-    assert fresh_input["question"] == original_input["question"]
-    assert rebuilt.deliveries[0].received_at == first_received
 
 
 def test_f4_old_worker_input_reader_rejects_v3_as_incompatible(

@@ -28,7 +28,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.investigation.context import continuation_context
-from opspilot.persistence import PersistenceError
 from tests.integration.test_m1_web_worker_postgres import (
     _build,
     _control,
@@ -218,41 +217,6 @@ def _assert_new_run_opened(env, action, generation, text):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "action,text",
-    [
-        ("follow_up", "Check the payments dependency as well."),
-        (
-            "correct",
-            "Added fact: payments was redeployed at 10:02; the latency hypothesis is wrong.",
-        ),
-    ],
-)
-def test_note_after_conclusion_opens_new_run_and_page_keeps_history(action, text):
-    env = _concluded(action)
-    _ok(_act(env, action, 0, text), 1)
-    new_run = _assert_new_run_opened(env, action, 1, text)
-    assert _runs(env)[env.old_run]["state"] == "completed"
-    assert _incident(env)["lifecycle"] == "open"
-
-    new_summary = f"Updated assessment after the human note {uuid4().hex[:10]}."
-    _publish(env, new_summary, "Payments redeploy is the more likely cause.")
-    rebuilt = env.store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] == new_run
-    assert rebuilt["run"]["state"] == "completed"
-    assert rebuilt["conclusion"] is not None
-    assert _runs(env)[env.old_run]["state"] == "completed"
-
-    snapshot = env.workbench.snapshot(env.subject)
-    assert snapshot["report"] is not None
-    assert snapshot["report"]["summary"] == new_summary
-    page = _page(env)
-    assert new_summary in page
-    history = _section(page, "Investigation history")
-    assert str(env.old_run) in history
-    assert env.old_summary in history
-
-
 def test_note_after_conclusion_needs_authentication_and_same_origin():
     env = _concluded("auth")
     fields = ("follow_up", 0, "Check the payments dependency as well.")
@@ -273,38 +237,6 @@ def test_note_after_conclusion_needs_authentication_and_same_origin():
 # --------------------------------------------------------------------------
 # 2. follow_up after cancel opens a new Run (U1-A "已取消的事故")
 # --------------------------------------------------------------------------
-
-
-def test_follow_up_after_cancel_opens_new_run():
-    # Cancel is refused once a conclusion exists (item 3), so this incident is
-    # cancelled before its first Run publishes.
-    app, workbench, store, events, evidence = _build()
-    submitted = _submit(app, f"f12-pr1-cancel-{uuid4()}")
-    env = SimpleNamespace(
-        app=app,
-        workbench=workbench,
-        store=store,
-        events=events,
-        evidence=evidence,
-        subject=UUID(submitted["incident_id"]),
-        old_run=UUID(submitted["run_id"]),
-    )
-    _ok(_act(env, "cancel", 0), 1)
-    assert _incident(env)["state"] == "cancelled"
-    assert _runs(env)[env.old_run]["state"] == "cancelled"
-    assert not _claimable(env)
-
-    text = "Please investigate again, the errors are back."
-    _ok(_act(env, "follow_up", 1, text), 2)
-    new_run = _assert_new_run_opened(env, "follow_up", 2, text)
-    assert _runs(env)[env.old_run]["state"] == "cancelled"
-
-    summary = f"Investigation after the cancel {uuid4().hex[:10]}."
-    _publish(env, summary, "A dependency regression is plausible.")
-    rebuilt = store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] == new_run
-    assert rebuilt["run"]["state"] == "completed"
-    assert summary in _page(env)
 
 
 # --------------------------------------------------------------------------
@@ -331,129 +263,14 @@ def test_pause_resume_cancel_after_conclusion_stay_refused(action):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-@pytest.mark.parametrize("mode", ["automatic", "human_owned"])
-@pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
-def test_note_on_resolved_or_closed_incident_requires_reopen(lifecycle, mode, action):
-    """Contract r2: REOPEN_REQUIRED only for a note that would open a new Run
-    (automatic mode, conclusion published); human_owned notes are recorded."""
-    env = _concluded(f"reopen-{lifecycle}-{mode}-{action}")
-    generation = 0
-    if mode == "human_owned":
-        _ok(_act(env, "takeover", 0), 1)
-        generation = 1
-    with env.store.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
-            (lifecycle, env.subject),
-        )
-    runs_before = _runs(env)
-    controls_before = _controls(env)
-    inputs_before = _inputs(env)
-    conclusion_before = env.store.rebuild(env.subject)["conclusion"]
-    text = "Is it still broken?"
-
-    response = _act(env, action, generation, text)
-    row = _incident(env)
-    assert row["lifecycle"] == lifecycle
-    assert row["mode"] == mode
-    assert row["current_run_id"] == env.old_run
-    assert _runs(env) == runs_before
-    assert env.store.rebuild(env.subject)["conclusion"] == conclusion_before
-    assert not _claimable(env)
-
-    if mode == "automatic":
-        # r2: a note that would start a new Run is refused.
-        assert response.status == 409, response.text
-        assert response.json()["code"] == "REOPEN_REQUIRED"
-        assert row["control_generation"] == generation
-        assert _controls(env) == controls_before
-        assert _inputs(env) == inputs_before
-        return
-
-    # r2: under human ownership the note is recorded only.
-    _ok(response, generation + 1)
-    assert row["control_generation"] == generation + 1
-    audit = _controls(env)
-    assert audit[: len(controls_before)] == controls_before
-    added = audit[len(controls_before) :]
-    assert [(r["action"], r["resulting_generation"]) for r in added] == [
-        (action, generation + 1)
-    ]
-    assert (added[0]["payload"] or {}).get("text") == text
-    assert ("takeover", 1) in [(r["action"], r["resulting_generation"]) for r in audit]
-    notes = _inputs(env)
-    assert notes[: len(inputs_before)] == inputs_before
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"])
-        for i in notes[len(inputs_before) :]
-    ] == [(action, text, generation + 1)]
-
-
 # --------------------------------------------------------------------------
 # 5. human_owned with a conclusion: notes are only recorded (U7-A)
 # --------------------------------------------------------------------------
 
 
-def test_notes_under_human_ownership_after_conclusion_are_recorded_only():
-    env = _concluded("human-owned")
-    _ok(_act(env, "takeover", 0), 1)
-    after_takeover = _runs(env)
-    assert set(after_takeover) == {env.old_run}
-
-    notes = [
-        ("correct", "Added fact: the payments pod restarted at 10:02."),
-        ("follow_up", "Did the restart line up with the error spike?"),
-    ]
-    for offset, (action, text) in enumerate(notes):
-        _ok(_act(env, action, 1 + offset, text), 2 + offset)
-        row = _incident(env)
-        assert row["mode"] == "human_owned"
-        assert row["control_generation"] == 2 + offset
-        assert row["current_run_id"] == env.old_run
-        assert set(_runs(env)) == {env.old_run}
-        assert _runs(env)[env.old_run]["state"] == after_takeover[env.old_run]["state"]
-        assert not _claimable(env)
-        with pytest.raises(PersistenceError):
-            env.store.claim(
-                env.subject, env.old_run, uuid4(), {"state": "v1"}, lease_seconds=30
-            )
-
-    audit = _controls(env)
-    assert [(r["action"], r["resulting_generation"]) for r in audit] == [
-        ("takeover", 1),
-        ("correct", 2),
-        ("follow_up", 3),
-    ]
-    assert [(r["payload"] or {}).get("text") for r in audit[1:]] == [
-        t for _, t in notes
-    ]
-    recorded = _inputs(env)
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"]) for i in recorded
-    ] == [
-        ("correct", notes[0][1], 2),
-        ("follow_up", notes[1][1], 3),
-    ]
-
-
 # --------------------------------------------------------------------------
 # 6. the successor Run sees the prior conclusion as context (U5-A)
 # --------------------------------------------------------------------------
-
-
-def test_successor_input_carries_prior_conclusion_labelled_not_instructions():
-    env = _concluded("successor-input")
-    text = "Correction: the latency hypothesis is wrong, payments was healthy."
-    _ok(_act(env, "correct", 0, text), 1)
-    rebuilt = env.store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] != env.old_run
-    stored = rebuilt["run"]["input"]
-    assert stored is not None
-    question = stored["question"]
-    assert env.old_summary in question
-    assert env.old_hypothesis in question
-    assert _NOT_INSTRUCTIONS.search(question), question
 
 
 def test_continuation_context_of_a_concluded_run_includes_the_prior_report():
@@ -496,31 +313,6 @@ def _rendered_forms(moment: datetime) -> set[str]:
         for sep in (" ", "T"):
             forms.add(dt.strftime(f"%Y-%m-%d{sep}%H:%M"))
     return forms
-
-
-def test_human_decisions_carry_their_database_timestamp():
-    env = _concluded("decision-time")
-    _ok(_act(env, "takeover", 0), 1)
-    _ok(_act(env, "follow_up", 1, "Was a deploy in the window?"), 2)
-    db_times = {r["resulting_generation"]: r["created_at"] for r in _controls(env)}
-    assert set(db_times) == {1, 2}
-
-    rows = env.workbench.snapshot(env.subject)["controls"]
-    assert [r["generation"] for r in rows] == [1, 2]
-    for row in rows:
-        values = [
-            _as_datetime(row.get(k)) for k in _TIME_KEYS if row.get(k) is not None
-        ]
-        values = [v for v in values if v is not None]
-        assert values, f"no timestamp field on decision row {sorted(row)}"
-        assert values[0] == db_times[row["generation"]]
-
-    decisions = _section(_page(env), "Human decisions")
-    for moment in db_times.values():
-        assert any(f in decisions for f in _rendered_forms(moment)), (
-            moment,
-            decisions,
-        )
 
 
 # --------------------------------------------------------------------------
@@ -574,3 +366,78 @@ def test_evidence_page_is_html_for_browsers_and_json_otherwise():
     assert evidence_id in text
     assert raw in text
     assert as_json.json()["raw_sha256"] in text
+
+
+def test_relay_pass_reaches_an_eligible_incident_past_blocked_ones():
+    """Review F1 (R2 / P2-2 fallback): incidents whose unread messages
+    predate a human cancel of their continuation (human control first) are
+    not relay candidates, so a pass bounded by ``limit`` still reaches an
+    eligible incident ranked after them."""
+    app, workbench, store, events, evidence = _build()
+
+    def published(tag):
+        submitted = _submit(app, f"f12-pr1-relay-{tag}-{uuid4()}")
+        env = SimpleNamespace(
+            app=app,
+            workbench=workbench,
+            store=store,
+            events=events,
+            evidence=evidence,
+            subject=UUID(submitted["incident_id"]),
+        )
+        _publish(env, f"Checkout errors {tag}.", f"Payments latency {tag}.")
+        return env
+
+    limit = 3
+    blocked = []
+    for n in range(limit + 1):
+        env = published(f"blocked-{n}")
+        sent = _act(env, "message", 0, "Still valid?")
+        assert sent.json().get("run_id"), sent.text
+        _ok(_act(env, "cancel", 0), 1)
+        blocked.append(env.subject)
+    # Bot finding on #702: a relay continuation that ended before reading its
+    # message (parked as the deadline sweep parks it) keeps the message
+    # unread; relaying it again is a no-op and must not crowd the pass.
+    parked = []
+    for n in range(limit + 1):
+        env = published(f"parked-{n}")
+        sent = _act(env, "message", 0, "Anything new?")
+        assert sent.json().get("run_id"), sent.text
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,"
+                "lease_until=NULL WHERE run_id=%s",
+                (UUID(sent.json()["run_id"]),),
+            )
+        parked.append(env.subject)
+    eligible = published("eligible")
+    # The in-request relay is skipped (as when it fails, P2-2): the message
+    # is admitted at the store and only the background pass can relay it.
+    store.append_message(
+        eligible.subject,
+        uuid4(),
+        {"text": "Explain the finding.", "channel": "investigation"},
+        actor="operator",
+    )
+    with store.transaction() as conn:
+        # Rank every blocked incident ahead of the eligible one.
+        conn.execute(
+            "UPDATE opspilot_incidents SET priority=0 WHERE incident_id=ANY(%s)",
+            (blocked + parked,),
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET priority=2 WHERE incident_id=%s",
+            (eligible.subject,),
+        )
+    before = store.rebuild(eligible.subject)["run"]["run_id"]
+
+    opened = workbench.relay_pass(limit=limit)
+
+    current = store.rebuild(eligible.subject)["run"]
+    assert current["run_id"] != before and current["state"] == "queued"
+    assert current["run_id"] in opened
+    for subject in blocked:
+        assert store.rebuild(subject)["run"]["state"] == "cancelled"
+    for subject in parked:
+        assert store.rebuild(subject)["run"]["state"] == "waiting_human"
