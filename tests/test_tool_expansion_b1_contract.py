@@ -27,9 +27,9 @@ Seams assumed beyond r9 (each also marked ``# ASSUMPTION:`` where used):
   of hits, with ``total``/``aggregations``/``timed_out``/``shards`` as view
   fields) or as a ``content`` object carrying those keys; the helpers accept
   both. ``notes`` and ``cannot_prove`` are view fields as in A3.
-* Fixed detail codes (``QUERY_CONSTRUCT_NOT_ALLOWED``, ``INDEX_NOT_FOUND``)
-  appear somewhere in the refusal view (notes or detail), as A3's
-  ``POD_NOT_FOUND`` does.
+* ``QUERY_CONSTRUCT_NOT_ALLOWED`` is the first entry of the refusal view's
+  ``notes`` (B1-6 puts it in notes); ``INDEX_NOT_FOUND`` appears somewhere in
+  the refusal view (notes or ``source_error``), as A3's ``POD_NOT_FOUND`` does.
 * The hidden source-time aggregations (B1-7) are top-level ``min``/``max``
   (or ``stats``) aggregations on ``time_field`` in the ``_search`` body.
 * ``columns`` is a comma-separated string; ``index_pattern`` rules for
@@ -507,8 +507,10 @@ def _text(outcome) -> str:
     return json.dumps(_view(outcome), ensure_ascii=False, sort_keys=True)
 
 
-# ASSUMPTION: the B1-8 projection is either the content list of hits (with
-# the other keys as view fields) or one content object carrying them.
+# The B1-8 projection as the implementer exposes it: with size > 0 the rows
+# are the hits (row_unit "documents") and the other keys are view fields;
+# with size = 0 there is one summary row {total, aggregations} (row_unit
+# "summaries"). A single content object carrying the keys is accepted too.
 def _result(view: Mapping[str, Any]) -> dict[str, Any]:
     content = view.get("content")
     if isinstance(content, Mapping):
@@ -517,9 +519,10 @@ def _result(view: Mapping[str, Any]) -> dict[str, Any]:
         isinstance(content, list)
         and len(content) == 1
         and isinstance(content[0], Mapping)
-        and "hits" in content[0]
+        and "_id" not in content[0]
+        and {"hits", "total", "aggregations"} & set(content[0])
     ):
-        merged = dict(content[0])
+        merged = {"hits": [], **content[0]}
     else:
         merged = {"hits": content}
     for key in ("total", "aggregations", "timed_out", "shards", "took"):
@@ -888,8 +891,8 @@ def test_forbidden_or_malformed_dsl_is_refused_before_any_request(es, param, raw
         outcome
     )
     if code is not None:
-        # ASSUMPTION: the fixed code is visible in the refusal view (notes/detail).
-        assert code in _text(outcome)
+        # B1-6: the fixed code is written in notes (first entry starts with it).
+        assert str(_view(outcome)["notes"][0]).startswith(code), _view(outcome)
     assert es.requests == []
 
 
