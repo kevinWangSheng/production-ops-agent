@@ -1602,7 +1602,10 @@ def _check_snapshot_hash(
             run_coverage_message,
         )
 
-        sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+        # Contract r8: a reply_only Run's final round carries no final
+        # report instruction (``loop._final_messages``).
+        if conversation[1] != "reply_only":
+            sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
         if retry_feedback:
             sent.append({"role": "user", "content": retry_feedback})
         # The coverage summary is computed from the views delivered before

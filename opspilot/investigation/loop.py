@@ -154,9 +154,14 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
     resumed attempt sends these same messages) and the rebuild's hash check
     (``context._check_snapshot_hash``, after the forced final row was
     committed, #304)."""
-    messages: list[dict[str, Any]] = [
-        {"role": "user", "content": FINAL_REPORT_INSTRUCTION},
-    ]
+    # Contract r8 (C4/A6): a reply_only Run gives no report, so its one
+    # final round carries no final report instruction; the reply instruction
+    # already states the output format.
+    messages: list[dict[str, Any]] = (
+        []
+        if state.mode == "reply_only"
+        else [{"role": "user", "content": FINAL_REPORT_INSTRUCTION}]
+    )
     if state.retry_feedback:
         messages.append({"role": "user", "content": state.retry_feedback})
     messages.append({"role": "user", "content": run_coverage_message(state.delivered)})
