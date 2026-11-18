@@ -83,18 +83,7 @@ from opspilot.web import (
     create_app,
 )
 from opspilot.web.store import MappingTargetRegistry
-from tests.acceptance.f7_pg_support import (
-    MODEL_KEY,
-    POOL,
-    UI,
-    ScriptedProvider,
-    _auth,
-    assistant,
-    fn,
-    scratch_database,
-    tool_views,
-)
-from tests.acceptance.test_f3_step5_rubric_gates import (
+from tests.acceptance.f3_step5_rubric_gates_support import (
     STIMULUS,
     answer,
     gate4_problems,
@@ -106,6 +95,17 @@ from tests.acceptance.test_f3_step5_rubric_gates import (
     signature_matches,
     step1_problems,
     step2_problems,
+)
+from tests.acceptance.f7_pg_support import (
+    MODEL_KEY,
+    POOL,
+    UI,
+    ScriptedProvider,
+    _auth,
+    assistant,
+    fn,
+    scratch_database,
+    tool_views,
 )
 from tests.m1_web_support import basic, bearer, call, post_form, post_json
 from tests.test_m1_otel_demo_contract import FakeOpener

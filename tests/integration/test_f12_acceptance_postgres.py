@@ -57,14 +57,14 @@ from opspilot.web import (
 )
 from opspilot.web.store import MappingTargetRegistry
 from scripts.m0.postgres_lab import DSN
-from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
     REGISTRY as ALERT_REGISTRY,
 )
-from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
     _alert,
     _webhook,
 )
-from tests.integration.test_m1_web_worker_postgres import _tool_round, _worker
+from tests.integration.m1_web_worker_postgres_support import _tool_round, _worker
 from tests.m1_investigation_support import reply, report_from_transcript
 from tests.m1_web_support import (
     EVENT_TOKEN,

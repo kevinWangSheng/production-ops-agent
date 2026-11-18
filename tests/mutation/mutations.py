@@ -179,4 +179,46 @@ MUTATIONS: tuple[Mutation, ...] = (
         'return f"GRANT {kind} {on}ON {relation} TO {role}; GRANT DELETE ON {relation} TO {role};"',
         pg=True,
     ),
+    Mutation(
+        "M19",
+        "report validation: a claim citing an undelivered evidence id is refused",
+        "opspilot/investigation/reports.py",
+        "        if unknown_ids:\n"
+        "            failures.append(\n"
+        "                ClaimCitationFailure(index, UNKNOWN_EVIDENCE_ID, unknown_ids)\n"
+        "            )\n"
+        "            continue\n"
+        "        if target_catalog is not None:\n",
+        "        if target_catalog is not None:\n",
+    ),
+    Mutation(
+        "M20",
+        "report validation: a fact may not cite a failed or no-data view",
+        "opspilot/investigation/reports.py",
+        "        if non_ok:\n"
+        "            failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))\n"
+        "            continue\n",
+        "",
+    ),
+    Mutation(
+        "M21",
+        "report validation: a claim's target must be one its views observed",
+        "opspilot/investigation/reports.py",
+        "        if any(ref not in observed for ref in claim.target_refs):",
+        "        if False:",
+    ),
+    Mutation(
+        "M22",
+        "report validation: an incomplete investigation is never a finding",
+        "opspilot/investigation/reports.py",
+        '        if self.assessment_status == "incomplete" and (',
+        "        if False and (",
+    ),
+    Mutation(
+        "M23",
+        "report validation: a supported conclusion needs a cited fact",
+        "opspilot/investigation/reports.py",
+        '        if self.conclusion == "supported" and not any(',
+        "        if False and not any(",
+    ),
 )

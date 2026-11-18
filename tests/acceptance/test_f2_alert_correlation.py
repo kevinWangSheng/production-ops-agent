@@ -59,7 +59,7 @@ from opspilot.web import (
 )
 from opspilot.web.store import MappingTargetRegistry
 from scripts.m0.postgres_lab import DSN
-from tests.acceptance.test_m1_04_alert_intake import (
+from tests.acceptance.m1_04_alert_intake_support import (
     ENTRY,
     EVIDENCE,
     TARGET,
