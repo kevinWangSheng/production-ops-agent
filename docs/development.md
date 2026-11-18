@@ -14,6 +14,7 @@
 
 - `make doctor`：只读检查根目录、项目声明、锁文件存在、uv、项目 Python 和工具版本。无需 `.venv` 即可启动诊断。
 - `make check`：诊断、离线锁检查、Ruff lint、Ruff 格式检查、pytest；任何一步失败即返回非零。不自动修复代码或安装依赖。
+- `make mutation`：对 `tests/mutation/mutations.py` 的固定不变量变异清单（只读、范围、Secret、PromQL 越窗、凭据脱敏、人工控制、恢复权威、运行时角色），在检出副本上逐条变异并跑选定测试（默认 `tests/safety`），每条应被至少一个用例抓到；`M1_DURABLE_POSTGRES=1` 时 PG 条目各用一个新建并迁移的库。维护工具，不是 CI 必需检查；删测试前后各跑一次。
 - `make test`：诊断、离线锁检查、pytest。
 - `.venv/bin/python -m pytest tests/test_doctor.py`：定向测试，使用 pytest 原生参数。
 - `make red-proof`：把本分支已提交的新增/改动测试放到与 `origin/main` 的 merge-base 代码上重放，至少一个失败才算有红证明；只收集失败（新模块 ImportError）标为弱红证明；只改了 `tests/` 下支持模块时报「需人工确认」。本地退出码 0 有红证明或不适用、1 无红证明或需人工确认、2 内部错误；CI 的 `red-proof` 工作流用 `--report-only`（2026-10-12 决定保持只报告，#100），退出码恒 0、只报告，只钉住已有行为的 PR 加 label `no-red-proof`。集成测试需按下文自行准备数据库并设置 opt-in 变量，否则记为跳过。
@@ -280,7 +281,7 @@ A/B/C批次是合成机制证据；后续M0-01已有受批准合同约束的live
 - 推送前：`make secrets-branch` 只扫本分支相对 `origin/main` 的新提交（gitleaks 装在 git 公共目录，各 worktree 共用）；`make hooks` 把它装成 pre-push。CI 用 `fetch-depth: 0` 加全部 refs 扫描，误报一旦推送，所有 PR 的 CI 都会失败，只能从 main 单提交重建分支并删除原远程分支（#367 → #368）。测试里的合成凭据用低熵值（如 `aaaaaaaa357`）。
 - `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再分别扫描 Git 索引暂存 blob、已跟踪路径的当前工作区快照，以及全部本地 Git refs 历史。索引内容按列举时固定的 blob ID 读取，工作区后续清理或删除不会掩盖已暂存内容；未暂存更改仍单独检查。未合并的索引、symlink/submodule 与误暂存私有配置均拒绝；不宣称检查与后续 commit 对并发 git add 原子绑定。使用默认规则并禁用仓库抑制/inline allow；仅对指定证据manifest的两个已核实源码SHA256设规则+路径+值AND例外，并实测同路径canary/同值不同路径仍拒绝；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
 
-CI 的checks增加同一扫描与自检；PG 工作拆成并行作业（`pg-integration` 按排序文件列表分 4 片、`pg-acceptance`、`pg-browser`），各自使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart），必需检查 `m0-postgres` 只在它们全部成功时通过；「PG acceptance」作业跑 `tests/acceptance/` 下所有以 `M1_DURABLE_POSTGRES`（含 `f11_steps_support` 的 `s.PG`）门控的验收文件，按门控 grep 选取，新增文件自动加入（#673）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。
+CI 的checks增加同一扫描与自检；PG 工作拆成并行作业（`pg-integration` 按排序文件列表分 4 片、`pg-acceptance`、`pg-browser`），各自使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart），必需检查 `m0-postgres` 只在它们全部成功时通过；PG 测试按 `pg` 标记选取，不再 grep 文件文本：`tests/conftest.py` 给 `tests/integration/` 下、模块或任一所用 fixture 读取 `M1_DURABLE_POSTGRES`/`M0_B_POSTGRES`/`OPSPILOT_TEST_DATABASE_URL`、或 skipif 理由是 lab PG 门控的测试打 `pg`（经 `tests/workbench_driver.py` 等驱动间接门控的文件也算）；`pg-integration` 跑 `tests/acceptance`、`tests/browser` 以外的 `-m pg`，「PG acceptance」跑 `-m pg tests/acceptance`，checks 跑 `-m "not pg"`。`OPSPILOT_PG_SELECTION_GUARD` 让 checks 中任何 lab PG 跳过、PG 作业中任何门控变量缺失导致的跳过直接失败，防止测试漏选后哪里都不跑（2026-11-18 测试精简任务）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。
 
 ### 受批准合同约束的真实入口（M0-01 normal-1）
 
