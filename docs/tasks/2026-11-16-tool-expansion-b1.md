@@ -1,9 +1,9 @@
 # 工具面拓展 B1：Elasticsearch/OpenSearch 日志检索
 
-- 状态：预审完成、裁决完成，待开工（不含实现）
-- 更新日期：2026-11-16
+- 状态：实施中
+- 更新日期：2026-11-18
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) r1–r8 与 r9（本项 B1-U1、B1-U2、B1-1 至 B1-22）、C3 第 8、12 节；上游 HolmesGPT `a0009195` 的 `elasticsearch/data`（`elasticsearch.py`）。issue #560。预审全文在仓库外（`~/.agent/handoffs/opspilot-b1-prereview-2026-11-16.md`），对照 `main` `2f7ec758`。
-- 工作区：开工时填（建议 worktree `../poa-560-es`，分支 `feature/560-es-logs`，起点最新 `origin/main`）。
+- 工作区：worktree `../poa-560-es`，分支 `feature/560-es-logs`，起点 `origin/main` `09c1a68b`。
 
 ## 目标
 
