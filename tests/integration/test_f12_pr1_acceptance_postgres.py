@@ -366,3 +366,61 @@ def test_evidence_page_is_html_for_browsers_and_json_otherwise():
     assert evidence_id in text
     assert raw in text
     assert as_json.json()["raw_sha256"] in text
+
+
+def test_relay_pass_reaches_an_eligible_incident_past_blocked_ones():
+    """Review F1 (R2 / P2-2 fallback): incidents whose unread messages
+    predate a human cancel of their continuation (human control first) are
+    not relay candidates, so a pass bounded by ``limit`` still reaches an
+    eligible incident ranked after them."""
+    app, workbench, store, events, evidence = _build()
+
+    def published(tag):
+        submitted = _submit(app, f"f12-pr1-relay-{tag}-{uuid4()}")
+        env = SimpleNamespace(
+            app=app,
+            workbench=workbench,
+            store=store,
+            events=events,
+            evidence=evidence,
+            subject=UUID(submitted["incident_id"]),
+        )
+        _publish(env, f"Checkout errors {tag}.", f"Payments latency {tag}.")
+        return env
+
+    limit = 3
+    blocked = []
+    for n in range(limit + 1):
+        env = published(f"blocked-{n}")
+        sent = _act(env, "message", 0, "Still valid?")
+        assert sent.json().get("run_id"), sent.text
+        _ok(_act(env, "cancel", 0), 1)
+        blocked.append(env.subject)
+    eligible = published("eligible")
+    # The in-request relay is skipped (as when it fails, P2-2): the message
+    # is admitted at the store and only the background pass can relay it.
+    store.append_message(
+        eligible.subject,
+        uuid4(),
+        {"text": "Explain the finding.", "channel": "investigation"},
+        actor="operator",
+    )
+    with store.transaction() as conn:
+        # Rank every blocked incident ahead of the eligible one.
+        conn.execute(
+            "UPDATE opspilot_incidents SET priority=0 WHERE incident_id=ANY(%s)",
+            (blocked,),
+        )
+        conn.execute(
+            "UPDATE opspilot_incidents SET priority=2 WHERE incident_id=%s",
+            (eligible.subject,),
+        )
+    before = store.rebuild(eligible.subject)["run"]["run_id"]
+
+    opened = workbench.relay_pass(limit=limit)
+
+    current = store.rebuild(eligible.subject)["run"]
+    assert current["run_id"] != before and current["state"] == "queued"
+    assert current["run_id"] in opened
+    for subject in blocked:
+        assert store.rebuild(subject)["run"]["state"] == "cancelled"

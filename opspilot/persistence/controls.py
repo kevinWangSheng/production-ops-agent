@@ -841,10 +841,13 @@ class _ControlOps(_StoreBase):
         with self.transaction(snapshot=True) as conn:
             rows = conn.execute(
                 "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+                "JOIN opspilot_scope_controls sc ON sc.scope_id=1 "
+                "LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id "
                 "WHERE i.mode='automatic' AND i.state NOT IN ('cancelled','paused') AND i.merged_into_incident_id IS NULL "
+                "AND NOT sc.global_suspended AND NOT COALESCE(ts.suspended,false) "
                 "AND r.state NOT IN ('queued','running') "
-                "AND EXISTS (SELECT 1 FROM opspilot_inputs m WHERE m.incident_id=i.incident_id AND m.kind='message' "
-                "AND m.sequence>(SELECT COALESCE(max(x.input_watermark),0) FROM opspilot_runs x WHERE x.incident_id=i.incident_id)) "
+                f"AND {_relayable_message_sql('i.incident_id')} "
+                f"AND (i.conclusion IS NOT NULL OR {_validated_report_sql('i.incident_id')}) "
                 "ORDER BY i.priority,i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
@@ -1051,18 +1054,45 @@ def _floor_in(conn: Connection, incident_id: UUID) -> int:
     )
 
 
-def _validated_report_in(conn: Connection, incident_id: UUID) -> bool:
-    """Whether any Run of the incident ended on a validated report (its
-    conclusion step's ``execution`` is ``completed``: published, or handed
-    off only as self-declared incomplete -- contract D7a, R1 r2)."""
+def _validated_report_sql(incident: str) -> str:
+    """Whether any Run of the incident ``incident`` (an SQL expression) ended
+    on a validated report: its conclusion step's ``execution`` is
+    ``completed`` (published, or handed off only as self-declared
+    incomplete -- contract D7a, R1 r2)."""
     return (
-        conn.execute(
-            "SELECT 1 FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id "
-            "WHERE r.incident_id=%s AND s.status<>'late_result' AND s.response->>'kind'='conclusion' "
-            "AND s.response->'conclusion'->>'execution'='completed' LIMIT 1",
-            (incident_id,),
-        ).fetchone()
-        is not None
+        "EXISTS (SELECT 1 FROM opspilot_steps vs JOIN opspilot_runs vr ON vr.run_id=vs.run_id "
+        f"WHERE vr.incident_id={incident} AND vs.status<>'late_result' AND vs.response->>'kind'='conclusion' "
+        "AND vs.response->'conclusion'->>'execution'='completed')"
+    )
+
+
+def _relayable_message_sql(incident: str) -> str:
+    """Whether the incident ``incident`` (an SQL expression) holds a
+    ``message`` no Run has read (above the floor, contract B7) that was
+    received after its latest human cancel or close: after such a decision
+    only a later message opens a continuation (human control first). One
+    fragment for ``relay_candidates`` and ``_relay_basis_in``."""
+    return (
+        "EXISTS (SELECT 1 FROM opspilot_inputs m "
+        f"WHERE m.incident_id={incident} AND m.kind='message' "
+        "AND m.sequence>(SELECT COALESCE(max(x.input_watermark),0) FROM opspilot_runs x "
+        f"WHERE x.incident_id={incident}) "
+        "AND m.received_at>COALESCE((SELECT max(c.created_at) FROM opspilot_controls c "
+        f"WHERE c.incident_id={incident} AND c.action IN ('cancel','close')),"
+        "'-infinity'::timestamptz))"
+    )
+
+
+def _row_bool(conn: Connection, sql: str, incident_id: UUID) -> bool:
+    row = conn.execute(sql, {"incident_id": incident_id}).fetchone()
+    return bool(row and row["ok"])
+
+
+def _validated_report_in(conn: Connection, incident_id: UUID) -> bool:
+    return _row_bool(
+        conn,
+        f"SELECT {_validated_report_sql('%(incident_id)s')} AS ok",
+        incident_id,
     )
 
 
@@ -1103,17 +1133,12 @@ def _relay_basis_in(
     ).fetchone()
     if unread is None or unread["seq"] is None:
         return None
-    # Human control first (PRODUCT-CONSTRAINTS): after a human cancel or
-    # close, only a message admitted after that decision opens a Run; the Run
-    # it opens still reads every unread message above the floor.
-    if (
-        conn.execute(
-            "SELECT 1 FROM opspilot_inputs m WHERE m.incident_id=%s AND m.kind='message' AND m.sequence>%s "
-            "AND m.received_at>COALESCE((SELECT max(c.created_at) FROM opspilot_controls c "
-            "WHERE c.incident_id=%s AND c.action IN ('cancel','close')),'-infinity'::timestamptz) LIMIT 1",
-            (incident_id, floor, incident_id),
-        ).fetchone()
-        is None
+    # Human control first (PRODUCT-CONSTRAINTS): the shared fragment
+    # ``relay_candidates`` filters on too.
+    if not _row_bool(
+        conn,
+        f"SELECT {_relayable_message_sql('%(incident_id)s')} AS ok",
+        incident_id,
     ):
         return None
     if not row["concluded"] and not _validated_report_in(conn, incident_id):
