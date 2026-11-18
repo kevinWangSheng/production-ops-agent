@@ -35,6 +35,7 @@ from tests.acceptance.test_245_rebind_target import (  # noqa: F401 - fixtures
     database,
 )
 from tests.m1_web_support import basic, bearer, call, post_form, post_json
+from tests.workbench_driver import WorkbenchDriver
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",
@@ -148,6 +149,43 @@ def _authorize_and_merge(app, database: str) -> tuple[str, str, dict, dict]:
     return source, survivor, before_source, before_survivor
 
 
+def _page(database: str, incident_id: str) -> dict:
+    """The incident page's projection, built the way GET /incidents/{id}
+    builds it (the shared workbench driver also checks the page renders)."""
+    driver = WorkbenchDriver(database)
+    try:
+        return driver.page(UUID(incident_id))
+    finally:
+        driver.close()
+
+
+def _linked_incidents(view: dict) -> list[dict]:
+    # contract P6 field: L1 "Linked incidents" block on the surviving
+    # incident; one row per merged-in source with incident id, title and
+    # merge reason (L2).
+    return list(view.get("linked_incidents") or [])
+
+
+def _linked_row(view: dict, source: str) -> dict | None:
+    # contract P6 field: a linked row names its source incident by id.
+    for row in _linked_incidents(view):
+        if str(row.get("incident_id")) == source:
+            return row
+    return None
+
+
+def _merge_events_in_log(view: dict, source: str) -> list[dict]:
+    # contract P6 field: L3 log entry for "Incident X merged into this · by Y",
+    # drawn from system fields only; located by entry kind and the source
+    # incident it refers to, not by its wording.
+    return [
+        entry
+        for entry in view["log"]["entries"]
+        if entry.get("kind") == "event"
+        and source in json.dumps(entry, sort_keys=True, default=str)
+    ]
+
+
 def _alert() -> dict:
     evidence = Path(__file__).resolve().parents[2] / "docs/evidence/m1-04-lab"
     return json.loads((evidence / "webhook-firing.json").read_text())["alerts"][0]
@@ -213,6 +251,23 @@ def test_pr2_same_target_merge_closes_source_and_preserves_survivor_state(
     assert payload["channel"] == "web"
     assert payload["text"] == "same incident"
     assert payload["idempotency_key"]
+
+    # P6 L1/L2: the surviving incident's page lists the merged-in incident
+    # with its title and the reason the person gave when merging.
+    survivor_view = _page(database, survivor)
+    source_title = _page(database, source)["header"]["title"]
+    linked = _linked_row(survivor_view, source)
+    assert linked is not None and (
+        linked.get("title"),
+        linked.get("reason"),
+    ) == (source_title, "same incident"), _linked_incidents(survivor_view)
+
+    # P6 L3: the merge is an event in the surviving incident's investigation
+    # log, attributed to the person who merged.
+    merge_events = _merge_events_in_log(survivor_view, source)
+    assert len(merge_events) == 1 and ACTOR in json.dumps(
+        merge_events[0], default=str
+    ), [e.get("kind") for e in survivor_view["log"]["entries"]]
 
 
 def test_pr2_merge_fingerprint_refire_follows_pointer_then_related_new_incident(

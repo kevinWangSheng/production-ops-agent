@@ -1017,6 +1017,51 @@ def _log(
                 "detail": row.get("text") or None,
             },
         )
+    # Workbench P6 L3: system events, drawn from system-written fields only;
+    # never messages, never queued.
+    for linked in (snapshot.get("linked") or {}).get("rows") or []:
+        detail = f"“{linked['title']}”"
+        if linked.get("actor"):
+            detail += f" · by {linked['actor']}"
+        add(
+            linked.get("merged_at"),
+            {
+                "kind": "event",
+                "key": f"merged-{linked['incident_id']}",
+                "title": f"Incident {linked['incident_id'][:8]} merged into this",
+                "detail": detail,
+                "anchor": f"/incidents/{linked['incident_id']}",
+            },
+        )
+    for refire in snapshot.get("refires") or []:
+        add(
+            refire.get("received_at"),
+            {
+                "kind": "event",
+                "key": f"refire-{refire['delivery_key']}",
+                "title": "Alert fired",
+                "detail": "attached to this incident"
+                + (
+                    f" · startsAt {refire['starts_at']}"
+                    if refire.get("starts_at")
+                    else ""
+                ),
+            },
+        )
+    for link in snapshot.get("release_links") or []:
+        if link.get("disposition") != "attached":
+            continue  # the opening link is in the header, not an event
+        observation = str(link.get("observation_id"))
+        add(
+            link.get("consumed_at"),
+            {
+                "kind": "event",
+                "key": f"release-{observation}",
+                "title": f"Version change {observation[:8]} joined",
+                "detail": "attached to this incident",
+                "anchor": f"/version-changes/{observation}",
+            },
+        )
     statuses = _message_status(snapshot, runs, numbered)
     composer = composer or {}
     retry_ok = bool(composer.get("enabled")) and incident.mode != "human_owned"
@@ -1174,6 +1219,68 @@ def _title(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "origin": origin,
         "alertname": latest.get("alertname"),
         "service": "/".join(service) if service else None,
+    }
+
+
+#: Workbench P6 L7: what a release link did to this incident, in words.
+RELEASE_WORDS = {
+    "created": "opened this incident",
+    "created_related": "opened this incident after a closed one",
+    "attached": "joined this incident",
+    "handoff_created": "opened this incident for a person to handle",
+}
+#: A merged source's lifecycle at the merge (``_merge_event``), in words.
+_LIFECYCLE_WORDS = {
+    "open": "open",
+    "observing_recovery": "watching recovery",
+    "resolved": "resolved",
+    "closed": "closed",
+}
+
+
+def _links(snapshot: Mapping[str, Any], day: str | None) -> dict[str, Any]:
+    """Workbench P6: the identity area's links -- merged sources with their
+    titles and reasons (L1/L2), the reason this incident was merged (L2),
+    the incidents opened after it (L6), release links and target changes
+    in words with their times (L7)."""
+    linked = snapshot.get("linked") or {}
+    rows = [
+        {
+            **row,
+            "short": row["incident_id"][:8],
+            "was": _LIFECYCLE_WORDS.get(
+                str(row.get("lifecycle_at_merge")), row.get("lifecycle_at_merge")
+            ),
+            "opened": clock(row.get("created_at"), day),
+            "merged": clock(row.get("merged_at"), day),
+            "merged_iso": iso(row.get("merged_at")),
+        }
+        for row in linked.get("rows") or []
+    ]
+    followed = snapshot.get("followed_by") or {}
+    merge_reason = None
+    for row in snapshot.get("decision_log") or []:
+        if row.get("action") == "merge_into":
+            text = row.get("text")
+            merge_reason = text if isinstance(text, str) and text.strip() else None
+    return {
+        "linked": rows,
+        "linked_cut": bool(linked.get("truncated")),
+        "followed_by": [
+            {**row, "short": row["incident_id"][:8]}
+            for row in followed.get("rows") or []
+        ],
+        "followed_cut": bool(followed.get("truncated")),
+        "merge_reason": merge_reason,
+        "release_words": RELEASE_WORDS,
+        "rebinds": [
+            {
+                **rebind,
+                "time": clock(rebind.get("decided_at"), day),
+                "iso": iso(rebind.get("decided_at")),
+            }
+            for rebind in snapshot.get("rebinds") or []
+        ],
     }
 
 
@@ -1505,10 +1612,14 @@ def page_view(
         [] if report is not None else [c for c in calls.values() if c.get("inline")]
     )
     outcome = snapshot.get("outcome") or {}
+    links = _links(snapshot, day)
     return {
         "day": day,
         "status": status,
         "header": _title(snapshot),
+        "links": links,
+        # Workbench P6 L1/L2: the merged-in incidents (also ``links.linked``).
+        "linked_incidents": links["linked"],
         "facts": _status_facts(status, snapshot, log, recovery, day),
         "actions": _actions(status, actions, snapshot),
         "feedback_offer": feedback_offer(status, snapshot),

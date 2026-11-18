@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r10 已定，P1–P4 已合并，P7 实施中
+- 状态：合同 r12 已定，P1–P4、P6、P7 已合并，P5 实施中
 - 更新日期：2026-11-18
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
@@ -51,13 +51,15 @@
 | P3-1–P3-22 | （r9）一条日志覆盖全部 Run、全事故统一步骤计数、读取时计算 not answered 与 Retry、「Agent couldn't respond」、SSE 只作变化信号由 `/live` 片段就地更新、`message_received` 事件；不迁移、不改授权。明细见决定表「P3」节 |
 | T | 整个重设计最多 12 个场景测试（r9 定 11，r12 改 12）（`tests/acceptance/test_workbench_conversation.py`）+ 3 条浏览器路径，一个共用驱动；不测清单与旧测试删除清单见决定表第五节 |
 
-修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）；r7 = A3 补「无回复 + 不完整报告」走不完整交接（P1 独立审查）；r8 = C4 `reply_only` 最终轮不发最终报告指令（P2 真实 Run 1 中模型按最终报告指令返回裸报告，判 `RESPONSE_INVALID`）；r9 = P3 预审表、E1 迁移号改 0026、场景函数上限改 11（lead 2026-11-18）；r10 = P7 预审表、U-P7 授权批准、E1/E3/E5 按 P7-1/2/3/4/9 修订（同日）；r12 = P5 预审表、用户 F1/F11 裁决、场景函数上限 12（同日）。
+修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）；r7 = A3 补「无回复 + 不完整报告」走不完整交接（P1 独立审查）；r8 = C4 `reply_only` 最终轮不发最终报告指令（P2 真实 Run 1 中模型按最终报告指令返回裸报告，判 `RESPONSE_INVALID`）；r9 = P3 预审表、E1 迁移号改 0026、场景函数上限改 11（lead 2026-11-18）；r10 = P7 预审表、U-P7 授权批准、E1/E3/E5 按 P7-1/2/3/4/9 修订（同日）；r11 = P6 关联展示表（同日）；r12 = P5 预审表、用户 F1/F11 裁决、场景函数上限 12（同日）。
 
 ## PR 顺序
 
 P1 回复合同 → P2 消息输入与接力 → P3 日志投影与 SSE → P4 页面（可与 P1 并行，先用现有数据）→ P7 Chat 面板 → P5 反馈 → P6 关联展示。每个 PR 直接对 `main`，不叠 PR。P1、P2 各附一次有界真实 Run 的 trace 与 `summary.json`。
 
 ## 执行进展与证据
+
+- P6 关联展示（`feature/workbench-p6-linked`，worktree `../poa-wb-p6`，对齐合同 r11）：实现 Opus。行为：主事故身份区「Linked incidents」列出被并入事故的标题、合并时状态、开始时间、合并人、时间与理由（无理由写「no reason given」），来源事故「Merged into」旁显示同一理由；日志加「merged into this」「Alert fired · attached」「Version change joined」三类系统事件；列表主事故行「N linked」；已关闭事故「Followed by new incident」；发布链接 disposition 改成一句话、换目标带时间。无迁移、无授权变化。截图存 `~/.agent/diagrams/opspilot-workbench-p6-shots/`。
 
 - P3 日志投影与实时更新（`feature/workbench-p3-timeline`，worktree `../poa-wb-p3`，对齐 r9）：实现 Opus；P3-20 的场景与浏览器断言由独立测试作者另加。行为：日志按 Run 画出事故全部 Run（起点按来源命名，步骤全事故连续编号，早期 Run 原始结果改走证据页）；消息状态 Queued → Read at step N → Answered / Not answered，not answered 可 Retry（复制原文、幂等 `retry:{seq}`）；`RESPONSE_INVALID` 显示「Agent couldn't respond」；页面收到任何 SSE 事件后拉 `/incidents/{id}/live` 就地更新，新条目追加并在读者不在末尾时显示「N new ↓」；发消息追加 `message_received` 事件。截图存 `~/.agent/diagrams/opspilot-workbench-p3-shots/`。
 - P4 页面（`feature/workbench-p4-incident-pages`，worktree `../poa-wb-p4`）：实现 Opus；独立浏览器测试作者另起（路径 a、b，`tests/browser/test_workbench_paths.py`，断言未改，页面按定位器对齐）；独立审查两轮（首审 MERGEABLE、2 项 P2 已修：D7a 往回找、A8 与列表 SQL 分组一致性测试；复审 FIX-FIRST：D8 人工接管措辞优先、D12 未读消息「Not read」、D7a 报告带其 Run 的证据，均已修，每项一句断言，逐项去掉修复验证会红）。行为：列表与详情按原型 v2 重写；A8 一条状态函数（`opspilot/web/status.py`）页头与列表共用，列表分组 SQL 同步；结果在前（结论全文、关键证据、假设、排除/未知、看不到的、建议只可复制），调查日志每步每个工具调用可展开看查询、来源、目标、时间窗、新鲜度、耗时与脱敏结果，筛选「全部/问题/消息」与 Expand all；Chat 面板只做外壳（E7）；P2 合入后输入框发 `message`（按 P2 的 available_actions 决定可用，措辞按 D 表），D11 单一 Re-investigate，排队请求与回复读真实数据，续接 Run 后报告与证据取发布它的 Run（A9）。证据：定向页面文件 + 两条浏览器路径 + 场景文件在全新 PG 上 251 通过；ruff、mypy 干净；全量交 CI。截图（列表与 10 种详情状态、P2 三态、1440 与 400、深色）存仓库外 `~/.agent/diagrams/opspilot-workbench-p4-shots/`。删除（合同 §5 P4 清单）：整文件 7 个（`test_m1_web_workbench.py`、`test_572_incident_list_page.py`、`test_684_list_contract.py`、`test_684_incident_list_query.py`、`test_m1_list_run_state_postgres.py`、`test_f2_tool_timeout_page.py`、`test_m1_incident_control_contract.py`），部分用例（`test_m1_02_recovery_page.py` 3 个、`test_m1_report_charts_contract.py` 17 个、`test_m1_report_charts_robustness.py` 1 个、`test_m1_184_projection_impl.py` 3 个），另有约 12 个文件只删读旧页面文字的断言（逐个列在提交里）；`tests/m1_web_support.py` 未搬（98 个文件引用）。未做：P3 日志投影（多 Run 时间线、逐步 SSE）、O1–O4。

@@ -182,7 +182,7 @@
     <tr class="r">
       <td class="c-ti">
         <a class="svc clamp2" href="/incidents/{{ row.id }}" title="{{ row.title }}">{{ row.title }}</a>
-        <div class="meta"><code>{{ row.short_id }}</code>{% if row.alert_name %} · <code>{{ row.alert_name }}</code>{% endif %}{% if row.related_short %} · after <code>{{ row.related_short }}</code>{% endif %}</div>
+        <div class="meta"><code>{{ row.short_id }}</code>{% if row.alert_name %} · <code>{{ row.alert_name }}</code>{% endif %}{% if row.related_short %} · after <code>{{ row.related_short }}</code>{% endif %}{% if row.linked %} · <span class="linked-count">{{ row.linked }} linked</span>{% endif %}</div>
       </td>
       <td class="c-st">
         {%- set stv = row.status.status %}

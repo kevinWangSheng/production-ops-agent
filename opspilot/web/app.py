@@ -620,7 +620,9 @@ def create_app(
         postmortem = None
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
-        release_links = await in_thread(workbench.release_links_for, subject)
+        release_links = snapshot.get("release_links")
+        if release_links is None:  # a handoff-only snapshot does not read them
+            release_links = await in_thread(workbench.release_links_for, subject)
         # Workbench P5: the incident's feedback card (F10).
         feedback = await in_thread(workbench.feedback_for, subject, snapshot)
         actions = available_actions(snapshot)

@@ -116,8 +116,9 @@ from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
-from opspilot.web.incident_list import list_page, page_of_items
+from opspilot.web.incident_list import list_page, page_of_items, title_of
 from opspilot.web.store import (
+    LINKED_SHOWN,
     ControlAudit,
     IncidentListItem,
     IncidentStore,
@@ -3432,6 +3433,13 @@ class Workbench:
             # #245 G8: incidents merged into this one (the other way is
             # ``incident.merged_into_incident_id``).
             "merged_from": self._merged_from(incident_id),
+            # Workbench P6: the merged sources with titles and reasons (L1/L2),
+            # the incidents opened after this closed one (L6), and the
+            # system events the log draws (L3).
+            "linked": self._linked(incident_id),
+            "followed_by": self._followed_by(incident_id),
+            "refires": self._refires(incident_id),
+            "release_links": self.release_links_for(incident_id),
             "current_target": self._target_uid(summary),
             "rebinds": self._rebinds(incident_id),
             "rebind_targets": [
@@ -3478,6 +3486,64 @@ class Workbench:
     def _merged_from(self, incident_id: UUID) -> list[str]:
         reader = getattr(self.incidents, "merged_from", None)
         return [] if reader is None else [str(i) for i in reader(incident_id)]
+
+    def _linked(self, incident_id: UUID) -> dict[str, Any]:
+        """Workbench P6 L1/L2: each incident merged into this one, in merge
+        order, at most ``LINKED_SHOWN``: title, lifecycle at the merge,
+        opening time, who merged it, when and the redacted reason."""
+        reader = getattr(self.incidents, "linked_incidents", None)
+        rows = () if reader is None else reader(incident_id)
+        items = []
+        for item, merge in rows[:LINKED_SHOWN]:
+            reason = merge.get("reason")
+            items.append(
+                {
+                    "incident_id": str(item.summary.incident_id),
+                    "title": title_of(item),
+                    "lifecycle_at_merge": merge.get("lifecycle_at_merge"),
+                    "created_at": item.summary.created_at,
+                    "actor": merge.get("actor"),
+                    "merged_at": merge.get("merged_at"),
+                    "reason": redact_credentials(reason)
+                    if isinstance(reason, str) and reason.strip()
+                    else None,
+                }
+            )
+        return {"rows": items, "truncated": len(rows) > LINKED_SHOWN}
+
+    def _followed_by(self, incident_id: UUID) -> dict[str, Any]:
+        """Workbench P6 L6: incidents opened after this closed one."""
+        reader = getattr(self.incidents, "followed_by", None)
+        rows = () if reader is None else reader(incident_id)
+        return {
+            "rows": [
+                {
+                    "incident_id": str(item.summary.incident_id),
+                    "title": title_of(item),
+                    "created_at": item.summary.created_at,
+                }
+                for item in rows[:LINKED_SHOWN]
+            ],
+            "truncated": len(rows) > LINKED_SHOWN,
+        }
+
+    def _refires(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Workbench P6 L3: each re-fired alert episode attached to this
+        incident (first firing delivery per delivery key), system fields
+        only -- the alert text stays in "Alert as received"."""
+        reader = getattr(self.incidents, "attached_alert_deliveries", None)
+        first: dict[str, Mapping[str, Any]] = {}
+        for row in () if reader is None else reader(incident_id):
+            if row["outcome"] == "attached" and row["status"] == "firing":
+                first.setdefault(row["delivery_key"], row)
+        return [
+            {
+                "delivery_key": key,
+                "received_at": row["received_at"],
+                "starts_at": row.get("starts_at_raw"),
+            }
+            for key, row in first.items()
+        ]
 
     def _rebound(self, incident_id: UUID) -> bool:
         """Whether a ``rebind_target`` decision was ever committed."""
