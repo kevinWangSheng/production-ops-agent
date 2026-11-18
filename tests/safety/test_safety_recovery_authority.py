@@ -5,11 +5,17 @@ confirm recovery; no profile permits investigation but yields unknown).
 Table-driven over every shipped profile and each of its required signals:
 taking one signal away, or giving it any non-``ok`` status, too few points,
 a stale reading or an out-of-bound value, never yields a sample that
-confirms health, and a session without a bound profile never confirms.
+confirms health, and a session without a bound profile never confirms. The Observer that
+produces those verdicts is independent of the investigator (C3 section 3,
+D3): it imports nothing from the investigation side.
 """
 
 from __future__ import annotations
 
+import ast
+import pathlib
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -175,3 +181,57 @@ def test_a_healthy_sample_without_its_required_signals_never_confirms(path):
     """Confirmation checks the signal flag itself, not only the outcome word."""
     profile = load_health_profile(path)
     assert not _confirms(profile, _healthy(profile), present=False)
+
+
+# -- independence: the Observer is not the investigator (C3 section 3, D3) --
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+INVESTIGATION_SIDE = (
+    "opspilot.tools",
+    "opspilot.investigation",
+    "opspilot.worker",
+    "opspilot.worker_main",
+    "opspilot.web",
+    "opspilot.tracing",
+    "opspilot.acceptance",
+    "opspilot.intake",
+    "opspilot.recovery",
+)
+
+
+def _imports(path: pathlib.Path) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
+
+
+def test_observer_packages_import_nothing_from_the_investigation_side():
+    offenders = []
+    for package in ("observer", "observation"):
+        for path in sorted((REPO_ROOT / "opspilot" / package).rglob("*.py")):
+            bad = sorted(n for n in _imports(path) if n.startswith(INVESTIGATION_SIDE))
+            if bad:
+                offenders.append((path.relative_to(REPO_ROOT).as_posix(), bad))
+    assert not offenders, offenders
+
+
+def test_the_observer_process_loads_no_gateway_worker_model_or_web_module():
+    script = (
+        "import sys, opspilot.observer.__main__, opspilot.observer.loop\n"
+        "print(sorted(m for m in sys.modules if m.startswith('opspilot')))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO_ROOT,
+    )
+    loaded = set(eval(proc.stdout.strip()))  # noqa: S307 - our own print
+    leaked = sorted(m for m in loaded if m.startswith(INVESTIGATION_SIDE))
+    assert not leaked, leaked
+    assert "opspilot.observer.sampler" in loaded

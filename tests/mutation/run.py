@@ -2,7 +2,8 @@
 
     .venv/bin/python -m tests.mutation.run [--suite PATH ...] [--only M01,M04]
 
-Copies the checkout (without .git, .venv, docs, tmp) to a scratch directory,
+Copies the checkout (without .git, .venv, tmp; docs/ is linked) to a scratch
+directory,
 checks that the selection passes unmutated there, then applies each mutation
 in turn, runs the selection with ``-x`` and records ``killed`` (a test
 failed), ``survived`` (all passed: the invariant is unguarded), ``stale``
@@ -36,7 +37,11 @@ COPY_IGNORE = shutil.ignore_patterns(
 
 def _copy(dest: Path) -> None:
     for item in REPO.iterdir():
-        if item.name in {".git", ".venv", "tmp", "docs", ".playwright-mcp"}:
+        if item.name in {".git", ".venv", "tmp", ".playwright-mcp"}:
+            continue
+        if item.name == "docs":
+            # Read-only evidence some tests read; never mutated, so linked.
+            (dest / "docs").symlink_to(item, target_is_directory=True)
             continue
         target = dest / item.name
         if item.is_dir():

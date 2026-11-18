@@ -221,4 +221,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         '        if self.conclusion == "supported" and not any(',
         "        if False and not any(",
     ),
+    Mutation(
+        "M24",
+        "recovery: the Observer imports nothing from the investigation side",
+        "opspilot/observer/loop.py",
+        "from __future__ import annotations\n",
+        "from __future__ import annotations\n\nimport opspilot.tools.executor  # noqa: F401\n",
+    ),
 )
