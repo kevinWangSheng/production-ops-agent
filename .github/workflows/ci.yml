@@ -65,14 +65,20 @@ jobs:
           enable-cache: false
       - name: Install locked development dependencies
         run: make setup
-      # Parallel pass over everything not marked serial (tests/conftest.py),
+      # Parallel pass over everything not marked serial or pg (tests/conftest.py),
       # then the serial tests alone so thread-timing tests keep a quiet runner.
+      # pg tests run in the PG jobs; the guard fails any lab-PG skip here, which
+      # would mean a test escaped the pg marker and runs in no job.
       - name: Run development checks
         if: steps.scope.outputs.full != 'false'
-        run: make check PYTEST_ARGS='-n auto --dist loadfile -m "not serial"'
+        env:
+          OPSPILOT_PG_SELECTION_GUARD: checks
+        run: make check PYTEST_ARGS='-n auto --dist loadfile -m "not serial and not pg"'
       - name: Run serial tests
         if: steps.scope.outputs.full != 'false'
-        run: .venv/bin/python -m pytest -m serial
+        env:
+          OPSPILOT_PG_SELECTION_GUARD: checks
+        run: .venv/bin/python -m pytest -m "serial and not pg"
       # PR-D1 (D07): a fresh network namespace without interfaces, back as the
       # runner user, only PATH/LANG and a throwaway HOME. Before the entry runs,
       # the namespace must hold only lo and an outbound connect must fail with
@@ -229,23 +235,23 @@ jobs:
           assert fresh == taken, "schema dump of fresh head and takeover differ"
           print(f"fresh head and takeover dumps identical ({len(fresh.splitlines())} lines)")
           PY
-      # The original single step ran
-      #   pytest tests/integration tests/acceptance/test_f6_recovery.py
-      #     tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py
-      # serially. Each shard collects that same selection, takes the sorted
-      # file list, and runs every SHARDS-th file starting at its own index, so
-      # the shards together run exactly the original files, each once.
+      # Every test marked pg (tests/conftest.py) outside tests/acceptance and
+      # tests/browser, which have their own jobs. Each shard collects that
+      # selection, takes the sorted file list, and runs every SHARDS-th file
+      # starting at its own index, so the shards together run each file once.
       - name: Verify ledger and adapter integration on synthetic PostgreSQL
         if: needs.pg-scope.outputs.full != 'false'
         env:
           M0_B_POSTGRES: "1"
           M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_TEST_DATABASE_URL: host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab
+          OPSPILOT_PG_SELECTION_GUARD: pg
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ strategy.job-total }}
         # Native local cluster restart is independently tested on macOS, not this service.
         run: |
-          .venv/bin/python -m pytest --collect-only -q tests/integration tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py > /tmp/collected.txt
+          .venv/bin/python -m pytest --collect-only -q -m pg tests --ignore=tests/acceptance --ignore=tests/browser > /tmp/collected.txt
           mapfile -t all < <(grep '::' /tmp/collected.txt | cut -d: -f1 | LC_ALL=C sort -u)
           mapfile -t files < <(printf '%s\n' "${all[@]}" | awk -v i="$SHARD" -v n="$SHARDS" '(NR - 1) % n == i - 1')
           echo "shard ${SHARD}/${SHARDS}: ${#files[@]} of ${#all[@]} files"
@@ -302,21 +308,18 @@ jobs:
           make migrate | tee /tmp/migrate-empty.log
           grep -q "schema upgraded: ${HEAD}" /tmp/migrate-empty.log
           .venv/bin/python -m opspilot.schema check
-      # #673: every acceptance file gated on M1_DURABLE_POSTGRES, directly or via
-      # f11_steps_support's s.PG marker, selected by that gate so new PG files
-      # join automatically. The rest of tests/acceptance already runs in checks.
+      # Every tests/acceptance test marked pg (tests/conftest.py: a lab-PG gate
+      # in the module, a skipif marker or any fixture it uses, e.g. the
+      # workbench driver). The rest of tests/acceptance runs in checks.
       - name: PG acceptance
         if: needs.pg-scope.outputs.full != 'false'
         env:
           M0_B_POSTGRES: "1"
           M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_TEST_DATABASE_URL: host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab
+          OPSPILOT_PG_SELECTION_GUARD: pg
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
-        run: |
-          mapfile -t files < <(grep -lE 'M1_DURABLE_POSTGRES|\bs\.PG\b' tests/acceptance/test_*.py | sort)
-          echo "PG acceptance files (${#files[@]}):"
-          printf '  %s\n' "${files[@]}"
-          test "${#files[@]}" -gt 0
-          .venv/bin/python -m pytest "${files[@]}" -q -rs
+        run: .venv/bin/python -m pytest -m pg tests/acceptance -q -rs
 
   pg-browser:
     runs-on: ubuntu-24.04
@@ -388,8 +391,9 @@ jobs:
         if: needs.pg-scope.outputs.full != 'false'
         env:
           M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_PG_SELECTION_GUARD: pg
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
-        run: .venv/bin/python -m pytest tests/browser -q -rs
+        run: .venv/bin/python -m pytest -m pg tests/browser -q -rs
 
   # Required check. `if: always()` so a failed or cancelled PG job turns this
   # job red instead of skipped (a skipped required check counts as passing).

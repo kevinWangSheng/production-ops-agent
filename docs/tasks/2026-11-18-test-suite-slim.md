@@ -1,0 +1,67 @@
+# 测试套件精简
+
+- 状态：进行中（PR1）
+- 更新日期：2026-11-18
+- 依据：AGENTS.md「验证与汇报」（外部 `IncidentScenario -> IncidentOutcome`）、[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)、用户方向 2026-11-17「测试少而有用」与 2026-11-18 裁决（见合同 r1）
+- 工作区：`/Users/shenghuikevin/dev/AI/poa-test-slim`，分支 `chore/test-suite-slim`（起点 `origin/main` e4020302）
+
+## 目标与范围
+
+把约 7,400 个测试函数（26 万行，产品代码的 3 倍）收到只剩高维度测试：①场景驱动验收（含 feature_list 每个验收步骤）②工作台 HTTP 驱动加浏览器路径 ③一个集中的表驱动安全边界套件 ④最小 PG 存储与迁移合同 ⑤报告校验合同。其余（`_impl` 镜像、按 issue 编号的回归堆、评测/实验环境/spike 工具测试、内部单测、措辞钉子）默认删除，除非守着别处没守的不变量。目标 ≤600 个测试函数、PR CI 墙钟 ≤6 分钟。不改产品代码（`opspilot/`）与迁移；`scripts/` 不动。
+
+分两个 PR，不叠：
+- PR1：CI 的 PG 选择改为 `pg` 标记，补上漏跑的 PG 文件；新建 `tests/safety/`；变异清单与 `make mutation`。
+- PR2：大删；删前删后跑同一份变异清单；搬跨文件 helper；保留的慢用例去掉墙钟等待（测试侧回填时间、测试配置缩短超时）。
+
+## 前提与完成条件
+
+- 前提：本机 swap 紧，只跑定向文件，全量交 CI；PG 定向测试与 PG 变异用 scratchpad 里的临时 PG 17（端口 55471，任务结束停止）。
+- 完成条件：PR1 与 PR2 的 CI 绿、独立审查完成；变异清单在删前删后全部 `killed`；PR2 正文附删除量、passes 旧→新映射表、CI 前后耗时。
+
+## 合同（r1）
+
+| 编号 | 裁决要点 | 出处 |
+|---|---|---|
+| R1 | 只删测试，`scripts/` 工具脚本保留（`scripts.m0.postgres_lab` 是测试基础设施） | 用户 2026-11-18 |
+| R2 | 功能验收收拢到场景驱动后，feature_list `passes` 的证据可改指新文件；条件是每个验收步骤在新文件有对应用例且过变异检查；PR 正文附旧→新映射表 | 用户 2026-11-18 |
+| R3 | 暴露出的失败逐个判断修测试还是删；产品 bug 只记 issue 候选，不修产品代码 | lead 2026-11-18 |
+| D1 | `pg` 标记由 `tests/conftest.py` 自动判定（`tests/integration/`、模块或所用 fixture 读 lab PG 门控变量、skipif 理由是 lab PG 门控），不在 160 个文件里逐个手写；理由：PR2 删掉大部分文件，自动判定对新文件同样生效 | Agent 自定，可逆 |
+| D2 | `OPSPILOT_PG_SELECTION_GUARD`：checks 中 lab PG 跳过、PG 作业中门控变量缺失导致的跳过都直接失败；理由：防止测试漏选后哪里都不跑 | Agent 自定，可逆 |
+| D3 | 变异工具放在 `tests/mutation/`（不改 `scripts/`），Make 目标 `mutation`，不进 CI 必需检查 | lead 2026-11-18 + Agent |
+
+## 必要上下文
+
+- 审计（2026-11-18，scratchpad 报告的结论）：
+  - 现状：`_impl` 147 个文件（与独立验收行覆盖几乎重合）；评测、实验环境与 spike 工具测试 142 个文件、6.8 万行；198 个文件跨测试文件 import helper。
+  - checks：最慢 50 例里 97% 是评测工具链测试，原因是每个测试都重建 git 工作区。
+  - PG：≥1s 的用例约占 PG 测试时间的 68%，主要在等真实 deadline（`wait_past`）。
+- CI 选择漏洞（PR1 修复前）：PG acceptance 用 `grep M1_DURABLE_POSTGRES` 选文件，经驱动 fixture 门控的 `tests/acceptance/test_workbench_conversation.py`（24 例）、`test_686_replies_key_wrapper.py`（7 例），以及 8 个顶层或 unit 目录下的 PG 文件和 `tests/test_acceptance_audit.py`（20 例）在任何 CI 作业里都不运行。
+
+## 执行进展与证据
+
+### PR1
+
+- **PG 选择**：
+  - `tests/conftest.py` 加 `pg` 标记与选择守卫；`ci.yml` 中 checks 跑 `-m "not pg"`，`pg-integration` 跑 acceptance 与 browser 之外的 `-m pg`，PG acceptance 跑 `-m pg tests/acceptance`，browser 跑 `-m pg tests/browser`。
+  - PG 作业设 `OPSPILOT_TEST_DATABASE_URL`。
+  - 本机收集对比：旧选择的文件全部在新选择里；新增 11 个文件。
+  - 新增文件在本机临时 PG 上的结果：`test_workbench_conversation`、`test_686_replies_key_wrapper`、`test_acceptance_audit` 及 8 个顶层或 unit PG 文件共 57+31 例通过（`test_acceptance_audit` 要求库已迁移，CI 的迁移步骤先于测试）。
+- **安全套件 `tests/safety/`**：
+
+  | 文件 | 守什么 | 用例 |
+  |---|---|---|
+  | `test_tool_gateway.py` | 按 `otel-demo-ext` 注册表枚举全部工具：只读注册、写动词拒绝、未注册目标与越权窗口在发请求前拒绝、K8s Secret 各种拼写拒绝、PromQL `offset`/`@`/嵌套 lookback 越窗拒绝、挂起与在途人工决定（结果只作历史）、源内容与源错误回显里的凭据（userinfo、赋值、带引号、Authorization、Bearer）不进模型视图与证据 | 199 |
+  | `test_recovery_authority.py` | 按全部已发布 HealthProfile 的每个必需信号枚举：缺失、各种非 ok 状态、点数不足、过旧、窗口过期、越界都不能确认恢复；未绑定 profile 不确认；带 healthy 字样但缺信号的样本不确认 | 76 |
+  | `test_human_control_postgres.py` | 工作台中途 pause/cancel 的决定压过 Run 的迟到报告；暂停的事故不会被 claim | 3 |
+  | `test_runtime_roles_postgres.py` | 目录权限等于 `RUNTIME_GRANTS`；独立于声明钉住：worker 不写已审知识，web 不能签发租约，删除只限两条已声明路径，没有 TRUNCATE 与 CREATE，observer 只能改 lifecycle | 10 |
+
+- **变异清单 18 条**（`tests/mutation/mutations.py`）：只对 `tests/safety` 跑一遍，结果 18/18 killed（含 PG 3 条，本机临时 PG）。命令是 `make mutation`，带 PG 环境；结果表附在 PR 正文。
+  - 第一轮 5 条存活。M06、M10、M13、M15 的原因是用例没打中那条规则，已补用例（嵌套 lookback 用例、无名 Bearer、伪造 healthy 样本、窗口过期）。
+  - M16 存活的原因是 publish 的人工控制栅栏有多层，单删一层会被其余层兜住；已把该条改成同时去掉 publish 判定与 `_lease_revoked` 两层。
+- **产品问题候选**（不修）：带转义引号的 JSON 文本（日志里再次序列化的 `\"token\": \"v\"`）不被脱敏；`redact_credentials` 只处理键名本身用转义拼写的情况。
+
+## 下一步与交接
+
+- PR1：Draft，等 CI 与独立审查。
+- PR2：按审计分类删除，删前删后各跑一次 `make mutation MUTATION_ARGS='--suite tests'`。
+- 运行中资源：scratchpad 临时 PG 17（端口 55471，数据目录 `scratchpad/pgdata`），PR2 完成后停止。
