@@ -78,7 +78,9 @@ jobs:
         if: steps.scope.outputs.full != 'false'
         env:
           OPSPILOT_PG_SELECTION_GUARD: checks
-        run: .venv/bin/python -m pytest -m "serial and not pg"
+        # Exit 5 = nothing selected: no serial test is left after the
+        # 2026-11-18 slim; the marker stays for the next timing-sensitive one.
+        run: .venv/bin/python -m pytest -m "serial and not pg" || test $? -eq 5
       # PR-D1 (D07): a fresh network namespace without interfaces, back as the
       # runner user, only PATH/LANG and a throwaway HOME. Before the entry runs,
       # the namespace must hold only lo and an outbound connect must fail with
