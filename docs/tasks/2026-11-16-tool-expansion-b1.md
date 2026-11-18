@@ -1,6 +1,6 @@
 # 工具面拓展 B1：Elasticsearch/OpenSearch 日志检索
 
-- 状态：实施中（实现已推送草稿 PR #705；独立合同测试、真实后端集成测试与 CI job 由测试作者另写，待合入；独立审查未做）
+- 状态：实现完成、待合并（PR #705；真实 Run 证据归 #671）
 - 更新日期：2026-11-18
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) r1–r8 与 r9（本项 B1-U1、B1-U2、B1-1 至 B1-22）、C3 第 8、12 节；上游 HolmesGPT `a0009195` 的 `elasticsearch/data`（`elasticsearch.py`）。issue #560。预审全文在仓库外（`~/.agent/handoffs/opspilot-b1-prereview-2026-11-16.md`），对照 `main` `2f7ec758`。
 - 工作区：worktree `../poa-560-es`，分支 `feature/560-es-logs`，起点 `origin/main` `09c1a68b`。
@@ -61,6 +61,22 @@ r9 没定死、由实现者按 A 批先例取可逆项（每行一条）：
 - worker 与 web 环境：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；两进程都设 `OPSPILOT_ES_URL=http://127.0.0.1:<端口>`（web 只读地址，用来选工具面；只有一边设会因版本不一致拦住 Run）。worker 另设 `OPSPILOT_ES_API_KEY`（OpenSearch 用 `OPSPILOT_ES_USERNAME`/`OPSPILOT_ES_PASSWORD`），HTTPS 时 `OPSPILOT_ES_CA_FILE`。只设凭据不设地址、两种凭据都设、都不设，worker 启动即退出（`ES_CONFIG_INVALID`/`ES_CONFIG_MISSING`）。扩展档位仍需 `OPSPILOT_K8S_*` 与 Prometheus/Jaeger 地址。lab 闸门要求 ES 地址是回环、`localhost` 或 `*.svc`，否则 `ELASTICSEARCH_NOT_LAB`。
 - 只读身份：`scripts/es_readonly_identity.py --backend elasticsearch|opensearch`。工程师凭据只从环境读（`ELASTICSEARCH_URL` 加 `ELASTICSEARCH_API_KEY`，或 `ELASTICSEARCH_USERNAME`/`ELASTICSEARCH_PASSWORD`，与上游 `before_test` 同名）；ES 建 B1-5 的 API key（默认 7 天，`--expiration` 可改），OpenSearch 建 `readall_and_monitor` 内部用户（随机口令）；把 `OPSPILOT_ES_*` 写进 `tmp/m1-kind-lab/es-readonly.env`（600，`--out` 可改），只打印 key id 或用户名，不回显秘密。OpenSearch 的角色映射写法（`opendistro_security_roles`）未实测，冒烟时核实。
 - 冒烟证据：至少一次真实 Run 调用了 `elasticsearch_*`，已发布报告引用其证据；附 LangSmith trace 链接与冻结的 `summary.json`（lab 闸门通过，项目名以 `opspilot-lab-` 开头）；OpenSearch 跑 2 题，记录里单列 OpenSearch 只读用户的直接写入被拒（B1-19）。
+
+## 验证
+
+- 合同测试 `tests/test_tool_expansion_b1_contract.py`（未参与实现的测试作者编写，本机 `http.server` 替身）：本机 152 passed。
+- 真实后端集成测试 `tests/integration/test_tool_expansion_b1_search_backends.py`：CI job `search-backends` 在 `fc616162` 上 17 passed、0 skipped（Elasticsearch 8.19.25 与 OpenSearch 2.19.7，镜像钉 digest；run 44278860449，job 134714070948）。同一 run 的 `checks`、`m0-postgres` 与 `red-proof`（run 44278860324）均成功。
+- 独立审查：在 `fabbcbd5` 上发现 3 个阻断项，即 `terms_set.minimum_should_match_script` 仍能把 Painless 送到 ES、CI 夹具被 ES 内置 `logs-*-*` 模板拒绝建索引、`significant_terms`/`significant_text` 的背景计数越出事故窗；均已修复，并在 `fc616162` 上复审通过、无阻断项。可选项 6（runtime 与多字段日期算时间字段）、10（私密文件不跟随符号链接）已采纳；可选项 5、7、8、9 与 `min_doc_count:0` 不影响数据正确性，不处理。
+
+## 已知限制
+
+- Compose 未接 `OPSPILOT_ES_URL`：web 拿不到 worker_env 里的地址，两边 `tool_schema_revision` 会不同，Run 在认领时被拦；宿主进程拓扑（#671、租机）不受影响。
+- OpenSearch 的只读角色与 basic 认证未实测，留到 #671 冒烟。
+- `global` 在任意位置被拒，名为 `global` 的字段不能在 query/sort 里作键。
+
+## 未完成
+
+- 真实 Run 证据（调用 `elasticsearch_*`、报告引用、LangSmith trace 与 `summary.json`）归 #671。
 
 ## 不做
 
