@@ -414,15 +414,23 @@ def gate4_problems(record: Mapping[str, Any], verbs: Mapping[str, str]) -> list[
     return problems
 
 
-def scenario_shape_problems(record: Mapping[str, Any]) -> list[str]:
+def scenario_shape_problems(
+    record: Mapping[str, Any],
+    # Frozen pre-P2 real Runs recorded the follow_up as a control (generation
+    # 1); since workbench P2 it is a message input that moves no generation
+    # (contract A1/B3), so the product path records 0.
+    expected_generation: int = 1,
+) -> list[str]:
     """Pre-review item 5 extras: one new alert incident, one Run (the
     pre-claim follow_up re-queued the same Run, generation 1), no attach."""
     problems: list[str] = []
     runs = record["incident_runs"]
     if [str(r["run_id"]) for r in runs] != [str(record["run_id"])]:
         problems.append(f"incident Runs {runs} are not exactly the scenario Run")
-    elif runs[0]["control_generation"] != 1:
-        problems.append(f"Run generation {runs[0]['control_generation']} != 1")
+    elif runs[0]["control_generation"] != expected_generation:
+        problems.append(
+            f"Run generation {runs[0]['control_generation']} != {expected_generation}"
+        )
     outcomes = list(record["alert_delivery_outcomes"])
     if not outcomes or outcomes[0] != "created":
         problems.append(f"alert deliveries {outcomes} do not start with created")

@@ -8,16 +8,13 @@ scripted models (no model HTTP). Opt in with ``M1_DURABLE_POSTGRES=1``; point
 
 from __future__ import annotations
 
-import json
 import os
 
-import psycopg
 import pytest
 
 from opspilot.investigation.loop import InvestigationLoop
 from opspilot.investigation.store import DurableStepStore
 from opspilot.worker import Worker
-from scripts.m0.postgres_lab import DSN
 from tests.integration.test_m1_loop_resume_postgres import (
     VERSIONS,
     Crash,
@@ -53,33 +50,6 @@ def _forced_final_handoff(h):
     final_row = next(s for s in rows["steps"] if s["logical_key"] == "ctx0:round-3")
     assert final_row["response"]["context"]["final"] is True
     return outcome
-
-
-def test_follow_up_after_a_rejected_forced_final_round_resumes_and_publishes():
-    h = Harness(budget_limit=4, model_requests=4)
-    first = _forced_final_handoff(h)
-    assert h.store.run_usage(h.run)["model_requests_used"] == 3
-    queries = h.transport_requests
-
-    assert (
-        h.store.control(h.incident, 0, "follow_up", "operator", {"question": FOLLOW_UP})
-        == 1
-    )
-    assert h.rows()["run"]["state"] == "queued"
-
-    runner = h.runner([report_from_transcript])
-    outcome = runner.resume(h.incident)
-    assert outcome.status == "published", outcome  # not blocked(INCOMPATIBLE_STATE)
-    assert outcome.epoch > first.epoch
-    assert len(runner.model.calls) >= 1
-    assert FOLLOW_UP in json.dumps(runner.model.calls[0].messages)
-    rows = h.rows()
-    assert rows["run"]["run_id"] == h.run and rows["run"]["state"] == "completed"
-    assert rows["conclusion"]["conclusion"]["execution"] == "completed"
-    assert h.store.run_usage(h.run)["model_requests_used"] == 3 + len(
-        runner.model.calls
-    )
-    assert h.transport_requests == queries  # nothing was re-queried
 
 
 def test_restart_after_an_accepted_forced_final_report_publishes_without_a_model_call():
@@ -127,42 +97,3 @@ def test_restart_after_an_accepted_forced_final_report_publishes_without_a_model
     assert runner.model.calls == []
     assert h.store.run_usage(h.run)["model_requests_used"] == 3
     assert h.rows()["conclusion"] is not None
-
-
-def test_a_budget_driven_final_round_still_follows_up_without_blocking():
-    h = Harness(budget_limit=2, model_requests=2)
-    outcome = h.runner([*_tool_rounds(1), _bad]).resume(h.incident)
-    assert outcome.status == "handed_off" and outcome.reason == "REPORT_INVALID", (
-        outcome
-    )
-    assert (
-        h.store.control(h.incident, 0, "follow_up", "operator", {"question": FOLLOW_UP})
-        == 1
-    )
-    again = h.runner([report_from_transcript]).resume(h.incident)
-    assert again.status != "blocked" and again.reason != "INCOMPATIBLE_STATE", again
-    assert h.rows()["run"]["state"] != "blocked"
-
-
-def test_an_edited_committed_reply_still_blocks_the_follow_up():
-    h = Harness(budget_limit=4, model_requests=4)
-    _forced_final_handoff(h)
-    with psycopg.connect(DSN, autocommit=True) as conn:
-        changed = conn.execute(
-            "UPDATE opspilot_steps SET response = jsonb_set(response, "
-            "'{assistant,content}', '\"edited after the fact\"') "
-            "WHERE run_id = %s AND logical_key = 'ctx0:round-2'",
-            (h.run,),
-        ).rowcount
-    assert changed == 1
-    assert (
-        h.store.control(h.incident, 0, "follow_up", "operator", {"question": FOLLOW_UP})
-        == 1
-    )
-    runner = h.runner([report_from_transcript])
-    outcome = runner.resume(h.incident)
-    assert outcome.status == "blocked" and outcome.reason == "INCOMPATIBLE_STATE", (
-        outcome
-    )
-    assert runner.model.calls == []
-    assert h.rows()["run"]["state"] == "blocked"

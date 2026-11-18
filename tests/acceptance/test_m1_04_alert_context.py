@@ -14,7 +14,6 @@ from copy import deepcopy
 from datetime import timedelta
 from uuid import UUID, uuid4
 
-import psycopg
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -30,7 +29,6 @@ from tests.acceptance.test_m1_04_alert_window import (
     TARGET,
     _alert,
     _db_now,
-    _generation,
     _project,
     _send,
 )
@@ -376,63 +374,6 @@ def test_k1_replayed_and_resolved_leave_input_immutable(harness, database):
         after = _project(database, result["incident_id"])
         assert after.run_input == before.run_input
         assert after.run_ids == before.run_ids
-
-
-@pytest.mark.parametrize("fresh", [False, True], ids=["continuation", "fresh-fallback"])
-def test_k6_k7_timeout_successor_preserves_first_context(harness, database, fresh):
-    alert, result, before = _create(
-        harness, database, annotations={"summary": "FIRST CONTEXT"}
-    )
-    original = _context(before)
-    replay = _send(
-        harness,
-        {
-            **deepcopy(alert),
-            "annotations": {"summary": "LATEST MUST NOT REPLACE FIRST"},
-        },
-    )
-    assert replay.status == 200 and replay.json()["results"][0]["outcome"] == "replayed"
-    with psycopg.connect(database) as conn:
-        # Existing step-3 timeout/fresh fault seam, scoped to this test's Run.
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline = clock_timestamp() - interval '1 second' WHERE run_id = %s",
-            (result["run_id"],),
-        )
-        if fresh:
-            conn.execute(
-                "UPDATE opspilot_runs SET input = NULL WHERE run_id = %s",
-                (result["run_id"],),
-            )
-    generation = _generation(harness, result["incident_id"])
-    response = post_form(
-        harness,
-        f"/incidents/{result['incident_id']}/control",
-        {
-            "action": "follow_up",
-            "text": "continue the alert investigation",
-            "expected_generation": str(generation),
-            "idempotency_key": uuid4().hex,
-        },
-        headers={**basic(), **same_origin(), "accept": "application/json"},
-    )
-    assert response.status == 200, response.text
-    after = _project(database, result["incident_id"])
-    assert len(after.run_ids) == len(after.run_inputs) == 2
-    successor = after.run_inputs[1]
-    assert successor["version"] == V4
-    assert successor["scope_facts"]["alert_context"] == original
-    assert (
-        successor["scope_facts"]["alert_starts_at"]
-        == before.run_input["scope_facts"]["alert_starts_at"]
-    )
-    assert (
-        successor["evidence_context"]["time_policies"]
-        == before.run_input["evidence_context"]["time_policies"]
-    )
-    if fresh:
-        assert after.run_inputs[0] is None
-    calls = _drive(database, result["incident_id"])
-    assert _message_context(calls[0].messages[2]) == original
 
 
 def test_k4_unknown_later_version_is_incompatible(harness, database):

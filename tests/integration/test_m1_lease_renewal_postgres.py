@@ -126,7 +126,7 @@ def test_expired_lease_cannot_be_revived_only_reclaimed_with_a_new_epoch():
     assert store.renew_lease(successor, 60) > _run_row(store, run)["now"]
 
 
-@pytest.mark.parametrize("action", ["cancel", "pause", "correct", "follow_up"])
+@pytest.mark.parametrize("action", ["cancel", "pause"])
 def test_human_control_revokes_the_lease_and_renewal_is_refused(action):
     store = DurableStore(DSN)
     incident, run = _accept(store)

@@ -450,6 +450,20 @@ class MemoryIncidentStore:
     def investigation_history(self, incident_id):
         return []
 
+    # Workbench contract B4/B8 reads (the double holds no messages).
+    def conversation_floor(self, incident_id):
+        return max(
+            (
+                int(run.get("input_watermark", 0))
+                for run in self.runs.values()
+                if run.get("incident_id") == incident_id
+            ),
+            default=0,
+        )
+
+    def prior_replies(self, incident_id):
+        return []
+
     def control_times(self, incident_id):
         return []
 

@@ -1,7 +1,7 @@
 """Shared workbench acceptance driver: real PG, product runner, scripted model.
 
-Incidents enter through HTTP; continuation/watch setup uses store primitives.
-P2's relay does not exist yet, so its transaction is seeded explicitly.
+Incidents and P2 messages enter through HTTP; P2 invokes the real relay pass.
+The original continuation/watch seeding helpers remain available to P1.
 Assertions read persisted business records, never the loop's private state.
 No model HTTP, observer worker, or PostgreSQL process is started here.
 """
@@ -16,16 +16,22 @@ import os
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
+from urllib.parse import urlencode
 from uuid import UUID, uuid4, uuid5
 
+import psycopg
 import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 from psycopg.types.json import Jsonb
 
 from opspilot import schema
 from opspilot.acceptance import IncidentScenario, outcome_from_durable
+from opspilot.acceptance_audit import audit_timeline
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.observation import ObservationStore
-from opspilot.persistence import DurableStore, PoolConfig
+from opspilot.observer import PROFILE_DIRECTORY, load_health_profile
+from opspilot.persistence import DurableStore, PoolConfig, close_pools
 from opspilot.tools.fixture import (
     FIXTURE_TOOL,
     fixture_executor_factory,
@@ -45,6 +51,7 @@ from opspilot.web import (
     hash_password,
     token_digest,
 )
+from opspilot.web.service import available_actions
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN, binary
 from tests.m1_investigation_support import (
@@ -53,7 +60,7 @@ from tests.m1_investigation_support import (
     report_from_transcript,
     tool_call,
 )
-from tests.target_support import ANY_TARGETS, IDENTITY, WORKLOAD
+from tests.target_support import ANY_TARGETS, IDENTITY, PROFILE_ID, WORKLOAD
 
 TARGET = "checkout-prod"
 UI_USER = "workbench-oncall"
@@ -216,6 +223,139 @@ class WorkbenchDriver:
     def close(self):
         self.store.close()
 
+    def control(self, incident_id: UUID, action: str, **fields) -> HTTPResponse:
+        fields = {
+            "action": action,
+            "expected_generation": self.incident(incident_id)["control_generation"],
+            "idempotency_key": f"workbench-{uuid4()}",
+            **fields,
+        }
+        return call(
+            self.app,
+            "POST",
+            f"/incidents/{incident_id}/control",
+            headers={
+                **basic(),
+                "origin": ORIGIN,
+                "content-type": "application/x-www-form-urlencoded",
+            },
+            body=urlencode(fields).encode(),
+        )
+
+    def message(self, incident_id: UUID, text: str, *, action="message", key=None):
+        # contract B1/R2 interface: POST /incidents/{id}/control, action=message
+        # (or its follow_up/correct HTTP aliases). The control helper's
+        # expected_generation is optional and ignored by message admission.
+        return self.control(
+            incident_id,
+            action,
+            text=text,
+            idempotency_key=key or f"workbench-message-{uuid4()}",
+        )
+
+    def relay(self):
+        # contract B1/R2 interface: Workbench.relay_pass(limit=20) is the
+        # public background step over Workbench.relay(incident_id).
+        relay = self.workbench.relay_pass
+        assert callable(relay), "P2 R2: the web relay loop step is not available"
+        return relay(limit=10_000)
+
+    def runs(self, incident_id: UUID):
+        with self.store.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT * FROM opspilot_runs WHERE incident_id=%s ORDER BY run_id",
+                (incident_id,),
+            ).fetchall()
+
+    def inputs(self, incident_id: UUID):
+        with self.store.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT * FROM opspilot_inputs WHERE incident_id=%s ORDER BY sequence",
+                (incident_id,),
+            ).fetchall()
+
+    def unread(self, incident_id: UUID):
+        floor = max((r["input_watermark"] for r in self.runs(incident_id)), default=0)
+        return [
+            row
+            for row in self.inputs(incident_id)
+            if row["kind"] == "message" and row["sequence"] > floor
+        ]
+
+    def actions(self, incident_id: UUID):
+        return available_actions(self.workbench.snapshot(incident_id))
+
+    def audit(self, incident_id: UUID):
+        with self.store.transaction(snapshot=True) as conn:
+            return audit_timeline(conn, incident_id)
+
+    def records(self, incident_id: UUID):
+        """Business state for refusal/no-write assertions, including leases."""
+        with self.store.transaction(snapshot=True) as conn:
+            controls = conn.execute(
+                "SELECT * FROM opspilot_controls WHERE incident_id=%s ORDER BY audit_id",
+                (incident_id,),
+            ).fetchall()
+        return {
+            "incident": self.incident(incident_id),
+            "runs": self.runs(incident_id),
+            "inputs": self.inputs(incident_id),
+            "controls": controls,
+            "observation": self.observation(incident_id),
+        }
+
+    def legacy_input(self, incident_id: UUID, kind: str):
+        """Old-data fixture only: historical rows must not trigger relay."""
+        assert kind in {"follow_up", "correct"}
+        with self.store.transaction() as conn:
+            conn.execute(
+                "INSERT INTO opspilot_inputs "
+                "(input_id,incident_id,sequence,kind,content,actor,control_generation) "
+                "SELECT %s,%s,COALESCE(max(sequence),0)+1,%s,%s,%s,%s "
+                "FROM opspilot_inputs WHERE incident_id=%s",
+                (
+                    uuid4(),
+                    incident_id,
+                    kind,
+                    Jsonb({"text": f"Historical {kind}", "channel": "web"}),
+                    UI_USER,
+                    self.incident(incident_id)["control_generation"],
+                    incident_id,
+                ),
+            )
+
+    def enable_observation(self):
+        self.workbench.health_profile = load_health_profile(
+            PROFILE_DIRECTORY / f"{PROFILE_ID}.json"
+        )
+
+    def automatic_observation(self):
+        return self.workbench.self_heal_pass(limit=10_000)
+
+    def expire_watch(self, incident_id: UUID):
+        """Fixture: manual observation ended without confirming recovery.
+
+        No observer/source process is started. Ending the session exposes
+        erroneous reauthorization that an active-session guard could mask.
+        """
+        with self.store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET state='expired',"
+                "ended_reason='max_samples_exhausted',active_sample_job_id=NULL,"
+                "active_sample_sequence=NULL,active_sample_due_at=NULL,"
+                "active_sample_owner=NULL,active_sample_lease_until=NULL "
+                "WHERE incident_id=%s AND state='authorized'",
+                (incident_id,),
+            )
+
+    def resolved(self, incident_id: UUID):
+        """Fixture lifecycle only; recovery itself is covered by F6."""
+        with self.store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_incidents SET lifecycle='resolved' WHERE incident_id=%s",
+                (incident_id,),
+            )
+
     def incident(self, incident_id: UUID) -> dict[str, Any]:
         with self.store.transaction(snapshot=True) as conn:
             row = conn.execute(
@@ -276,14 +416,43 @@ class WorkbenchDriver:
             "endings": endings,
         }
 
-    def from_alert(self, scenario_id: str) -> IncidentScenario:
+    def from_alert(self, scenario_id: str, *, target=TARGET) -> IncidentScenario:
+        if target is None:
+            response = post_json(
+                self.app,
+                "/intake/alertmanager",
+                {
+                    "version": "4",
+                    "status": "firing",
+                    "alerts": [
+                        {
+                            "status": "firing",
+                            "fingerprint": uuid4().hex,
+                            "startsAt": self.clock.now().isoformat(),
+                            "labels": {"alertname": "WorkbenchUnmapped"},
+                            "annotations": {},
+                        }
+                    ],
+                },
+                headers=bearer(),
+            )
+            assert response.status == 200, response.text
+            subject = response.json()["results"][0]["incident_id"]
+            assert subject is not None, response.text
+            return IncidentScenario(
+                scenario_id=scenario_id,
+                feature_id="F12",
+                acceptance_step="Workbench P2 message admission",
+                kind="incident",
+                subject_id=subject,
+            )
         response = post_json(
             self.app,
             "/intake/events",
             {
                 "source": "alertmanager",
                 "external_event_id": f"workbench-{uuid4()}",
-                "target_id": TARGET,
+                "target_id": target,
                 "question": "CheckoutErrorRateHigh firing: why is checkout erroring?",
             },
             headers=bearer(),
@@ -478,14 +647,32 @@ def tool_round(*, content=None, call_id="workbench-read"):
     )
 
 
-@pytest.fixture(scope="module", name="workbench_database")
+@pytest.fixture(name="workbench_database")
 def workbench_database_fixture():
     if os.environ.get("M1_DURABLE_POSTGRES") != "1":
         pytest.skip("explicit PG opt-in required: M1_DURABLE_POSTGRES=1")
-    # Acceptance lives outside tests/integration, so its autouse migration
-    # fixture is not collected. Perform that same owner-connection setup.
-    schema.migrate(DSN, pg_dump=os.environ.get("OPSPILOT_PG_DUMP") or binary("pg_dump"))
-    return DSN
+    # The fixture tool/report helpers deliberately share a logical target.
+    # Give each test a UUID-named database on the supplied PG server, as the
+    # existing F7 acceptance harness does. Leftover targets/sessions in the
+    # reused lab DB cannot trigger TARGET_MISMATCH; no old rows are edited.
+    name = f"workbench_{uuid4().hex}"
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+    dsn = make_conninfo(DSN, dbname=name)
+    try:
+        # Acceptance is outside tests/integration's autouse migration scope.
+        schema.migrate(
+            dsn, pg_dump=os.environ.get("OPSPILOT_PG_DUMP") or binary("pg_dump")
+        )
+        yield dsn
+    finally:
+        close_pools()
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
 
 
 @pytest.fixture(name="workbench")

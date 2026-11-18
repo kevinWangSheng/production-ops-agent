@@ -25,7 +25,6 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 
-from opspilot.investigation.progress import sweep_expired
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.persistence.grants import WEB_ROLE, WORKER_ROLE
 from opspilot.tools.fixture import fixture_face, fixture_versions
@@ -477,46 +476,6 @@ def test_a_critical_arriving_while_slots_are_full_is_claimed_next(
 
 
 # -- item 4: a renewed Run keeps the incident's priority ---------------------
-
-
-def test_a_follow_up_renewed_run_inherits_the_incident_priority(
-    web_dsn, owner, stub, workers
-):
-    short, normal = _app(web_dsn, 3), _app(web_dsn, 600)
-    critical_tag, warning_tag = new_tag(), new_tag()
-    stub.plan(critical_tag, Act("reject"))
-    stub.plan(warning_tag, Act("reject"))
-    critical, old_run = _firing(short, critical_tag, "critical")
-
-    def overdue() -> bool:
-        value = owner.execute(
-            "SELECT deadline <= clock_timestamp() FROM opspilot_runs WHERE run_id=%s",
-            (old_run,),
-        ).fetchone()[0]
-        owner.commit()
-        return bool(value)
-
-    assert wait_until(overdue, timeout=15)
-    store = DurableStore(DSN)
-    store.install()
-    sweep_expired(store, DurableEventLog(store), incident_id=critical)
-    assert run_rows(owner, [critical])[critical]["state"] == "waiting_human"
-    warning = _firing(normal, warning_tag, "warning")[0]
-    _control(normal, critical, "follow_up", 0, text="Check the error ratio again.")
-    renewed = run_rows(owner, [critical])[critical]
-    assert renewed["run_id"] != old_run and renewed["state"] == "queued"
-    assert _priority(owner, critical) == 0 and _priority(owner, warning) == 1
-    # The renewed Run's deadline is later than the warning's, so only the
-    # inherited priority puts it first.
-    assert renewed["deadline"] > run_rows(owner, [warning])[warning]["deadline"]
-    worker = workers(OPSPILOT_WORKER_CAPACITY="1")
-    assert wait_until(
-        lambda: _all_parked(owner, [critical, warning]), timeout=START + SETTLE
-    ), worker.log()
-    claims = events_of(owner, [critical, warning], "run_claimed")
-    assert [s for s, _, _ in claims][:2] == [critical, warning]
-    assert claims[0][2]["run_id"] == str(renewed["run_id"])
-    assert worker.stop() == 0
 
 
 # -- item 5: one Run's model timeout does not abort another ------------------

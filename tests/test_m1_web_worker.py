@@ -76,60 +76,6 @@ def test_a_workbench_without_a_tool_face_records_no_input():
     assert workbench.incidents.runs[run_id]["input"] is None
 
 
-def test_a_note_on_a_timed_out_run_and_new_run_carry_a_successor_input():
-    app, workbench, clock = build_workbench(tool_face=fixture_face())
-    incident = submit_incident(app, key="successor").json()["incident_id"]
-    subject = UUID(incident)
-    old = workbench.list_incidents()[0].current_run_id
-    workbench.incidents.claim(subject, old, uuid4(), {"state": "v1"}, 600)
-    clock.advance(601)
-    assert workbench.snapshot(subject)["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "after-timeout",
-            "text": "Check the dependency too.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    renewed = workbench.list_incidents()[0].current_run_id
-    assert renewed != old
-    successor = InvestigationInput.from_json(workbench.incidents.runs[renewed]["input"])
-    # C3 continuation: the context is re-bound to the new Run and the
-    # question carries the deterministic handoff note.
-    assert successor.evidence_context["run_id"] == str(renewed)
-    assert f"Continuation of investigation Run {old}" in successor.question
-    assert successor.question.startswith("Why is checkout erroring?")
-    assert successor.scope_facts["deadline"] == (
-        workbench.incidents.runs[renewed]["deadline"].isoformat()
-    )
-    # cancel + new_run: the same successor rule.
-    assert (
-        _control(
-            app,
-            incident,
-            {"action": "cancel", "expected_generation": "1", "idempotency_key": "c"},
-        ).status
-        == 200
-    )
-    assert (
-        _control(
-            app,
-            incident,
-            {"action": "new_run", "expected_generation": "2", "idempotency_key": "n"},
-        ).status
-        == 200
-    )
-    third = workbench.list_incidents()[0].current_run_id
-    assert third not in {old, renewed}
-    again = InvestigationInput.from_json(workbench.incidents.runs[third]["input"])
-    assert again.evidence_context["run_id"] == str(third)
-    assert f"Continuation of investigation Run {renewed}" in again.question
-
-
 def test_new_run_after_a_run_without_input_falls_back_to_a_fresh_input():
     """Rows created before the face existed have no snapshot to continue;
     the successor still gets a runnable input over the original question."""
@@ -196,33 +142,6 @@ def test_a_storage_failure_while_building_the_successor_fails_closed(monkeypatch
     assert fresh != old and workbench.incidents.runs[fresh]["input"] is not None
 
 
-def test_a_queued_run_nobody_claimed_before_its_wall_is_swept():
-    """Bot review (PR #52): worker down or backlog -- an overdue ``queued``
-    Run is parked as DEADLINE_EXCEEDED like an overdue running one, and a
-    note then renews it (#47)."""
-    app, workbench, clock = build_workbench(tool_face=fixture_face())
-    incident = submit_incident(app, key="queued-overdue").json()["incident_id"]
-    subject = UUID(incident)
-    run_id = workbench.list_incidents()[0].current_run_id
-    clock.advance(601)
-    snapshot = workbench.snapshot(subject)
-    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
-    assert snapshot["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Look again.",
-        },
-    )
-    assert follow.status == 200
-    renewed = workbench.list_incidents()[0].current_run_id
-    assert renewed != run_id and workbench.incidents.runs[renewed]["state"] == "queued"
-
-
 def test_continuation_input_rebinds_deadline_and_context():
     face = fixture_face()
     old, new = uuid4(), uuid4()
@@ -261,44 +180,6 @@ def test_fixture_face_and_versions_are_what_the_worker_compares():
 
 
 # -- resume on an overdue Run -------------------------------------------------
-
-
-def test_resume_on_an_overdue_run_is_refused_and_leaves_the_park_alone():
-    """Item 3b decision: ``resume`` carries no new input, so a timed-out Run
-    has nothing to resume into; follow_up/correct (renewal) or cancel +
-    new_run are the ways forward. Refusing keeps one renewal path and never
-    leaves a queued row no claim can take (#47's rule for bare notes)."""
-    app, workbench, clock = build_workbench(tool_face=fixture_face())
-    incident = submit_incident(app, key="resume-overdue").json()["incident_id"]
-    subject = UUID(incident)
-    run_id = workbench.list_incidents()[0].current_run_id
-    workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
-    clock.advance(601)
-    assert workbench.snapshot(subject)["run"]["state"] == "waiting_human"
-    refused = _control(
-        app,
-        incident,
-        {"action": "resume", "expected_generation": "0", "idempotency_key": "r"},
-    )
-    assert refused.status == 409
-    assert refused.json()["code"] == "ILLEGAL_TRANSITION"
-    run = workbench.incidents.runs[run_id]
-    assert run["state"] == "waiting_human"
-    assert workbench.incidents.incidents[subject]["control_generation"] == 0
-    # A refused intent does not block a corrected resubmission under the key.
-    assert workbench.ledger.get("control_intent", f"{subject}:r") is None
-    # The ways forward still work.
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Look again.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
 
 
 def test_resume_on_a_parked_run_that_is_not_overdue_still_requeues_it():

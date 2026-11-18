@@ -68,7 +68,12 @@ from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_list import parse_query
 from opspilot.web.incident_view import handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
-from opspilot.web.service import Workbench, WorkbenchError, available_actions
+from opspilot.web.service import (
+    MESSAGE_ACTIONS,
+    Workbench,
+    WorkbenchError,
+    available_actions,
+)
 
 MAX_BODY_BYTES = 64 * 1024
 #: One Alertmanager webhook carries a whole group of alerts (each recorded up
@@ -167,6 +172,9 @@ _WORKBENCH_STATUS = {
     "HEALTH_PROFILE_TARGET_MISMATCH": 409,
     "INTAKE_KEY_CONFLICT": 409,
     "HANDOFF_ONLY": 409,
+    # Workbench contract D6/D7b/D10: a message the investigation cannot take.
+    "INVESTIGATION_NOT_AVAILABLE": 409,
+    "MERGED": 409,
     "CONTROL_KEY_CONFLICT": 409,
     "CONTROL_CONFLICT": 409,
     "ILLEGAL_TRANSITION": 409,
@@ -1007,6 +1015,10 @@ def create_app(
         subject = incident_of(incident_id)
         fields = await form_of(request)
         generation = fields.get("expected_generation", "")
+        action = fields.get("action", "")
+        if action in MESSAGE_ACTIONS and generation == "":
+            # A message is not fenced on the generation (contract B1).
+            generation = "0"
         if not generation.isdigit():
             raise _Refusal(400, "INVALID_INPUT")
         text = fields.get("text")
@@ -1017,7 +1029,7 @@ def create_app(
             workbench.control,
             subject,
             actor_id=principal.actor_id,
-            action=fields.get("action", ""),
+            action=action,
             expected_generation=int(generation),
             idempotency_key=fields.get("idempotency_key", ""),
             text=text if text else None,
@@ -1035,6 +1047,11 @@ def create_app(
                 "replayed": result.replayed,
                 "sequence": result.sequence,
                 **({"run_id": result.run_id} if result.run_id is not None else {}),
+                **(
+                    {"input_sequence": result.input_sequence}
+                    if result.input_sequence is not None
+                    else {}
+                ),
             }
         )
 

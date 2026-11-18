@@ -156,7 +156,7 @@ def test_downgrade_0024_prints_revisions_and_outbox_counts(
     )
     assert code == 0, err
     assert out.splitlines() == [
-        "schema current: 0024_trace_outbox",
+        "schema current: 0025_web_session_rebind",
         f"schema target: {OLD_HEAD}",
         f"schema downgraded: {OLD_HEAD}",
     ]
@@ -181,8 +181,8 @@ def test_downgrade_0024_prints_revisions_and_outbox_counts(
         ("0023", "unknown revision 0023: not a migration in this build"),
         ("base", "unknown revision base: not a migration in this build"),
         (
-            "0024_trace_outbox",
-            "revision 0024_trace_outbox is not lower than the current",
+            "0025_web_session_rebind",
+            "revision 0025_web_session_rebind is not lower than the current",
         ),
     ],
 )
@@ -225,7 +225,7 @@ def test_a_refusing_migration_stops_where_it_is_and_says_so(
     )  # fmt: skip
     assert code == 1
     assert out.splitlines() == [
-        "schema current: 0024_trace_outbox",
+        "schema current: 0025_web_session_rebind",
         "schema target: 0021_release_incident_links",
     ]
     assert "downgrade refused: 1 merged incident(s)" in err

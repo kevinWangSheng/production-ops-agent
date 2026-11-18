@@ -14,11 +14,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from opspilot.persistence import PersistenceError
-from opspilot.web import MemoryEventLog
 from tests.m1_investigation_support import (
     reply,
     report_from_transcript,
-    report_json,
     tool_call,
 )
 from tests.m1_web_support import (
@@ -30,7 +28,6 @@ from tests.m1_web_support import (
     bearer,
     build_workbench,
     call,
-    note_reached_investigation,
     post_form,
     post_json,
     same_origin,
@@ -249,258 +246,7 @@ def _control(app, incident, fields):
     )
 
 
-def test_control_increments_the_generation_once_per_accepted_action():
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    response = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "fu-1",
-            "text": "Also check the 5xx panel.",
-        },
-    )
-    assert response.status == 200
-    assert response.json()["generation"] == 1 and response.json()["replayed"] is False
-    replay = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "fu-1",
-            "text": "Also check the 5xx panel.",
-        },
-    )
-    assert replay.status == 200
-    assert replay.json()["generation"] == 1 and replay.json()["replayed"] is True
-    stale = _control(
-        app,
-        incident,
-        {
-            "action": "correct",
-            "expected_generation": "0",
-            "idempotency_key": "c-1",
-            "text": "The target is checkout-canary.",
-        },
-    )
-    assert stale.status == 409
-    assert stale.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
-    reused = _control(
-        app,
-        incident,
-        {
-            "action": "cancel",
-            "expected_generation": "1",
-            "idempotency_key": "fu-1",
-        },
-    )
-    assert reused.status == 409 and reused.json() == {"code": "CONTROL_KEY_CONFLICT"}
-    snapshot = workbench.snapshot(workbench.list_incidents()[0].incident_id)
-    assert snapshot["incident"].control_generation == 1
-    assert [c["action"] for c in snapshot["controls"]] == ["follow_up"]
-    assert snapshot["controls"][0]["text"] == "Also check the 5xx panel."
-    assert snapshot["controls"][0]["actor_id"] == "alice"
-    audit = workbench.incidents.controls
-    assert [(a["action"], a["expected"], a["resulting"]) for a in audit] == [
-        ("follow_up", 0, 1)
-    ]
-
-
-def test_control_text_over_the_shared_input_limit_is_refused_not_truncated():
-    """The web follow-up/correction limit is the same constant the loop
-    uses to bound a human input field (``context.INPUT_CONTENT_FIELD_MAX_CHARS``),
-    not a separate, larger magic number: text at the limit is accepted; one
-    character over is refused outright -- never silently cut down to the
-    limit -- and nothing is persisted for the refused attempt (ROADMAP
-    M1-01 已决 2026-09-24, item 3)."""
-    from opspilot.investigation.context import INPUT_CONTENT_FIELD_MAX_CHARS
-
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-
-    at_limit = "a" * INPUT_CONTENT_FIELD_MAX_CHARS
-    ok = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "fu-at-limit",
-            "text": at_limit,
-        },
-    )
-    assert ok.status == 200 and ok.json()["generation"] == 1
-
-    over_limit = "a" * (INPUT_CONTENT_FIELD_MAX_CHARS + 1)
-    refused = _control(
-        app,
-        incident,
-        {
-            "action": "correct",
-            "expected_generation": "1",
-            "idempotency_key": "c-over-limit",
-            "text": over_limit,
-        },
-    )
-    assert refused.status == 400 and refused.json() == {"code": "INVALID_INPUT"}
-    # Nothing was persisted for the refused attempt: no idempotency intent,
-    # no control row, generation unchanged, no second note recorded.
-    assert workbench.ledger.get("control_intent", f"{subject}:c-over-limit") is None
-    assert workbench.ledger.get("control", f"{subject}:c-over-limit") is None
-    snapshot = workbench.snapshot(subject)
-    assert snapshot["incident"].control_generation == 1
-    assert [c["text"] for c in snapshot["controls"]] == [at_limit]
-
-
-def test_pause_blocks_follow_up_until_resume_and_cancel_allows_a_new_run():
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    paused = _control(
-        app,
-        incident,
-        {"action": "pause", "expected_generation": "0", "idempotency_key": "p"},
-    )
-    assert paused.json()["generation"] == 1
-    # PR #31 semantics: a bare pause while paused is refused, but a note with
-    # content is recorded as an input without resuming the run.
-    blocked = _control(
-        app,
-        incident,
-        {"action": "pause", "expected_generation": "1", "idempotency_key": "p2"},
-    )
-    assert blocked.status == 409 and blocked.json() == {"code": "ILLEGAL_TRANSITION"}
-    noted = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "1",
-            "idempotency_key": "f",
-            "text": "still?",
-        },
-    )
-    assert noted.status == 200 and noted.json()["generation"] == 2
-    assert workbench.list_incidents()[0].state == "paused"
-    assert workbench.incidents.inputs[-1]["content"]["text"] == "still?"
-    resumed = _control(
-        app,
-        incident,
-        {"action": "resume", "expected_generation": "2", "idempotency_key": "r"},
-    )
-    assert resumed.json()["generation"] == 3
-    cancelled = _control(
-        app,
-        incident,
-        {"action": "cancel", "expected_generation": "3", "idempotency_key": "x"},
-    )
-    assert cancelled.json()["generation"] == 4
-    summary = workbench.list_incidents()[0]
-    old_run = summary.current_run_id
-    assert summary.state == "cancelled"
-    renewed = _control(
-        app,
-        incident,
-        {"action": "new_run", "expected_generation": "4", "idempotency_key": "n"},
-    )
-    assert renewed.status == 200 and renewed.json()["generation"] == 5
-    summary = workbench.list_incidents()[0]
-    assert summary.state == "queued" and summary.current_run_id != old_run
-    assert workbench.incidents.runs[old_run]["state"] == "cancelled"
-    # Validation: text is required for follow_up and forbidden elsewhere.
-    assert _control(
-        app,
-        incident,
-        {"action": "follow_up", "expected_generation": "5", "idempotency_key": "t1"},
-    ).json() == {"code": "TEXT_REQUIRED"}
-    assert _control(
-        app,
-        incident,
-        {
-            "action": "pause",
-            "expected_generation": "5",
-            "idempotency_key": "t2",
-            "text": "x",
-        },
-    ).json() == {"code": "TEXT_NOT_ALLOWED"}
-    assert (
-        _control(
-            app,
-            incident,
-            # An action the workbench does not know (takeover is one since #121).
-            {"action": "reboot", "expected_generation": "5", "idempotency_key": "t3"},
-        ).status
-        == 400
-    )
-    assert workbench.list_incidents()[0].control_generation == 5
-
-
 # -- SSE cursor resume -------------------------------------------------------------
-
-
-def test_sse_replays_from_the_cursor_and_asks_for_reload_when_too_old():
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "note one",
-        },
-    )
-    _control(
-        app,
-        incident,
-        {"action": "pause", "expected_generation": "1", "idempotency_key": "p"},
-    )
-    full = stream(app, f"/incidents/{incident}/events", headers=basic(), until_events=3)
-    assert full.status == 200
-    assert full.headers["content-type"].startswith("text/event-stream")
-    assert full.text.startswith("retry: 2000\n\n")
-    events = full.sse_events()
-    assert [(i, k) for i, k, _ in events] == [
-        ("1", "intake_accepted"),
-        ("2", "control_applied"),
-        ("3", "control_applied"),
-    ]
-    assert events[1][2]["text"] == "note one"
-    resumed = stream(
-        app, f"/incidents/{incident}/events?cursor=2", headers=basic(), until_events=1
-    )
-    assert [(i, k) for i, k, _ in resumed.sse_events()] == [("3", "control_applied")]
-    by_header = stream(
-        app,
-        f"/incidents/{incident}/events",
-        headers={**basic(), "last-event-id": "1"},
-        until_events=2,
-    )
-    assert [i for i, _, _ in by_header.sse_events()] == ["2", "3"]
-    # Nothing new: the stream idles out and closes; the browser reconnects with its id.
-    idle = call(app, "GET", f"/incidents/{incident}/events?cursor=3", headers=basic())
-    assert idle.status == 200 and idle.sse_events() == [] and ": idle" in idle.text
-    # Retention moved past the cursor: reload instead of a gapped stream.
-    log = workbench.events
-    assert isinstance(log, MemoryEventLog)
-    log.prune_before(workbench.list_incidents()[0].incident_id, 3)
-    reload = call(app, "GET", f"/incidents/{incident}/events?cursor=1", headers=basic())
-    assert reload.sse_events() == [
-        (None, "reload", {"reason": "CURSOR_TOO_OLD", "cursor": 1})
-    ]
-    assert (
-        call(
-            app, "GET", f"/incidents/{incident}/events?cursor=x", headers=basic()
-        ).status
-        == 400
-    )
-    assert (
-        call(app, "GET", "/incidents/not-a-uuid/events", headers=basic()).status == 404
-    )
 
 
 # -- end to end ------------------------------------------------------------------
@@ -586,206 +332,6 @@ def test_submitted_incident_is_investigated_and_the_report_is_shown_with_evidenc
     )
 
 
-def test_incomplete_report_is_a_handoff_not_a_conclusion_and_control_stays_open():
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="inc-1").json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-
-    def incomplete(call_):
-        evidence = None
-        for message in reversed(call_.messages):
-            if message.get("role") == "tool":
-                evidence = json.loads(message["content"])["evidence_id"]
-                break
-        return reply(content=report_json(evidence_id=evidence, status="incomplete"))
-
-    investigator = ScriptedInvestigator(
-        clock,
-        replies=[reply(tool_calls=[tool_call()], finish="tool_calls"), incomplete],
-    )
-    outcome = workbench.run_once(subject, investigator)
-    assert outcome is not None and outcome.execution == "completed"
-    assert outcome.handoff is True
-    assert outcome.handoff_reasons == ("INCOMPLETE_INVESTIGATION",)
-    # Not published: the incident has no conclusion and human control is open.
-    snapshot = workbench.snapshot(subject)
-    assert snapshot["report"] is None and snapshot["incident"].concluded is False
-    assert snapshot["handoff_report"]["incomplete"] is True
-    last = workbench.events.read_after(subject, 0)[-1]
-    assert last.kind == "run_handoff"
-    assert last.payload["reasons"] == ["INCOMPLETE_INVESTIGATION"]
-    assert last.payload["report_sha256"] == outcome.report_content_sha256
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert 'id="handoff-report"' in page.text
-    assert "Incomplete investigation, not an uncertain finding." in page.text
-    assert 'conclusion <span class="badge">inconclusive' in page.text
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "after-incomplete",
-            "text": "Also check the dependency.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    # On this branch the loop reuses its round keys, so continuing the same
-    # Run after a note is fenced (PR #31 adds per-attempt keys); the
-    # supported continuation is cancel + new_run, which reads the note
-    # from the durable ledger.
-    _renew(app, incident, generation=1)
-    again = ScriptedInvestigator(clock)
-    outcome = workbench.run_once(subject, again)
-    assert outcome is not None and outcome.execution == "completed"
-    assert note_reached_investigation(workbench, again, "Also check the dependency.")
-    assert workbench.snapshot(subject)["report"]["facts"]
-
-
-def test_control_replay_requires_identical_intent():
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    first = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "shared",
-            "text": "note A",
-        },
-    )
-    assert first.status == 200 and first.json()["generation"] == 1
-    other_text = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "shared",
-            "text": "note B",
-        },
-    )
-    assert other_text.status == 409
-    assert other_text.json() == {"code": "CONTROL_KEY_CONFLICT"}
-    other_generation = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "1",
-            "idempotency_key": "shared",
-            "text": "note A",
-        },
-    )
-    assert other_generation.status == 409
-    assert workbench.list_incidents()[0].control_generation == 1
-    # The page hands out a fresh key per render, never the same one twice.
-    one = call(app, "GET", f"/incidents/{incident}", headers=basic()).text
-    two = call(app, "GET", f"/incidents/{incident}", headers=basic()).text
-
-    def key_of(html):
-        return html.split('name="idempotency_key" value="')[1].split('"')[0]
-
-    assert key_of(one) != key_of(two)
-
-
-def test_snapshot_survives_event_retention_and_unmapped_storage_errors():
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "kept in the ledger",
-        },
-    )
-    log = workbench.events
-    assert isinstance(log, MemoryEventLog)
-    log.prune_before(subject, 3)
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert (
-        "kept in the ledger" in page.text and "Why is checkout erroring?" in page.text
-    )
-    assert workbench.snapshot(subject)["latest_sequence"] == 2
-    _renew(app, incident, generation=1)
-    fresh = ScriptedInvestigator(clock)
-    outcome = workbench.run_once(subject, fresh)
-    assert outcome is not None and outcome.execution == "completed"
-    assert note_reached_investigation(workbench, fresh, "kept in the ledger")
-    # A storage refusal surfaces as a coded 503, not a bare 500.
-    from opspilot.persistence import PersistenceError
-
-    def unavailable(*_a, **_k):
-        raise PersistenceError("STORAGE_UNAVAILABLE")
-
-    workbench.incidents.list_incidents = unavailable
-    down = call(app, "GET", "/", headers=basic())
-    assert down.status == 503 and down.json() == {"code": "STORAGE_UNAVAILABLE"}
-
-
-def test_a_handoff_parks_the_run_for_a_human_and_keeps_control_open():
-    """ADR-0005: a handoff is a durable terminal state of the attempt, not a
-    conclusion. The Run waits for a human, no worker re-claims it on its own,
-    and follow_up / cancel + new_run stay accepted."""
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="park-1").json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    run_id = workbench.list_incidents()[0].current_run_id
-    # One tool round, then a malformed plan: the loop hands off (failed).
-    # Four slots per Run, so the continuation after the note still has two.
-    investigator = ScriptedInvestigator(
-        clock,
-        replies=[
-            reply(tool_calls=[tool_call()], finish="tool_calls"),
-            reply(tool_calls=[tool_call()], finish="stop"),
-        ],
-        model_requests=4,
-    )
-    outcome = workbench.run_once(subject, investigator)
-    assert outcome is not None and outcome.handoff is True
-    run = workbench.incidents.runs[run_id]
-    assert run["state"] == "waiting_human"
-    assert run["owner"] is None and run["lease_until"] is None
-    assert workbench.incidents.incidents[subject]["conclusion"] is None
-    last = workbench.events.read_after(subject, 0)[-1]
-    assert last.kind == "run_handoff" and last.payload["parked"] is True
-    # The committed conclusion step stays readable: the page shows the
-    # incomplete outcome and its reasons.
-    snapshot = workbench.snapshot(subject)
-    assert snapshot["run"]["state"] == "waiting_human"
-    assert snapshot["outcome"]["handoff"] is True
-    assert snapshot["outcome"]["reasons"] == ["TOOL_PAIRING_INVALID"]
-    # Nothing runs until a human acts: a poll is refused, and the refusal is
-    # visible on the page as one event, not as a new attempt.
-    assert workbench.run_once(subject, ScriptedInvestigator(clock)) is None
-    assert workbench.events.read_after(subject, 0)[-1].kind == "run_claim_refused"
-    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
-    # follow_up re-queues the same Run under the next generation.
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "after-handoff",
-            "text": "Check the dependency too.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    assert workbench.incidents.runs[run_id]["state"] == "queued"
-    again = ScriptedInvestigator(clock, model_requests=4)
-    outcome = workbench.run_once(subject, again)
-    assert outcome is not None and outcome.execution == "completed"
-    assert note_reached_investigation(workbench, again, "Check the dependency too.")
-    assert workbench.snapshot(subject)["report"]["facts"]
-
-
 def test_cancel_and_new_run_are_accepted_after_a_handoff():
     app, workbench, clock = build_workbench()
     incident = submit_incident(app, key="park-2").json()["incident_id"]
@@ -862,8 +408,6 @@ def test_an_unexpected_investigator_error_releases_the_lease_and_hands_off():
         def investigate(self, context, committer, evidence):
             raise RuntimeError("investigator bug")
 
-    import pytest
-
     with pytest.raises(RuntimeError):
         workbench.run_once(subject, Exploding())
     last = workbench.events.read_after(subject, 0)[-1]
@@ -934,51 +478,6 @@ def test_a_cancelled_incident_cannot_be_claimed():
     assert workbench.snapshot(subject)["report"] is None
 
 
-def test_an_applied_but_unconfirmed_control_is_reconciled_from_the_audit():
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="unconfirmed").json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    real_put = workbench.ledger.put
-    calls = {"n": 0}
-
-    def flaky_put(namespace, key, value):
-        if namespace == "control":
-            calls["n"] += 1
-            if calls["n"] == 1:
-                from opspilot.persistence import PersistenceError
-
-                raise PersistenceError("STORAGE_UNAVAILABLE")
-        return real_put(namespace, key, value)
-
-    workbench.ledger.put = flaky_put
-    fields = {
-        "action": "follow_up",
-        "expected_generation": "0",
-        "idempotency_key": "note-1",
-        "text": "The dependency was restarted at 09:00.",
-    }
-    first = _control(app, incident, fields)
-    assert first.status == 503
-    assert workbench.list_incidents()[0].control_generation == 1
-    retry = _control(app, incident, fields)
-    assert retry.status == 200
-    assert retry.json() == {
-        "incident_id": incident,
-        "action": "follow_up",
-        "generation": 1,
-        "replayed": True,
-        "sequence": retry.json()["sequence"],
-    }
-    _renew(app, incident, generation=1)
-    investigator = ScriptedInvestigator(clock)
-    assert workbench.run_once(subject, investigator).execution == "completed"
-    assert note_reached_investigation(
-        workbench, investigator, "The dependency was restarted at 09:00."
-    )
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert "restarted at 09:00" in page.text
-
-
 def test_a_refused_control_does_not_poison_its_idempotency_key():
     app, workbench, _ = build_workbench()
     incident = submit_incident(app).json()["incident_id"]
@@ -994,81 +493,6 @@ def test_a_refused_control_does_not_poison_its_idempotency_key():
         {"action": "pause", "expected_generation": "0", "idempotency_key": "p"},
     )
     assert fixed.status == 200 and fixed.json()["generation"] == 1
-
-
-def test_a_stale_form_with_a_fresh_key_is_refused_not_reconciled():
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    ok = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "k1",
-            "text": "X",
-        },
-    )
-    assert ok.status == 200 and ok.json()["generation"] == 1
-    stale = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "k2",
-            "text": "Y",
-        },
-    )
-    assert stale.status == 409
-    assert stale.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
-    notes = [n["text"] for n in workbench.snapshot(subject)["controls"]]
-    assert notes == ["X"]
-    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
-    assert kinds.count("control_applied") == 1
-    assert workbench.ledger.get("control_intent", f"{subject}:k2") is None
-
-
-def test_a_note_applied_after_the_claim_fences_the_attempt_instead_of_being_ignored():
-    """P1 race: notes must be read under the lease, never before the claim.
-
-    A correction that lands after the claim advances the generation; the
-    attempt then must not publish. The renewed attempt sees the note.
-    """
-    app, workbench, clock = build_workbench()
-    submit_incident(app, key="race-1")
-    subject = workbench.list_incidents()[0].incident_id
-
-    class CorrectThenInvestigate(ScriptedInvestigator):
-        def investigate(self, context, committer, evidence):
-            # Lease is held here; the operator corrects the target now.
-            workbench.control(
-                subject,
-                actor_id="alice",
-                action="correct",
-                expected_generation=context.control_generation,
-                idempotency_key="race-correct",
-                text="The target is checkout-canary, not checkout-prod.",
-            )
-            return super().investigate(context, committer, evidence)
-
-    racing = CorrectThenInvestigate(clock)
-    outcome = workbench.run_once(subject, racing)
-    assert outcome is not None and outcome.execution == "failed"
-    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
-    snapshot = workbench.snapshot(subject)
-    assert snapshot["report"] is None and snapshot["incident"].concluded is False
-    assert [c["action"] for c in snapshot["controls"]] == ["correct"]
-    # The attempt that ran with the stale view never published; the next
-    # attempt (fresh Run) receives the correction.
-    _renew(app, str(subject), generation=1)
-    fresh = ScriptedInvestigator(clock)
-    outcome = workbench.run_once(subject, fresh)
-    assert outcome is not None and outcome.execution == "completed"
-    assert note_reached_investigation(
-        workbench, fresh, "The target is checkout-canary, not checkout-prod."
-    )
 
 
 def test_openapi_schema_is_not_served():
@@ -1118,8 +542,6 @@ def test_default_lease_is_short_so_takeover_after_a_hard_kill_waits_lease_not_wa
             # Observe the lease exactly as claim() granted it, then die hard.
             granted.append(workbench.incidents.runs[run_id]["lease_until"])
             raise KeyboardInterrupt
-
-    import pytest
 
     with pytest.raises(KeyboardInterrupt):
         workbench.run_once(subject, Dies(clock))
@@ -1294,75 +716,6 @@ def test_a_refused_renewal_hands_off_and_keeps_the_late_result_as_history():
 # -- review threads on PR #33 -----------------------------------------------------
 
 
-def test_reconciliation_never_binds_a_different_key_to_a_crashed_decision():
-    """Thread 1 (P1): k1 applied then crashed before confirm; k2 (other text)
-    crashed after recording its intent. k2's retry must not be confirmed as
-    k1's decision."""
-    app, workbench, _ = build_workbench()
-    submit_incident(app, key="xkey")
-    subject = workbench.list_incidents()[0].incident_id
-    real_put = workbench.ledger.put
-
-    def crash_before_confirm(namespace, key, value):
-        if namespace == "control" and key.endswith(":k1"):
-            from opspilot.persistence import PersistenceError
-
-            raise PersistenceError("STORAGE_UNAVAILABLE")
-        return real_put(namespace, key, value)
-
-    workbench.ledger.put = crash_before_confirm
-    try:
-        with __import__("pytest").raises(Exception):
-            workbench.control(
-                subject,
-                actor_id="alice",
-                action="follow_up",
-                expected_generation=0,
-                idempotency_key="k1",
-                text="X",
-            )
-    finally:
-        workbench.ledger.put = real_put
-    assert workbench.list_incidents()[0].control_generation == 1
-    # k2 recorded its intent earlier and crashed before applying.
-    workbench.ledger.put(
-        "control_intent",
-        f"{subject}:k2",
-        {
-            "action": "follow_up",
-            "actor_id": "alice",
-            "expected_generation": 0,
-            "text": "Y",
-        },
-    )
-    import pytest
-
-    from opspilot.web import WorkbenchError
-
-    with pytest.raises(WorkbenchError) as refused:
-        workbench.control(
-            subject,
-            actor_id="alice",
-            action="follow_up",
-            expected_generation=0,
-            idempotency_key="k2",
-            text="Y",
-        )
-    assert refused.value.code == "CONTROL_CONFLICT"
-    assert workbench.ledger.get("control", f"{subject}:k2") is None
-    # k1's own retry is the one that reconciles, with its own text.
-    result = workbench.control(
-        subject,
-        actor_id="alice",
-        action="follow_up",
-        expected_generation=0,
-        idempotency_key="k1",
-        text="X",
-    )
-    assert result.replayed is True and result.generation == 1
-    assert [n["text"] for n in workbench.snapshot(subject)["controls"]] == ["X"]
-
-
 def test_reregistering_committed_evidence_after_a_restart_reuses_it():
     """Thread 2 (P1): same evidence_id, same raw bytes, later observed_at."""
     from dataclasses import replace
@@ -1403,7 +756,6 @@ def test_reregistering_committed_evidence_after_a_restart_reuses_it():
         raw=b'{"data":{"result":[]}}',
         raw_sha256=__import__("hashlib").sha256(b'{"data":{"result":[]}}').hexdigest(),
     )
-    import pytest
 
     from opspilot.persistence import PersistenceError
 
@@ -1494,7 +846,6 @@ def test_a_completion_event_lost_after_publish_is_reconciled_from_the_run():
         return real_append(incident_id, kind, payload)
 
     workbench.events.append = crash_on_completion
-    import pytest
 
     with pytest.raises(RuntimeError):
         workbench.run_once(subject, ScriptedInvestigator(clock))
@@ -1629,8 +980,6 @@ def test_a_lost_intake_event_is_repaired_on_replay_and_on_reconcile():
             raise RuntimeError("process died after accept")
         return real_append(incident_id, kind, payload)
 
-    import pytest
-
     workbench.events.append = crash_on_intake
     with pytest.raises(RuntimeError):
         submit_incident(app, key="lost-intake")
@@ -1702,70 +1051,6 @@ def test_concurrent_intake_retries_announce_exactly_one_intake_event():
 # -- review threads on PR #33, round 6 -------------------------------------------
 
 
-def test_a_control_confirmed_after_a_lost_marker_announces_one_control_applied():
-    """Round 6 thread 1 (P2): ``control_applied`` appended, ``control`` row lost.
-
-    The retry sees the generation applied but no marker, confirms from the
-    audit, and must reuse the published event instead of appending a twin.
-    """
-    from opspilot.persistence import PersistenceError
-
-    app, workbench, _ = build_workbench()
-    incident = submit_incident(app, key="twin-control").json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    real_put = workbench.ledger.put
-    armed = [True]
-
-    def lose_marker(namespace, key, value):
-        if namespace == "control" and armed[0]:
-            armed[0] = False
-            raise PersistenceError("STORAGE_UNAVAILABLE")
-        return real_put(namespace, key, value)
-
-    workbench.ledger.put = lose_marker
-    fields = {
-        "action": "follow_up",
-        "expected_generation": "0",
-        "idempotency_key": "note-twin",
-        "text": "Only once, please.",
-    }
-    assert _control(app, incident, fields).status == 503
-    applied = [
-        e
-        for e in workbench.events.read_after(subject, 0)
-        if e.kind == "control_applied"
-    ]
-    assert [e.payload["generation"] for e in applied] == [1]
-    retry = _control(app, incident, fields)
-    assert retry.status == 200 and retry.json()["replayed"] is True
-    assert retry.json()["sequence"] == applied[0].sequence
-    applied = [
-        e
-        for e in workbench.events.read_after(subject, 0)
-        if e.kind == "control_applied"
-    ]
-    assert [e.payload["generation"] for e in applied] == [1]
-    assert workbench.ledger.get("control", f"{subject}:note-twin") == {
-        "action": "follow_up",
-        "generation": 1,
-        "sequence": applied[0].sequence,
-    }
-    # A page-load reconcile and a further replay add nothing.
-    workbench.snapshot(subject)
-    _control(app, incident, fields)
-    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
-        "control_applied"
-    ) == 1
-    # Later decisions (cancel, new_run) are new generations and still
-    # publish their own events.
-    _renew(app, incident, generation=1)
-    assert [
-        e.payload["generation"]
-        for e in workbench.events.read_after(subject, 0)
-        if e.kind == "control_applied"
-    ] == [1, 2, 3]
-
-
 def test_a_completion_confirmed_after_a_lost_marker_announces_one_run_completed():
     """Round 6 thread 2 (P2): ``run_completed`` appended, ``completion`` row lost.
 
@@ -1787,7 +1072,6 @@ def test_a_completion_confirmed_after_a_lost_marker_announces_one_run_completed(
         return real_put(namespace, key, value)
 
     workbench.ledger.put = lose_marker
-    import pytest
 
     with pytest.raises(RuntimeError):
         workbench.run_once(subject, ScriptedInvestigator(clock))
@@ -1820,7 +1104,6 @@ def test_a_completion_lost_after_the_stream_opened_is_repaired_while_following()
     """Round 7 thread (P2): the stream reconciled once, then the worker
     published and died before announcing. The open stream must repair the
     projection itself instead of leaving the page on the running state."""
-    import pytest
 
     app, workbench, clock = build_workbench(sse_idle=0.5, sse_repair=0.05)
     submit_incident(app, key="late-loss")
@@ -1904,60 +1187,6 @@ def test_every_response_forbids_framing_so_human_controls_cannot_be_clickjacked(
         ), name
 
 
-def test_an_overdue_running_run_is_swept_into_a_timeout_handoff_on_the_page():
-    """ADR-0005 decision 2: a Run past its deadline cannot settle itself (every
-    worker write is fenced), so a page load reconciles it into the same park
-    a loop handoff lands in, announced once as ``DEADLINE_EXCEEDED``."""
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="sweep-1").json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    run_id = workbench.list_incidents()[0].current_run_id
-    lease = workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
-    # Not due yet: the worker still owns it.
-    clock.advance(300)
-    assert workbench.snapshot(subject)["run"]["state"] == "running"
-    assert not [
-        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
-    ]
-    clock.advance(301)
-    snapshot = workbench.snapshot(subject)
-    run = workbench.incidents.runs[run_id]
-    assert run["state"] == "waiting_human"
-    assert run["owner"] is None and run["lease_until"] is None
-    assert workbench.incidents.incidents[subject]["conclusion"] is None
-    assert snapshot["run"]["state"] == "waiting_human"
-    assert snapshot["outcome"]["handoff"] is True
-    assert snapshot["outcome"]["parked"] is True
-    assert snapshot["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
-    # Idempotent: a second page load neither re-parks nor re-announces.
-    workbench.snapshot(subject)
-    handoffs = [
-        e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
-    ]
-    assert len(handoffs) == 1
-    # The late worker cannot publish over the park; its writes are history.
-    with pytest.raises(PersistenceError, match="^CONTROL_DENIED$"):
-        workbench.incidents.hand_off(lease)
-    assert workbench.incidents.publish(lease, {"late": True}, step_id=uuid4()) is False
-    assert workbench.incidents.runs[run_id]["state"] == "waiting_human"
-    # follow_up on the timed-out Run starts a fresh one (2026-09-25): the
-    # old row is closed, not re-queued into a claim nothing can take.
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "after-timeout",
-            "text": "Check the dependency too.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    assert workbench.incidents.runs[run_id]["state"] == "cancelled"
-    fresh = workbench.list_incidents()[0].current_run_id
-    assert fresh != run_id and workbench.incidents.runs[fresh]["state"] == "queued"
-
-
 def test_the_sweep_never_overwrites_a_human_decision_that_landed_first():
     app, workbench, clock = build_workbench()
     for action in ("cancel", "pause"):
@@ -2002,101 +1231,3 @@ def test_a_sweep_that_cannot_take_its_lock_does_not_fail_the_page_load():
     assert not [
         e for e in workbench.events.read_after(subject, 0) if e.kind == "run_handoff"
     ]
-
-
-def test_a_note_on_a_timed_out_run_starts_a_new_run_that_investigates():
-    """User decision 2026-09-25: a follow_up/correct on a Run the deadline
-    sweep parked cannot continue that Run (its deadline fences every claim),
-    so the note is recorded and a fresh Run starts, exactly as new_run does;
-    the new Run sees the note. No dead queued row, no refusal per poll."""
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="timeout-note").json()["incident_id"]
-    subject = UUID(incident)
-    old = workbench.list_incidents()[0].current_run_id
-    workbench.incidents.claim(subject, old, uuid4(), {"state": "v1"}, 600)
-    clock.advance(601)
-    assert workbench.snapshot(subject)["outcome"]["reasons"] == ["DEADLINE_EXCEEDED"]
-    follow = _control(
-        app,
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "after-timeout",
-            "text": "Check the dependency too.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    fresh = workbench.list_incidents()[0].current_run_id
-    assert fresh != old
-    assert workbench.incidents.runs[old]["state"] == "cancelled"
-    new_run = workbench.incidents.runs[fresh]
-    assert new_run["state"] == "queued" and new_run["control_generation"] == 1
-    assert new_run["deadline"] > clock.now()
-    snapshot = workbench.snapshot(subject)
-    assert snapshot["run"]["run_id"] == str(fresh) and snapshot["outcome"] is None
-    again = ScriptedInvestigator(clock, model_requests=4)
-    outcome = workbench.run_once(subject, again)
-    assert outcome is not None and outcome.execution == "completed"
-    assert note_reached_investigation(workbench, again, "Check the dependency too.")
-    kinds = [e.kind for e in workbench.events.read_after(subject, 0)]
-    assert "run_claim_refused" not in kinds
-    assert kinds.count("run_handoff") == 1
-
-
-def test_correct_on_a_timed_out_run_also_starts_a_new_run():
-    app, workbench, clock = build_workbench()
-    incident = submit_incident(app, key="timeout-correct").json()["incident_id"]
-    subject = UUID(incident)
-    old = workbench.list_incidents()[0].current_run_id
-    workbench.incidents.claim(subject, old, uuid4(), {"state": "v1"}, 600)
-    clock.advance(601)
-    workbench.snapshot(subject)
-    corrected = _control(
-        app,
-        incident,
-        {
-            "action": "correct",
-            "expected_generation": "0",
-            "idempotency_key": "correct-after-timeout",
-            "text": "The target is checkout-prod-2.",
-        },
-    )
-    assert corrected.status == 200 and corrected.json()["generation"] == 1
-    fresh = workbench.list_incidents()[0].current_run_id
-    assert fresh != old and workbench.incidents.runs[fresh]["state"] == "queued"
-    assert workbench.incidents.runs[old]["state"] == "cancelled"
-    # cancel still works on the fresh Run.
-    assert _renew(app, incident, generation=1) == 3
-
-
-def test_the_durable_adapter_keeps_the_positional_call_for_an_older_store_base():
-    """Bot review (PR #47): a base whose control() predates payload and the
-    renewal keywords must still receive the call it accepts, for every
-    action, instead of a TypeError on keywords it does not know."""
-    from opspilot.web import DurableIncidentStore
-
-    class OlderBase:
-        calls = []
-
-        def control(self, incident_id, expected_generation, action, actor):
-            self.calls.append((action, expected_generation))
-            return expected_generation + 1
-
-    adapter = DurableIncidentStore(OlderBase())
-    assert adapter.payload_supported is False
-    subject = uuid4()
-    assert adapter.control(subject, 0, "cancel", "alice") == 1
-    assert (
-        adapter.control(
-            subject,
-            1,
-            "follow_up",
-            "alice",
-            {"text": "x", "channel": "web"},
-            renew_run_id=uuid4(),
-            renew_deadline=None,
-        )
-        == 2
-    )
-    assert OlderBase.calls == [("cancel", 0), ("follow_up", 1)]

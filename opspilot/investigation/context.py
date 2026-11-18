@@ -617,6 +617,10 @@ class InvestigationInput:
             self.scope_facts[CONVERSATION]
         ):
             raise ContextError("INPUT_INVALID")
+        if PRIOR_REPLIES in self.scope_facts and not _valid_prior_replies(
+            self.scope_facts[PRIOR_REPLIES]
+        ):
+            raise ContextError("INPUT_INVALID")
 
     @property
     def conversation(self) -> tuple[int, str]:
@@ -1135,6 +1139,7 @@ def rebuild_transcript(
                     else ""
                 ),
                 conversation=conversation,
+                prior_replies=prior_replies_of(input.scope_facts),
             )
         retry_feedback = None
         last_step_id = step_id
@@ -1365,6 +1370,79 @@ def input_watermark(inputs: Sequence[Mapping[str, Any]]) -> int:
 
 MESSAGE_INPUT_KIND = "message"
 
+#: ``InvestigationInput.scope_facts`` key (contract B8): the validated replies
+#: earlier Runs of the incident gave, ``{"replies": [{"to_input_seq",
+#: "text", "evidence_ids"}...], "truncated": bool}``. Only the checked reply
+#: text and evidence ids -- never an ``assistant`` message or
+#: ``reasoning_content``. Rendered beside the ``message`` row each answers.
+PRIOR_REPLIES = "prior_replies"
+#: Bounds of the fact: the most recent replies are kept, up to this many and
+#: this many characters of reply text in total.
+PRIOR_REPLIES_MAX = 20
+PRIOR_REPLIES_MAX_CHARS = 24_000
+
+
+def _valid_prior_reply(item: object) -> bool:
+    return (
+        isinstance(item, Mapping)
+        and set(item) == {"to_input_seq", "text", "evidence_ids"}
+        and type(item["to_input_seq"]) is int
+        and isinstance(item["text"], str)
+        and isinstance(item["evidence_ids"], list)
+        and all(isinstance(eid, str) for eid in item["evidence_ids"])
+    )
+
+
+def _valid_prior_replies(value: object) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"replies", "truncated"}
+        and isinstance(value["replies"], list)
+        and len(value["replies"]) <= PRIOR_REPLIES_MAX
+        and all(_valid_prior_reply(item) for item in value["replies"])
+        and type(value["truncated"]) is bool
+    )
+
+
+def prior_replies_fact(replies: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Contract B8: the ``prior_replies`` fact from earlier Runs' validated
+    replies (step rows' ``replies``), oldest first; ``None`` when there are
+    none, so a Run on an incident without messages keeps its bytes. The most
+    recent replies within the bounds are kept and ``truncated`` says whether
+    any were dropped. Texts are credential-redacted like an input's."""
+    kept: list[dict[str, Any]] = []
+    for item in replies:
+        if not isinstance(item, Mapping):
+            continue
+        seq, text, cited = (
+            item.get("to_input_seq"),
+            item.get("text"),
+            item.get("evidence_ids"),
+        )
+        if type(seq) is not int or not isinstance(text, str) or not text.strip():
+            continue
+        kept.append(
+            {
+                "to_input_seq": seq,
+                "text": redact_credentials(text)[:INPUT_CONTENT_FIELD_MAX_CHARS],
+                "evidence_ids": [eid for eid in cited or () if isinstance(eid, str)]
+                if isinstance(cited, list)
+                else [],
+            }
+        )
+    if not kept:
+        return None
+    total = len(kept)
+    kept = kept[-PRIOR_REPLIES_MAX:]
+    while len(kept) > 1 and sum(len(r["text"]) for r in kept) > PRIOR_REPLIES_MAX_CHARS:
+        kept = kept[1:]
+    return {"replies": kept, "truncated": len(kept) != total}
+
+
+def prior_replies_of(scope_facts: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    value = (scope_facts or {}).get(PRIOR_REPLIES)
+    return value if _valid_prior_replies(value) else None
+
 
 def _rows_upto(
     inputs: Sequence[Mapping[str, Any]], watermark: int | None
@@ -1422,6 +1500,7 @@ def inputs_message(
     *,
     watermark: int | None = None,
     floor: int = 0,
+    prior_replies: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """The one trailing user message carrying the inputs a round may see.
 
@@ -1436,10 +1515,21 @@ def inputs_message(
     ``"new": true``; every other row -- ``event``, ``follow_up``, ``correct``
     -- keeps exactly the shape it always had, so a committed step whose
     inputs held no message rebuilds to the same bytes.
+
+    Contract B8: ``prior_replies`` (the Run's ``prior_replies`` fact) adds,
+    on each ``message`` row an earlier Run answered, a ``replies`` list of
+    those validated answers (text and evidence ids); when the fact dropped
+    older replies, the message says so with ``replies_truncated``. Only
+    ``message`` rows change, so the B5 rule still holds.
     """
     rows = _rows_upto(inputs, watermark)
     if not rows:
         return None
+    answered: dict[int, list[dict[str, Any]]] = {}
+    for item in (prior_replies or {}).get("replies") or ():
+        answered.setdefault(item["to_input_seq"], []).append(
+            {"text": item["text"], "evidence_ids": list(item["evidence_ids"])}
+        )
 
     def entry(row: Mapping[str, Any]) -> dict[str, Any]:
         item: dict[str, Any] = {
@@ -1447,14 +1537,17 @@ def inputs_message(
             "kind": row.get("kind"),
             "content": project_input_content(row.get("content")),
         }
-        if row.get("kind") == MESSAGE_INPUT_KIND and row["sequence"] > floor:
-            item["new"] = True
+        if row.get("kind") == MESSAGE_INPUT_KIND:
+            if row["sequence"] > floor:
+                item["new"] = True
+            if row["sequence"] in answered:
+                item["replies"] = answered[row["sequence"]]
         return item
 
-    return {
-        "role": "user",
-        "content": canonical({INPUTS_MESSAGE_KEY: [entry(row) for row in rows]}),
-    }
+    body: dict[str, Any] = {INPUTS_MESSAGE_KEY: [entry(row) for row in rows]}
+    if answered and (prior_replies or {}).get("truncated") is True:
+        body["replies_truncated"] = True
+    return {"role": "user", "content": canonical(body)}
 
 
 def _check_snapshot_hash(
@@ -1465,6 +1558,7 @@ def _check_snapshot_hash(
     delivered: Sequence[DeliveredView] = (),
     retry_feedback: str = "",
     conversation: tuple[int, str] = (0, DEFAULT_CONVERSATION_MODE),
+    prior_replies: Mapping[str, Any] | None = None,
 ) -> None:
     """Refuse a rebuild whose bytes differ from what that step actually sent.
 
@@ -1492,7 +1586,9 @@ def _check_snapshot_hash(
     watermark = context.get("input_watermark")
     if type(watermark) is int and watermark > 0:
         floor, mode = conversation
-        message = inputs_message(inputs, watermark=watermark, floor=floor)
+        message = inputs_message(
+            inputs, watermark=watermark, floor=floor, prior_replies=prior_replies
+        )
         if message is not None:
             sent.append(message)
         instruction = reply_instruction_message(
@@ -1506,7 +1602,10 @@ def _check_snapshot_hash(
             run_coverage_message,
         )
 
-        sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+        # Contract r8: a reply_only Run's final round carries no final
+        # report instruction (``loop._final_messages``).
+        if conversation[1] != "reply_only":
+            sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
         if retry_feedback:
             sent.append({"role": "user", "content": retry_feedback})
         # The coverage summary is computed from the views delivered before
