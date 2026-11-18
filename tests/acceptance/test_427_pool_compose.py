@@ -10,29 +10,30 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_worker_refuses_pool_smaller_than_capacity_plus_three(monkeypatch):
+# workbench P7-6: the Chat thread raised the floor from capacity+3 to +4
+def test_worker_refuses_pool_smaller_than_capacity_plus_four(monkeypatch):
     from opspilot import worker_main
 
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", "2")
-    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "4")
+    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "5")
     with pytest.raises(
         (ValueError, RuntimeError, SystemExit), match="capacity|POOL_MAX_SIZE"
     ):
         worker_main.validate_pool_capacity()
 
 
-def test_worker_accepts_pool_equal_to_capacity_plus_three(monkeypatch):
+def test_worker_accepts_pool_equal_to_capacity_plus_four(monkeypatch):
     from opspilot import worker_main
 
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", "2")
-    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "5")
+    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "6")
     worker_main.validate_pool_capacity()
 
 
-def test_compose_worker_default_pool_is_five():
+def test_compose_worker_default_pool_is_six():
     document = yaml.safe_load((ROOT / "deploy/compose/compose.yaml").read_text())
     worker = document["services"]["worker"]
     environment = worker.get("environment", {})
     if isinstance(environment, list):
         environment = dict(item.split("=", 1) for item in environment if "=" in item)
-    assert str(environment["OPSPILOT_POOL_MAX_SIZE"]) == "5"
+    assert str(environment["OPSPILOT_POOL_MAX_SIZE"]) == "6"
