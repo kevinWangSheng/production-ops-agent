@@ -38,6 +38,22 @@
   .chip.okc { color: var(--ok); border-color: currentColor; }
   .chip.warnc { color: var(--warn); border-color: currentColor; }
   .chip.h { color: var(--human); border-color: currentColor; }
+  .chip.errc { color: var(--err); border-color: currentColor; }
+  /* workbench P5: feedback card and its in-page form */
+  .fbcard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0 0 8px; max-width: 75ch; }
+  .fbcard p { margin: 0 0 6px; } .fbcard p:last-child { margin: 0; }
+  .fbline { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fbcard .fbt { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+  details.fbd > summary { list-style: none; display: inline-flex; }
+  details.fbd > summary::-webkit-details-marker { display: none; }
+  .fbf { display: grid; gap: 10px; margin-top: 10px; max-width: 75ch; }
+  .fbf fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .fbf legend { font-size: 12.5px; color: var(--muted); padding: 0; margin-bottom: 4px; width: 100%; }
+  .fbf label { display: grid; gap: 3px; font-size: 12.5px; color: var(--muted); }
+  .fbf label.opt { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-size: 13px; }
+  .fbf textarea { width: 100%; resize: vertical; }
+  .fbf button { justify-self: start; }
+  .menu .act.inmenu { display: grid; gap: 2px; padding: 6px; border-radius: 8px; }
   .concl { font-size: 18px; font-weight: 600; line-height: 1.45; margin: 0 0 6px; text-wrap: pretty; max-width: 75ch; }
   .concl .rest { display: block; margin-top: 6px; font-size: 14px; font-weight: 400; color: var(--ink); line-height: 1.55; }
   .note-run { display: flex; gap: 8px; align-items: center; color: var(--accent); font-size: 13px; margin: 0 0 6px; }

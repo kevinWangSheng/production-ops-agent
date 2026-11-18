@@ -1409,6 +1409,40 @@ def _shown_report(
     return None, None
 
 
+def shown_report_ref(snapshot: Mapping[str, Any]) -> tuple[str, str | None] | None:
+    """Workbench P5 F8/F9: the Run and report sha256 a feedback rates -- the
+    report the result area shows, when it parses; ``None`` otherwise (the
+    page offers no feedback and the server refuses ``NO_REPORT``)."""
+    if snapshot.get("handoff_only"):
+        return None
+    shown, kind = _shown_report(snapshot)
+    if shown is None or not shown.get("parsed"):
+        return None
+    report: Mapping[str, Any] = shown
+    run_id = (snapshot.get("run") or {}).get("run_id")
+    if kind == "published":
+        # A9: an earlier Run's conclusion while a continuation Run is current.
+        run_id = snapshot.get("report_run_id") or run_id
+    elif report is not snapshot.get("handoff_report"):
+        earlier = snapshot.get("incomplete_report") or {}
+        run_id = earlier.get("run_id") or run_id
+    if run_id is None:
+        return None
+    sha = report.get("content_sha256")
+    return str(run_id), None if sha is None else str(sha)
+
+
+def feedback_offer(
+    status: IncidentStatus, snapshot: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """F8: offered while the page shows a report and the incident is not
+    merged; Resolved and Closed put it among the primary buttons, every other
+    status under More."""
+    if status.key == "merged" or shown_report_ref(snapshot) is None:
+        return None
+    return {"primary": status.key in ("resolved", "closed")}
+
+
 def page_view(
     snapshot: Mapping[str, Any],
     postmortem: Mapping[str, Any] | None,
@@ -1477,6 +1511,7 @@ def page_view(
         "header": _title(snapshot),
         "facts": _status_facts(status, snapshot, log, recovery, day),
         "actions": _actions(status, actions, snapshot),
+        "feedback_offer": feedback_offer(status, snapshot),
         "report": report,
         "unparsed": unparsed,
         # A9: an earlier report stays while a new Run works.

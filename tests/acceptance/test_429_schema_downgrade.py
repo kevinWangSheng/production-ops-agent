@@ -20,11 +20,16 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0026_chat_panel"
+CURRENT = "0027_investigation_feedback"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
-# 0026 (workbench P7) sits above PREVIOUS too: its two chat tables go with it.
-CHAT_TABLES = ("opspilot_chat_sessions", "opspilot_chat_turns")
+# 0026 (workbench P7) and 0027 (P5) sit above PREVIOUS too: their chat and
+# feedback tables go with them.
+CHAT_TABLES = (
+    "opspilot_chat_sessions",
+    "opspilot_chat_turns",
+    "opspilot_investigation_feedback",
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",

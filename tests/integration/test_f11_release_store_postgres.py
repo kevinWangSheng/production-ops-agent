@@ -1419,8 +1419,9 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     not in ("opspilot_release_audit", "opspilot_release_query_results")
                 }
                 # 0020 adds the three comparison relations, 0021 the
-                # incident links, 0024 the trace outbox and 0026 the two
-                # chat tables (workbench P7); below them they are gone.
+                # incident links, 0024 the trace outbox, 0026 the two
+                # chat tables (workbench P7) and 0027 the feedback table
+                # (P5); below them they are gone.
                 expected = {
                     table: held
                     for table, held in expected.items()
@@ -1433,6 +1434,7 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                         "opspilot_trace_outbox",
                         "opspilot_chat_sessions",
                         "opspilot_chat_turns",
+                        "opspilot_investigation_feedback",
                     )
                 }
                 if role == WEB_ROLE:

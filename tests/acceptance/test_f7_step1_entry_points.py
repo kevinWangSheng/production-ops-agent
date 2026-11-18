@@ -103,6 +103,10 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
         "POST",
         "/incidents/{incident_id}/chat/turns/{turn_id}/forward",
     ): "write: OpsPilot chat forward to the investigation",
+    # Workbench P5 (contract r12): feedback on the shown report, kept in its
+    # own OpsPilot table; never an input, a control or a target action.
+    ("POST", "/incidents/{incident_id}/feedback"): "write: OpsPilot report feedback",
+    ("GET", "/feedback/export"): "read: feedback export (JSON lines)",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
     # F11 PR-5a (pre-review D1), registered by the independent test author.
     ("GET", "/version-changes"): "read: release observation list",

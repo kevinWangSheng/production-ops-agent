@@ -184,6 +184,9 @@ _WORKBENCH_STATUS = {
     "STORAGE_UNAVAILABLE": 503,
     "RETRY": 503,
     "TIMEOUT": 503,
+    # Workbench P5 (feedback, F8): no report on the page to rate
+    "NO_REPORT": 409,
+    "FEEDBACK_UNAVAILABLE": 503,
     # Workbench P7 (Chat panel)
     "CHAT_RATE_LIMITED": 429,
     "CHAT_BUSY": 409,
@@ -618,8 +621,11 @@ def create_app(
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
         release_links = await in_thread(workbench.release_links_for, subject)
+        # Workbench P5: the incident's feedback card (F10).
+        feedback = await in_thread(workbench.feedback_for, subject, snapshot)
         actions = available_actions(snapshot)
         return {
+            "feedback": feedback,
             "principal": principal,
             "snapshot": snapshot,
             "release_links": release_links,
@@ -680,11 +686,15 @@ def create_app(
         # UI redesign 3.3: the heading names what the incident is about, read
         # like its list row (one single-row query).
         incident = await in_thread(workbench.incident_subject, page["incident_id"])
+        # Workbench P5 F11 (user, option A): the reviewer sees the
+        # incident's feedback here; it is never sent to the drafting model.
+        feedback = await in_thread(workbench.feedback_for, page["incident_id"])
         response = render(
             "postmortem.html",
             principal=principal,
             page=page,
             incident=incident,
+            feedback=feedback,
             error=error,
             postmortem_kinds=EVENT_KINDS,
             form_nonce=uuid4().hex,
@@ -1091,6 +1101,44 @@ def create_app(
                 ),
             }
         )
+
+    # -- feedback (workbench P5, contract r12) ----------------------------
+    # UI identity and Origin, as a control; it is not one (F3).
+
+    @app.post("/incidents/{incident_id}/feedback")
+    async def feedback(request: Request, incident_id: str) -> Response:
+        principal = await ui_mutation(request)
+        subject = incident_of(incident_id)
+        content_type = request.headers.get("content-type", "").split(";")[0].strip()
+        fields: Mapping[str, Any] = (
+            await json_of(request)
+            if content_type == "application/json"
+            else await form_of(request)
+        )
+        result = await in_thread(
+            workbench.submit_feedback,
+            subject,
+            actor_id=principal.actor_id,
+            fields=fields,
+        )
+        if wants_html(request):
+            return RedirectResponse(f"/incidents/{subject}#feedback", status_code=303)
+        return JSONResponse(result)
+
+    @app.get("/feedback/export")
+    async def feedback_export(request: Request) -> Response:
+        """F13: JSON lines for evaluation, to the signed-in user only."""
+        await ui(request)
+        rows = await in_thread(workbench.feedback_export)
+        body = "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows
+        )
+        response = Response(body, media_type="application/x-ndjson")
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Disposition"] = (
+            'attachment; filename="opspilot-feedback.jsonl"'
+        )
+        return response
 
     # -- Chat panel (workbench P7-14) -------------------------------------
     # UI identity only (session cookie or Basic), Origin on every POST; the
