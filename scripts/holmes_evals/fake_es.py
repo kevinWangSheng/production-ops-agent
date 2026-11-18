@@ -115,6 +115,13 @@ _ISO_DATE = re.compile(
     r"(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?"
     r"(Z|z|[+-]\d{2}(?::?\d{2})?)?)?$"
 )
+#: ES default ``dynamic_date_formats``: ``strict_date_optional_time`` (a
+#: ``T`` before any time) and ``yyyy/MM/dd HH:mm:ss Z||yyyy/MM/dd Z``; a
+#: ``yyyy-MM-dd HH:mm:ss`` string is detected as text, not date.
+_DETECTED_DATE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:[.,]\d{1,9})?)?(?:Z|z|[+-]\d{2}(?::?\d{2})?)?)?$"
+    r"|^\d{4}/\d{2}/\d{2}(?: \d{2}:\d{2}:\d{2})?(?: [+-]\d{4}| Z)?$"
+)
 _SLASH_DATE = re.compile(r"^(\d{4})/(\d{2})/(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?$")
 _DATE_MATH = re.compile(
     r"^now(?P<ops>(?:[+-]\d+[smhdwMy])*)(?:/(?P<round>[smhdwMy]))?$"
@@ -235,7 +242,7 @@ def _infer(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict):
         return {"properties": {}}
     if isinstance(value, str):
-        if parse_date(value) is not None:
+        if _DETECTED_DATE.match(value) and parse_date(value) is not None:
             return {"type": "date"}
         return {
             "type": "text",
@@ -686,10 +693,26 @@ class FakeElasticsearch:
         return 200, {"acknowledged": True, "shards_acknowledged": True, "index": name}
 
     def _delete(self, expr: str) -> Answer:
+        # Elasticsearch 8's default ``action.destructive_requires_name=true``:
+        # a delete must name every index.
+        wildcard = any(
+            p in ("_all", "*") or "*" in p or "?" in p for p in expr.split(",")
+        )
+        if wildcard and self._destructive_requires_name():
+            raise EsError(
+                400,
+                "illegal_argument_exception",
+                "Wildcard expressions or all indices are not allowed",
+            )
         found = self._resolve(expr)
         for index in found:
             del self.indices[index.name]
         return 200, {"acknowledged": True}
+
+    def _destructive_requires_name(self) -> bool:
+        key = "action.destructive_requires_name"
+        value = self.cluster["transient"].get(key, self.cluster["persistent"].get(key))
+        return str(value).lower() != "false"
 
     def _resolve(self, expr: str, *, allow_missing: bool = False) -> list[_Index]:
         """Indices named by a comma list of names and wildcards; a concrete

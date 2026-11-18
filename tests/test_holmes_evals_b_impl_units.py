@@ -478,3 +478,177 @@ def test_void_line_retries_then_missing(
     ] * 3
     assert driver.trial_state(cfg, QID, 1) == "missing"
     assert driver.trial_record(summary).category == "env_broken"
+
+
+# -- PR #726 review: ES 8 wildcard deletes, batched shift, void clock ----------------
+
+
+def test_fake_es_refuses_wildcard_delete_like_es8() -> None:
+    store = fake_es.FakeElasticsearch(ENGINEER)
+    _call(store, "PUT", "/app-1-a", {})
+    status, out = _call(store, "DELETE", "/app-1-*")
+    assert status == 400 and out["error"]["type"] == "illegal_argument_exception"
+    assert _call(store, "DELETE", "/_all")[0] == 400
+    assert _call(store, "DELETE", "/app-1-a")[0] == 200
+    _call(store, "PUT", "/app-1-b", {})
+    _call(
+        store,
+        "PUT",
+        "/_cluster/settings",
+        {"persistent": {"action.destructive_requires_name": "false"}},
+    )
+    assert _call(store, "DELETE", "/app-1-*")[0] == 200
+
+
+def test_fake_es_date_detection_follows_es_defaults() -> None:
+    store = fake_es.FakeElasticsearch(ENGINEER)
+    _call(
+        store,
+        "POST",
+        "/app-2-a/_doc",
+        {"a": "2024-01-14 00:00:00", "b": "2024-01-14T00:00:00Z"},
+    )
+    _, mapping = _call(store, "GET", "/app-2-a/_mapping")
+    props = mapping["app-2-a"]["mappings"]["properties"]
+    assert props["a"]["type"] == "text" and props["b"]["type"] == "date"
+
+
+def test_purge_by_name_and_fail_closed(
+    es: tuple[fake_es.FakeElasticsearch, str],
+) -> None:
+    from scripts.holmes_evals.setup import purge_question_indices
+
+    store, url = es
+    names = [f"app-184-team-svc-2024.01.{i:02d}-{'x' * 40}" for i in range(120)]
+    for name in names:
+        _call(store, "PUT", f"/{name}", {})
+    _call(store, "PUT", "/app-1840-keep", {})
+    admin = shift.EsAdmin(url, ENGINEER)
+    assert sorted(
+        purge_question_indices(admin, "184_elasticsearch_index_explosion")
+    ) == sorted(names)
+    assert sorted(store.indices) == ["app-1840-keep"]
+    assert all(
+        len(",".join(g)) <= shift.URL_NAMES_CHARS for g in shift._name_groups(names)
+    )
+    assert len(shift._name_groups(names)) > 1
+
+    class Stuck(shift.EsAdmin):
+        def delete_indices(self, names: Any) -> None:
+            return None
+
+    _call(store, "PUT", "/app-184-left", {})
+    with pytest.raises(shift.ShiftError) as err:
+        purge_question_indices(
+            Stuck(url, ENGINEER), "184_elasticsearch_index_explosion"
+        )
+    assert err.value.code == "PURGE_INCOMPLETE"
+
+
+class _Counting(shift.EsAdmin):
+    def __init__(self, *a: Any, **k: Any) -> None:
+        super().__init__(*a, **k)
+        self.calls: list[str] = []
+
+    def _call(
+        self, method: str, path: str, body: Any = None, *, ndjson: bool = False
+    ) -> Any:
+        self.calls.append(f"{method} {path.split('?')[0].split('/')[-1]}")
+        return super()._call(method, path, body, ndjson=ndjson)
+
+
+def test_apply_shift_is_batched_across_indices(
+    es: tuple[fake_es.FakeElasticsearch, str],
+) -> None:
+    store, url = es
+    for i in range(1, 61):
+        name = f"app-185-geo-eu-auth-2024.01.{i:02d}"
+        _call(
+            store,
+            "PUT",
+            f"/{name}",
+            {"mappings": {"properties": {"@timestamp": {"type": "date"}}}},
+        )
+        _call(
+            store,
+            "POST",
+            f"/{name}/_doc",
+            {"@timestamp": f"2024-01-05T09:{i % 60:02d}:00Z", "m": "x"},
+        )
+    admin = _Counting(url, ENGINEER)
+    now = datetime(2026, 11, 18, 19, tzinfo=UTC)
+    _, record = shift.apply_shift(
+        admin, "185_elasticsearch_cross_region_search", "q", now
+    )
+    assert record.applied and sum(i["rewritten"] for i in record.indices) == 60
+    assert admin.calls.count("POST _bulk") == 1
+    assert admin.calls.count("POST _refresh") == 1
+    assert admin.calls.count("POST _forcemerge") == 1
+    assert admin.calls.count("POST _search") <= 2
+    _, out = _call(
+        store,
+        "POST",
+        "/app-185-geo-*/_search",
+        {"size": 0, "aggs": {"m": {"max": {"field": "@timestamp"}}}},
+    )
+    assert out["aggregations"]["m"]["value_as_string"].startswith("2026-11-18")
+
+
+def test_void_clock_starts_after_shift(
+    tmp_path: Path,
+    es: tuple[fake_es.FakeElasticsearch, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSPILOT_LEDGER_DIR", str(tmp_path / "ledger"))
+    store, url = es
+    cfg = _cfg(tmp_path)
+    cfg.es_url = url
+    _upstream(cfg.upstream)
+    b = _backends(store, url, {})
+    clock = [datetime(2026, 11, 18, 12, tzinfo=UTC)]
+
+    def now() -> datetime:
+        clock[0] += timedelta(seconds=1)
+        return clock[0]
+
+    real = driver.apply_shift
+
+    def slow_shift(*a: Any, **k: Any) -> Any:
+        out = real(*a, **k)
+        clock[0] += timedelta(seconds=600)  # a 10-minute shift (184/185 scale)
+        return out
+
+    b.now = now
+    monkeypatch.setattr(driver, "apply_shift", slow_shift)
+    record = driver.run_trial(
+        cfg, b, QID, questions.load_question(cfg.upstream, QID), 1
+    )
+    assert record["status"] == "completed" and record["history"] == []
+    block = json.loads(cfg.summary_path(QID, 1).read_text())["holmes_eval"]
+    assert block["shift_timing"]["seconds"] >= 600
+    assert block["delivery"]["setup_to_delivery_seconds"] < 120
+    assert block["delivery"]["data_end_to_delivery_seconds"] >= 60
+
+
+def test_purge_failure_fails_closed_in_the_driver(
+    tmp_path: Path,
+    es: tuple[fake_es.FakeElasticsearch, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPSPILOT_LEDGER_DIR", str(tmp_path / "ledger"))
+    store, url = es
+    cfg = _cfg(tmp_path)
+    cfg.es_url = url
+    _upstream(cfg.upstream)
+
+    class Stuck(shift.EsAdmin):
+        def delete_indices(self, names: Any) -> None:
+            return None
+
+    b = _backends(store, url, {})
+    b.es_admin = lambda u, k: Stuck(url, k)
+    _call(store, "PUT", "/app-275-leftover", {})
+    with pytest.raises(driver.RoundAbort) as err:
+        driver.run_trial(cfg, b, QID, questions.load_question(cfg.upstream, QID), 1)
+    assert err.value.code == "CLEANUP_FAILED"
+    assert not cfg.summary_path(QID, 1).exists()

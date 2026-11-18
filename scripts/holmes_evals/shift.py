@@ -17,8 +17,10 @@ evaluation moves that data instead of loosening the tool (#666 comment):
    never overlaps the original range (N4) -- otherwise the deshift could not
    tell evaluation times from original ones;
 4. documents are read, only their date fields rewritten in their own format,
-   written back under the same ``_id`` with ``refresh=wait_for``, and every
-   rewritten index force-merged (187 asks about storage; the rewrite would
+   written back under the same ``_id`` -- documents are read in few
+   multi-index searches and written in chunked ``_bulk`` requests, then one
+   ``_refresh`` and one ``_forcemerge`` over ``app-<id>-*`` (184/185 hold
+   about 1600 indices; 187 asks about storage, and the rewrite would
    otherwise leave deleted documents behind);
 5. R10-1: the question text's ISO date-times and ``YYYY-MM-DD`` dates move by
    the same offset. A date alone becomes the date of "that day 12:00 UTC +
@@ -80,6 +82,11 @@ TIME_BOX_LIMITED: frozenset[str] = frozenset(
 UTC_DATE_SENSITIVE: frozenset[str] = frozenset({"280_es_multi_quirk"})
 LEAD = timedelta(seconds=60)
 MAX_DOCUMENTS = 10_000
+#: Index names per request path, in characters (HTTP lines stay under 4 KiB).
+URL_NAMES_CHARS = 3000
+#: One ``_bulk`` request: at most this many documents or bytes.
+BULK_DOCS = 5000
+BULK_BYTES = 5 * 1024 * 1024
 ES_TIMEOUT_S = 60
 _DATE_TYPES = frozenset({"date", "date_nanos"})
 
@@ -500,14 +507,105 @@ class EsAdmin:
             raise ShiftError("SHIFT_IO_FAILED", f"bulk errors in {index}")
 
     def forcemerge(self, index: str) -> None:
+        """``_forcemerge?max_num_segments=1`` (an index name or a pattern)."""
         self._call("POST", f"/{self._quote(index)}/_forcemerge?max_num_segments=1")
 
+    def refresh(self, pattern: str) -> None:
+        self._call("POST", f"/{self._quote(pattern)}/_refresh")
+
+    def documents_many(
+        self, names: Sequence[str]
+    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """Every document of ``names`` in few searches: the names go in
+        comma-separated groups that fit one URL and one result window; a group
+        over the window is split, a single index over it is
+        ``SHIFT_INDEX_TOO_LARGE``."""
+        out: dict[str, list[tuple[str, dict[str, Any]]]] = {n: [] for n in names}
+        pending = [list(g) for g in _name_groups(names)]
+        while pending:
+            group = pending.pop()
+            body = self._call(
+                "POST",
+                f"/{self._quote(','.join(group))}/_search",
+                {
+                    "size": MAX_DOCUMENTS,
+                    "query": {"match_all": {}},
+                    "sort": ["_doc"],
+                    "track_total_hits": True,
+                },
+            )
+            hits = (body or {}).get("hits") or {}
+            total = (hits.get("total") or {}).get("value")
+            rows = hits.get("hits")
+            if not isinstance(rows, list) or not isinstance(total, int):
+                raise ShiftError("SHIFT_IO_FAILED", "search shape")
+            if total > MAX_DOCUMENTS or len(rows) != total:
+                if len(group) == 1:
+                    raise ShiftError("SHIFT_INDEX_TOO_LARGE", group[0])
+                half = len(group) // 2
+                pending += [group[:half], group[half:]]
+                continue
+            for hit in rows:
+                out.setdefault(str(hit["_index"]), []).append(
+                    (str(hit["_id"]), dict(hit.get("_source") or {}))
+                )
+        return out
+
+    def bulk_rewrite(self, rows: Sequence[tuple[str, str, Mapping[str, Any]]]) -> None:
+        """``(index, id, source)`` written back in chunked ``_bulk`` requests
+        without a per-request refresh (the caller refreshes once)."""
+        lines: list[str] = []
+        size = 0
+        for index, doc_id, source in rows:
+            pair = (
+                json.dumps({"index": {"_index": index, "_id": doc_id}}),
+                json.dumps(source, ensure_ascii=False),
+            )
+            lines.extend(pair)
+            size += len(pair[0]) + len(pair[1]) + 2
+            if len(lines) >= 2 * BULK_DOCS or size >= BULK_BYTES:
+                self._bulk(lines)
+                lines, size = [], 0
+        if lines:
+            self._bulk(lines)
+
+    def _bulk(self, lines: Sequence[str]) -> None:
+        out = self._call("POST", "/_bulk", "\n".join(lines) + "\n", ndjson=True)
+        if not isinstance(out, dict) or out.get("errors") is not False:
+            raise ShiftError("SHIFT_IO_FAILED", "bulk errors")
+
+    def delete_indices(self, names: Sequence[str]) -> None:
+        """Delete by explicit names, chunked to fit the URL: Elasticsearch 8
+        refuses wildcard deletes (``action.destructive_requires_name``)."""
+        for group in _name_groups(names):
+            try:
+                self._call("DELETE", f"/{self._quote(','.join(group))}")
+            except ShiftError as error:
+                if error.code != "ES_NOT_FOUND":
+                    raise
+
     def delete(self, pattern: str) -> None:
-        try:
-            self._call("DELETE", f"/{self._quote(pattern)}?expand_wildcards=all")
-        except ShiftError as error:
-            if error.code != "ES_NOT_FOUND":
-                raise
+        """The indices matching ``pattern``, deleted by name."""
+        names = sorted(self.indices(pattern))
+        if names:
+            self.delete_indices(names)
+
+
+def _name_groups(names: Sequence[str]) -> list[list[str]]:
+    """Comma-joined groups of at most ``URL_NAMES_CHARS`` characters."""
+    groups: list[list[str]] = []
+    current: list[str] = []
+    length = 0
+    for name in names:
+        cost = len(urllib.parse.quote(name, safe="*")) + 1
+        if current and length + cost > URL_NAMES_CHARS:
+            groups.append(current)
+            current, length = [], 0
+        current.append(name)
+        length += cost
+    if current:
+        groups.append(current)
+    return groups
 
 
 # -- orchestration -------------------------------------------------------------------------------
@@ -533,10 +631,11 @@ def apply_shift(
         return question, ShiftRecord(
             applied=False, reason="NO_DATE_FIELDS", time_only_phrases=phrases
         )
-    docs = {name: admin.documents(name) for name in dated}
+    docs = admin.documents_many(sorted(dated))
     instants = [
         moment
         for name, rows in docs.items()
+        if name in dated
         for _, source in rows
         for path in dated[name]
         for container, key in _get(json.loads(json.dumps(source)), path)
@@ -560,27 +659,30 @@ def apply_shift(
         store_size_before={k: before[k] for k in sorted(before) if k in dated},
         time_only_phrases=phrases,
     )
+    # One chunked _bulk across the question's indices, then one refresh and
+    # one forcemerge over the pattern (184/185 have ~1600 indices).
+    rewrites_out: list[tuple[str, str, dict[str, Any]]] = []
     for name in sorted(dated):
-        rewritten_docs = []
         counts = [0, 0]
-        for doc_id, source in docs[name]:
+        for doc_id, source in docs.get(name, []):
             new, rewritten, unparsed = shift_document(source, dated[name], seconds)
             counts[0] += rewritten
             counts[1] += unparsed
             if rewritten:
-                rewritten_docs.append((doc_id, new))
-        admin.bulk_replace(name, rewritten_docs)
-        if rewritten_docs:
-            admin.forcemerge(name)
+                rewrites_out.append((name, doc_id, new))
         record.indices.append(
             {
                 "index": name,
                 "fields": dated[name],
-                "documents": len(docs[name]),
+                "documents": len(docs.get(name, [])),
                 "rewritten": counts[0],
                 "unparsed": counts[1],
             }
         )
+    if rewrites_out:
+        admin.bulk_rewrite(rewrites_out)
+        admin.refresh(pattern)
+        admin.forcemerge(pattern)
     after = admin.indices(pattern)
     record.store_size_after = {k: after[k] for k in sorted(after) if k in dated}
     delivered, rewrites = rewrite_question(question, seconds)

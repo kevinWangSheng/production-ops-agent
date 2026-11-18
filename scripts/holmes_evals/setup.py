@@ -126,11 +126,18 @@ def run_script(
 
 def purge_question_indices(admin: EsAdmin, qid: str) -> list[str]:
     """Delete what is left of ``app-<id>-*`` (H-7: only the current
-    question's indices in ES); returns the names that were there."""
-    from scripts.holmes_evals.shift import index_pattern
+    question's indices in ES); returns the names that were there.
+
+    By explicit names (Elasticsearch 8 refuses wildcard deletes), and fail
+    closed: anything still listed afterwards is ``ShiftError("PURGE_INCOMPLETE")``.
+    """
+    from scripts.holmes_evals.shift import ShiftError, index_pattern
 
     pattern = index_pattern(qid)
     names = sorted(admin.indices(pattern))
     if names:
-        admin.delete(pattern)
+        admin.delete_indices(names)
+        left = sorted(admin.indices(pattern))
+        if left:
+            raise ShiftError("PURGE_INCOMPLETE", f"{len(left)} left")
     return names

@@ -81,6 +81,7 @@ from scripts.holmes_evals.setup import (
     setup_env,
 )
 from scripts.holmes_evals.shift import (
+    LEAD,
     TIME_BOX_LIMITED,
     UTC_DATE_SENSITIVE,
     EsAdmin,
@@ -615,14 +616,25 @@ class Attempt:
         )
 
     def _clean(self, slot: str) -> None:
+        """``after_test`` (recorded, its exit code is upstream's business),
+        then the evaluation's own purge, which fails closed: before the
+        trial an ``InfraFailure`` (the chance is retried), after it
+        ``RoundAbort("CLEANUP_FAILED")`` -- leftover data must never reach
+        the next trial."""
         result = self._script("after_test")
+        self.block["setup"][slot] = asdict(result)
         assert self._admin is not None
+        phase = slot.split("_")[1]
         try:
             purged = purge_question_indices(self._admin, self.qid)
         except ShiftError as error:
-            purged = [f"error:{error.code}"]
-        self.block["setup"][slot] = asdict(result)
-        self.block["setup"].setdefault("purged", {})[slot.split("_")[1]] = purged
+            self.block["setup"].setdefault("purged", {})[phase] = [
+                f"error:{error.code}"
+            ]
+            if phase == "before":
+                raise InfraFailure("PURGE_FAILED", error.code) from None
+            raise RoundAbort("CLEANUP_FAILED", f"purge:{error.code}") from None
+        self.block["setup"].setdefault("purged", {})[phase] = purged
 
     def run(self) -> AttemptResult:
         try:
@@ -630,9 +642,10 @@ class Attempt:
         finally:
             failures = self.cleanup.close()
             if not self._cleaned_after and self._admin is not None:
+                self._cleaned_after = True
                 try:
                     self._clean("cleanup_after")
-                except Exception:  # noqa: BLE001 - best effort after a failure
+                except Exception:  # noqa: BLE001 - fail closed below
                     failures.append("cleanup_after")
             failures += self._ports_released()
             if failures:
@@ -671,15 +684,23 @@ class Attempt:
                 "SETUP_TIMEOUT" if before.timed_out else "SETUP_FAILED",
                 f"exit={before.exit_code}",
             )
-        setup_ended = b.now()
-        self.block["setup"]["ended_at"] = _iso(setup_ended)
+        shift_started = b.now()
+        self.block["setup"]["ended_at"] = _iso(shift_started)
         try:
-            delivered, shift = apply_shift(self._admin, self.qid, prompt, b.now())
+            delivered, shift = apply_shift(self._admin, self.qid, prompt, shift_started)
         except ShiftError as error:
             if error.code in ("SHIFT_IO_FAILED", "ES_NOT_FOUND"):
                 raise InfraFailure(error.code, error.detail) from None
             raise DeterministicError(error.code, error.detail) from None
+        # The 120 s line runs from the end of the shift (184/185 rewrite
+        # ~1600 indices); the shift's own duration is recorded beside it.
+        setup_ended = b.now()
         self.block["shift"] = shift.as_json()
+        self.block["shift_timing"] = {
+            "started_at": _iso(shift_started),
+            "ended_at": _iso(setup_ended),
+            "seconds": round((setup_ended - shift_started).total_seconds(), 3),
+        }
         self.block["question"] = {
             "sha256_original": _sha256(prompt),
             "sha256_delivered": _sha256(delivered),
@@ -727,6 +748,14 @@ class Attempt:
         }
         if not setup_to_delivery_ok(setup_ended, now):
             raise VoidAttempt("SETUP_TO_DELIVERY_EXCEEDED", f"{gap:.1f}s")
+        if shift.applied and shift.original_max is not None:
+            # H-8's anchor rule at delivery time: the shifted data ends at
+            # least LEAD before the question arrives.
+            data_end = shift.original_max + timedelta(seconds=shift.seconds)
+            lead = (now - data_end).total_seconds()
+            self.block["delivery"]["data_end_to_delivery_seconds"] = round(lead, 3)
+            if lead < LEAD.total_seconds():
+                raise VoidAttempt("DATA_AFTER_DELIVERY", f"{lead:.1f}s")
         key = idempotency_key(cfg.round, self.qid, self.trial, self.chance)
         try:
             result = b.submit(
