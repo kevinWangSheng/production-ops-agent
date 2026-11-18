@@ -1094,10 +1094,20 @@ class ElasticsearchTransport:
                 "applied and the source time is unknown."
             )
 
+        searched_none = shards.get("total") == 0
+        if searched_none:
+            notes.append(
+                f"No index matched {index} when the search ran (0 shards "
+                "searched); nothing was searched."
+            )
         if size == 0:
-            rows: list[dict[str, Any]] = [
-                {"total": total, "aggregations": aggregations}
-            ]
+            # B1-12: only a search over at least one index has a summary; a
+            # pattern that matched none is no data, also with size 0.
+            rows: list[dict[str, Any]] = (
+                []
+                if searched_none
+                else [{"total": total, "aggregations": aggregations}]
+            )
             row_unit = "summaries"
         else:
             rows = hits

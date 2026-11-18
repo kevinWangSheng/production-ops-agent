@@ -47,7 +47,7 @@ r9 没定死、由实现者按 A 批先例取可逆项（每行一条）：
 - 三个工具的 `result_path` 统一为 `results`。search 在 `size>0` 时行是文档（`row_unit` `documents`），聚合放视图字段 `aggregations`；`size=0` 时只有一行 `{total, aggregations}`（`row_unit` `summaries`），让只计数或只聚合的查询是 `ok`、可引用（否则执行器按 0 行判 `no_data`）。mappings 不带 jq 时每个索引一行 `{index, mappings}`（`indices`），list_indices 每个索引一行（`indices`）；带 jq 时行是 jq 输出（`results`），jq 作用在 ES 原始 JSON 上，与上游 `filter_result` 一致。
 - 不完整：`size>0` 且 `total.value` 大于显示条数（含 `from_offset` 跳过的），或 `relation` 不是 `eq`；`timed_out`；`_shards.failed>0`。理由写在 `incomplete_reason`。
 - 长值截断：命中行与聚合里所有字符串值截到 2000 字符；每行 `_truncated_fields` 列出被截的点号路径，视图 `long_values_cut` 计数并写 notes。
-- 通配符没匹配到索引（映射返回 `{}`）时不发 search，直接返回 0 行（`no_data`）并在 notes 说明。
+- 通配符没匹配到索引（映射返回 `{}`）时不发 search，直接返回 0 行（`no_data`）并在 notes 说明；`size=0` 也一样。search 已发出但 ES 回 `_shards.total == 0`（映射读后索引消失）时同样 0 行、`no_data`。只有实际搜过至少一个索引时，`size=0` 才返回那一行 `ok` 的 `{total, aggregations}`（`total` 可以是 0）。
 - 超时：注册 30 s；映射读取与 search 共用一个期限，请求体 `timeout` 取 search 发出前剩余整秒（至少 1 s）。原始读取映射与 search 各自 2 MiB 上限。
 - 认证与 TLS：`es-ro` 槽存完整 `Authorization` 值（`ApiKey <encoded>` 或 `Basic ...`）；HTTPS 未设 `OPSPILOT_ES_CA_FILE` 时用系统根证书校验（不关校验），设了只信该 CA；http 地址配 CA 文件报 `ES_CONFIG_INVALID`。用户名密码只给一半、地址带路径/查询串/userinfo 也是 `ES_CONFIG_INVALID`。
 - list_indices 的 `columns`/`sort` 列白名单照上游（`index`、`health`、`status`、`pri`、`rep`、`docs.count`、`docs.deleted`、`store.size`、`pri.store.size`、`creation.date`、`creation.date.string`），`sort` 可带 `:asc`/`:desc`；`expand_wildcards` 允许逗号组合。
