@@ -753,7 +753,8 @@ def _cut_strings(value: Any, path: str, cut: list[str]) -> Any:
 
 
 def _date_fields(properties: object, prefix: str = "") -> list[str]:
-    """Dotted names of the ``date``/``date_nanos`` fields of a mapping."""
+    """Dotted names of the ``date``/``date_nanos`` fields of a mapping's
+    ``properties``, objects and multi-fields (``fields``) included."""
     found: list[str] = []
     if not isinstance(properties, dict):
         return found
@@ -766,6 +767,28 @@ def _date_fields(properties: object, prefix: str = "") -> list[str]:
         inner = spec.get("properties")
         if isinstance(inner, dict):
             found.extend(_date_fields(inner, dotted + "."))
+        multi = spec.get("fields")
+        if isinstance(multi, dict):
+            # A date multi-field ``name.sub`` is a time field too (fail
+            # closed, B1-U1).
+            found.extend(_date_fields(multi, dotted + "."))
+    return found
+
+
+def _mapping_date_fields(mappings: dict[str, Any]) -> list[str]:
+    """Every date field an index maps: ``properties`` and the ``runtime``
+    section (a runtime date field can be filtered, so an index whose only
+    time field is defined there is still filtered, B1-U1)."""
+    found = _date_fields(mappings.get("properties"))
+    runtime = mappings.get("runtime")
+    if isinstance(runtime, dict):
+        for name, spec in runtime.items():
+            if (
+                isinstance(spec, dict)
+                and spec.get("type") in _DATE_TYPES
+                and str(name) not in found
+            ):
+                found.append(str(name))
     return found
 
 
@@ -781,7 +804,7 @@ def _index_date_fields(payload: object) -> dict[str, list[str]] | None:
         mappings = entry.get("mappings")
         if not isinstance(mappings, dict):
             return None
-        result[str(index)] = _date_fields(mappings.get("properties"))
+        result[str(index)] = _mapping_date_fields(mappings)
     return result
 
 

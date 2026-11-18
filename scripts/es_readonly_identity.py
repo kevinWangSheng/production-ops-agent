@@ -144,11 +144,20 @@ def _call(
 
 
 def _private_write(path: Path, lines: list[str]) -> None:
+    """Write a new mode-600 file beside ``path`` (``O_CREAT | O_EXCL``, so
+    never a symlink target or an existing wider-permission file), then move
+    it onto ``path``: a symlink at ``path`` is replaced, never followed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write("\n".join(lines) + "\n")
-    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    temp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(temp), flags, stat.S_IRUSR | stat.S_IWUSR)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write("\n".join(lines) + "\n")
+        os.replace(temp, path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
 
 
 def create_elasticsearch_key(
