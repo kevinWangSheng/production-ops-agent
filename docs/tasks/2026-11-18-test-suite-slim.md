@@ -75,7 +75,7 @@
   | 测试函数 | 7,508 个 | 581 个 |
   | 收集用例 | 约 15,900 个 | 1,340 个（其中 PG 405 个） |
 
-  另删 17 个只服务已删测试的 `*_AMBIGUITIES.md`。
+  另删 17 个只服务已删测试的 `*_AMBIGUITIES.md`。CI（run 44312153699）：墙钟约 3 分钟（前约 11 分钟），checks 的 pytest 步骤 46 s（前 578 s）。
 - **留下什么**：
   - 安全套件（`tests/safety/`，加上报告校验表与 Observer 独立性）。
   - 工作台：`test_workbench_conversation`、`test_workbench_p3_late_results`、浏览器路径、`test_m1_incident_control_postgres`。
