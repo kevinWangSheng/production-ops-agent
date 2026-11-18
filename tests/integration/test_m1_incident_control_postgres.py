@@ -33,6 +33,7 @@ from tests.m1_web_support import (
     same_origin,
 )
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
+    tool_round,
     workbench_database_fixture,
     workbench_fixture,
 )
@@ -471,3 +472,26 @@ def test_a_reply_citing_evidence_links_to_it(workbench):
     assert page.status == 200
     (row,) = re.findall(r'<div class="ev reply-row".*?</div></div>', page.text, re.S)
     assert f'href="/incidents/{conversation.incident_id}/evidence/{cited}"' in row
+
+    # A report recommendation that cites evidence links to it too (PR #703).
+    def with_recommendation(call):
+        evidence = next(
+            json.loads(m["content"])["evidence_id"]
+            for m in reversed(call.messages)
+            if m.get("role") == "tool"
+        )
+        payload = json.loads(report_json(evidence_id=evidence))
+        payload["claims"].append(
+            {**payload["claims"][0], "kind": "recommendation", "text": "Roll back."}
+        )
+        return reply(content=json.dumps(payload))
+
+    advised = workbench.from_alert("p4-recommendation-evidence-link")
+    workbench.run(advised, [tool_round(), with_recommendation])
+    advised_id = UUID(advised.subject_id)
+    (cites,) = workbench.workbench.snapshot(advised_id)["report"]["recommendations"]
+    page = driver_call(
+        workbench.app, "GET", f"/incidents/{advised_id}", headers=driver_basic()
+    )
+    (row,) = re.findall(r'<span class="n">A1</span>.*?</div>', page.text, re.S)
+    assert f'href="/incidents/{advised_id}/evidence/{cites["evidence_ids"][0]}"' in row
