@@ -88,6 +88,7 @@ BIG_LINE_CHARS = 4500
 BURST_WINDOW = Window(NOW - timedelta(minutes=100), NOW - timedelta(minutes=70))
 BURST_BEFORE = 7
 BURST_INSIDE = 3
+HALF_SECOND = 500_000_000  # ns
 
 
 def _z(moment: datetime) -> str:
@@ -255,8 +256,19 @@ def _seed(loki: Loki) -> None:
     _push(
         loki,
         {"job": "c5-burst", "namespace": "c5"},
-        [[_ns(before, n), f"burst before {n}"] for n in range(BURST_BEFORE)]
-        + [[_ns(inside, n), f"burst inside {n}"] for n in range(BURST_INSIDE)],
+        # Half a second off the whole second: evaluation points sit on whole
+        # seconds (the tool aligns them to an integer step), so no point's
+        # left-open range (t - 10m, t] can begin exactly on a burst line and
+        # count only part of it -- that boundary made the inside count flap
+        # between 2 and 3 with where NOW fell (main, run 44383305869).
+        [
+            [_ns(before, HALF_SECOND + n), f"burst before {n}"]
+            for n in range(BURST_BEFORE)
+        ]
+        + [
+            [_ns(inside, HALF_SECOND + n), f"burst inside {n}"]
+            for n in range(BURST_INSIDE)
+        ],
     )
     if loki.tenant is not None:
         _push(
@@ -465,8 +477,8 @@ def test_lines_outside_the_query_window_never_return(loki, tools):
     assert (future.status, future.reason) == ("no_data", "NO_DATA")
     old = tools.execute(_call({"query": '{job="c5-app"} |= "old outage"'}))
     assert (old.status, old.reason) == ("no_data", "NO_DATA")
-    # The widest window the frame allows returns the old line, never the
-    # future one.
+    # The widest window the frame allows returns the old line; the future
+    # line lies after the frame's end (now), so it is not returned either.
     widest = tools.execute(
         _call(
             {
