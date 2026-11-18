@@ -1,6 +1,6 @@
 # 工具面拓展 C5：Loki / VictoriaLogs 日志检索
 
-- 状态：预审与裁决完成（[决定表 r10](2026-11-12-tool-expansion-contract.md)，2026-11-18）；C5a Loki 开工，C5b VictoriaLogs 在 C5a 合并后
+- 状态：C5a Loki 已合并（PR #724，`2d13f48a`，2026-11-18）；C5b VictoriaLogs 待开工；真实 Run 证据归租机（#671/#669）
 - 更新日期：2026-11-18
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、决定表 r8、r9（B1-U1、B1-U2 沿用）与 r10（C5-U1、R10-1、C5-0 至 C5-21）；C3 第 3、5、8、12 节；上游 HolmesGPT `a0009195` 的 `holmes/plugins/toolsets/grafana/`（Loki）与 `victorialogs/`。issue #569。预审全文在仓库外（`~/.agent/handoffs/opspilot-c5-prereview-2026-11-18.md`），细节以它和 r10 为准
 - 工作区：C5a 实现 `../poa-569-loki`，分支 `feature/569-loki-logs`；C5a 测试 `../poa-569-loki-tests`，分支 `test/569-loki-logs`
@@ -36,7 +36,7 @@
 - LogQL：字符串字面量之外的 `offset`、`@` 拒绝；`[a:b]` 与孤立的 `]` 拒绝（LogQL 没有子查询）；范围时长按 Prometheus 语法（含 `1h30m`、`500ms`），向上取整到秒后与查询窗比较；转义引号留在字面量内；含换行或制表符的查询报 `INVALID_QUERY`。
 - 租户含 `|`、空白或超过 150 字符报 `LOKI_CONFIG_INVALID`；没设地址却设了租户、CA 或凭据报 `LOKI_CONFIG_INVALID`；http 地址配 CA 也报 `LOKI_CONFIG_INVALID`。
 - 只有 400 回显 Loki 的错误文本（截短、脱敏）；401、403、404 只带状态。
-- 扩展档位 revision：无后端 `otel-demo-ext-c63f058afb18`、仅 ES `otel-demo-ext-4f7faf728706` 不变；仅 Loki `otel-demo-ext-a35f0bf41c73`，ES 加 Loki `otel-demo-ext-45871bd8d52a`。
+- 扩展档位 revision：无后端 `otel-demo-ext-c63f058afb18`、仅 ES `otel-demo-ext-4f7faf728706` 不变；仅 Loki `otel-demo-ext-dd942a2f1292`，ES 加 Loki `otel-demo-ext-f11fc2ce4d18`（审查修复加入 step 后的值，main `2d13f48a` 实测）。
 
 ## 证据
 
