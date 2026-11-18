@@ -36,7 +36,8 @@ trim() {
 # reads only from the environment (opspilot/tools/otel_demo.py), and the
 # LangSmith project, endpoint and workspace id the trace export reads
 # (opspilot/tracing.py, opspilot/outbox_delivery.py; #428), and the read-only
-# cluster identity's OPSPILOT_K8S_* (A1, #553); export those and
+# cluster identity's OPSPILOT_K8S_* (A1, #553), and the Elasticsearch/
+# OpenSearch address and es-ro credential OPSPILOT_ES_* (B1, #560); export those and
 # nothing else (worker_main reads the model and
 # LangSmith keys from the file itself). Same reading as worker_main._read_env_file: per KEY, the first
 # KEY=value line wins; line and value are stripped and one pair of matching
@@ -57,7 +58,7 @@ if [ -n "$env_file" ]; then
                 OPSPILOT_OTEL_TOKEN | OPSPILOT_OTEL_PROMETHEUS_USERNAME | \
                 OPSPILOT_OTEL_PROMETHEUS_PASSWORD | LANGSMITH_PROJECT | \
                 LANGSMITH_ENDPOINT | LANGSMITH_WORKSPACE_ID) ;;
-            OPSPILOT_K8S_*)
+            OPSPILOT_K8S_* | OPSPILOT_ES_*)
                 # a name, never shell text: it reaches eval below
                 case "$name" in *[!A-Z0-9_]*) continue ;; esac
                 ;;

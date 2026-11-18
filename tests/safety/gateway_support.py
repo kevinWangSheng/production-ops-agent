@@ -39,6 +39,7 @@ NAMESPACE = "otel-demo"
 #: Low-entropy synthetic credentials configured into the gateway.
 K8S_TOKEN = "k8s-safety-aaaaaaaa"
 OTEL_TOKEN = "otel-safety-aaaaaaaa"
+ES_TOKEN = "es-safety-aaaaaaaa"
 
 
 class _Reply:
@@ -126,6 +127,9 @@ def ext_env(ca_file: str) -> dict[str, str]:
         "OPSPILOT_OTEL_PROMETHEUS_URL": "http://127.0.0.1:19090",
         "OPSPILOT_OTEL_JAEGER_URL": "http://127.0.0.1:16686/jaeger/ui",
         "OPSPILOT_OTEL_TOKEN": OTEL_TOKEN,
+        # #560: the Elasticsearch log tools register only with an address.
+        "OPSPILOT_ES_URL": "http://127.0.0.1:19200",
+        "OPSPILOT_ES_API_KEY": ES_TOKEN,
     }
 
 

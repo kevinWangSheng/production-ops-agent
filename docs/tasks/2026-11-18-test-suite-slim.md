@@ -66,14 +66,14 @@
 
 ### PR2
 
-- **删除量**（相对 PR1 的树）：
+- **删除量**（相对 main 4b4cde2b，含 #560 合入的 ES 测试）：
 
   | | 删前 | 删后 |
   |---|---|---|
-  | `tests/` 下的 .py 文件 | 598 个 | 96 个（其中测试模块 55 个） |
-  | 行数 | 250,806 行 | 37,156 行 |
-  | 测试函数 | 7,033 个 | 485 个 |
-  | 收集用例 | 约 15,700 个 | 1,052 个（其中 PG 363 个） |
+  | `tests/` 下的 .py 文件 | 601 个 | 101 个（其中测试模块 60 个） |
+  | 行数 | 264,480 行 | 41,625 行 |
+  | 测试函数 | 7,508 个 | 581 个 |
+  | 收集用例 | 约 15,900 个 | 1,340 个（其中 PG 405 个） |
 
   另删 17 个只服务已删测试的 `*_AMBIGUITIES.md`。
 - **留下什么**：
@@ -82,6 +82,8 @@
   - 各功能验收步骤文件：F2、F6、F7、F11、F12、F13，F3 的 PG 验收。
   - F8/F9/F14 的确定性合同文件：386 日志、413 健康、428 outbox、429 降级、392/394/395 部署与文档、385 上游映射。
   - 迁移：`test_schema_migrations_postgres` 与几个小的 schema 结构守卫。
+  - 数据出口与新工具：`test_tracing`（LangSmith 端点白名单、trace 脱敏）；#560 刚合入的 ES 工具独立合同 `test_tool_expansion_b1_contract` 与真实后端 `integration/test_tool_expansion_b1_search_backends`（由 `search-backends` 作业运行）。ES 三个工具也已加进 `tests/safety` 的注册表枚举。
+  - F12 第 2 步（更正事故关联）：`acceptance/test_245_rebind_target`、`test_245_merge_into`。初删时漏了，复核验收步骤时恢复。
   - 报告校验：`test_m1_report_contract_citations`、`test_686_report_json_contract`。
   - 其他结构与凭据守卫：`test_architecture`、`test_knowledge_store_callers`、`test_m1_prometheus_credentials`、`test_sql_column_order_independence`。
 - **helper 搬家**：
@@ -92,13 +94,21 @@
   - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
   - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
 - **CI**：PR1 为 7 例自起 initdb 集群的用例加的「安装 PG 17 服务端」步骤，在 PR2 中随这三个文件（#392 roles、#429 downgrade impl、F11 U2 register）一起删掉；保留的测试都不调用 initdb。
-- **变异清单 25 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性）：删后对 `tests/safety` 跑，25/25 killed（含 PG 3 条），见 PR 正文。
+- **变异清单 26 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性、M26 trace 端点白名单）：删后对 `tests/safety` 加 `tests/test_tracing.py` 跑，26/26 killed（含 PG 3 条），见 PR 正文。
   - M20–M24 在删前的两份报告测试文件上只能抓到 M20、M23，所以新加了报告校验表。
   - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
 - **passes 证据**：
   - 各功能步骤原本作为证据的确定性文件全部保留、原名不变，旧→新映射表在 PR 正文。
   - 删掉的是子 PR 级的独立验收和实现者测试（例如 F11 PR-2b 至 PR-5b、F2 B1 的 PG 文件、`test_f2_query_deadline_acceptance`）。这些行为由保留的步骤文件和 `tests/safety` 覆盖。
   - 历史任务记录里对已删文件的路径引用保持原样，属于历史记录。`docs/development.md` 里仍描述现行把守的引用已改为新文件。
+
+### 已交接 Run 跟进的三处证据现状（F12 第 1–2 步、F2 第 1 步）
+
+| 步骤 | 精简后的确定性用例 | 说明 |
+|---|---|---|
+| F12 第 1 步：看进度与证据、追问、补事实、收到更新后的调查 | `acceptance/test_workbench_conversation.py`（消息进入下一轮、回复归属、跨 Run 会话）、`integration/test_f12_acceptance_postgres.py::test_step1_control_requires_authentication_and_same_origin` | 旧的子 PR 文件 `test_f12_pr1_acceptance_postgres`、`test_f12_followup_impl_postgres` 已删；追问在 D20 后由消息通道承担 |
+| F12 第 2 步：更正事故关联或假设，保留更正与历史 | `acceptance/test_245_rebind_target.py`、`test_245_merge_into.py`；`test_workbench_conversation.py` 的 `correct` 消息 | `test_f12_acceptance_postgres` 本身没有第 2 步用例，精简前也没有 |
+| F2 第 1 步：重复告警与部署事件按关联策略合并，并发事件保持独立 | `integration/test_f2_acceptance_postgres.py` 的 10 个 `test_step1_*`、`acceptance/test_f2_alert_correlation.py`（19 个） | 两个文件都保留原名 |
 
 ## 下一步与交接
 

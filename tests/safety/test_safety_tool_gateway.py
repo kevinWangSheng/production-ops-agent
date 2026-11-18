@@ -23,12 +23,14 @@ from opspilot.tools import (
     MAX_RESULT_BYTES,
     READ_ONLY_VERBS,
     ToolContractError,
+    elasticsearch_logs,
     fixture,
     otel_demo,
 )
 from opspilot.tools.otel_demo_ext import _registrations as ext_registrations
 from tests.m1_tool_support import build, registration
 from tests.safety.gateway_support import (
+    ES_TOKEN,
     K8S_TOKEN,
     OTEL_TOKEN,
     OUTSIDE,
@@ -56,6 +58,9 @@ SOURCE_CALLS: dict[str, dict[str, object]] = {
     "kubernetes_count": {"kind": "pods", "jq_expr": ".items[]"},
     "kubernetes_tabular_query": {"kind": "pods", "columns": "NAME:.metadata.name"},
     "fetch_pod_logs": {"pod_name": "checkout-0", "namespace": "otel-demo"},
+    "elasticsearch_search": {"index": "logs-checkout"},
+    "elasticsearch_mappings": {"index": "logs-checkout"},
+    "elasticsearch_list_indices": {},
 }
 #: Reads only OpsPilot's own stored evidence for the same Run.
 INTERNAL_TOOLS = {"read_evidence"}
@@ -88,22 +93,37 @@ SECRET_VALUES = (
     # credentials remain outside model inputs and traces).
     K8S_TOKEN,
     OTEL_TOKEN,
+    ES_TOKEN,
 )
 
 
+def _es_registrations():
+    return elasticsearch_logs.elasticsearch_registrations(
+        max_window_seconds=otel_demo.OBSERVATION_SECONDS
+    )
+
+
 def _registered():
-    return {item.name: item for item in ext_registrations()}
+    return {item.name: item for item in (*ext_registrations(), *_es_registrations())}
 
 
 def _shipped_registrations():
-    return [fixture._registration(), *otel_demo._registrations(), *ext_registrations()]
+    return [
+        fixture._registration(),
+        *otel_demo._registrations(),
+        *ext_registrations(),
+        *_es_registrations(),
+    ]
 
 
 # -- registry: every tool is a bounded read ------------------------------------
 
 
-def test_every_registered_tool_is_classified():
+def test_every_registered_tool_is_classified(monkeypatch, tmp_path):
     assert set(_registered()) == set(SOURCE_CALLS) | INTERNAL_TOOLS
+    # The worker's real scope over the widest configuration lists the same.
+    scope = gateway(monkeypatch, tmp_path).executor.scope
+    assert set(scope.tool_names) == set(SOURCE_CALLS) | INTERNAL_TOOLS
     for tool in KIND_TOOLS:
         assert "kind" in _registered()[tool].parameters
     kind_taking = {n for n, r in _registered().items() if "kind" in r.parameters}

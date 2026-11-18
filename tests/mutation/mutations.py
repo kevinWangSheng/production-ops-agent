@@ -237,4 +237,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         "from __future__ import annotations\n",
         "from __future__ import annotations\n\nimport opspilot.tools.executor  # noqa: F401\n",
     ),
+    Mutation(
+        "M26",
+        "data egress: traces go only to the allowed LangSmith endpoint",
+        "opspilot/tracing.py",
+        "def _is_langsmith_endpoint(url: str) -> bool:\n",
+        "def _is_langsmith_endpoint(url: str) -> bool:\n    return True\n",
+    ),
 )

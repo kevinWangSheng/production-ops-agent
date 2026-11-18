@@ -204,6 +204,11 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
         kubernetes_url
     ):
         failures.append("KUBERNETES_NOT_LAB")
+    # B1-10: the Elasticsearch/OpenSearch address, whenever it is set (the
+    # tools exist only then, B1-U2).
+    elasticsearch_url = env.get("OPSPILOT_ES_URL") or ""
+    if elasticsearch_url and not _is_lab_host(elasticsearch_url):
+        failures.append("ELASTICSEARCH_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
