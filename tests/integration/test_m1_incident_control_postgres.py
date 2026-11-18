@@ -380,3 +380,47 @@ def test_an_earlier_incomplete_report_stays_shown_after_a_later_run_without_one(
         "Visible evidence is insufficient to support a cause."
     )
     assert view["composer"]["accepts"] is True
+    # A9: the earlier Run's report keeps that Run's evidence on the page.
+    (fact,) = view["report"]["facts"]
+    assert fact["refs"] and fact["refs"][0]["call"] is not None
+
+    # D12: a message taken while Run 1 of another incident was queued, then
+    # that Run ends without reading it or any validated report (D7b).
+    other = _submit(app, f"tgt-{uuid4()}")
+    taken = post_form(
+        app,
+        f"/incidents/{other}/control",
+        {
+            "action": "message",
+            "expected_generation": "0",
+            "idempotency_key": f"msg-{uuid4()}",
+            "text": "check the payment DB pool",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert taken.status == 200, taken.text
+    workbench.run_once(
+        UUID(other),
+        ScriptedInvestigator(
+            _DbClock(store), replies=[ModelError("MODEL_UNAVAILABLE")]
+        ),
+    )
+    snapshot = workbench.snapshot(UUID(other))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    (said,) = [e for e in view["log"]["entries"] if e["kind"] == "human"]
+    assert said["status"].startswith("Not read — the investigation ended")
+
+    # D8: a human-owned incident that is also paused takes a note, never a
+    # promise that the Agent reads it after resume.
+    owned = _submit(app, f"tgt-{uuid4()}")
+    _act(app, owned, "takeover", 0)
+    _act(app, owned, "pause", 1)
+    snapshot = workbench.snapshot(UUID(owned))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    assert view["status"].key == "paused"
+    assert view["composer"]["label"] == "Add a note"
+    assert "not investigating" in view["composer"]["hint"]

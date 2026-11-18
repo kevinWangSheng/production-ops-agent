@@ -270,7 +270,7 @@
     {%- if view.queued %}
     <section class="queue" id="queue" aria-labelledby="h-queued"><h3 id="h-queued" class="lbl">Queued requests</h3>
       <ol>{% for q in view.queued %}<li><b>{{ q.author }}</b>{% if q.time %} · {{ q.time }}{% endif %} · “{{ q.text }}”</li>{% endfor %}</ol>
-      <span class="small">Read before the Agent's next step. The step it is on is not interrupted.</span></section>
+      <span class="small">{% if view.queued_note %}{{ view.queued_note }}{% else %}Read before the Agent's next step. The step it is on is not interrupted.{% endif %}</span></section>
     {%- endif %}
 
     {%- set cp = view.composer %}

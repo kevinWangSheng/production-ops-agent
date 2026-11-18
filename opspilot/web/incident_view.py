@@ -588,6 +588,7 @@ def _log(
     calls_by_eid: dict[str, dict[str, Any]],
     report: dict[str, Any] | None,
     day: str | None,
+    unread_words: str | None = None,
 ) -> dict[str, Any]:
     """Log entries in time order: Run starts, steps with their tool calls,
     the Agent's replies, people's messages and controls, report and
@@ -825,7 +826,9 @@ def _log(
         r.get("to_input_seq") for r in snapshot.get("conversation_replies") or []
     }
     for message in messages.values():
-        if message["unread"]:
+        if message["unread"] and unread_words:
+            words = unread_words
+        elif message["unread"]:
             words = "Queued · read before the Agent's next step"
         elif message["sequence"] in answered:
             words = "Read and answered"
@@ -1107,6 +1110,12 @@ def _composer(
             False,
             "This incident was merged. Message the incident it was merged into.",
         )
+    elif incident.mode == "human_owned":
+        # D8 before any status: a human-owned incident's Agent reads nothing,
+        # paused, canceled, resolved or closed alike; the note is recorded.
+        label = "Add a note"
+        hint = "Add a note — the agent is not investigating. It is recorded on the incident."
+        placeholder = "What you found or did"
     elif key == "canceled":
         accepts, refusal = (
             False,
@@ -1127,10 +1136,6 @@ def _composer(
             )
     elif key == "paused":
         hint = "Paused: the Agent reads this after the investigation is resumed."
-    elif key == "human_owned":
-        label = "Add a note"
-        hint = "The Agent is not investigating; your note is recorded on the incident."
-        placeholder = "What you found or did"
     elif key == "needs_attention" and report_kind != "incomplete":
         accepts, refusal = (
             False,
@@ -1226,7 +1231,20 @@ def page_view(
             "reason": shown.get("reason"),
             "sha256": shown.get("content_sha256"),
         }
-    log = _log(snapshot, calls, report, day)
+    composer = _composer(status, snapshot, kind, message_available, actions)
+    # D8/D12: an unread message no Run will read says so instead of "queued".
+    unread_words = None
+    if incident.mode == "human_owned":
+        unread_words = "Recorded on the incident — the agent is not investigating"
+    elif not composer["accepts"] and run.get("state") not in (
+        "queued",
+        "running",
+        "paused",
+    ):
+        unread_words = (
+            "Not read — the investigation ended. Re-investigate will include it."
+        )
+    log = _log(snapshot, calls, report, day, unread_words)
     recovery = _recovery(snapshot, day)
     step_entries = [e for e in log["entries"] if e["kind"] == "step"]
     latest = step_entries[-1] if step_entries else None
@@ -1264,7 +1282,8 @@ def page_view(
             for m in snapshot.get("messages") or []
             if m.get("unread")
         ],
-        "composer": _composer(status, snapshot, kind, message_available, actions),
+        "composer": composer,
+        "queued_note": unread_words,
         "recovery": recovery,
         "charts": _charts_by_eid(snapshot.get("charts")),
         "clock": lambda value: clock(value, day),

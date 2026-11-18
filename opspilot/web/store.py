@@ -734,12 +734,24 @@ class DurableIncidentStore:
                 " ORDER BY s.observed_at DESC LIMIT 1",
                 (incident_id,),
             ).fetchone()
+        if row is None:
+            return None
+        return self.run_record(incident_id, row["run_id"])
+
+    def run_record(self, incident_id: UUID, run_id: UUID) -> dict[str, Any] | None:
+        """One Run of this incident with its input and committed steps (the
+        page shows an earlier Run's report with that Run's evidence, A9)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT run_id,input FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+                (run_id, incident_id),
+            ).fetchone()
             if row is None:
                 return None
             steps = conn.execute(
                 "SELECT * FROM opspilot_steps WHERE run_id=%s"
                 " ORDER BY sequence,observed_at,step_id",
-                (row["run_id"],),
+                (run_id,),
             ).fetchall()
         return {
             "run_id": row["run_id"],

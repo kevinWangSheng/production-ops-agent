@@ -2817,6 +2817,20 @@ class Workbench:
                 view = _report_view(found[1])
                 if view is not None and view.get("parsed"):
                     incomplete_report = {"run_id": str(found[0]), "report": view}
+                    # A9: an earlier Run's incomplete report keeps that Run's
+                    # evidence and coverage on the page.
+                    record_of = getattr(self.incidents, "run_record", None)
+                    if record_of is not None and str(found[0]) != str(run["run_id"]):
+                        record = record_of(incident_id, found[0])
+                        if record is not None:
+                            report_steps = [
+                                _step_view(step) for step in record["steps"]
+                            ]
+                            report_coverage = _coverage_view(
+                                run_coverage(
+                                    record["run_id"], record["input"], record["steps"]
+                                )
+                            )
         # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
         # never shown to the model.
         coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
