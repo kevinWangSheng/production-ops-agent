@@ -584,7 +584,11 @@ def test_every_request_is_a_get_of_the_fixed_path_with_fixed_keys(loki):
         assert record["path"] == QUERY_PATH, record
         assert record["body"] == b""
         keys = set(record["query"])
-        assert {"query", "start", "end", "limit"} <= keys <= ALLOWED_QUERY_KEYS, keys
+        # Decision B (r10 addendum): a metric query also carries step.
+        metric = "count_over_time" in params["query"]
+        allowed = ALLOWED_QUERY_KEYS | {"step"} if metric else ALLOWED_QUERY_KEYS
+        assert {"query", "start", "end", "limit"} <= keys <= allowed, keys
+        assert ("step" in keys) == metric, keys
         for key, values in record["query"].items():
             assert len(values) == 1, (key, values)
         if "direction" in keys:
@@ -694,8 +698,37 @@ def test_brackets_and_offset_inside_string_literals_are_sent_unchanged(loki, que
     sent = loki.sent()
     assert sent["query"] == query
     # No range selector outside strings: the evaluation starts at the window.
+    assert "step" not in sent
     assert _close(_loki_time_ns(sent["start"]), _ns(DEFAULT_START))
     assert _close(_loki_time_ns(sent["end"]), _ns(NOW))
+
+
+def _assert_metric_alignment(
+    sent: Mapping[str, str], start: datetime, end: datetime, lookback: int
+) -> int:
+    """Decision B (r10 addendum): ``step=<n>s`` with n = max(floor(range/250), 1);
+    the lookback-pushed start rounded up and the end rounded down to epoch
+    multiples of n. Returns n."""
+    match = re.fullmatch(r"([0-9]+)s", sent.get("step", ""))
+    assert match, sent
+    n = int(match.group(1))
+    window = (end - start).total_seconds()
+    # ASSUMPTION (asked the lead, unanswered at commit): range is either the
+    # evaluation range (window minus lookback) or the whole query window.
+    assert n in {max(int(window - lookback) // 250, 1), max(int(window) // 250, 1)}, (
+        n,
+        sent,
+    )
+    step_ns = n * 10**9
+    sent_start = _loki_time_ns(sent["start"])
+    sent_end = _loki_time_ns(sent["end"])
+    pushed = _ns(start + timedelta(seconds=lookback))
+    assert sent_start % step_ns == 0 and sent_end % step_ns == 0, sent
+    # Rounded up (the smallest multiple at or after the pushed start) and
+    # rounded down (the largest multiple at or before the end).
+    assert pushed <= sent_start < pushed + step_ns, sent
+    assert _ns(end) - step_ns < sent_end <= _ns(end), sent
+    return n
 
 
 @pytest.mark.parametrize(
@@ -712,7 +745,6 @@ def test_brackets_and_offset_inside_string_literals_are_sent_unchanged(loki, que
             None,
             timedelta(seconds=90),
         ),
-        ('count_over_time({app="checkout"}[1h])', None, timedelta(hours=1)),
         (
             'count_over_time({app="checkout"}[30m15s])',
             None,
@@ -723,6 +755,16 @@ def test_brackets_and_offset_inside_string_literals_are_sent_unchanged(loki, que
             (NOW - timedelta(hours=3), NOW - timedelta(hours=2)),
             timedelta(minutes=10),
         ),
+        (
+            'rate({app="checkout"}[10m])',
+            (
+                NOW - timedelta(hours=3, seconds=7, milliseconds=300),
+                NOW - timedelta(hours=1, seconds=11, milliseconds=600),
+            ),
+            timedelta(minutes=10),
+        ),
+        # Decision A: '#' starts a comment; its [30d] is not a range.
+        ('count_over_time({job="x"}[5m]) # [30d]', None, timedelta(minutes=5)),
     ],
 )
 def test_metric_queries_start_evaluation_after_the_longest_range(
@@ -737,19 +779,92 @@ def test_metric_queries_start_evaluation_after_the_longest_range(
     params: dict[str, object] = {"query": query}
     start, end = (DEFAULT_START, NOW) if window is None else window
     if window is not None:
-        params.update(start=_z(start), end=_z(end))
+        params.update(start=start.isoformat(), end=end.isoformat())
     outcome = _run(loki, params)
     assert outcome.status == "ok", _view(outcome)
     sent = loki.sent()
-    assert _close(_loki_time_ns(sent["start"]), _ns(start + push)), sent
-    assert _close(_loki_time_ns(sent["end"]), _ns(end)), sent
+    assert sent["query"] == query
+    lookback = int(push.total_seconds())
+    _assert_metric_alignment(sent, start, end, lookback)
     view = _view(outcome)
     # C5-8: a matrix result reports its lookback like PromQL does.
-    assert view["lookback_seconds"] == int(push.total_seconds())
-    assert _instant(view["lookback_start_at"]) == start
+    assert view["lookback_seconds"] == lookback
+    rounded = _loki_time_ns(sent["start"])
+    reported = _ns(_instant(view["lookback_start_at"]))
+    # ASSUMPTION (asked the lead): the earliest instant the first point
+    # reads (rounded start minus lookback) or the rounded start itself.
+    assert reported in {rounded - lookback * 10**9, rounded}, view
+    assert reported >= _ns(start)
     row = _rows(outcome)[0]
     assert set(row) >= {"metric", "values"}
     assert row["metric"] == {"app": "checkout"}
+
+
+def test_a_metric_query_whose_rounded_start_passes_its_end_is_refused(loki):
+    # Window [T+0.3s, T+600.9s] with [10m]: the pushed start T+600.3s rounds
+    # up past the end rounded down, under either reading of the step rule.
+    base = NOW - timedelta(hours=2)
+    start = base + timedelta(milliseconds=300)
+    end = base + timedelta(seconds=600, milliseconds=900)
+    outcome = _run(
+        loki,
+        {
+            "query": 'count_over_time({app="checkout"}[10m])',
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+        },
+    )
+    _refused_with(outcome, "QUERY_OUT_OF_WINDOW")
+    assert loki.requests == []
+
+
+def test_a_range_equal_to_the_window_is_one_aligned_point_or_refused(loki):
+    loki.matrix = [{"metric": {"app": "checkout"}, "values": []}]
+    outcome = _run(loki, {"query": 'count_over_time({app="checkout"}[1h])'})
+    if not loki.requests:
+        _refused_with(outcome, "QUERY_OUT_OF_WINDOW")
+        return
+    sent = loki.sent()
+    n = _assert_metric_alignment(sent, DEFAULT_START, NOW, 3600)
+    assert _loki_time_ns(sent["start"]) == _loki_time_ns(sent["end"])
+    assert n >= 1
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # Decision A: Loki's lexer skips /* */ and // comments and reads 'x'
+        # as a char literal outside strings; the tool refuses all three.
+        'sum(count_over_time({job="x"} /* " */ [1h] /* " */))',
+        'sum(count_over_time({job="x"}[1m] /* " */ offset 29m /* " */))',
+        "sum by ('\"') (count_over_time({job=`x`}[1h])) #\"",
+        'count_over_time({job="x"}[5m]) // [30d]',
+        '{job="x"} // comment',
+        "{job='x'}",
+    ],
+)
+def test_comments_and_char_literals_outside_strings_are_refused(loki, query):
+    outcome = _run(loki, {"query": query})
+    _refused_with(outcome, "QUERY_CONSTRUCT_NOT_ALLOWED")
+    assert loki.requests == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        '{job="x"} |= "a // b"',
+        '{job="x"} |= "a /* b */"',
+        '{job="x"} |= `a /* b */ // c`',
+        '{job="x"} |= "it\'s"',
+    ],
+)
+def test_comment_and_quote_characters_inside_string_literals_are_sent(loki, query):
+    outcome = _run(loki, {"query": query})
+    assert outcome.status in ("ok", "no_data"), _view(outcome)
+    sent = loki.sent()
+    assert sent["query"] == query
+    assert "step" not in sent
+    assert _close(_loki_time_ns(sent["start"]), _ns(DEFAULT_START))
 
 
 # -- ③ start/end: both or neither, RFC3339 with a timezone, inside the frame -------
