@@ -294,6 +294,36 @@ def test_purge_question_indices_only_this_question() -> None:
     assert sorted(r["index"] for r in rows) == ["app-2750-x", "app-276-logs"]
 
 
+def test_purge_many_184_style_names_by_name_under_stock_settings() -> None:
+    """The fake ES refuses wildcard DELETE by default (stock ES 8,
+    destructive_requires_name); purge deletes by explicit name, so it still
+    removes every index of the question and leaves ``app-1840-*`` alone."""
+    store = new_store()
+    es = Es(store)
+    names = [
+        f"app-184-{team}-{service}-2024.01.{day:02d}"
+        for team in ("platform", "payments", "search")
+        for service in ("billing", "api", "worker")
+        for day in range(1, 31)
+    ]
+    for name in names:
+        es.create(name, {"@timestamp": {"type": "date"}})
+    for name in ("app-1840-other", "app-1840-x-2024.01.01", "app-185-geo-a"):
+        es.create(name, {"m": {"type": "keyword"}})
+    with served(store) as url:
+        admin = mod("shift").EsAdmin(url, ENGINEER)
+        purged = mod("setup").purge_question_indices(
+            admin, "184_elasticsearch_index_explosion"
+        )
+    assert sorted(purged) == sorted(names)
+    rows = es.ok("GET", "/_cat/indices", query={"format": "json", "h": "index"})
+    assert sorted(r["index"] for r in rows) == [
+        "app-1840-other",
+        "app-1840-x-2024.01.01",
+        "app-185-geo-a",
+    ]
+
+
 # -- web / worker env ---------------------------------------------------------------
 
 

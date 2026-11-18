@@ -279,16 +279,38 @@ def test_count_with_query(es: Es) -> None:
     assert out["count"] == 2
 
 
+def _index_names(es: Es) -> list[str]:
+    rows = es.ok("GET", "/_cat/indices", query={"format": "json", "h": "index"})
+    return sorted(r["index"] for r in rows)
+
+
 def test_delete_exact_and_wildcard(es: Es) -> None:
+    """Stock Elasticsearch 8 (lead decision, PR #726 review):
+    ``action.destructive_requires_name`` defaults to true, so a wildcard or
+    ``_all`` DELETE is refused with 400 ``illegal_argument_exception`` and
+    deletes nothing; deleting by exact name works; once the setting is
+    persisted as ``false`` the wildcard DELETE succeeds."""
     for name in ("app-275-a", "app-275-b", "app-2750-c", "app-276-a"):
         es.create(name, {"m": {"type": "keyword"}})
+    everything = sorted(["app-275-a", "app-275-b", "app-2750-c", "app-276-a"])
+    for pattern in ("/app-275-*", "/_all", "/*"):
+        status, payload = es("DELETE", pattern)
+        assert status == 400, pattern
+        assert error_type(payload) == "illegal_argument_exception", payload
+        assert _index_names(es) == everything, pattern
     es.ok("DELETE", "/app-275-a")
-    es.ok("DELETE", "/app-275-*")
-    rows = es.ok("GET", "/_cat/indices", query={"format": "json", "h": "index"})
-    assert sorted(r["index"] for r in rows) == ["app-2750-c", "app-276-a"]
+    assert _index_names(es) == sorted(["app-275-b", "app-2750-c", "app-276-a"])
     # Deleting a missing index is a 404 that upstream scripts tolerate with
     # ``|| true``; it must not 5xx.
     assert es("DELETE", "/app-275-a")[0] in (200, 404)
+    put = es.ok(
+        "PUT",
+        "/_cluster/settings",
+        {"persistent": {"action.destructive_requires_name": "false"}},
+    )
+    assert put.get("acknowledged") is True
+    es.ok("DELETE", "/app-275-*")
+    assert _index_names(es) == ["app-2750-c", "app-276-a"]
 
 
 def test_index_template_applies_on_create_and_can_be_deleted(es: Es) -> None:
