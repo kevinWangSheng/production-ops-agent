@@ -219,7 +219,8 @@ class WorkbenchDriver:
             auth_revision="workbench-acceptance",
             allowed_origins=frozenset({ORIGIN}),
         )
-        self.app = create_app(self.workbench, Authenticator(auth), self.clock)
+        self.authenticator = Authenticator(auth)
+        self.app = create_app(self.workbench, self.authenticator, self.clock)
 
     def close(self):
         self.store.close()
@@ -833,6 +834,214 @@ class WorkbenchDriver:
             }
             for turn in shown.json()["turns"]
         ]
+
+    # -- P5 feedback (prereview 2026-11-18 table one, F1-F13) -------------
+    # Every P5 seam the scenario uses is one accessor below. Wire them to
+    # the implementation; never change the assertions.
+
+    def feedback_submit(
+        self, incident_id: UUID, *, signed_in=True, **fields
+    ) -> HTTPResponse:
+        # contract P5 interface: F3/F5/F7 POST /incidents/{id}/feedback through
+        # ui_mutation (UI identity + Origin), form-encoded like every UI
+        # mutation. Fields per F1/F5: verdict, actual_root_cause,
+        # steering_needed (a bool here; the form spells it yes/no),
+        # next_steps_verdict, correct_next_steps, notes; omitted fields are
+        # not sent.
+        if isinstance(fields.get("steering_needed"), bool):
+            fields["steering_needed"] = "yes" if fields["steering_needed"] else "no"
+        headers = {
+            "origin": ORIGIN,
+            "content-type": "application/x-www-form-urlencoded",
+        }
+        if signed_in:
+            headers.update(basic())
+        return call(
+            self.app,
+            "POST",
+            f"/incidents/{incident_id}/feedback",
+            headers=headers,
+            body=urlencode({k: v for k, v in fields.items() if v is not None}).encode(),
+        )
+
+    def feedback_rows(self, incident_id: UUID) -> list[dict[str, Any]]:
+        # contract P5 interface: F1 table and column names, raw rows.
+        with self.store.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT * FROM opspilot_investigation_feedback WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchall()
+
+    def feedback_shown(self, incident_id: UUID) -> dict[str, Any] | None:
+        # contract P5 interface: F9/F10 the feedback card under the report on
+        # the incident page, from the page's projection (None when the page
+        # shows no feedback). Normalized: ``verdict``, ``actual_root_cause``,
+        # ``author`` (who last changed it), ``earlier_report`` (True when the
+        # card says "Rated an earlier report"). The page must also render.
+        self.page(incident_id)
+        snapshot = self.workbench.snapshot(incident_id)
+        view = page_view(
+            snapshot, None, available_actions(snapshot), message_available=True
+        )
+        card = view.get("feedback")
+        if not card:
+            return None
+        return {
+            "verdict": card.get("verdict"),
+            "actual_root_cause": card.get("actual_root_cause"),
+            "author": card.get("updated_by"),
+            "earlier_report": bool(card.get("earlier_report")),
+        }
+
+    def feedback_export(self, *, signed_in=True) -> HTTPResponse:
+        # contract P5 interface: F13 GET /feedback/export, JSON lines, one
+        # object per incident with feedback; login required.
+        return call(
+            self.app,
+            "GET",
+            "/feedback/export",
+            headers=basic() if signed_in else {},
+        )
+
+    @staticmethod
+    def feedback_export_lines(response: HTTPResponse) -> list[dict[str, Any]]:
+        # contract P5 interface: F13 line fields, top level per line:
+        # incident_id, the F1/F5 feedback fields, rated_run_id, model,
+        # prompt_revision.
+        return [json.loads(line) for line in response.text.splitlines() if line]
+
+    def postmortem_draft(self, incident_id: UUID):
+        """Setup: a postmortem draft under review, written with the worker
+        primitive the way the generator does (as in the M1-03 review tests).
+        The observation is ended by SQL first, because a draft names an
+        ended session; no model or generator runs."""
+        from opspilot.knowledge import (
+            Actor,
+            ConclusionDraft,
+            KnowledgeStore,
+            Watermark,
+        )
+
+        session_id, ending_id = uuid4(), uuid4()
+        with self.store.transaction() as conn:
+            target_id = conn.execute(
+                "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchone()["target_id"]
+            conn.execute(
+                "UPDATE opspilot_incidents SET observation_generation=1 "
+                "WHERE incident_id=%s",
+                (incident_id,),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_observation_sessions(session_id, incident_id, "
+                "purpose, target_id, target, subject_control_generation, "
+                "observation_generation, authorized_by, state, ended_reason, "
+                "authorized_global_generation, authorized_target_generation, "
+                "deadline_at, max_samples, sample_interval_seconds, "
+                "sustained_window_seconds) VALUES (%s, %s, 'incident_recovery', "
+                "%s, '{}', 0, 1, 'acceptance-setup', 'completed', "
+                "'recovery_confirmed', 0, 0, clock_timestamp(), 1, 60, 60)",
+                (session_id, incident_id, target_id),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_observation_endings(ending_id, session_id, "
+                "incident_id, ended_reason, lifecycle_before, lifecycle_after) "
+                "VALUES (%s, %s, %s, 'deadline_expired', 'observing_recovery', "
+                "'observing_recovery')",
+                (ending_id, session_id, incident_id),
+            )
+        knowledge = KnowledgeStore(self.store.dsn, pool=self.store.pool_config)
+        try:
+            incident = self.incident(incident_id)
+            watermark = Watermark(
+                incident_control_generation=incident["control_generation"],
+                observation_generation=1,
+                observation_session_id=session_id,
+                observation_ending_id=ending_id,
+                run_count=len(self.runs(incident_id)),
+                last_run_id=incident["current_run_id"],
+                input_watermark=max(
+                    (r["sequence"] for r in self.inputs(incident_id)), default=0
+                ),
+                evidence_snapshot_sha256=knowledge.evidence_snapshot_sha256(
+                    incident_id
+                ),
+            )
+            return knowledge.record_draft(
+                incident_id,
+                expected_generation=0,
+                idempotency_key=f"worker-{uuid4()}",
+                actor=Actor("worker-1", "worker"),
+                content={"impact": "checkout degraded"},
+                watermark=watermark,
+                conclusions=[
+                    ConclusionDraft(
+                        key="timeline",
+                        section="timeline",
+                        body="12:00 alert; 12:05 Run started",
+                        author="code",
+                        certainty="deterministic",
+                        citations_valid=True,
+                    )
+                ],
+            )
+        finally:
+            knowledge.close()
+
+    def postmortem_state(self, incident_id: UUID) -> dict[str, Any]:
+        """The postmortem versions as stored, plus which parts of the
+        incident moved past each version's watermark (D1 staleness)."""
+        from opspilot.knowledge.store import moved_components
+
+        with self.store.transaction() as conn:
+            versions = conn.execute(
+                "SELECT v.* FROM opspilot_postmortem_versions v "
+                "JOIN opspilot_postmortems p USING (postmortem_id) "
+                "WHERE p.incident_id=%s ORDER BY v.version",
+                (incident_id,),
+            ).fetchall()
+            moved = [moved_components(conn, incident_id, row) for row in versions]
+        return {"versions": versions, "moved": moved}
+
+    def postmortem_feedback(
+        self, postmortem_id: UUID, version: int
+    ) -> dict[str, Any] | None:
+        # contract P5 interface: F11 (user ruling A) the postmortem review
+        # page shows the incident's feedback to the reviewer: the page
+        # renders, and PostmortemReview.version_page carries ``feedback``,
+        # normalized like feedback_shown (None when absent). Returns the
+        # rendered page text too, under ``html``.
+        from opspilot.knowledge import KnowledgeStore
+        from opspilot.web import PostmortemReview
+
+        knowledge = KnowledgeStore(self.store.dsn, pool=self.store.pool_config)
+        try:
+            review = PostmortemReview(knowledge=knowledge, events=self.events)
+            app = create_app(
+                self.workbench,
+                self.authenticator,
+                self.clock,
+                review=review,
+            )
+            shown = call(
+                app,
+                "GET",
+                f"/postmortems/{postmortem_id}/versions/{version}",
+                headers=basic(),
+            )
+            assert shown.status == 200, shown.text[:500]
+            card = review.version_page(postmortem_id, version).get("feedback")
+        finally:
+            knowledge.close()
+        if not card:
+            return None
+        return {
+            "verdict": card.get("verdict"),
+            "actual_root_cause": card.get("actual_root_cause"),
+            "author": card.get("updated_by"),
+            "html": shown.text,
+        }
 
 
 def tool_round(*, content=None, call_id="workbench-read"):
