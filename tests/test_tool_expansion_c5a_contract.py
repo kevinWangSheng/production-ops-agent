@@ -173,6 +173,7 @@ class FakeLoki:
         self.fail: tuple[int, str, bytes] | None = None  # status, type, body
         self.delay = 0.0
         self.redirect = False
+        self.prefix = ""  # a gateway / Grafana proxy base path
         self._server: ThreadingHTTPServer | None = None
         self.url = ""
 
@@ -187,7 +188,7 @@ class FakeLoki:
         if self.fail is not None:
             status, content_type, body = self.fail
             return status, {"Content-Type": content_type}, body
-        if record["method"] != "GET" or record["path"] != QUERY_PATH:
+        if record["method"] != "GET" or record["path"] != self.prefix + QUERY_PATH:
             return 404, {"Content-Type": "text/plain"}, b"404 page not found\n"
         if self.raw is not None:
             return 200, {}, self.raw
@@ -611,6 +612,19 @@ def test_parameters_outside_the_schema_never_reach_loki(loki, extra):
     assert loki.requests == []
 
 
+def test_a_base_path_prefix_in_the_url_is_kept(loki):
+    # Lead decision (r10 addendum, gap 2): the address may carry a path
+    # prefix (gateway or Grafana datasource proxy); the fixed path follows it.
+    loki.prefix = "/gw/loki-prefix"
+    loki.add({"app": "checkout"}, _ns(NOW - timedelta(minutes=5)), "ok")
+    executor, _ = _worker(_env(loki.url + loki.prefix))
+    outcome = executor.execute(_call({"query": '{app="checkout"}'}))
+    assert outcome.status == "ok", _view(outcome)
+    record = loki.only()
+    assert (record["method"], record["path"]) == ("GET", loki.prefix + QUERY_PATH)
+    assert [row["line"] for row in _rows(outcome)] == ["ok"]
+
+
 def test_redirects_are_not_followed(loki):
     loki.redirect = True
     outcome = _run(loki, {"query": '{app="checkout"}'})
@@ -669,6 +683,7 @@ def test_a_range_longer_than_an_explicit_window_is_refused(loki):
         '{pod=~"checkout-[a-z0-9]+-[0-9]+"}',
         '{app="checkout"} |= "[5h]"',
         '{app="checkout"} |= "offset"',
+        '{app="checkout"} |= "a\\"offset 5m\\""',
         '{app="offset-service"} != "OFFSET 1h"',
         '{app="checkout"} | line_format "{{.msg}} [2h]"',
     ],
@@ -698,6 +713,11 @@ def test_brackets_and_offset_inside_string_literals_are_sent_unchanged(loki, que
             timedelta(seconds=90),
         ),
         ('count_over_time({app="checkout"}[1h])', None, timedelta(hours=1)),
+        (
+            'count_over_time({app="checkout"}[30m15s])',
+            None,
+            timedelta(minutes=30, seconds=15),
+        ),
         (
             'rate({app="checkout"}[10m])',
             (NOW - timedelta(hours=3), NOW - timedelta(hours=2)),
@@ -1103,11 +1123,8 @@ def test_bearer_and_basic_credentials_go_only_to_loki(loki):
 
 
 def test_no_fallback_to_another_slot_when_loki_has_no_credential(loki):
-    # Whether a Loki credential is required is not settled by r10 (C5-4 makes
-    # it required under the pre-review's option a; the ruling A accepts
-    # upstream's address-plus-credential shapes). Either way another slot's
-    # credential is never borrowed: the worker refuses with
-    # LOKI_CONFIG_MISSING, or Loki receives no Authorization at all.
+    # Lead decision (r10 addendum, gap 1): a Loki credential is required once
+    # OPSPILOT_LOKI_URL is set; another slot's credential is never borrowed.
     env = _env(
         loki.url,
         OPSPILOT_LOKI_BEARER_TOKEN="",
@@ -1115,19 +1132,9 @@ def test_no_fallback_to_another_slot_when_loki_has_no_credential(loki):
         OPSPILOT_ES_API_KEY=ES_API_KEY,
         OPSPILOT_OTEL_TOKEN="gggggggg569",
     )
-    try:
-        executor, _ = _worker(env)
-    except SystemExit as exit_:
-        assert "LOKI_CONFIG_MISSING" in str(exit_)
-        assert loki.requests == []
-        return
-    executor.execute(_call({"query": '{app="checkout"}'}))
-    assert loki.requests
-    for record in loki.requests:
-        assert _authorization(record) == ""
-        flat = json.dumps(record["headers"])
-        for other in (ES_API_KEY, "gggggggg569", K8S_TOKEN, PROM_PASSWORD):
-            assert other not in flat
+    with pytest.raises(SystemExit, match="LOKI_CONFIG_MISSING"):
+        _worker(env)
+    assert loki.requests == []
 
 
 def test_tenant_header_comes_only_from_configuration(loki):
@@ -1201,6 +1208,8 @@ def test_credentials_never_appear_in_views_notes_or_trace(loki):
 @pytest.mark.parametrize(
     ("overrides", "code"),
     [
+        # A credential is required with the address (lead decision, gap 1).
+        ({"OPSPILOT_LOKI_BEARER_TOKEN": ""}, "LOKI_CONFIG_MISSING"),
         # Basic and bearer are exclusive (C5-4).
         (
             {
