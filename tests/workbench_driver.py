@@ -878,12 +878,12 @@ class WorkbenchDriver:
         # shows no feedback). Normalized: ``verdict``, ``actual_root_cause``,
         # ``author`` (who last changed it), ``earlier_report`` (True when the
         # card says "Rated an earlier report"). The page must also render.
+        # Implementation: the page gets the card from
+        # ``Workbench.feedback_for(incident_id, snapshot)`` beside its
+        # ``page_view`` (``feedback`` in the template context).
         self.page(incident_id)
         snapshot = self.workbench.snapshot(incident_id)
-        view = page_view(
-            snapshot, None, available_actions(snapshot), message_available=True
-        )
-        card = view.get("feedback")
+        card = self.workbench.feedback_for(incident_id, snapshot)
         if not card:
             return None
         return {
@@ -1031,7 +1031,10 @@ class WorkbenchDriver:
                 headers=basic(),
             )
             assert shown.status == 200, shown.text[:500]
-            card = review.version_page(postmortem_id, version).get("feedback")
+            # Implementation: the review route renders the incident's card
+            # from ``Workbench.feedback_for`` beside ``version_page``.
+            page = review.version_page(postmortem_id, version)
+            card = self.workbench.feedback_for(page["incident_id"])
         finally:
             knowledge.close()
         if not card:
