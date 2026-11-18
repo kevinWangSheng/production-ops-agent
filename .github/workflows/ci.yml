@@ -266,6 +266,8 @@ jobs:
           cluster.routing.allocation.disk.threshold_enabled: "false"
           ELASTIC_PASSWORD: changeme560
           ES_JAVA_OPTS: -Xms512m -Xmx512m
+          # No built-in logs-*-* templates: the test makes its own data stream.
+          stack.templates.enabled: "false"
         ports:
           - 59200:9200
         options: >-
