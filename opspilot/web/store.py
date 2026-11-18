@@ -749,7 +749,9 @@ class DurableIncidentStore:
             if row is None:
                 return None
             steps = conn.execute(
-                "SELECT * FROM opspilot_steps WHERE run_id=%s"
+                "SELECT step_id,run_id,sequence,logical_key,status,response,"
+                "tool_results,control_generation,observed_at"
+                " FROM opspilot_steps WHERE run_id=%s"
                 " ORDER BY sequence,observed_at,step_id",
                 (run_id,),
             ).fetchall()
