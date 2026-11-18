@@ -1,6 +1,6 @@
 # r3 提示词与报告校验发布（#695 + #690，#686）
 
-- 状态：进行中（PR-G 实施中；PR-R 待工作台 P1 合并后开工）
+- 状态：租机验收完成（2026-11-17）。PR-R（#686）已合并 main（#700 `c7f89dbc`）；PR-G（#697）证据入库，待合并。全量 82/105，冒烟、全量各门通过；集成批 REPORT_INVALID 1/16 按偶发失败接受（#701）；F3 第 5 步 Run 1 两名审查者 FAIL，`passes` 保持 false（用户裁决）。
 - 合同修订：r1（2026-11-17 用户「按推荐开始吧」）
 - 依据：lite-full-1117 失败分类（54/105，51 次失败中 36 次为「读到非 off 故障设置、根因写成被模板未变重启的 Deployment 或 null」），证据 [run.md](../evidence/itbench-lite-sre-lite-full-1117/run.md)；issue #695、#690、#686。
 
@@ -43,6 +43,14 @@ PR-R（#686）用户裁决：U1=a（#456 七项断言由独立测试作者改写
 - 改动：discipline.py 文字与段说明；D20 列出的 9 个测试文件只改钉值和句数；F3 第 5 步与 f3-acceptance-live 的 run-1..3 移到 `prompt-8688f6e52275/`，两份 run.md 各加一行说明。
 - 定向测试（审查修正后：#690 两句移到「When the exact entity named has no data…」之后，D11）：test_695 与 discipline/A7/676/310/对齐合同共 7 个文件 242 过、0 败；钉值与 F3 8 个文件 76 过、12 跳过（PG）、14 败（test_f3_step5_real_runs 里依赖 run-1/run-2 与第 3 步重跑的全部条目，等租机证据）。ruff、ruff format、mypy（discipline.py）通过。
 
+- **租机验收（2026-11-17，一次租机，代码 `b0652dbd` = PR-G `ea2bc41b` + PR-R `719919e7`，代码树与 PR-G 最终 HEAD `d065c41e` 逐字节相同，lead 按 ls-tree 核对）**：
+  - 冒烟 [lite-smoke-r3](../evidence/itbench-lite-sre-lite-smoke-r3/run.md)：设置题 6/6 根因为 ConfigMap `flagd-config`（不是被重启的 Deployment），0 次 supported；S16 3/3；REPORT_INVALID 0/9。门全过。
+  - 集成批 [lite-batch-r3](../evidence/itbench-lite-sre-lite-batch-r3/run.md)：首答被拒 3/16 = 18.8%（1117 同 8 题 8/24 = 33.3%）；S22 2/2、S34 1/2；REPORT_INVALID 1/16（S105 t2）、S105 1/2 两门不过。重放：首答截断 id，重试暴露多余 target_refs，引用检查每条 claim 只报第一个失败（早于 r3）。lead 裁决按偶发失败接受，#701 跟踪。
+  - 全量 [lite-full-r3](../evidence/itbench-lite-sre-lite-full-r3/run.md)：root_cause_entity_pass 82/105（1117 54/105）；REPORT_INVALID 1/105（S12 t2，同一机制）；首答被拒 29/105（1117 39）；1117 的 16 道 3/3 题 15 道保持，S33 3→2；升 12 题。supported 51→22、根因 null 12→17。
+  - F3：第 3 步 D9 重跑通过（[README](../evidence/f3-step3-coverage/README.md)「r3」）；第 5 步三次真实 Run（[运行](../evidence/f3-acceptance-live/run.md)、[判定](../evidence/f3-step5-competing-cause/run.md)「r3」）：Run 1 两名审查者 FAIL（第 5 项：只否定了「换镜像」），Run 2、Run 3 均 PASS 8/8，第 2 步全部一致。审查者都是 Claude Opus 子 Agent（用户 2026-11-17 起不用 Codex，偏离「审查者 B 用另一模型」）。`test_f3_step5_real_runs` 15 条全过。
+  - 原始包（ledger、重放、主机脚本、日志）在仓库外 `~/rental-evidence/r3/r3-raw.tgz`（sha256 `d78e6b74…fce5`）；入库前秘密值原文搜索 0 命中、正对照 1。
+
 ## 待决
 
-- F3 重做后 `passes` 是否翻转：用户按两位审查者结论裁决。
+- F3 `passes`：用户 2026-11-17 裁决保持 false（原标准是前两次 Run 都通过，Run 1 不通过），F3 不再为此调提示词。已定，不再待决。
+- 引用检查只报每条 claim 的第一个失败、使强制重试看不到后续问题：#701。
