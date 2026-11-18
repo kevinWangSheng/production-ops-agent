@@ -35,6 +35,10 @@ from opspilot.schema import (
 LIST_TABS = ("needs_human", "in_progress", "resolved", "closed", "all")
 LIST_PER_PAGE = 25
 LIST_QUERY_CHARS = 200
+#: Workbench P6 L1/L6: the linked and "Followed by" lists show at most this
+#: many incidents; the store reads one more to tell the page it cut the list.
+LINKED_SHOWN = 20
+LINKED_LIMIT = LINKED_SHOWN + 1
 
 
 @dataclass(frozen=True)
@@ -1065,6 +1069,58 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(row["incident_id"] for row in rows)
 
+    def linked_incidents(
+        self, incident_id: UUID, *, limit: int = LINKED_LIMIT
+    ) -> tuple[tuple[IncidentListItem, Mapping[str, Any]], ...]:
+        """Incidents merged into ``incident_id`` (workbench P6 L1/L2), in
+        merge order, at most ``limit``: each source's list row (its title)
+        with the merge decision -- who, when, the optional reason the
+        ``merge_into`` audit row keeps -- and the source's lifecycle at the
+        merge, from the fixed-template event the survivor took."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS},mc.actor AS merge_actor,"
+                "mc.reason AS merge_reason,mc.created_at AS merged_at,"
+                "me.lifecycle AS lifecycle_at_merge"
+                f" FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " LEFT JOIN LATERAL (SELECT c.actor,c.payload->>'text' AS reason,c.created_at"
+                " FROM opspilot_controls c WHERE c.incident_id=i.incident_id"
+                " AND c.action='merge_into' ORDER BY c.resulting_generation DESC LIMIT 1) mc ON true"
+                " LEFT JOIN LATERAL (SELECT n.content->>'source_lifecycle' AS lifecycle"
+                " FROM opspilot_inputs n WHERE n.incident_id=%s AND n.kind='event'"
+                " AND n.content->>'channel'='merge'"
+                " AND n.content->>'source_incident_id'=i.incident_id::text"
+                " ORDER BY n.sequence LIMIT 1) me ON true"
+                " WHERE i.merged_into_incident_id=%s"
+                " ORDER BY mc.created_at NULLS LAST,i.created_at,i.incident_id LIMIT %s",
+                (incident_id, incident_id, limit),
+            ).fetchall()
+        return tuple(
+            (
+                _item(row),
+                {
+                    "actor": row["merge_actor"],
+                    "reason": row["merge_reason"],
+                    "merged_at": row["merged_at"],
+                    "lifecycle_at_merge": row["lifecycle_at_merge"],
+                },
+            )
+            for row in rows
+        )
+
+    def followed_by(
+        self, incident_id: UUID, *, limit: int = LINKED_LIMIT
+    ) -> tuple[IncidentListItem, ...]:
+        """Incidents opened after this closed one (``related_incident_id``,
+        workbench P6 L6), oldest first, at most ``limit``."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " WHERE i.related_incident_id=%s ORDER BY i.created_at,i.incident_id LIMIT %s",
+                (incident_id, limit),
+            ).fetchall()
+        return tuple(_item(row) for row in rows)
+
     def alert_records(self, incident_id: UUID) -> AlertIntakeRecords | None:
         with self._store.transaction(snapshot=True) as conn:
             records = alert_intake_records(conn, incident_id)
@@ -1240,7 +1296,10 @@ _ITEM_COLUMNS = (
     "a.namespace AS alert_namespace,a.workload AS alert_workload,ld.alert_json,"
     "o.state AS recovery_state,o.ended_reason AS recovery_ended_reason,"
     "o.adopted_count AS recovery_samples,o.ended_at AS recovery_ended_at,"
-    "pm.postmortem_id,pm.version AS postmortem_version,pm.state AS postmortem_state"
+    "pm.postmortem_id,pm.version AS postmortem_version,pm.state AS postmortem_state,"
+    # Workbench P6 L4: "N linked" on a survivor's row, in the same statement.
+    "(SELECT count(*) FROM opspilot_incidents mi"
+    " WHERE mi.merged_into_incident_id=i.incident_id) AS linked_count"
 )
 _ITEM_JOINS = (
     "LEFT JOIN opspilot_web_ledger wl ON wl.namespace='intake' AND wl.key=i.intake_key"
@@ -1369,6 +1428,8 @@ class IncidentListItem:
     postmortem_id: UUID | None = None
     postmortem_version: int | None = None
     postmortem_state: str | None = None
+    #: Incidents merged into this one (workbench P6 L4).
+    linked_count: int = 0
 
 
 def _alert_fields(alert_json: str | None) -> tuple[str | None, str | None]:
@@ -1413,6 +1474,7 @@ def _item(row: Mapping[str, Any]) -> IncidentListItem:
         postmortem_id=row.get("postmortem_id"),
         postmortem_version=None if version is None else int(version),
         postmortem_state=row.get("postmortem_state"),
+        linked_count=int(row.get("linked_count") or 0),
     )
 
 

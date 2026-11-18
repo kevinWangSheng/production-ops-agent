@@ -107,14 +107,27 @@
           {%- if hd.service %} · service <span class="mono">{{ hd.service }}</span>{% endif %}
           {%- if inc.created_at %} · opened <time datetime="{{ view.iso(inc.created_at) }}">{{ view.clock(inc.created_at) }} UTC</time>{% endif %}
         </div>
-        {%- if inc.related_incident_id or release_links or inc.merged_into_incident_id or snapshot.merged_from or snapshot.rebinds %}
+        {%- set lk = view.links %}
+        {%- if inc.related_incident_id or release_links or inc.merged_into_incident_id or snapshot.merged_from or lk.rebinds or lk.followed_by %}
         <div class="meta links-line">
-          {%- if inc.merged_into_incident_id %}<span>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}" class="mono">{{ (inc.merged_into_incident_id|string)[:8] }}</a></span>{% endif %}
+          {%- if inc.merged_into_incident_id %}<span>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}" class="mono">{{ (inc.merged_into_incident_id|string)[:8] }}</a> · <span class="merge-reason">{{ lk.merge_reason or "no reason given" }}</span> · same target</span>{% endif %}
           {%- if snapshot.merged_from %}<span>Merged from{% for source in snapshot.merged_from %} <a class="merged-from mono" href="/incidents/{{ source }}">{{ source[:8] }}</a>{% endfor %}</span>{% endif %}
           {%- if inc.related_incident_id %}<span>Opened after closed incident <a id="related-incident" class="mono" href="/incidents/{{ inc.related_incident_id }}">{{ (inc.related_incident_id|string)[:8] }}</a></span>{% endif %}
-          {%- for link in release_links or [] %}<span class="release-link">From version change <a class="mono" href="/version-changes/{{ link.observation_id }}">{{ (link.observation_id|string)[:8] }}</a> ({{ link.disposition }})</span>{% endfor %}
-          {%- for rebind in snapshot.rebinds or [] %}<span class="rebind">Target changed from <span class="mono">{{ rebind.from_target }}</span> to <span class="mono">{{ rebind.to_target }}</span> by {{ rebind.actor }}</span>{% endfor %}
+          {%- if lk.followed_by %}<span>Followed by new incident{% for f in lk.followed_by %} <a class="followed-by mono" href="/incidents/{{ f.incident_id }}" title="{{ f.title }}">{{ f.short }}</a>{% endfor %}{% if lk.followed_cut %} and more{% endif %}</span>{% endif %}
+          {%- for link in release_links or [] %}<span class="release-link">Version change <a class="mono" href="/version-changes/{{ link.observation_id }}">{{ (link.observation_id|string)[:8] }}</a> {{ lk.release_words.get(link.disposition, link.disposition) }}</span>{% endfor %}
+          {%- for rebind in lk.rebinds %}<span class="rebind">Target changed from <span class="mono">{{ rebind.from_target }}</span> to <span class="mono">{{ rebind.to_target }}</span> by {{ rebind.actor }}{% if rebind.time %} · <time datetime="{{ rebind.iso }}">{{ rebind.time }} UTC</time>{% endif %}</span>{% endfor %}
         </div>
+        {%- endif %}
+        {%- if lk.linked %}
+        <section class="linked" id="linked-incidents" aria-label="Linked incidents">
+          <div class="lk-h">Linked incidents <span class="muted">· {{ lk.linked | length }}{% if lk.linked_cut %}+, the first {{ lk.linked | length }} shown{% endif %} · merged into this one, same target</span></div>
+          <ul>
+          {%- for l in lk.linked %}
+            <li class="linked-incident" data-incident="{{ l.incident_id }}"><a href="/incidents/{{ l.incident_id }}">{{ l.title }}</a> <span class="mono muted">{{ l.short }}</span>
+              <div class="small">{% if l.was %}was {{ l.was }} · {% endif %}{% if l.opened %}opened {{ l.opened }} UTC · {% endif %}merged{% if l.actor %} by {{ l.actor }}{% endif %}{% if l.merged %} <time datetime="{{ l.merged_iso }}">{{ l.merged }} UTC</time>{% endif %} · <span class="merge-reason">{{ l.reason or "no reason given" }}</span></div></li>
+          {%- endfor %}
+          </ul>
+        </section>
         {%- endif %}
 {%- endmacro %}
 
