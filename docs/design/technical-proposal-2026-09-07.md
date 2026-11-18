@@ -169,7 +169,7 @@ DeepSeek 的 `reasoning_content` 仅作为受限协议状态保存，并在同 p
 | 层 | 内容 | revision |
 |---|---|---|
 | L1a 纪律模板 | 只读边界、证据可信度、结论分类、反误读约束、调查方法与影响面纪律；运行时值以占位符表示 | `discipline_revision`，**须标识变体** |
-| L1b 纪律实例值 | 填入占位符的本 Run 预算轮次与授权服务列表 | 每 Run `prompt_face_sha256` |
+| L1b 纪律实例值 | 填入占位符的本 Run 预算轮次与授权服务列表，以及运维配置的本地集群名（#722，r10 H-U1：记在 Run 输入里，设没设决定变体，取值不进 revision） | 每 Run `prompt_face_sha256` |
 | L2 报告契约 | 输出 schema、字段语义、JSON 示例、引用规则 | 独立版本号 |
 | L3a 工具模板 | 工具名、描述模板、参数描述、上限与错误语义 | `tool_schema_revision` |
 | L3b 实例快照 | 模板填入本 Run 窗口、目标与可用枚举后的实际 tools 数组 | 每 Run `tool_face_sha256` |

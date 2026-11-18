@@ -27,8 +27,17 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   ``es-ro`` credential (``OPSPILOT_ES_API_KEY``, or ``OPSPILOT_ES_USERNAME``
   and ``OPSPILOT_ES_PASSWORD``; ``OPSPILOT_ES_CA_FILE`` for HTTPS).
 
+``otel-demo-ext`` also reads ``OPSPILOT_CLUSTER_NAME`` (#722, r10 H-U1), the
+operator's name for the cluster its Kubernetes access reads: when set, the
+investigation prompt gains a multi-cluster paragraph naming it and fresh Runs
+record it in their input. Both processes read it; whether it is set picks the
+prompt variant and so ``prompt_revision``. An empty value is unset; any other
+value outside ``discipline.CLUSTER_NAME_PATTERN`` refuses to start
+(``CLUSTER_NAME_INVALID``). ``fixture`` and ``otel-demo`` never read it.
+
 Both processes must be started with the same value (and, for
-``otel-demo-ext``, with ``OPSPILOT_ES_URL`` set in both or in neither).
+``otel-demo-ext``, with ``OPSPILOT_ES_URL`` set in both or in neither, and
+the same ``OPSPILOT_CLUSTER_NAME`` or none in both).
 """
 
 from __future__ import annotations
@@ -36,6 +45,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from opspilot.instructions.discipline import valid_cluster_name
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore
@@ -63,9 +73,16 @@ from opspilot.tools.otel_demo_ext import (
 )
 from opspilot.tools.registry import ToolContractError
 
-__all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
+__all__ = [
+    "CLUSTER_NAME_ENV",
+    "PROFILE_ENV",
+    "PROFILE_NAMES",
+    "ToolProfile",
+    "select_profile",
+]
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
+CLUSTER_NAME_ENV = "OPSPILOT_CLUSTER_NAME"
 PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-ext")
 
 
@@ -112,6 +129,17 @@ _STARTUP_CODES = frozenset(
 )
 
 
+def _cluster_name(env: Mapping[str, str]) -> str | None:
+    """#722 CN-9: unset or empty is no name; anything else must be a valid
+    name exactly as given (no trimming), or the process does not start."""
+    value = env.get(CLUSTER_NAME_ENV)
+    if not value:
+        return None
+    if not valid_cluster_name(value):
+        raise SystemExit("CLUSTER_NAME_INVALID")
+    return value
+
+
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     config = OtelDemoConfig.from_env(env)
     # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
@@ -120,6 +148,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # B1-U2: the Elasticsearch address alone decides the face and versions;
     # the web never reads an ``OPSPILOT_ES_*`` credential.
     elasticsearch = elasticsearch_enabled(env)
+    # #722 CN-10: both processes read the name; the web records it in the
+    # Run input, and whether it is set enters both processes' versions.
+    cluster_name = _cluster_name(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -146,8 +177,12 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
 
     return ToolProfile(
         name="otel-demo-ext",
-        face=lambda clock: otel_demo_ext_face(clock, elasticsearch=elasticsearch),
-        versions=lambda: otel_demo_ext_versions(elasticsearch=elasticsearch),
+        face=lambda clock: otel_demo_ext_face(
+            clock, elasticsearch=elasticsearch, cluster_name=cluster_name
+        ),
+        versions=lambda: otel_demo_ext_versions(
+            elasticsearch=elasticsearch, cluster_name=cluster_name
+        ),
         executor_factory=executor_factory,
     )
 

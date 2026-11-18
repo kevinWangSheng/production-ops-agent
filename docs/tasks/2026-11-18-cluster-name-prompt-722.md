@@ -31,7 +31,11 @@
 
 ## 执行进展与证据
 
-- 进行中：实现与定向测试。
+- 实现完成（本分支）：L1a 段 `CLUSTER_AWARENESS`（CN-5 草稿原句，6 句）与 L1b 槽位、变体 `replay-candidate-k8s-cluster`（`discipline.py`）；Run 输入 v7 与校验、渲染取记录值（`context.py`）；`ToolFace.cluster_name` 写入 `scope_facts`（`inputs.py`）；`InvestigationRequest.cluster_name` 让 `run`/`resume` 往返不丢（`loop.py`）；ext 档按设没设选变体（`otel_demo_ext.py`）；`select_profile` 读变量与 `CLUSTER_NAME_INVALID`（`profiles.py`）；C3 §5 L1b 行（CN-K1）。
+- 钉值（同一脚本经 `select_profile → face.input_for → initial_messages` 计算，改前改后各跑一次）：未设与设为空时三个档位的变体、`prompt_revision`、`tool_schema_revision`、`context_policy_revision`、system 长度与 sha256、输入版本与改前逐字相同（见上节钉值）。设为 `prod-us-east-1` 时 ext：`prompt-replay-candidate-k8s-cluster-01c909abf29b`（48 字符，低于 trace outbox 的 64，CN-18），system 13594 字符，输入 v7，`tool_schema_revision` 仍为 `otel-demo-ext-c63f058afb18`；换一个名字 revision 相同、system sha256 不同；base 两档设了也不变。
+- 一次性核对脚本（不入库，测试由独立作者写）：设了时 system = 未设时的字节在报告契约前插入 1153 字符，名字出现 3 次；web 映射与带 K8s/ES 配置的 worker 映射 `versions()` 相等；8 个非法名（前后空白、换行、反引号、花括号、129 字符、`-` 开头、`=`）都 `CLUSTER_NAME_INVALID`，`otel-demo` 与默认档设非法值不报错；EKS ARN 形状和 128 字符通过；v7 `as_json → from_json` 原样读回；v7 配无槽变体、无名字配有槽变体、非法名都 `INPUT_INVALID`；从记录的输入重建 system 与提交时逐字相同。
+- 检查：`ruff check`、`ruff format --check`、`mypy`（7 个改动模块）通过；`.venv/bin/python -m pytest tests/test_tool_expansion_b1_contract.py tests/test_architecture.py tests/test_m1_report_contract_citations.py tests/test_tracing.py` 259 passed、2 xfailed（既有标记）；`tests/test_m1_otel_demo_contract.py tests/test_holmes_evals_questions_contract.py tests/test_686_report_json_contract.py` 41 passed。全量与 PG 测试未在本机跑（swap 13.5/14.3 GB），交 CI。
+- 实现者自定（可逆）：`render` 的 `ValueError` 在 `initial_messages` 里统一转成 `ContextError("INPUT_INVALID")`（其余 `ValueError` 来源已被 `InvestigationInput` 构造校验挡住，实际只剩集群名一类）；`render` 对名字再按同一正则校验一次，防直接调用方绕过档位校验。
 
 ## 下一步与交接
 

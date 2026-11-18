@@ -21,6 +21,7 @@ from opspilot.investigation.context import (
     ALERT_CONTEXT_TRUNCATED,
     ALERT_CONTEXT_UNPRINTABLE,
     ALERT_STARTS_AT,
+    CLUSTER_NAME,
     RELEASE_CONTEXT_TOTAL_CHARS,
     RELEASE_CONTEXT_VALUE_CHARS,
     RELEASE_OBSERVATION,
@@ -230,12 +231,15 @@ class ToolFace:
 
     ``evidence_context`` builds the v4 evidence context a Run cites, keyed to
     that Run's own id (the loop's projection discards a context bound to a
-    different Run).
+    different Run). ``cluster_name`` (#722) is the operator's local cluster
+    name, recorded into every fresh Run's ``scope_facts`` so the system
+    message renders from the recorded value; ``None`` records nothing.
     """
 
     tool_schemas: tuple[Mapping[str, Any], ...]
     variant_id: str
     evidence_context: Callable[[str], Mapping[str, Any] | None]
+    cluster_name: str | None = None
 
     def input_for(
         self,
@@ -271,6 +275,8 @@ class ToolFace:
             scope_facts[ALERT_STARTS_AT] = alert.scope_fact()
         if release is not None:
             context = release.anchored(context)
+        if self.cluster_name is not None:
+            scope_facts[CLUSTER_NAME] = self.cluster_name
         return InvestigationInput(
             question=question,
             model_requests=model_requests,

@@ -102,6 +102,11 @@ PROFILE_NAME = "otel-demo-ext"
 #: plus the Kubernetes investigation guidance. ``otel-demo`` keeps
 #: ``replay-candidate``; the revision follows the content hash.
 DISCIPLINE_VARIANT = "replay-candidate-k8s"
+#: #722 (r10 H-U1): the same plus the multi-cluster paragraph, used when the
+#: operator set the local cluster name (``OPSPILOT_CLUSTER_NAME``). Only
+#: whether a name is set picks it; the name itself is an L1b value recorded
+#: in the Run input and never reaches ``prompt_revision``.
+CLUSTER_DISCIPLINE_VARIANT = "replay-candidate-k8s-cluster"
 
 #: ``otel-demo``'s tools array unchanged, then the new tools.
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
@@ -208,20 +213,32 @@ ES_TOOL_NAMES: tuple[str, ...] = tuple(
 )
 
 
-def otel_demo_ext_versions(*, elasticsearch: bool = False) -> dict[str, str]:
-    """``elasticsearch``: whether ``OPSPILOT_ES_URL`` is set (B1-U2)."""
+def _variant(cluster_name: str | None) -> str:
+    return CLUSTER_DISCIPLINE_VARIANT if cluster_name else DISCIPLINE_VARIANT
+
+
+def otel_demo_ext_versions(
+    *, elasticsearch: bool = False, cluster_name: str | None = None
+) -> dict[str, str]:
+    """``elasticsearch``: whether ``OPSPILOT_ES_URL`` is set (B1-U2);
+    ``cluster_name``: the operator's local cluster name (#722), of which only
+    whether it is set matters here."""
     return {
-        **investigation_versions(DISCIPLINE_VARIANT),
+        **investigation_versions(_variant(cluster_name)),
         "tool_schema_revision": (
             ES_TOOL_SCHEMA_REVISION if elasticsearch else TOOL_SCHEMA_REVISION
         ),
     }
 
 
-def otel_demo_ext_face(clock: Clock, *, elasticsearch: bool = False) -> ToolFace:
+def otel_demo_ext_face(
+    clock: Clock, *, elasticsearch: bool = False, cluster_name: str | None = None
+) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch``: whether
-    ``OPSPILOT_ES_URL`` is set (B1-U2)."""
+    ``OPSPILOT_ES_URL`` is set (B1-U2). ``cluster_name`` (#722): the local
+    cluster name every fresh Run records and the multi-cluster paragraph
+    names; ``None`` (or empty) leaves the face as it was."""
 
     def evidence_context(run_id: str) -> Mapping[str, Any]:
         end = clock.now().astimezone(timezone.utc).replace(microsecond=0)
@@ -232,8 +249,9 @@ def otel_demo_ext_face(clock: Clock, *, elasticsearch: bool = False) -> ToolFace
 
     return ToolFace(
         tool_schemas=ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS,
-        variant_id=DISCIPLINE_VARIANT,
+        variant_id=_variant(cluster_name),
         evidence_context=evidence_context,
+        cluster_name=cluster_name or None,
     )
 
 

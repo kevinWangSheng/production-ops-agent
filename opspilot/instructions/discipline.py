@@ -34,6 +34,8 @@ baseline 两变体靠的是漂移断言——逐字节锚定 ``holmes_baseline.p
 （#310，2026-10-22 用户裁决），没有冻结哈希，只受句数普查与 revision 变化约束。
 ``replay-candidate-k8s``（A7，#559）= ``replay-candidate`` 全部段落加一段
 ``KUBERNETES_GUIDANCE``，只供扩展档位 ``otel-demo-ext`` 使用。
+``replay-candidate-k8s-cluster``（#722）= ``replay-candidate-k8s`` 再加多集群提醒
+``CLUSTER_AWARENESS`` 与集群名 L1b 槽位，扩展档位在运维设了本地集群名时使用。
 
 本模块不发起调用、不读环境变量、不依赖 ``scripts/``。L2 报告契约的文本由调用方传入，
 以免产品包反向依赖 M0 实验脚手架。
@@ -43,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from types import MappingProxyType
 from typing import Final, Literal, Mapping, NamedTuple
 
@@ -158,6 +161,31 @@ services…ingresses…logs 语序）；事件太大先分组计数（#628 句�
 另加结论强度句与「模板未变的重启对象不作根因」句，共 25 句。
 字面投影字段名与分组示例在 L3 工具描述里。"""
 
+CLUSTER_AWARENESS: Final = (
+    " Your Kubernetes access reads only the cluster `{cluster_name}`; other data sources, such as metrics, traces and log search, may also hold data from other clusters, so check what the data itself contains rather than assuming."
+    " When the question is about a cluster, region or environment other than `{cluster_name}`, still investigate it with those other data sources; do not refuse because your Kubernetes access is on a different cluster."
+    " Check that the data you find belongs to the cluster the question names, using the data's own cluster, region or environment fields, index or source names, or other tags; a search that returns plausible results is not that check."
+    " If the data matches, investigate normally and name that cluster in your findings."
+    " If it belongs to a different cluster, often `{cluster_name}` itself, you have no data for the cluster the question names: say so first in the summary, record it as a gap, do not name anything from that data as the root cause of this incident, and name its real cluster wherever you describe it."
+    " Never relabel data from one cluster as another: every fact drawn from those other data sources names the cluster its data came from."
+)
+"""多集群提醒（6 句），#722（r10 H-U1，2026-11-18 用户裁决）新增，改写自 HolmesGPT
+``generic_ask.jinja2:7-17``：不点工具名与 ``kubectl``，删去产品专有的「改指数据源或
+Holmes agent」建议，「top of your answer」改为 summary 开头，「finding」改为 fact。
+``{cluster_name}`` 是 L1b 占位符（运维配置的本地集群名，记在 Run 输入里），出现 3 次，
+取值不进 revision。仅 ``replay-candidate-k8s-cluster`` 含此段。"""
+
+CLUSTER_NAME_PATTERN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}")
+"""本地集群名的字符集（#722 CN-9）：1–128 字符，容得下 EKS ARN、
+``gke_<项目>_<区>_<名>``、``user@cluster`` 这类 kube context 名；不含空白、换行、
+反引号、引号、``=`` 与花括号，值打不破提示词里的反引号分隔，也不会长成「名=值」形式。"""
+
+
+def valid_cluster_name(value: object) -> bool:
+    """``value`` 是否是一个合规的本地集群名（完整匹配 :data:`CLUSTER_NAME_PATTERN`）。"""
+    return isinstance(value, str) and CLUSTER_NAME_PATTERN.fullmatch(value) is not None
+
+
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
 
@@ -191,6 +219,7 @@ class Segment(NamedTuple):
 
 _STEPS_SLOT: Final = Segment("model_request_budget", LAYER_INSTANCE, "")
 _SERVICES_SLOT: Final = Segment("authorized_services", LAYER_INSTANCE, "", scoped=True)
+_CLUSTER_SLOT: Final = Segment("cluster_name", LAYER_INSTANCE, "")
 _REPORT_SLOT: Final = Segment("report_contract", LAYER_REPORT, "")
 
 _OPENING_MULTI: Final = Segment("read_only_opening", LAYER_TEMPLATE, READ_ONLY_OPENING)
@@ -207,6 +236,7 @@ _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
 _METHOD: Final = Segment("investigation_method", LAYER_TEMPLATE, INVESTIGATION_METHOD)
 _IMPACT: Final = Segment("impact_scope", LAYER_TEMPLATE, IMPACT_SCOPE)
 _KUBERNETES: Final = Segment("kubernetes_guidance", LAYER_TEMPLATE, KUBERNETES_GUIDANCE)
+_CLUSTER: Final = Segment("cluster_awareness", LAYER_TEMPLATE, CLUSTER_AWARENESS)
 # 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
 _WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
@@ -274,6 +304,22 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _KUBERNETES,
         _REPORT_SLOT,
     ),
+    # #722（r10 H-U1）：扩展档位在运维设了 OPSPILOT_CLUSTER_NAME 时用，=
+    # replay-candidate-k8s 的全部段落，在 Kubernetes 指导段与报告契约槽位之间加
+    # 多集群提醒及其集群名槽位。没设时扩展档位仍用 replay-candidate-k8s，字节与
+    # revision 不变；用新变体而不在原序列里加条件段，是因为 template_projection
+    # 哈希全部段落，条件段即使不出现也会改变原变体的 revision。
+    "replay-candidate-k8s-cluster": (
+        _OPENING_REPLAY,
+        _EVIDENCE,
+        _MISSING,
+        _METHOD,
+        _IMPACT,
+        _KUBERNETES,
+        _CLUSTER,
+        _CLUSTER_SLOT,
+        _REPORT_SLOT,
+    ),
 }
 
 VARIANTS: Final[Mapping[str, tuple[Segment, ...]]] = MappingProxyType(_VARIANTS)
@@ -290,12 +336,19 @@ def _variant(variant_id: str) -> tuple[Segment, ...]:
         raise UnknownVariantError(variant_id) from None
 
 
+def has_cluster_slot(variant_id: str) -> bool:
+    """变体是否带本地集群名槽位（#722）。未登记的变体返回 ``False``。"""
+    segments = VARIANTS.get(variant_id)
+    return segments is not None and any(s.key == "cluster_name" for s in segments)
+
+
 def render(
     variant_id: str,
     *,
     model_requests: int,
     report_contract: str,
     authorized_services: tuple[str, ...] = (),
+    cluster_name: str | None = None,
 ) -> str:
     """把一个变体渲染成当初送进模型的那串字节。
 
@@ -310,6 +363,10 @@ def render(
       默默丢掉它会让调用方以为查询范围已被限定，而模型拿到的是未限定的纪律——
       查询范围属 Controller 权限，不能悄悄落空（PRODUCT-CONSTRAINTS「Runtime and
       human control requirements」）。
+
+    ``cluster_name``（#722）同理两头都拒：变体有集群名槽位而没给合规的名字，或者
+    变体没有槽位却给了名字，都是 ``ValueError``——「以为告诉了模型集群名，实际
+    没送进去」与「送进去一段没有名字的提醒」都是静默的错误字节。
     """
     segments = _variant(variant_id)
     if type(model_requests) is not int or model_requests < 1:
@@ -345,6 +402,11 @@ def render(
         s.key == "authorized_services" for s in segments
     ):
         raise ValueError(f"variant {variant_id!r} carries no authorized service list")
+    if any(s.key == "cluster_name" for s in segments):
+        if not valid_cluster_name(cluster_name):
+            raise ValueError(f"variant {variant_id!r} needs a valid cluster_name")
+    elif cluster_name is not None:
+        raise ValueError(f"variant {variant_id!r} carries no cluster name")
 
     parts: list[str] = []
     for segment in segments:
@@ -364,6 +426,14 @@ def render(
             parts[-1] = parts[-1].format(steps=model_requests)
         elif segment.key == "authorized_services":
             parts.append(", ".join(authorized_services))
+        elif segment.key == "cluster_name":
+            # 与预算槽位同一规则：名字回填进前一段模板里的占位符。
+            if not parts or "{cluster_name}" not in parts[-1]:
+                raise ValueError(
+                    f"variant {variant_id!r}: the cluster name slot must follow a "
+                    "template segment containing the {cluster_name} placeholder"
+                )
+            parts[-1] = parts[-1].format(cluster_name=cluster_name)
         elif segment.key == "report_contract":
             parts.append(" " + report_contract)
         else:
@@ -461,6 +531,7 @@ def prompt_face_sha256(
     model_requests: int,
     report_contract: str,
     authorized_services: tuple[str, ...] = (),
+    cluster_name: str | None = None,
 ) -> str:
     """本 Run 实际送进模型的 L1 面的完整 sha256（C3 第 5 节 L1b 行）。
 
@@ -480,5 +551,6 @@ def prompt_face_sha256(
             model_requests=model_requests,
             report_contract=report_contract,
             authorized_services=authorized_services,
+            cluster_name=cluster_name,
         ).encode("utf-8")
     ).hexdigest()
