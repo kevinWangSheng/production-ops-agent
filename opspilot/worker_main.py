@@ -36,8 +36,8 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_GRACE_SECONDS`` SIGTERM join bound (default 30).
 * ``OPSPILOT_WORKER_BATCH``         incidents per ``poll_once`` (default 20).
 * ``OPSPILOT_WORKER_CAPACITY``      concurrent attempts, one slot thread
-  each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 3
-  (unset: capacity + 3).
+  each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 4
+  (unset: capacity + 4).
 * ``OPSPILOT_BACKLOG_MAX``          queued Runs kept before the backlog pass
   parks the excess for a human (default 8, >= 1).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
@@ -48,6 +48,7 @@ Configuration (environment only):
   export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
 * ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
 * ``OPSPILOT_POSTMORTEM_BATCH``     candidates per scan (default 5).
+* ``OPSPILOT_CHAT_POLL_SECONDS``    Chat panel poll interval (default 1).
 * ``OPSPILOT_HEALTH_BIND``         the health listener's ``host:port``
   (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off;
   any other value that cannot be bound refuses to start, so bare
@@ -62,7 +63,10 @@ and its three preconditions (LangSmith endpoint allowlisted, project
 ``opspilot-lab-*``, key present; read once at startup), delivers them to
 LangSmith (``opspilot.outbox_delivery``, #428). Any precondition missing
 delivers nothing; the reason codes are on ``/metrics``
-(``opspilot_trace_export_enabled``).
+(``opspilot_trace_export_enabled``). A fourth, the Chat thread (workbench
+P7-6), answers the incident page's Chat questions with one tool-less model
+call each (``opspilot.chat.worker``); it opens no trace span and never
+touches an investigation.
 
 Like ``python -m opspilot.web serve`` it only verifies on start that the
 schema is at the Alembic head, and runs both as a bare development process
@@ -87,6 +91,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from opspilot import health, logs, tracing
+from opspilot.chat import ChatStore, ChatWorker
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import MAX_TOOL_PARALLELISM
 from opspilot.investigation.progress import (
@@ -540,18 +545,22 @@ def build_loop(
 
 CAPACITY_ENV = "OPSPILOT_WORKER_CAPACITY"
 POOL_MAX_ENV = "OPSPILOT_POOL_MAX_SIZE"
+#: Connections beyond one per slot: the polling, postmortem, outbox and Chat
+#: threads (U-B1-3, #427 OB-R4, workbench P7-6).
+POOL_EXTRA = 4
+CHAT_THREAD = "opspilot-chat"
 
 
 def worker_capacity(pool: PoolConfig) -> int:
     """``OPSPILOT_WORKER_CAPACITY`` (default 2, >= 1), refused with
     ``SystemExit`` unless the process pool holds one connection per slot
-    plus the polling, postmortem and outbox threads (B1 contract U-B1-3,
-    #427 OB-R4)."""
+    plus the polling, postmortem, outbox and Chat threads (B1 contract
+    U-B1-3, #427 OB-R4, workbench P7-6)."""
     capacity = _int_env(CAPACITY_ENV, 2)
-    if pool.max_size < capacity + 3:
+    if pool.max_size < capacity + POOL_EXTRA:
         raise SystemExit(
             f"OPSPILOT_POOL_MAX_SIZE={pool.max_size} must be at least "
-            f"OPSPILOT_WORKER_CAPACITY+3={capacity + 3}"
+            f"OPSPILOT_WORKER_CAPACITY+{POOL_EXTRA}={capacity + POOL_EXTRA}"
         )
     return capacity
 
@@ -559,7 +568,7 @@ def worker_capacity(pool: PoolConfig) -> int:
 def validate_pool_capacity() -> int:
     """The pool check ``main()`` runs before touching the database, from the
     environment as it stands: ``OPSPILOT_POOL_MAX_SIZE`` (PoolConfig
-    default when unset) against ``OPSPILOT_WORKER_CAPACITY`` + 3; returns
+    default when unset) against ``OPSPILOT_WORKER_CAPACITY`` + 4; returns
     the capacity, ``SystemExit`` below the floor. Filling an unset pool size
     with the floor is ``main()``'s step, not this one's, so an explicit
     value below it is always refused."""
@@ -590,17 +599,33 @@ def build_postmortem_worker(
     )
 
 
+def build_chat_worker(
+    dsn: str,
+    api_key: str,
+    *,
+    stop: threading.Event,
+    model_stats: health.ModelCallStats | None = None,
+) -> ChatWorker:
+    """The Chat thread (workbench P7-6): its own store and client, counted
+    into ``model_stats`` like the slots' (F8-R3). It opens no trace span."""
+    return ChatWorker(
+        store=ChatStore(dsn),
+        model=health.ModelCallCounter(DeepSeekClient(api_key), model_stats),
+        stop=stop,
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logs.configure()
     dsn = os.environ.get("OPSPILOT_WORKER_DSN")
     if not dsn:
         raise SystemExit("OPSPILOT_WORKER_DSN is required")
     grace = _float_env("OPSPILOT_WORKER_GRACE_SECONDS", 30.0)
-    # An unset pool size takes the worker's floor (capacity + 3; the shared
+    # An unset pool size takes the worker's floor (capacity + 4; the shared
     # PoolConfig default of 4 serves the web and the Observer); an explicit
     # one below it is refused before touching the database.
     if not os.environ.get(POOL_MAX_ENV):
-        os.environ[POOL_MAX_ENV] = str(_int_env(CAPACITY_ENV, 2) + 3)
+        os.environ[POOL_MAX_ENV] = str(_int_env(CAPACITY_ENV, 2) + POOL_EXTRA)
     validate_pool_capacity()
     store = DurableStore(dsn)
     store.install()
@@ -613,13 +638,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         dsn, credential, stop=stop, events=loop.events, model_stats=model_stats
     )
     outbox, outbox_stats = build_outbox(dsn, os.environ, stop=stop)
+    chat = build_chat_worker(dsn, credential, stop=stop, model_stats=model_stats)
     listener = health.serve_health(
         os.environ,
         readiness=lambda: _readiness(loop),
         metrics=lambda: _metrics(loop, model_stats, outbox_stats),
     )
     try:
-        return _run(loop, postmortems, store, stop, grace, outbox=outbox)
+        return _run(loop, postmortems, store, stop, grace, outbox=outbox, chat=chat)
     finally:
         if listener is not None:
             listener.close()
@@ -676,6 +702,7 @@ def _run(
     grace: float,
     *,
     outbox: OutboxMaintainer | None = None,
+    chat: ChatWorker | None = None,
 ) -> int:
     """Signals, the threads and the bounded shutdown (R-B1-5)."""
 
@@ -701,6 +728,15 @@ def _run(
         )
         outbox_thread.start()
         threads.append(outbox_thread)
+    if chat is not None:
+        chat_thread = threading.Thread(
+            target=chat.run,
+            args=(_float_env("OPSPILOT_CHAT_POLL_SECONDS", 1.0),),
+            name=CHAT_THREAD,
+            daemon=True,
+        )
+        chat_thread.start()
+        threads.append(chat_thread)
     _log.info("worker started")
     # Wait in short slices so the signal handlers get to run on this thread.
     # A loop thread that died (anything but the refusals ``poll_once``
@@ -723,6 +759,8 @@ def _run(
     postmortems.jobs.close()
     if outbox is not None:
         outbox.store.close()
+    if chat is not None:
+        chat.store.close()
     tracing.shutdown()
     _log.info("worker stopped")
     return 0

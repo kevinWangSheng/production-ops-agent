@@ -156,7 +156,7 @@ def test_downgrade_0024_prints_revisions_and_outbox_counts(
     )
     assert code == 0, err
     assert out.splitlines() == [
-        "schema current: 0025_web_session_rebind",
+        "schema current: 0026_chat_panel",
         f"schema target: {OLD_HEAD}",
         f"schema downgraded: {OLD_HEAD}",
     ]
@@ -168,6 +168,10 @@ def test_downgrade_0024_prints_revisions_and_outbox_counts(
     after = _counts(database)
     assert "opspilot_trace_outbox" not in after
     before.pop("opspilot_trace_outbox")
+    # 0026 (workbench P7) is above OLD_HEAD: its empty chat tables go too
+    for table in ("opspilot_chat_sessions", "opspilot_chat_turns"):
+        assert table not in after
+        assert before.pop(table) == 0
     assert after == before
     # The newer build's runtimes now refuse to start; migrate brings it back.
     with psycopg.connect(database) as conn, pytest.raises(schema.SchemaNotMigrated):
@@ -181,8 +185,8 @@ def test_downgrade_0024_prints_revisions_and_outbox_counts(
         ("0023", "unknown revision 0023: not a migration in this build"),
         ("base", "unknown revision base: not a migration in this build"),
         (
-            "0025_web_session_rebind",
-            "revision 0025_web_session_rebind is not lower than the current",
+            "0026_chat_panel",
+            "revision 0026_chat_panel is not lower than the current",
         ),
     ],
 )
@@ -225,13 +229,15 @@ def test_a_refusing_migration_stops_where_it_is_and_says_so(
     )  # fmt: skip
     assert code == 1
     assert out.splitlines() == [
-        "schema current: 0025_web_session_rebind",
+        "schema current: 0026_chat_panel",
         "schema target: 0021_release_incident_links",
     ]
     assert "downgrade refused: 1 merged incident(s)" in err
-    # 0024 and 0023 went down in their own transactions; 0022 rolled back.
+    # 0026..0023 went down in their own transactions; 0022 rolled back.
     assert "schema now at 0022_incident_association" in err
     assert _revision(database) == "0022_incident_association"
     after = _counts(database)
     before.pop("opspilot_trace_outbox")
+    for table in ("opspilot_chat_sessions", "opspilot_chat_turns"):
+        assert before.pop(table) == 0
     assert after == before

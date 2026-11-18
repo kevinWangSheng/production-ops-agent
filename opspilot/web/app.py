@@ -184,6 +184,14 @@ _WORKBENCH_STATUS = {
     "STORAGE_UNAVAILABLE": 503,
     "RETRY": 503,
     "TIMEOUT": 503,
+    # Workbench P7 (Chat panel)
+    "CHAT_RATE_LIMITED": 429,
+    "CHAT_BUSY": 409,
+    "CHAT_KEY_CONFLICT": 409,
+    "CHAT_NOT_STEER": 409,
+    "CHAT_UNKNOWN_SESSION": 404,
+    "CHAT_UNKNOWN_TURN": 404,
+    "CHAT_UNAVAILABLE": 503,
 }
 
 
@@ -1085,6 +1093,83 @@ def create_app(
                 ),
             }
         )
+
+    # -- Chat panel (workbench P7-14) -------------------------------------
+    # UI identity only (session cookie or Basic), Origin on every POST; the
+    # bearer and event tokens are refused by ``ui``.
+
+    def _chat_id(raw: str, code: str) -> UUID:
+        try:
+            return UUID(raw)
+        except ValueError:
+            raise _Refusal(404, code) from None
+
+    @app.post("/incidents/{incident_id}/chat")
+    async def chat_ask(request: Request, incident_id: str) -> Response:
+        principal = await ui_mutation(request)
+        subject = incident_of(incident_id)
+        content_type = request.headers.get("content-type", "").split(";")[0].strip()
+        fields: Mapping[str, Any] = (
+            await json_of(request)
+            if content_type == "application/json"
+            else await form_of(request)
+        )
+        question = fields.get("question", fields.get("text"))
+        key = fields.get("idempotency_key")
+        raw_session = fields.get("session_id") or None
+        if not isinstance(question, str) or not isinstance(key, str):
+            raise _Refusal(400, "INVALID_INPUT")
+        if raw_session is not None and not isinstance(raw_session, str):
+            raise _Refusal(400, "INVALID_INPUT")
+        session_id = (
+            None
+            if raw_session is None
+            else _chat_id(raw_session, "CHAT_UNKNOWN_SESSION")
+        )
+        result = await in_thread(
+            workbench.chat_ask,
+            subject,
+            actor_id=principal.actor_id,
+            question=question,
+            idempotency_key=key,
+            session_id=session_id,
+        )
+        return JSONResponse(result, status_code=200 if result["replayed"] else 201)
+
+    @app.get("/incidents/{incident_id}/chat/sessions")
+    async def chat_sessions(request: Request, incident_id: str) -> Response:
+        await ui(request)
+        subject = incident_of(incident_id)
+        sessions = await in_thread(workbench.chat_sessions, subject)
+        response = JSONResponse({"incident_id": str(subject), "sessions": sessions})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/incidents/{incident_id}/chat/sessions/{session_id}")
+    async def chat_session(
+        request: Request, incident_id: str, session_id: str
+    ) -> Response:
+        await ui(request)
+        subject = incident_of(incident_id)
+        found = await in_thread(
+            workbench.chat_session,
+            subject,
+            _chat_id(session_id, "CHAT_UNKNOWN_SESSION"),
+        )
+        response = JSONResponse(found)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.post("/incidents/{incident_id}/chat/turns/{turn_id}/forward")
+    async def chat_forward(
+        request: Request, incident_id: str, turn_id: str
+    ) -> Response:
+        await ui_mutation(request)
+        subject = incident_of(incident_id)
+        result = await in_thread(
+            workbench.chat_forward, subject, _chat_id(turn_id, "CHAT_UNKNOWN_TURN")
+        )
+        return JSONResponse(result)
 
     # -- progress stream ------------------------------------------------
 

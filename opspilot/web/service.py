@@ -233,6 +233,11 @@ MESSAGE_ACTIONS = frozenset({MESSAGE, *MESSAGE_ALIASES})
 REINVESTIGATE = "reinvestigate"
 #: The channel a message came in on (contract B1).
 MESSAGE_CHANNELS = frozenset({"investigation", "chat_forward"})
+#: P7-10: the message refusals a Chat forward records as ``refused`` (D6,
+#: D7b, D10; D9 has no panel). Anything else is transient and retried.
+_CHAT_FORWARD_REFUSALS = frozenset(
+    {"INVESTIGATION_NOT_AVAILABLE", "MERGED", "HANDOFF_ONLY"}
+)
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
         MESSAGE,
@@ -498,6 +503,10 @@ class Workbench:
     #: durable incident store's DSN and pool settings, as the release intake
     #: route does, and a store without one (in-memory tests) has no releases.
     releases: Any = None
+    #: The ``ChatStore`` of the Chat panel (workbench P7); ``None`` derives
+    #: one on first use from the durable incident store's DSN and pool, as
+    #: ``releases`` does; a store without one (in-memory tests) has no Chat.
+    chat: Any = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -1421,6 +1430,244 @@ class Workbench:
             if run_id is not None:
                 opened.append(run_id)
         return opened
+
+    # -- Chat panel (workbench P7, contract E1-E6 r10) --------------------
+
+    def _chat_store(self) -> Any:
+        if self.chat is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise WorkbenchError("CHAT_UNAVAILABLE")
+            from opspilot.chat import ChatStore
+
+            self.chat = ChatStore(dsn, pool=getattr(durable, "pool_config", None))
+        return self.chat
+
+    def _chat_incident(self, incident_id: UUID) -> IncidentSummary:
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            # D9: the handoff-only page has no Chat panel.
+            raise WorkbenchError("HANDOFF_ONLY")
+        return summary
+
+    def chat_ask(
+        self,
+        incident_id: UUID,
+        *,
+        actor_id: str,
+        question: str,
+        idempotency_key: str,
+        session_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Take one Chat question (P7-4, P7-5, P7-11). The record the model
+        will read is built here from the page's own projection (E3) and
+        stored on the turn; the worker answers it later. Nothing about the
+        investigation changes. A new session starts when ``session_id`` is
+        ``None``."""
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not (1 <= len(idempotency_key) <= 256):
+                raise ValueError
+            if (
+                not isinstance(question, str)
+                or not question.strip()
+                or len(question) > _MAX_TEXT
+            ):
+                raise ValueError
+            # the same checks as a message, so a forward never fails on them
+            _reject_ambiguous_text(question)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        self._chat_incident(incident_id)
+        store = self._chat_store()
+        from opspilot.chat import build_context, context_sha256
+        from opspilot.web.incident_view import page_view
+
+        snapshot = self.snapshot(incident_id)
+        context = build_context(
+            page_view(
+                snapshot, None, available_actions(snapshot), message_available=True
+            )
+        )
+        try:
+            turn, replayed = store.ask(
+                incident_id,
+                session_id=session_id,
+                author=actor_id,
+                question=question,
+                idempotency_key=idempotency_key,
+                context=context,
+                context_sha256=context_sha256(context),
+            )
+        except PersistenceError as exc:
+            code = str(exc)
+            # the one-pending-turn index lost a race with a second tab
+            raise WorkbenchError(
+                "CHAT_BUSY" if code == "IDENTITY_CONFLICT" else code
+            ) from None
+        return {
+            "incident_id": str(incident_id),
+            "session_id": str(turn["session_id"]),
+            "replayed": replayed,
+            "turn": self._chat_turn_view(turn, None),
+        }
+
+    def chat_sessions(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The History tab: this incident's newest 50 sessions (P7-12)."""
+        self._chat_incident(incident_id)
+        return [
+            {
+                "session_id": str(row["session_id"]),
+                "created_by": row["created_by"],
+                "created_at": _iso(row["created_at"]),
+                "title": redact_credentials(row["title"]),
+                "turns": int(row["turns"]),
+                "last_asked_at": _iso(row["last_asked_at"]),
+            }
+            for row in self._chat_store().sessions(incident_id)
+        ]
+
+    def chat_session(self, incident_id: UUID, session_id: UUID) -> dict[str, Any]:
+        summary = self._chat_incident(incident_id)
+        found = self._chat_store().session(incident_id, session_id)
+        if found is None:
+            raise WorkbenchError("CHAT_UNKNOWN_SESSION")
+        turns = [self._chat_turn_view(t, summary) for t in found["turns"]]
+        return {
+            "incident_id": str(incident_id),
+            "session_id": str(found["session_id"]),
+            "created_by": found["created_by"],
+            "created_at": _iso(found["created_at"]),
+            "title": redact_credentials(found["title"]),
+            "turns": turns,
+            "pending": any(t["status"] == "pending" for t in turns),
+        }
+
+    def chat_forward(self, incident_id: UUID, turn_id: UUID) -> dict[str, Any]:
+        """Forward a ``steer`` answer's question (contract E5, P7-9): the
+        person's stored question, verbatim, as their own ``chat_forward``
+        message with the key ``chat:{turn_id}`` -- so a repeat adds nothing.
+        The model's text never enters the investigation's inputs. A state
+        the investigation cannot take records ``refused`` with the code."""
+        summary = self._chat_incident(incident_id)
+        store = self._chat_store()
+        turn = store.turn(incident_id, turn_id)
+        if turn is None:
+            raise WorkbenchError("CHAT_UNKNOWN_TURN")
+        if turn["forward_state"] is None:
+            if not (turn["steer"] and turn["status"] == "answered"):
+                raise WorkbenchError("CHAT_NOT_STEER")
+            try:
+                result = self.message(
+                    incident_id,
+                    actor_id=turn["author"],
+                    text=turn["question"],
+                    idempotency_key=f"chat:{turn_id}",
+                    channel="chat_forward",
+                )
+            except WorkbenchError as exc:
+                if exc.code not in _CHAT_FORWARD_REFUSALS:
+                    raise
+                store.record_forward(
+                    turn_id, state="refused", code=exc.code, input_sequence=None
+                )
+            else:
+                current = self.incidents.find_incident(incident_id) or summary
+                code = (
+                    "RECORDED_AS_NOTE"
+                    if current.mode == "human_owned"
+                    else "READ_AFTER_RESUME"
+                    if current.state == "paused"
+                    else None
+                )
+                store.record_forward(
+                    turn_id,
+                    state="sent",
+                    code=code,
+                    input_sequence=result.input_sequence,
+                )
+            turn = store.turn(incident_id, turn_id) or turn
+        return {
+            "incident_id": str(incident_id),
+            "turn": self._chat_turn_view(
+                turn, self.incidents.find_incident(incident_id) or summary
+            ),
+        }
+
+    def chat_forward_pass(self, *, limit: int = 20) -> list[UUID]:
+        """The relay loop's backup for P7-9 (a): answered steers the page
+        never forwarded. A failure on one is logged; the others still run."""
+        try:
+            candidates = self._chat_store().forward_candidates(limit=limit)
+        except WorkbenchError:
+            return []
+        forwarded: list[UUID] = []
+        for row in candidates:
+            try:
+                self.chat_forward(row["incident_id"], row["turn_id"])
+            except (WorkbenchError, PersistenceError, DatabaseError, OSError) as exc:
+                _log.warning(
+                    "chat forward failed turn=%s code=%s",
+                    row["turn_id"],
+                    _failure_code(exc),
+                )
+                continue
+            forwarded.append(row["turn_id"])
+        return forwarded
+
+    @staticmethod
+    def _chat_turn_view(
+        turn: Mapping[str, Any], summary: IncidentSummary | None
+    ) -> dict[str, Any]:
+        forward: dict[str, Any] | None = None
+        words: str | None = None
+        state = turn.get("forward_state")
+        code = turn.get("forward_code")
+        if state == "sent":
+            words = {
+                "RECORDED_AS_NOTE": "Recorded as a note — the agent is not investigating",
+                "READ_AFTER_RESUME": "Sent to investigation · read after resume",
+            }.get(str(code), "Sent to investigation")
+        elif state == "refused":
+            merged = getattr(summary, "merged_into_incident_id", None)
+            words = (
+                f"Not sent — merged into {str(merged)[:8]}"
+                if code == "MERGED" and merged is not None
+                else "Not sent — use Re-investigate"
+            )
+        elif turn.get("steer") and turn.get("status") == "answered":
+            state, words = "pending", "Sending to investigation…"
+        if state is not None:
+            sequence = turn.get("forwarded_input_sequence")
+            forward = {
+                "state": state,
+                "code": code,
+                "words": words,
+                "input_sequence": sequence,
+                "anchor": None if sequence is None else f"msg-{sequence}",
+                "merged_into": None
+                if summary is None or summary.merged_into_incident_id is None
+                else str(summary.merged_into_incident_id),
+            }
+        refs = turn.get("refs")
+        return {
+            "turn_id": str(turn["turn_id"]),
+            "seq": int(turn["seq"]),
+            "author": turn["author"],
+            "question": redact_credentials(str(turn["question"])),
+            "status": turn["status"],
+            "answer": turn.get("answer"),
+            "steer": bool(turn.get("steer")),
+            "refs": list(refs) if isinstance(refs, list) else [],
+            "error_code": turn.get("error_code"),
+            "asked_at": _iso(turn.get("asked_at")),
+            "answered_at": _iso(turn.get("answered_at")),
+            "elapsed_ms": turn.get("elapsed_ms"),
+            "forward": forward,
+        }
 
     def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
         """Prove this decision's deterministic Run exists, even after another renewal."""

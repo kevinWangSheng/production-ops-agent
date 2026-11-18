@@ -24,6 +24,16 @@ of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
 over the same ``traces_endpoint`` and credential slot as ``traces_search``;
 ``fetch_pod_logs`` (A3, :mod:`opspilot.tools.kubernetes_logs`) goes by name
 to the same ``KubernetesTransport`` (Kubernetes address, ``k8s-ro`` slot).
+
+Configured backends (B1-U2, #560): the three Elasticsearch/OpenSearch tools
+of :mod:`opspilot.tools.elasticsearch_logs` join this profile only when
+``OPSPILOT_ES_URL`` is set -- then ``data_sources.available`` lists
+``elasticsearch`` and ``tool_schema_revision`` is ``ES_TOOL_SCHEMA_REVISION``.
+Without it every name, face, version and registration here is byte for byte
+what it was before B1. The web passes only whether the address is set; the
+worker also passes the ``es-ro`` connection, routed by tool name to its own
+``ElasticsearchTransport`` (address in the selector
+``elasticsearch_endpoint``).
 """
 
 from __future__ import annotations
@@ -40,6 +50,7 @@ from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
+    elasticsearch_logs,
     jaeger_query,
     kubernetes_core,
     kubernetes_logs,
@@ -72,6 +83,9 @@ from opspilot.tools.registry import (
 from opspilot.tools.tokens import TokenCounter, default_counter
 
 __all__ = [
+    "ES_TOOL_NAMES",
+    "ES_TOOL_SCHEMAS",
+    "ES_TOOL_SCHEMA_REVISION",
     "PROFILE_NAME",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
@@ -98,6 +112,12 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *kubernetes_logs.TOOL_SCHEMAS,
     *kubernetes_tabular.TOOL_SCHEMAS,
 )
+#: B1-U2: the tools array with ``OPSPILOT_ES_URL`` set -- the same array, then
+#: the three Elasticsearch tools.
+ES_TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
+    *TOOL_SCHEMAS,
+    *elasticsearch_logs.TOOL_SCHEMAS,
+)
 
 #: What this profile can and cannot query (#311 U5); ``kubernetes_state``
 #: moves from not integrated to available (A2-2), and ``pod_logs`` with it
@@ -109,26 +129,29 @@ _NOT_INTEGRATED: tuple[str, ...] = tuple(
 )
 
 
-def _data_sources() -> dict[str, Any]:
+def _data_sources(elasticsearch: bool = False) -> dict[str, Any]:
+    available: dict[str, Any] = {
+        "prometheus": sorted(
+            otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
+        ),
+        "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
+        "kubernetes": sorted(
+            kubernetes_core.K8S_TOOLS
+            | set(kubernetes_logs.TOOL_NAMES)
+            | set(kubernetes_tabular.TOOL_NAMES)
+        ),
+    }
+    if elasticsearch:
+        available["elasticsearch"] = sorted(elasticsearch_logs.TOOL_NAMES)
     return {
-        "available": {
-            "prometheus": sorted(
-                otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
-            ),
-            "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
-            "kubernetes": sorted(
-                kubernetes_core.K8S_TOOLS
-                | set(kubernetes_logs.TOOL_NAMES)
-                | set(kubernetes_tabular.TOOL_NAMES)
-            ),
-        },
+        "available": available,
         "not_integrated": list(_NOT_INTEGRATED),
         "instruction": DATA_SOURCES_INSTRUCTION,
     }
 
 
-def _registrations() -> tuple[ToolRegistration, ...]:
-    return (
+def _registrations(elasticsearch: bool = False) -> tuple[ToolRegistration, ...]:
+    base = (
         *otel_demo._registrations(),
         *jaeger_query.jaeger_registrations(
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
@@ -144,19 +167,32 @@ def _registrations() -> tuple[ToolRegistration, ...]:
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
     )
+    if not elasticsearch:
+        return base
+    return (
+        *base,
+        *elasticsearch_logs.elasticsearch_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
+    )
 
 
-def _tool_schema_revision() -> str:
+def _tool_schema_revision(elasticsearch: bool = False) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
-    static resource table (A2-5: a new resource is a new version)."""
+    static resource table (A2-5: a new resource is a new version). With
+    Elasticsearch configured (B1-U2) the tools, registry and source list
+    differ, so the hash does; the inputs without it are unchanged."""
     digest = canonical_hash(
         {
             "profile": PROFILE_NAME,
-            "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
-            "registry": ToolRegistry(_registrations()).revision,
+            "tool_schemas": [
+                dict(item)
+                for item in (ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS)
+            ],
+            "registry": ToolRegistry(_registrations(elasticsearch)).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
-            "data_sources": _data_sources(),
+            "data_sources": _data_sources(elasticsearch),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
     )
@@ -165,47 +201,61 @@ def _tool_schema_revision() -> str:
 
 TOOL_SCHEMA_REVISION = _tool_schema_revision()
 TOOL_NAMES: tuple[str, ...] = tuple(item.name for item in _registrations())
+#: B1-U2: the same with ``OPSPILOT_ES_URL`` set.
+ES_TOOL_SCHEMA_REVISION = _tool_schema_revision(elasticsearch=True)
+ES_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(elasticsearch=True)
+)
 
 
-def otel_demo_ext_versions() -> dict[str, str]:
+def otel_demo_ext_versions(*, elasticsearch: bool = False) -> dict[str, str]:
+    """``elasticsearch``: whether ``OPSPILOT_ES_URL`` is set (B1-U2)."""
     return {
         **investigation_versions(DISCIPLINE_VARIANT),
-        "tool_schema_revision": TOOL_SCHEMA_REVISION,
+        "tool_schema_revision": (
+            ES_TOOL_SCHEMA_REVISION if elasticsearch else TOOL_SCHEMA_REVISION
+        ),
     }
 
 
-def otel_demo_ext_face(clock: Clock) -> ToolFace:
+def otel_demo_ext_face(clock: Clock, *, elasticsearch: bool = False) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
-    window is fixed at submission the same way."""
+    window is fixed at submission the same way. ``elasticsearch``: whether
+    ``OPSPILOT_ES_URL`` is set (B1-U2)."""
 
     def evidence_context(run_id: str) -> Mapping[str, Any]:
         end = clock.now().astimezone(timezone.utc).replace(microsecond=0)
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
-        context["data_sources"] = _data_sources()
+        context["data_sources"] = _data_sources(elasticsearch)
         return context
 
     return ToolFace(
-        tool_schemas=TOOL_SCHEMAS,
+        tool_schemas=ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS,
         variant_id=DISCIPLINE_VARIANT,
         evidence_context=evidence_context,
     )
 
 
 def _target(
-    config: otel_demo.OtelDemoConfig, kubernetes: kubernetes_core.KubernetesConfig
+    config: otel_demo.OtelDemoConfig,
+    kubernetes: kubernetes_core.KubernetesConfig,
+    elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
 ) -> RegisteredTarget:
     base = otel_demo._target(config)
+    selector = {
+        **base.selector,
+        kubernetes_core.ENDPOINT_SELECTOR: kubernetes.api_url,
+        kubernetes_core.NAMESPACE_SELECTOR: kubernetes.namespace,
+    }
+    if elasticsearch is not None:
+        selector[elasticsearch_logs.ENDPOINT_SELECTOR] = elasticsearch.url
     return RegisteredTarget(
         target_id=base.target_id,
         source=base.source,
         endpoint=base.endpoint,
         credential_ref=base.credential_ref,
-        selector={
-            **base.selector,
-            kubernetes_core.ENDPOINT_SELECTOR: kubernetes.api_url,
-            kubernetes_core.NAMESPACE_SELECTOR: kubernetes.namespace,
-        },
+        selector=selector,
         display_name=base.display_name,
     )
 
@@ -221,10 +271,12 @@ class OtelDemoExtRegistrations:
 def otel_demo_ext_registrations(
     config: otel_demo.OtelDemoConfig,
     kubernetes: kubernetes_core.KubernetesConfig,
+    elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
-        tools=_registrations(), targets=(_target(config, kubernetes),)
+        tools=_registrations(elasticsearch is not None),
+        targets=(_target(config, kubernetes, elasticsearch),),
     )
 
 
@@ -243,6 +295,8 @@ def _overflow_summary(
         return {"row_unit": "rows"}
     if tool in jaeger_query.ROW_UNITS:
         return {"row_unit": jaeger_query.ROW_UNITS[tool]}
+    if tool in elasticsearch_logs.TOOL_NAMES:
+        return elasticsearch_logs.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -253,6 +307,7 @@ def otel_demo_ext_executor_factory(
     clock: Clock,
     config: otel_demo.OtelDemoConfig | None = None,
     kubernetes: kubernetes_core.KubernetesConfig,
+    elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -262,12 +317,16 @@ def otel_demo_ext_executor_factory(
     (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer, nor
     without ``python3`` on PATH for the Pod log filters' regex child (A3-7,
     ``PYTHON_NOT_FOUND``; the child resolves it again per call).
+
+    ``elasticsearch`` (B1-U2): the ``es-ro`` connection when
+    ``OPSPILOT_ES_URL`` is set; the three tools are registered and routed
+    only then.
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
-    registrations = otel_demo_ext_registrations(config, kubernetes)
+    registrations = otel_demo_ext_registrations(config, kubernetes, elasticsearch)
     tools = ToolRegistry(registrations.tools)
     targets = TargetRegistry(list(registrations.targets))
     pair = config.prometheus_basic_auth
@@ -290,6 +349,24 @@ def otel_demo_ext_executor_factory(
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
     )
+    routes: dict[str, Any] = {
+        **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
+        **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
+        # A3: served by the cluster transport, routed by name.
+        **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
+        # A6: likewise.
+        **dict.fromkeys(kubernetes_tabular.TOOL_NAMES, cluster),
+    }
+    if elasticsearch is not None:
+        # B1-4: its own slot, never another backend's credential.
+        search = elasticsearch_logs.ElasticsearchTransport(
+            credentials={
+                elasticsearch_logs.CREDENTIAL_REF: elasticsearch.authorization
+            },
+            jq_path=jq,
+            ca_file=elasticsearch.ca_file,
+        )
+        routes.update(dict.fromkeys(elasticsearch_logs.TOOL_NAMES, search))
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
@@ -332,14 +409,7 @@ def otel_demo_ext_executor_factory(
                 ),
                 sources=sources,
                 kubernetes=cluster,
-                routes={
-                    **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
-                    **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
-                    # A3: served by the cluster transport, routed by name.
-                    **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
-                    # A6: likewise.
-                    **dict.fromkeys(kubernetes_tabular.TOOL_NAMES, cluster),
-                },
+                routes=routes,
             ),
             evidence=evidence,
             control=control,

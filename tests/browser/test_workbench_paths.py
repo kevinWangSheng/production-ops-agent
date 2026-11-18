@@ -8,8 +8,10 @@ what the user can see, never on markup, CSS classes or element counts.
 Path (a) (P4): open the detail page -> expand one log step and one query ->
 see the raw result the tool returned.
 Path (b) (P4, with P2): send a message to the investigation -> it is shown as
-queued -> the agent's reply appears in the Investigation log. Path (c) is
-added by P7.
+queued -> the agent's reply appears in the Investigation log.
+Path (c) (P7): ask the Chat panel -> the answer appears there and no Run
+starts; a steering sentence -> the panel says it was sent to the
+investigation and the investigation's Queued shows the user's sentence.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import secrets
 import socket
 import threading
 import time
+from collections.abc import Callable
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -96,6 +99,21 @@ class Detail:
     def queued(self):
         # The "Queued requests" area: a landmark region named by its heading.
         return self.page.get_by_role("region", name=re.compile(r"queued", re.I))
+
+    # contract P7 path (c) locator
+    def chat(self):
+        # The right-side Chat panel: a complementary landmark named "Chat".
+        return self.page.get_by_role(
+            "complementary", name=re.compile(r"^\s*chat\b", re.I)
+        )
+
+    def ask(self):
+        # The Chat panel's question box, named like "Ask".
+        return self.chat().get_by_role("textbox", name=re.compile(r"\bask\b", re.I))
+
+    def ask_send(self):
+        # The Chat panel's submit control.
+        return self.chat().get_by_role("button", name=re.compile(r"^\s*send\b", re.I))
 
 
 def _free_port() -> int:
@@ -283,3 +301,71 @@ def test_path_b_message_queued_then_reply_in_log(
     expect(detail.queued().get_by_text(MESSAGE)).not_to_be_visible()
     # A reply-only Run leaves the published conclusion in place.
     expect(page.get_by_text(conclusion).first).to_be_visible()
+
+
+QUESTION = "workbench-path-c: what does the report say caused the errors?"
+ANSWER = "workbench-path-c: the scripted chat answers from the record."
+STEER = "workbench-path-c: please check the payment-db connection pool next."
+STEER_ANSWER = "workbench-path-c: I will pass that to the investigation."
+
+
+def _chat_reply(text, *, steer):
+    return reply(content=json.dumps({"answer": text, "steer": steer, "refs": []}))
+
+
+def _wait_for(condition: Callable[[], bool], what: str, seconds: float = 10.0):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            pytest.fail(f"timed out waiting for {what}")
+        time.sleep(0.1)
+
+
+def test_path_c_chat_answer_then_steer_forwarded(
+    workbench, incident, served, browser_page
+):
+    """E3–E5, P7-9/10/13: the Chat panel answers from the record without
+    starting a Run; a steering sentence is forwarded as the user's own
+    words and waits in the investigation's Queued."""
+    incident_id = incident
+    page = browser_page
+    _sign_in(page, served, incident_id)
+    detail = Detail(page)
+    runs_before = len(workbench.runs(incident_id))
+
+    # A plain question in the Chat panel.
+    expect(detail.chat()).to_be_visible()
+    expect(detail.ask()).to_be_enabled()
+    detail.ask().fill(QUESTION)
+    detail.ask_send().click()
+    _wait_for(
+        lambda: any(
+            t["question"] == QUESTION for t in workbench.chat_turns(incident_id)
+        ),
+        "the question to be stored",
+    )
+    # The worker answers it (scripted model, no provider).
+    workbench.chat_answer([_chat_reply(ANSWER, steer=False)])
+    expect(detail.chat().get_by_text(ANSWER)).to_be_visible()
+    assert len(workbench.runs(incident_id)) == runs_before, (
+        "a plain Chat question must not start a Run"
+    )
+    expect(detail.queued().get_by_text(QUESTION)).not_to_be_visible()
+
+    # A steering sentence: the panel forwards the user's own words.
+    detail.ask().fill(STEER)
+    detail.ask_send().click()
+    _wait_for(
+        lambda: any(t["question"] == STEER for t in workbench.chat_turns(incident_id)),
+        "the steering sentence to be stored",
+    )
+    workbench.chat_answer([_chat_reply(STEER_ANSWER, steer=True)])
+    expect(detail.chat().get_by_text(STEER_ANSWER)).to_be_visible()
+    expect(
+        detail.chat()
+        .get_by_text(re.compile(r"sent to (the )?investigation", re.I))
+        .first
+    ).to_be_visible()
+    expect(detail.queued().get_by_text(STEER)).to_be_visible()
+    # The model's words are not what was queued.
+    expect(detail.queued().get_by_text(STEER_ANSWER)).not_to_be_visible()

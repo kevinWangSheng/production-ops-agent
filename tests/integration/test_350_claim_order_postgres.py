@@ -520,7 +520,7 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     scene: Scene,
 ) -> None:
     """AC8: baseline main 78a9603; canonical full role/table/privilege matrix."""
-    head = "0025_web_session_rebind"
+    head = "0026_chat_panel"
     assert schema.head_revision() == head
     with scene.owner.transaction(snapshot=True) as conn:
         assert schema.current_revision(conn) == head
@@ -530,5 +530,5 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     }
     encoded = json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == (
-        "3ba1ef6349a3f036aad814f84c80346ad273a42687076e6d45196ea9e7b3b502"
+        "50c0c41fb3b2ee6f519c2f564b52c74733217a4c705bef710600fdd5822a541d"
     )

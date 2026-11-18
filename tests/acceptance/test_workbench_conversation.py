@@ -6,7 +6,9 @@ A5/B5 recovery/replay use existing tests and real-Run evidence per section 5;
 C4/C5/C9 prompt wording and version values are deliberately not asserted.
 """
 
+import dataclasses
 import json
+import re
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -1008,3 +1010,163 @@ def test_p2_messages_preserve_recovery_authority_and_session(workbench, phase):
             after["incident"]["conclusion_bytes"]
             == before["incident"]["conclusion_bytes"]
         )
+
+
+# P7 independent acceptance (prereview P7-17): scenario 8, the eleventh and
+# last function. Every Chat seam goes through the tests.workbench_driver
+# accessors marked "contract P7 interface".
+
+INVESTIGATION_REASONING = "p7-investigation-private-reasoning-marker"
+CHAT_REASONING = "p7-chat-private-reasoning-marker"
+
+
+def published_with_reasoning(driver, scenario_id):
+    """A published incident whose committed steps carry reasoning_content,
+    so a context built from raw step rows would be caught below."""
+    from opspilot.tools.fixture import FIXTURE_TOOL
+    from tests.m1_investigation_support import tool_call
+
+    scenario = driver.from_alert(scenario_id)
+
+    def final(call):
+        return dataclasses.replace(
+            report_from_transcript(call), reasoning_content=INVESTIGATION_REASONING
+        )
+
+    driver.run(
+        scenario,
+        [
+            reply(
+                tool_calls=[tool_call(call_id="p7-read", name=FIXTURE_TOOL)],
+                finish="tool_calls",
+                reasoning=INVESTIGATION_REASONING,
+            ),
+            final,
+        ],
+    )
+    incident_id = UUID(scenario.subject_id)
+    assert driver.incident(incident_id)["conclusion"] is not None
+    assert INVESTIGATION_REASONING in json.dumps(
+        driver.committed_steps(incident_id), default=str
+    ), "setup: the investigation's step rows hold reasoning_content"
+    return incident_id
+
+
+def chat_reply(text, *, steer):
+    # P7-8 output contract; thinking stays on, so the provider also returns
+    # reasoning_content, which must never be stored (P7-7).
+    return reply(
+        content=json.dumps({"answer": text, "steer": steer, "refs": []}),
+        reasoning=CHAT_REASONING,
+    )
+
+
+def investigation_state(driver, incident_id):
+    records = driver.records(incident_id)
+    incident = records["incident"]
+    return {
+        "inputs": records["inputs"],
+        "runs": [(r["run_id"], r["state"]) for r in records["runs"]],
+        "current_run_id": incident["current_run_id"],
+        "steps": len(driver.committed_steps(incident_id)),
+        "control_generation": incident["control_generation"],
+        "conclusion_bytes": incident["conclusion_bytes"],
+        "controls": records["controls"],
+    }
+
+
+@pytest.mark.parametrize("case", ["ask", "steer", "steer_refused_cancelled"])
+def test_p7_chat_answers_without_touching_investigation_and_forwards_only_the_users_words(
+    workbench, case
+):
+    """E2–E5, P7-2/7/8/9/10: Chat answers from the record in every state;
+    a plain question changes nothing in the investigation; steering forwards
+    only the user's own sentence, once, and never where the state refuses."""
+    if case == "steer_refused_cancelled":
+        scenario = workbench.from_alert("workbench-p7-chat-cancelled")
+        incident_id = UUID(scenario.subject_id)
+        admitted(workbench.control(incident_id, "cancel"))
+        assert workbench.incident(incident_id)["state"] == "cancelled"
+    else:
+        incident_id = published_with_reasoning(workbench, f"workbench-p7-chat-{case}")
+    steer = case != "ask"
+    question = (
+        "Please have the investigation check the payment-db connection pool "
+        "saturation next, then compare it with the checkout error spike."
+        if steer
+        else "What does the current report say caused the checkout errors?"
+    )
+    answer_text = f"p7-model-answer-{case}: from the record, nothing else."
+    before = investigation_state(workbench, incident_id)
+
+    asked = workbench.chat_ask(incident_id, question)
+    assert 200 <= asked.status < 300, f"HTTP {asked.status} {asked.text[:500]}"
+    (pending,) = workbench.chat_turns(incident_id)
+    assert pending["question"] == question
+    assert pending["author"] == UI_USER
+    # Asking is not an investigation action (E4).
+    assert investigation_state(workbench, incident_id) == before
+
+    model = workbench.chat_answer([chat_reply(answer_text, steer=steer)])
+    assert len(model.calls) == 1, "one model request per question (E4)"
+
+    (turn,) = workbench.chat_turns(incident_id)
+    assert turn["status"] == "answered"
+    assert turn["answer"] == answer_text
+    assert turn["steer"] is steer
+    (shown,) = workbench.chat_shown(incident_id, turn["session_id"])
+    assert shown["question"] == question
+    assert shown["answer"] == answer_text
+    # The worker never writes investigation inputs (P7-9).
+    assert investigation_state(workbench, incident_id) == before
+
+    # The page trigger, then a repeat of it and the background backup pass.
+    workbench.chat_forward(incident_id, turn["turn_id"])
+    first = investigation_state(workbench, incident_id)
+    workbench.chat_forward(incident_id, turn["turn_id"])
+    workbench.chat_forward_backup()
+    workbench.relay()
+    after = investigation_state(workbench, incident_id)
+    assert after["inputs"] == first["inputs"], "a second forward must add nothing"
+
+    new_inputs = after["inputs"][len(before["inputs"]) :]
+    assert after["inputs"][: len(before["inputs"])] == before["inputs"]
+    (turn,) = workbench.chat_turns(incident_id)
+    (shown,) = workbench.chat_shown(incident_id, turn["session_id"])
+
+    if case == "ask":
+        assert new_inputs == []
+        assert after == before, "a plain question must not touch the investigation"
+        assert turn["forward"] != "sent"
+    elif case == "steer":
+        (forwarded,) = new_inputs
+        assert forwarded["kind"] == "message"
+        assert forwarded["content"]["text"] == question, "the user's words, verbatim"
+        assert forwarded["content"]["channel"] == "chat_forward"
+        assert forwarded["actor"] == UI_USER, "signed by the asking user"
+        assert turn["forward"] == "sent"
+        assert turn["forwarded_input_sequence"] == forwarded["sequence"]
+        assert re.search(r"\bsent to (the )?investigation", shown["forward"], re.I), (
+            shown["forward"]
+        )
+        # D3: forwarding is a message; it is not a control decision.
+        assert after["control_generation"] == before["control_generation"]
+        assert after["conclusion_bytes"] == before["conclusion_bytes"]
+        assert after["controls"] == before["controls"]
+    else:
+        assert new_inputs == [], "D6: a cancelled investigation is not steered"
+        assert after == before
+        assert turn["forward"] == "refused"
+        assert turn["forwarded_input_sequence"] is None
+        assert re.search(r"\bnot sent\b", shown["forward"], re.I), shown["forward"]
+
+    # The model's words never enter the investigation queue (E5).
+    assert answer_text not in json.dumps(after["inputs"], default=str)
+    # Nothing private is stored with the chat: no reasoning from the chat
+    # model, and none from the investigation's step rows via the context.
+    rows = workbench.chat_rows(incident_id)
+    assert len(rows) >= 2, "the session and the turn are stored"
+    stored = json.dumps(rows, default=str)
+    assert "reasoning_content" not in stored
+    assert CHAT_REASONING not in stored
+    assert INVESTIGATION_REASONING not in stored

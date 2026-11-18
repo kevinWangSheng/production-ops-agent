@@ -139,10 +139,10 @@ services:
       # credentials (all but the keys exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
       # Explicit, not defaults: the worker refuses a pool smaller than
-      # capacity + 3 (one connection per slot, plus the polling, postmortem
-      # and outbox threads).
+      # capacity + 4 (one connection per slot, plus the polling, postmortem,
+      # outbox and Chat threads).
       OPSPILOT_WORKER_CAPACITY: "2"
-      OPSPILOT_POOL_MAX_SIZE: "5"
+      OPSPILOT_POOL_MAX_SIZE: "6"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
       # off (default) | lab | outbox (#428): outbox delivers the trace outbox
       # to LangSmith only with LANGSMITH_API_KEY and LANGSMITH_PROJECT=

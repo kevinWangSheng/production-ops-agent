@@ -1,6 +1,6 @@
 # 工具面拓展 B/C 批次与第三方评测
 
-- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；各工具待开工前合同预审，首项 B1
+- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；各工具待开工前合同预审；B1 已合并（#705），下一项 C5
 - 更新日期：2026-11-16
 - 依据：[阶段 A 任务记录](2026-11-12-tool-expansion.md)与决定表 r1–r7（Q1–Q8、D1–D3、N4 继续有效，r8 改 Q6、Q7/N4 两处）；SPEC 2026-11-16 段；C3 第 8 节；HolmesGPT `a0009195`；预审材料在仓库外（HolmesGPT 评测集题单、第三方基准调研与 SREGym/ITBench-AA 核查，2026-11-16）
 - 工作区：本记录分支 `chore/tool-expansion-r8`；各工具开工时另开 worktree 写入下表
@@ -71,7 +71,7 @@
 
 | 序 | 项 | issue | 验收题来源 | 分支 / worktree |
 |---|---|---|---|---|
-| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 预审与裁决完成（r9，[B1 记录](2026-11-16-tool-expansion-b1.md)），待开工 |
+| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 代码已合并（PR #705，`4052ab4f`，[B1 记录](2026-11-16-tool-expansion-b1.md)）；真实 Run 归 #671 |
 | 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | |
 | 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | |
 | 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
@@ -85,6 +85,12 @@
 | — | 集中租机（先冒烟检查点再全量） | #669 | 全部 | |
 
 #671 被 #560、#666 阻塞；#669 被上表全部工具项，以及 #666、#667、#668、#671、#500 阻塞（GitHub 阻塞关系已设）。
+
+## 新数据源登记
+
+按 Q8 与 R8-8，每个新数据源落地时在此加一行：返回什么、发往哪里。
+
+- B1（#560，只在 `otel-demo-ext` 且设了 `OPSPILOT_ES_URL`）：租机或 lab 上的 Elasticsearch 8 / OpenSearch 2 的 `GET /_cat/indices/{pattern}?format=json`、`GET /{index}/_mapping`、`POST /{index}/_search`（唯一的 POST，请求体由工具拼，禁用脚本等构造），用独立凭据槽 `es-ro` 的只读 API key 或只读用户。返回：索引列表行、字段映射、按事故时间窗过滤的文档（`_index`、`_id`、`_source` 或 `fields`、`sort`，每个字符串值截到 2000 字符，最多 500 条）与聚合、总数、分片与超时信息。`may_contain_secrets=True`：投影后的响应存入证据库（PG），视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（lab 闸门要求 ES 地址是 lab 主机，`ELASTICSEARCH_NOT_LAB`）。jq 在 worker 本机隔离子进程里跑，不外发。不新增接收方。
 
 ## 待决
 

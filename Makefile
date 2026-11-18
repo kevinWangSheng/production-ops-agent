@@ -1,4 +1,4 @@
-.PHONY: setup doctor check test migrate retention retention-apply acceptance red-proof eval-structural secrets-branch hooks
+.PHONY: setup doctor check test migrate retention retention-apply acceptance red-proof eval-structural secrets-branch hooks mutation
 
 setup:
 	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
@@ -55,3 +55,10 @@ red-proof:
 # 零模型、零网络：重放入库的合成 CANARY fixture（PR-D1）。
 eval-structural:
 	.venv/bin/python scripts/eval_structural_ci.py
+
+# Invariant mutation list (tests/mutation/mutations.py) against a selection,
+# default tests/safety. PG entries run with M1_DURABLE_POSTGRES=1 on fresh
+# databases next to OPSPILOT_LAB_DSN. Not a CI check. Example:
+#   make mutation MUTATION_ARGS='--suite tests/safety --suite tests/acceptance'
+mutation:
+	.venv/bin/python -m tests.mutation.run $(MUTATION_ARGS)

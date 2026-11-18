@@ -65,4 +65,5 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers -p no:langsmith_plugin"
 markers = [
     "serial: thread-timing sensitive; CI runs these after the parallel pass, alone (#519)",
+    "pg: needs the shared lab PostgreSQL; set by tests/conftest.py, CI PG jobs select -m pg",
 ]

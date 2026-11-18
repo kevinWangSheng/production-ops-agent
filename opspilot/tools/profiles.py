@@ -21,9 +21,14 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   without one; only the worker reads ``OPSPILOT_K8S_API_URL``,
   ``OPSPILOT_K8S_TOKEN``, ``OPSPILOT_K8S_CA_FILE`` and
   ``OPSPILOT_K8S_NAMESPACE``, when it builds the executor, and refuses to
-  start without them or without ``jq``.
+  start without them or without ``jq``. With ``OPSPILOT_ES_URL`` set, the
+  three Elasticsearch/OpenSearch tools join it (B1-U2): both processes read
+  that address to pick the face and versions, and only the worker reads the
+  ``es-ro`` credential (``OPSPILOT_ES_API_KEY``, or ``OPSPILOT_ES_USERNAME``
+  and ``OPSPILOT_ES_PASSWORD``; ``OPSPILOT_ES_CA_FILE`` for HTTPS).
 
-Both processes must be started with the same value.
+Both processes must be started with the same value (and, for
+``otel-demo-ext``, with ``OPSPILOT_ES_URL`` set in both or in neither).
 """
 
 from __future__ import annotations
@@ -34,6 +39,10 @@ from dataclasses import dataclass
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore
+from opspilot.tools.elasticsearch_logs import (
+    ElasticsearchConfig,
+    elasticsearch_enabled,
+)
 from opspilot.tools.executor import Clock, EvidenceSink
 from opspilot.tools.fixture import (
     fixture_executor_factory,
@@ -92,7 +101,14 @@ def _otel_demo(env: Mapping[str, str]) -> ToolProfile:
 
 
 _STARTUP_CODES = frozenset(
-    {"K8S_CONFIG_MISSING", "K8S_CONFIG_INVALID", "JQ_NOT_FOUND", "PYTHON_NOT_FOUND"}
+    {
+        "K8S_CONFIG_MISSING",
+        "K8S_CONFIG_INVALID",
+        "JQ_NOT_FOUND",
+        "PYTHON_NOT_FOUND",
+        "ES_CONFIG_MISSING",
+        "ES_CONFIG_INVALID",
+    }
 )
 
 
@@ -101,6 +117,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
     # selects this profile too. Only the worker, when it builds the executor
     # factory, reads them from the same mapping (the process environment).
+    # B1-U2: the Elasticsearch address alone decides the face and versions;
+    # the web never reads an ``OPSPILOT_ES_*`` credential.
+    elasticsearch = elasticsearch_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -108,7 +127,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # The cluster setting and jq are startup preconditions of this
         # worker: their fixed codes end the process like any other
         # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
-        # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters).
+        # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters;
+        # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -116,6 +136,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 clock=clock,
                 config=config,
                 kubernetes=KubernetesConfig.from_env(env),
+                elasticsearch=ElasticsearchConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -125,8 +146,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
 
     return ToolProfile(
         name="otel-demo-ext",
-        face=otel_demo_ext_face,
-        versions=otel_demo_ext_versions,
+        face=lambda clock: otel_demo_ext_face(clock, elasticsearch=elasticsearch),
+        versions=lambda: otel_demo_ext_versions(elasticsearch=elasticsearch),
         executor_factory=executor_factory,
     )
 
