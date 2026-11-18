@@ -204,14 +204,6 @@ jobs:
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y -qq postgresql-client-17
           /usr/lib/postgresql/17/bin/pg_dump --version
-      # Three PG test modules start their own throwaway cluster with initdb and
-      # pg_ctl (#392 roles, #429 downgrade, F11 U2 register); without the
-      # server binaries on PATH they skipped in every job.
-      - name: Install PostgreSQL 17 server binaries for self-started clusters
-        if: needs.pg-scope.outputs.full != 'false'
-        run: |
-          sudo apt-get install -y -qq postgresql-17
-          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
       - name: Migration path 1, empty database to head
         if: needs.pg-scope.outputs.full != 'false'
         env:

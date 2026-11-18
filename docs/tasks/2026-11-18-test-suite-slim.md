@@ -91,6 +91,7 @@
 - **去掉墙钟等待**（只改测试，不改产品）：
   - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
   - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
+- **CI**：PR1 为 7 例自起 initdb 集群的用例加的「安装 PG 17 服务端」步骤，在 PR2 中随这三个文件（#392 roles、#429 downgrade impl、F11 U2 register）一起删掉；保留的测试都不调用 initdb。
 - **变异清单 25 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性）：删后对 `tests/safety` 跑，25/25 killed（含 PG 3 条），见 PR 正文。
   - M20–M24 在删前的两份报告测试文件上只能抓到 M20、M23，所以新加了报告校验表。
   - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
