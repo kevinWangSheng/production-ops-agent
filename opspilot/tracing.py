@@ -209,6 +209,10 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     elasticsearch_url = env.get("OPSPILOT_ES_URL") or ""
     if elasticsearch_url and not _is_lab_host(elasticsearch_url):
         failures.append("ELASTICSEARCH_NOT_LAB")
+    # C5-5: the Loki address, whenever it is set (the tool exists only then).
+    loki_url = env.get("OPSPILOT_LOKI_URL") or ""
+    if loki_url and not _is_lab_host(loki_url):
+        failures.append("LOKI_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
