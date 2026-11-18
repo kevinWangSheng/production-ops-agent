@@ -179,4 +179,13 @@ MUTATIONS: tuple[Mutation, ...] = (
         'return f"GRANT {kind} {on}ON {relation} TO {role}; GRANT DELETE ON {relation} TO {role};"',
         pg=True,
     ),
+    Mutation(
+        "M19",
+        "credentials: the gateway's configured token never reaches the model",
+        "opspilot/tools/otel_demo.py",
+        "                        body = error.read(ERROR_BODY_BYTES)\n",
+        "                        body = error.read(ERROR_BODY_BYTES).replace(\n"
+        '                            b"after 401", (token or "").encode()\n'
+        "                        )\n",
+    ),
 )

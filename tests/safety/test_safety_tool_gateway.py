@@ -28,7 +28,13 @@ from opspilot.tools import (
 )
 from opspilot.tools.otel_demo_ext import _registrations as ext_registrations
 from tests.m1_tool_support import build, registration
-from tests.safety.gateway_support import OUTSIDE, everything_seen, gateway
+from tests.safety.gateway_support import (
+    K8S_TOKEN,
+    OTEL_TOKEN,
+    OUTSIDE,
+    everything_seen,
+    gateway,
+)
 
 #: A valid call for every tool that reads an external source.
 SOURCE_CALLS: dict[str, dict[str, object]] = {
@@ -78,6 +84,10 @@ SECRET_VALUES = (
     "canary-quoted-33",
     "canary-bearer-34",
     "canary-scheme-36",
+    # The gateway's own configured credentials (PRODUCT-CONSTRAINTS data flow:
+    # credentials remain outside model inputs and traces).
+    K8S_TOKEN,
+    OTEL_TOKEN,
 )
 
 
@@ -255,10 +265,18 @@ def test_credentials_in_source_content_never_reach_the_model_or_evidence(
 @pytest.mark.parametrize("tool", sorted(SOURCE_CALLS))
 def test_a_source_error_echoing_credentials_is_redacted(monkeypatch, tmp_path, tool):
     """A failing source's error text is shown to the model (#311): redacted."""
-    gw = gateway(monkeypatch, tmp_path, body=lambda parsed: (400, _canary_body(parsed)))
+    text = "\n".join(CANARIES.values())
+    # Prometheus' error envelope, which the gateway echoes to the model (#311)
+    envelope = {"status": "error", "errorType": "bad_data", "error": text}
+    gw = gateway(
+        monkeypatch, tmp_path, body=lambda parsed: (400, json.dumps(envelope).encode())
+    )
     outcome = gw.call(tool, SOURCE_CALLS[tool])
     assert gw.source.requests
     assert outcome.status == "error"
     seen = everything_seen(outcome, gw.evidence)
     for value in SECRET_VALUES:
         assert value not in seen, (tool, value)
+    echoed = (outcome.model_view or {}).get("source_error") or {}
+    if tool in PROMQL_PARAMS:  # the echo exists, so the check is not vacuous
+        assert echoed.get("error"), outcome.model_view
