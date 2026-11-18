@@ -845,8 +845,11 @@ class WorkbenchDriver:
         # contract P5 interface: F3/F5/F7 POST /incidents/{id}/feedback through
         # ui_mutation (UI identity + Origin), form-encoded like every UI
         # mutation. Fields per F1/F5: verdict, actual_root_cause,
-        # steering_needed ("true"/"false"), next_steps_verdict,
-        # correct_next_steps, notes; omitted fields are not sent.
+        # steering_needed (a bool here; the form spells it yes/no),
+        # next_steps_verdict, correct_next_steps, notes; omitted fields are
+        # not sent.
+        if isinstance(fields.get("steering_needed"), bool):
+            fields["steering_needed"] = "yes" if fields["steering_needed"] else "no"
         headers = {
             "origin": ORIGIN,
             "content-type": "application/x-www-form-urlencoded",
