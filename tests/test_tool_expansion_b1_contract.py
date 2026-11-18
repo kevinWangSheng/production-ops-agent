@@ -941,8 +941,10 @@ def test_time_filter_is_always_added_and_source_time_comes_from_hidden_aggregati
     assert model_query in _clauses(body["query"])
     # No sort given: newest first on the time field, so truncation keeps the latest.
     sort = body["sort"]
-    first = sort[0] if isinstance(sort, list) else sort
-    assert set(first) == {"@timestamp"} and "desc" in json.dumps(first["@timestamp"])
+    first_sort = sort[0] if isinstance(sort, list) else sort
+    assert set(first_sort) == {"@timestamp"} and "desc" in json.dumps(
+        first_sort["@timestamp"]
+    )
     hidden = {name for name in _aggs(body) if name != "by_level"}
     assert hidden, "source time must be read from aggregations on the time field"
     view = _view(outcome)
