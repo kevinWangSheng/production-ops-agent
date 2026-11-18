@@ -48,6 +48,7 @@ PR-R（#686）用户裁决：U1=a（#456 七项断言由独立测试作者改写
   - 集成批 [lite-batch-r3](../evidence/itbench-lite-sre-lite-batch-r3/run.md)：首答被拒 3/16 = 18.8%（1117 同 8 题 8/24 = 33.3%）；S22 2/2、S34 1/2；REPORT_INVALID 1/16（S105 t2）、S105 1/2 两门不过。重放：首答截断 id，重试暴露多余 target_refs，引用检查每条 claim 只报第一个失败（早于 r3）。lead 裁决按偶发失败接受，#701 跟踪。
   - 全量 [lite-full-r3](../evidence/itbench-lite-sre-lite-full-r3/run.md)：root_cause_entity_pass 82/105（1117 54/105）；REPORT_INVALID 1/105（S12 t2，同一机制）；首答被拒 29/105（1117 39）；1117 的 16 道 3/3 题 15 道保持，S33 3→2；升 12 题。supported 51→22、根因 null 12→17。
   - F3：第 3 步 D9 重跑通过（[README](../evidence/f3-step3-coverage/README.md)「r3」）；第 5 步三次真实 Run（[运行](../evidence/f3-acceptance-live/run.md)、[判定](../evidence/f3-step5-competing-cause/run.md)「r3」）：Run 1 两名审查者 FAIL（第 5 项：只否定了「换镜像」），Run 2、Run 3 均 PASS 8/8，第 2 步全部一致。审查者都是 Claude Opus 子 Agent（用户 2026-11-17 起不用 Codex，偏离「审查者 B 用另一模型」）。`test_f3_step5_real_runs` 15 条全过。
+  - 评测后 main 合入 #702（工作台 P2，改 loop/context 的消息接力）；r3 证据对应 b0652dbd ≡ d065c41e 的代码，revision 未变。
   - 原始包（ledger、重放、主机脚本、日志）在仓库外 `~/rental-evidence/r3/r3-raw.tgz`（sha256 `d78e6b74…fce5`）；入库前秘密值原文搜索 0 命中、正对照 1。
 
 ## 待决
