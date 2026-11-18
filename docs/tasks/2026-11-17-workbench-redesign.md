@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r12 已定，P1–P4、P6、P7 已合并，P5 实施中
+- 状态：已完成（2026-11-18）。合同 r12；P1–P7 全部合并（P5 #716）
 - 更新日期：2026-11-18
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
