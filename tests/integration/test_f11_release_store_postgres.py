@@ -1479,6 +1479,15 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                         else privilege
                         for privilege in expected["opspilot_incidents"]
                     )
+                    # 0025 (workbench P2, A11 r4) grants UPDATE on the
+                    # session's subject_control_generation; INSERT on it
+                    # predates 0014 and stays.
+                    expected["opspilot_observation_sessions"] = frozenset(
+                        privilege.replace("subject_control_generation,", "")
+                        if privilege.startswith("UPDATE(")
+                        else privilege
+                        for privilege in expected["opspilot_observation_sessions"]
+                    )
                     # 0017 grants the operator suspension writes; below it
                     # the web role holds the lock-only privileges again.
                     expected.update(

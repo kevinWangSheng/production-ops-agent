@@ -60,10 +60,12 @@ from opspilot.investigation.context import (
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     KNOWLEDGE,
+    PRIOR_REPLIES,
     RELEASE_OBSERVATION,
     ContextError,
     conclusion_answered,
     conclusion_publishable,
+    prior_replies_fact,
 )
 from opspilot.investigation.coverage import (
     RunCoverage,
@@ -92,7 +94,12 @@ from opspilot.investigation.progress import (
     announce_handoff,
     sweep_expired,
 )
-from opspilot.investigation.reports import ReportV2, parse_report
+from opspilot.investigation.reports import (
+    CONVERSATION,
+    DEFAULT_CONVERSATION_MODE,
+    ReportV2,
+    parse_report,
+)
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.release_commands import (
@@ -181,8 +188,10 @@ _MAX_TEXT = INPUT_CONTENT_FIELD_MAX_CHARS
 _EVENT_PAGE = 1000
 
 ControlAction = Literal[
+    "message",
     "follow_up",
     "correct",
+    "reinvestigate",
     "cancel",
     "pause",
     "resume",
@@ -212,10 +221,23 @@ REBIND_TARGET = "rebind_target"
 #: U3/U4): this one is closed with a pointer (generation steps, observation
 #: revoked, unfinished Runs cancelled); the survivor only takes one event.
 MERGE_INTO = "merge_into"
+#: A human message to the investigation (workbench contract B1): an input,
+#: not a decision -- no generation step, no fence, no control audit row.
+MESSAGE = "message"
+#: Contract O2: the old note actions are aliases of ``message`` for one
+#: version (same refusals); the store no longer knows them.
+MESSAGE_ALIASES = frozenset({"follow_up", "correct"})
+MESSAGE_ACTIONS = frozenset({MESSAGE, *MESSAGE_ALIASES})
+#: Contract D11: cancel, then a new Run, in one request (two store calls).
+REINVESTIGATE = "reinvestigate"
+#: The channel a message came in on (contract B1).
+MESSAGE_CHANNELS = frozenset({"investigation", "chat_forward"})
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
+        MESSAGE,
         "follow_up",
         "correct",
+        REINVESTIGATE,
         "cancel",
         "pause",
         "resume",
@@ -236,10 +258,19 @@ CHART_CATEGORIES = (
     "rejected_hypotheses",
     "recommendations",
 )
-_TEXT_ACTIONS = frozenset({"follow_up", "correct"})
 
 
 _LOC_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+#: Candidates the relay pass reads before dropping no-op rows (R2); the
+#: pass then relays at most its ``limit`` of the rest.
+RELAY_SCAN = 1000
+
+
+def _relay_run_id(intake_key: str, max_unread: int) -> UUID:
+    """Contract R3: the continuation Run a message relays to."""
+    return uuid5(_INTAKE_NAMESPACE, f"{intake_key}:relay:{max_unread}")
 
 
 def _failure_code(exc: Exception) -> str:
@@ -282,10 +313,15 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     lifecycle = incident.lifecycle
     human_owned = incident.mode == "human_owned"
     control = incident.control
-    concluded = incident.concluded or incident.state in {"completed", "cancelled"}
     run_state = snapshot["run"]["state"]
     actions = {TAKEOVER}
     merged = getattr(incident, "merged_into_incident_id", None) is not None
+    # Contract A11: a published conclusion freezes pause/resume/cancel only
+    # while no continuation Run is active.
+    active = run_state in {"queued", "running", "paused"}
+    frozen = incident.state in {"completed", "cancelled"} or (
+        incident.concluded and not active
+    )
     if lifecycle in {"open", "observing_recovery", "resolved"}:
         actions.add("close")
     if lifecycle in {"resolved", "closed"} and not merged:
@@ -308,18 +344,34 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     if lifecycle != "closed":
         if control == "cancelled" and not human_owned:
             actions.add("new_run")
-        if not concluded:
+        if not frozen:
             actions.add("cancel")
             if run_state in {"queued", "running", "paused", "waiting_human"}:
                 actions.add("resume")
                 if control != "paused":
                     actions.add("pause")
-    if human_owned or (
-        lifecycle != "closed"
-        and not (lifecycle == "resolved" and concluded)
-        and (concluded or run_state in {"queued", "running", "paused", "waiting_human"})
+        if (
+            not human_owned
+            and not incident.concluded
+            and control not in {"cancelled", "paused"}
+            and not active
+        ):
+            # D11: the way out of an investigation that ended without a
+            # result (failed, timed out, handed off).
+            actions.add(REINVESTIGATE)
+    ended_without_result = (
+        not incident.concluded
+        and not active
+        and control != "paused"
+        and not snapshot.get("validated_report", True)
+    )
+    if not merged and (
+        human_owned or (control != "cancelled" and not ended_without_result)
     ):
-        actions.update(_TEXT_ACTIONS)
+        # Contract D1-D8: a message is taken in every other state; a failed or
+        # timed-out investigation without any validated report (D7b) is not.
+        # Scope suspension is the server's to decide (it admits the message).
+        actions.add(MESSAGE)
     return sorted(actions)
 
 
@@ -365,6 +417,22 @@ class ControlResult:
     replayed: bool
     sequence: int
     run_id: str | None = None
+    #: A ``message`` (contract B1): the input's sequence; ``sequence`` then
+    #: carries the same number, since a message announces no control event.
+    input_sequence: int | None = None
+
+
+@dataclass(frozen=True)
+class MessageResult:
+    """One human message taken in (contract B1, D1-D10)."""
+
+    incident_id: UUID
+    input_sequence: int
+    replayed: bool
+    #: The incident's generation, unchanged by the message.
+    generation: int
+    #: The continuation Run the relay opened in this request (R2), if any.
+    run_id: UUID | None
 
 
 @dataclass(frozen=True)
@@ -829,8 +897,9 @@ class Workbench:
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
-        ``text`` belongs to ``follow_up``/``correct`` and may annotate a
-        ``rebind_target``; ``revision`` belongs to ``register_remediation``
+        ``message`` (and its aliases ``follow_up``/``correct``, contract O2)
+        is not a decision: it goes to :meth:`message`. ``text`` may annotate
+        a ``rebind_target``; ``revision`` belongs to ``register_remediation``
         (M1-02 step 3): the target revision after the handling, recorded on
         the audit row and the observation session (not identity, user
         decision 2026-10-07). ``to_target`` belongs to ``rebind_target``
@@ -843,6 +912,32 @@ class Workbench:
         """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
+        if action in MESSAGE_ACTIONS:
+            # Contract B1/O2: a message (or its old alias) is an input; the
+            # expected generation is not a fence for it and is ignored.
+            if revision is not None:
+                raise WorkbenchError("REVISION_NOT_ALLOWED")
+            if to_target is not None:
+                raise WorkbenchError("TARGET_NOT_ALLOWED")
+            if into_incident_id is not None:
+                raise WorkbenchError("INTO_INCIDENT_NOT_ALLOWED")
+            if text is None:
+                raise WorkbenchError("TEXT_REQUIRED")
+            taken = self.message(
+                incident_id,
+                actor_id=actor_id,
+                text=text,
+                idempotency_key=idempotency_key,
+            )
+            return ControlResult(
+                incident_id,
+                MESSAGE,
+                taken.generation,
+                taken.replayed,
+                taken.input_sequence,
+                None if taken.run_id is None else str(taken.run_id),
+                input_sequence=taken.input_sequence,
+            )
         if type(expected_generation) is not int or expected_generation < 0:
             raise WorkbenchError("INVALID_INPUT")
         try:
@@ -859,12 +954,7 @@ class Workbench:
                     raise ValueError
         except ValueError:
             raise WorkbenchError("INVALID_INPUT") from None
-        if action in _TEXT_ACTIONS and text is None:
-            raise WorkbenchError("TEXT_REQUIRED")
-        if (
-            action not in {*_TEXT_ACTIONS, REBIND_TARGET, MERGE_INTO}
-            and text is not None
-        ):
+        if action not in {REBIND_TARGET, MERGE_INTO} and text is not None:
             raise WorkbenchError("TEXT_NOT_ALLOWED")
         if action == REBIND_TARGET and to_target is None:
             raise WorkbenchError("TARGET_REQUIRED")
@@ -1046,20 +1136,14 @@ class Workbench:
                 payload={"channel": "web", "idempotency_key": key},
             )
             return generation, None
+        if action == REINVESTIGATE:
+            assert key is not None
+            return self._reinvestigate(summary, expected, actor_id, key)
         if action != "new_run":
-            # The note travels with the decision: DurableStore.control (PR #31)
-            # writes it to opspilot_controls.payload and opspilot_inputs, from
-            # where begin_round() hands it to the next model round. The web
-            # ledger keeps a copy for idempotency and display only. A note on
-            # a timed-out Run starts a fresh Run with the same id derivation
-            # and wall as new_run (user decision 2026-09-25); the store
-            # decides that from the row, and the changed pointer says so.
             # Every decision writes its ledger key into the audit row in the
             # store's transaction (#128, as register_remediation does), so a
             # crash before the confirm row can be reconciled only by the
-            # request that made it; an action without text used to leave the
-            # row anonymous. Inputs copy the payload, where the model-facing
-            # projection drops the key (INPUT_CONTENT_FIELDS).
+            # request that made it.
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
@@ -1076,37 +1160,10 @@ class Workbench:
                 # The store checks the survivor under both row locks.
                 assert into_incident_id is not None
                 payload["into_incident_id"] = into_incident_id
-            for attempt in range(3):
-                renewal: dict[str, Any] = {}
-                if action in _TEXT_ACTIONS:
-                    snapshot = self.incidents.rebuild(summary.incident_id)
-                    renewal = {
-                        "renew_run_id": run_id,
-                        "renew_deadline": deadline,
-                        "renew_input": self._successor_input(
-                            summary, run_id, deadline, snapshot=snapshot
-                        ),
-                        "renew_basis": {
-                            "run_id": str(snapshot["run"]["run_id"]),
-                            "concluded": snapshot.get("conclusion") is not None,
-                        },
-                    }
-                try:
-                    generation = self.incidents.control(
-                        summary.incident_id,
-                        expected,
-                        action,
-                        actor_id,
-                        payload,
-                        **renewal,
-                    )
-                    break
-                except PersistenceError as exc:
-                    if str(exc) != "RENEW_INPUT_STALE":
-                        raise
-                    if attempt == 2:
-                        raise PersistenceError("CONTROL_CONFLICT") from None
-            return generation, self._decision_run(summary, generation)
+            generation = self.incidents.control(
+                summary.incident_id, expected, action, actor_id, payload
+            )
+            return generation, None
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
         generation = self.incidents.new_run(
@@ -1121,6 +1178,196 @@ class Workbench:
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
+
+    def _reinvestigate(
+        self, summary: IncidentSummary, expected: int, actor_id: str, key: str
+    ) -> tuple[int, UUID | None]:
+        """Contract D11: Re-investigate is cancel then ``new_run``, two
+        existing store calls (the generation steps twice). An incident
+        already cancelled skips the first; when the second fails the
+        incident stays cancelled and the action can be taken again."""
+        payload = {"channel": "web", "idempotency_key": key}
+        generation = expected
+        current = self.incidents.find_incident(summary.incident_id)
+        if current is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        if current.state != "cancelled":
+            generation = self.incidents.control(
+                summary.incident_id, expected, "cancel", actor_id, payload
+            )
+        elif current.control_generation != expected:
+            raise PersistenceError("CONTROL_CONFLICT")
+        run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{generation + 1}")
+        deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        generation = self.incidents.new_run(
+            summary.incident_id,
+            run_id,
+            expected_generation=generation,
+            deadline=deadline,
+            budget_limit=self.budget_limit,
+            versions=dict(self.run_versions),
+            actor=actor_id,
+            input=self._successor_input(summary, run_id, deadline),
+            payload=payload,
+        )
+        return generation, run_id
+
+    # -- messages and the relay (workbench contract B1, D, R) ------------
+
+    def message(
+        self,
+        incident_id: UUID,
+        *,
+        actor_id: str,
+        text: str,
+        idempotency_key: str,
+        channel: str = "investigation",
+    ) -> MessageResult:
+        """Take one human message for the investigation (contract B1).
+
+        The message is an input row of kind ``message`` (content ``text``,
+        ``channel``, ``idempotency_key``; the actor column names the
+        signed-in user), keyed by the request key so a retry returns the same
+        row. It is not a control decision: the generation, the lease, the
+        lifecycle, the conclusion and the observation stay as they are, and
+        no control audit row is written (D20: not human handling for the
+        automatic recovery observation). The store admits it by the state
+        table (D1-D10); then the relay runs once (R2) and opens a
+        continuation Run when the incident is idle.
+        """
+        if channel not in MESSAGE_CHANNELS:
+            raise WorkbenchError("INVALID_INPUT")
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not (1 <= len(idempotency_key) <= 256):
+                raise ValueError
+            if not isinstance(text, str) or not text.strip() or len(text) > _MAX_TEXT:
+                raise ValueError
+            _reject_ambiguous_text(text)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            raise WorkbenchError("HANDOFF_ONLY")
+        key = f"{incident_id}:{idempotency_key}"
+        try:
+            sequence, replayed = self.incidents.append_message(
+                incident_id,
+                uuid5(_INTAKE_NAMESPACE, f"message:{key}"),
+                {"text": text, "channel": channel, "idempotency_key": key},
+                actor=actor_id,
+            )
+        except PersistenceError as exc:
+            code = str(exc)
+            raise WorkbenchError(
+                "CONTROL_KEY_CONFLICT" if code == "IDENTITY_CONFLICT" else code
+            ) from None
+        try:
+            run_id = self.relay(incident_id)
+        except (PersistenceError, ContextError, DatabaseError, OSError) as exc:
+            # The message is committed; the background pass relays it later
+            # (R2). The request reports what was admitted.
+            _log.warning(
+                "relay after message failed incident=%s code=%s",
+                incident_id,
+                _failure_code(exc),
+            )
+            run_id = None
+        current = self.incidents.find_incident(incident_id)
+        return MessageResult(
+            incident_id,
+            sequence,
+            replayed,
+            (current or summary).control_generation,
+            run_id,
+        )
+
+    def relay(self, incident_id: UUID) -> UUID | None:
+        """Open the continuation Run for an idle incident's unread messages
+        (contract R1-R5), or do nothing. Shared by the message request and
+        the background pass. The Run id is ``uuid5("{intake_key}:relay:
+        {highest unread sequence}")``, so a repeat opens nothing; its input
+        is the successor input with the conversation fact (floor, mode) and
+        the earlier replies (B4, B8). No control audit, observation revoke,
+        lifecycle change or conclusion change (R4)."""
+        for _attempt in range(3):
+            basis = self.incidents.relay_basis(incident_id)
+            if basis is None:
+                return None
+            summary = self.incidents.find_incident(incident_id)
+            if summary is None:
+                return None
+            run_id = _relay_run_id(summary.intake_key, basis["max_unread"])
+            if str(run_id) == basis["current_run_id"]:
+                # This very message already opened the current Run (R3): a
+                # repeat opens nothing, even when that Run was left paused.
+                return None
+            deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+            run_input = self._successor_input(
+                summary,
+                run_id,
+                deadline,
+                conversation={"floor": basis["floor"], "mode": basis["mode"]},
+            )
+            try:
+                opened = self.incidents.relay_continuation(
+                    incident_id,
+                    run_id,
+                    basis=basis,
+                    deadline=deadline,
+                    budget_limit=self.budget_limit,
+                    versions=dict(self.run_versions),
+                    input=run_input,
+                )
+            except PersistenceError as exc:
+                if str(exc) == "RENEW_INPUT_STALE":
+                    continue
+                raise
+            if not opened:
+                return None
+            self.events.append_once(
+                incident_id,
+                "run_resumed",
+                {
+                    "run_id": str(run_id),
+                    "mode": basis["mode"],
+                    "input_sequence": basis["max_unread"],
+                },
+                key={"run_id": str(run_id)},
+            )
+            return run_id
+        return None
+
+    def relay_pass(self, *, limit: int = 20) -> list[UUID]:
+        """The background relay step (R2): one :meth:`relay` per candidate;
+        a failure on one incident is logged and the others still run."""
+        opened: list[UUID] = []
+        candidates = [
+            row
+            for row in self.incidents.relay_candidates(limit=RELAY_SCAN)
+            # The current Run is already the relay Run of this very message
+            # (it ended before reading it, D12): relay() would open nothing,
+            # and such rows must not crowd out relayable incidents.
+            if row["max_unread"] is None
+            or _relay_run_id(str(row["intake_key"]), int(row["max_unread"]))
+            != row["current_run_id"]
+        ][:limit]
+        for row in candidates:
+            incident_id = row["incident_id"]
+            try:
+                run_id = self.relay(incident_id)
+            except (PersistenceError, ContextError) as exc:
+                _log.warning(
+                    "relay failed incident=%s code=%s",
+                    incident_id,
+                    _failure_code(exc),
+                )
+                continue
+            if run_id is not None:
+                opened.append(run_id)
+        return opened
 
     def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
         """Prove this decision's deterministic Run exists, even after another renewal."""
@@ -1337,6 +1584,47 @@ class Workbench:
             return unavailable_fact(self.knowledge_max_age_seconds)
 
     def _successor_input(
+        self,
+        summary: IncidentSummary,
+        run_id: UUID,
+        deadline: datetime,
+        *,
+        snapshot: Mapping[str, Any] | None = None,
+        conversation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """:meth:`_successor_body` with the conversation facts every
+        successor carries (workbench contract B4, B8): ``conversation``
+        (``{floor, mode}``; a new Run that must report -- ``new_run``,
+        Re-investigate -- gets ``report_required`` over the incident's read
+        floor) and ``prior_replies``, both rewritten here because a
+        continuation copies the previous Run's scope facts whole and would
+        otherwise inherit its floor and answer old messages again."""
+        body = self._successor_body(summary, run_id, deadline, snapshot=snapshot)
+        if body is None:
+            return None
+        facts = dict(body.get("scope_facts") or {})
+        facts.pop(CONVERSATION, None)
+        if conversation is not None:
+            facts[CONVERSATION] = dict(conversation)
+        elif any(
+            row.get("kind") == MESSAGE
+            for row in self.incidents.rebuild(summary.incident_id).get("inputs") or ()
+        ):
+            # Only ``message`` rows read the floor: an incident without one
+            # keeps the successor's bytes as they were (the missing fact is
+            # floor 0, report_required).
+            facts[CONVERSATION] = {
+                "floor": self.incidents.conversation_floor(summary.incident_id),
+                "mode": DEFAULT_CONVERSATION_MODE,
+            }
+        prior = prior_replies_fact(self.incidents.prior_replies(summary.incident_id))
+        if prior is None:
+            facts.pop(PRIOR_REPLIES, None)
+        else:
+            facts[PRIOR_REPLIES] = prior
+        return {**body, "scope_facts": facts}
+
+    def _successor_body(
         self,
         summary: IncidentSummary,
         run_id: UUID,
@@ -2016,7 +2304,7 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         run_id = (
             self._decision_run(summary, audit.resulting_generation)
-            if summary is not None and audit.action in {*_TEXT_ACTIONS, "new_run"}
+            if summary is not None and audit.action == "new_run"
             else None
         )
         run_fields = {} if run_id is None else {"run_id": str(run_id)}
@@ -2579,6 +2867,14 @@ class Workbench:
             if events
             else self.events.latest(incident_id),
             "handoff_only": False,
+            # Contract D7a/D7b: whether any Run ended on a validated report.
+            # A store without the query (the in-memory test double) keeps
+            # the composer offered; the server's admission decides.
+            "validated_report": (
+                getattr(self.incidents, "has_validated_report", lambda _: True)(
+                    incident_id
+                )
+            ),
             "alert": self._alert_view(incident_id),
             # #245 G8: the bound target now, every rebind with its database
             # time, and the registry keys a rebind may name.

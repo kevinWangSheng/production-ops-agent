@@ -135,32 +135,6 @@ def test_new_run_successor_records_exactly_the_frozen_limits():
     _recorded_limits(workbench, fresh)
 
 
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_renewed_successor_after_a_note_records_exactly_the_frozen_limits(action):
-    app, workbench, clock = _workbench()
-    incident, old = _submit(app, key=f"242-renew-{action}")
-    _recorded_limits(workbench, old)
-    # A Run claimed by a worker that never finished, swept past its deadline.
-    versions = workbench.incidents.runs[old]["versions"]
-    workbench.incidents.claim(incident, old, uuid4(), versions, 600)
-    clock.advance(601)
-    assert workbench.snapshot(incident)["run"]["state"] == "waiting_human"
-    _control(
-        app,
-        incident,
-        {
-            "action": action,
-            "expected_generation": "0",
-            "idempotency_key": f"note-{action}",
-            "text": "Also compare against the previous hour.",
-        },
-    )
-    fresh = _current_run(workbench, incident)
-    assert fresh != old
-    assert workbench.incidents.runs[fresh]["state"] == "queued"
-    _recorded_limits(workbench, fresh)
-
-
 _LIMIT_ENV = re.compile(
     # Product configuration is the ``OPSPILOT_*`` environment namespace.
     r"""["']OPSPILOT_[A-Z0-9_]*"""

@@ -19,7 +19,7 @@ Queries written by the model (PromQL, SQL, jq-style data transformations) are no
 
 ## Product workflow
 
-Alert -> incident and target resolution -> investigation and human handling (or, for a target with an active HealthProfile, a qualified conclusion published by the current Run at the incident's current control generation with no human handling recorded; user decision 2026-10-12, #184) -> independent recovery observation -> archive and reviewed postmortem.
+Alert -> incident and target resolution -> investigation and human handling (or, for a target with an active HealthProfile, a qualified conclusion published by the current Run at the incident's current control generation with no human handling recorded; user decision 2026-10-12, #184. A message to the investigation or the Chat panel is not human handling, only control actions are; user decision 2026-11-17, D20) -> independent recovery observation -> archive and reviewed postmortem.
 
 Observed rollout -> independent ReleaseObservation and target resolution -> bounded observation/investigation -> healthy completion, unknown handoff, or abnormality linked to a new/existing Incident. Normal releases do not require an Incident. Each subject has its own control version and result ownership; release observation cannot transfer recovery authority to an Incident.
 

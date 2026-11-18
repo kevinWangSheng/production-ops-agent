@@ -451,7 +451,8 @@ def test_draft_contains_stimulus_and_bound_evidence(h, monkeypatch):
     assert HUMAN_NOTE in json.dumps(
         version.sections["human_actions"], ensure_ascii=False
     )
-    assert "follow_up" in json.dumps(version.sections["human_actions"])
+    # Workbench contract B1/O2: the follow_up alias is recorded as a message.
+    assert "message" in json.dumps(version.sections["human_actions"])
     recovery = json.dumps(version.sections["recovery"], ensure_ascii=False)
     assert "recovery_confirmed" in recovery
     assert "transition" in recovery
@@ -547,7 +548,7 @@ def test_untrusted_versions_refuse_approval_without_mutation(h, monkeypatch, sta
         )
         assert response.status == 200, response.text
     elif state == "stale":
-        response = h.reopen_follow_up(incident, "新增人工线索改变水位")
+        response = h.reopen_and_reinvestigate(incident)
         assert response.status == 200, response.text
     before = raw_records(h, incident)
     refusal = h.review(incident)
@@ -777,7 +778,7 @@ def test_http_supersede_and_revoke_preserve_immutable_history(h, monkeypatch):
     before = raw_records(h, incident)
     [entry] = before.published
     entry_id = entry["entry_id"]
-    response = h.reopen_follow_up(incident, "补充人工确认：请复核 checkout 错误窗口")
+    response = h.reopen_and_reinvestigate(incident)
     assert response.status == 200, response.text
     h.finish_run(incident)
     active_revision = before.active[entry_id]["revision"]

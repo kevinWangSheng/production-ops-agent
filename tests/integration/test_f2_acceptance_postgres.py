@@ -689,45 +689,6 @@ def test_step1_follow_up_after_an_attachment_to_a_concluded_incident_sees_the_ev
     assert_read_only(outcome)
 
 
-def test_step1_follow_up_after_an_attachment_to_a_handed_off_run_requeues_it():
-    """C4-A assertion 2 / #304: the forced-final REPORT_INVALID handoff."""
-    env = lab()
-    fingerprint = uuid4().hex[:16]
-    t0 = db_now()
-    first = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=10)))
-    subject, run_id = UUID(first["incident_id"]), UUID(first["run_id"])
-    handed, _ = poll(env, subject, [_tool_round(), bad_report, bad_report])
-    ((_, handoff),) = handed
-    assert handoff.status == "handed_off" and handoff.reason == "REPORT_INVALID", (
-        handoff
-    )
-    joined = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=2)))
-    assert joined["outcome"] == "attached"
-    (event,) = alert_events(env.store, subject)
-    input_before = env.store.rebuild(subject)["run"]["input"]
-
-    response = act(env, subject, "follow_up", FOLLOW_UP)
-    assert response.status == 200, response.text
-    requeued = env.store.rebuild(subject)
-    assert requeued["run"]["run_id"] == run_id  # same Run (W2-A)
-    assert requeued["run"]["state"] == "queued"
-    assert requeued["run"]["input"] == input_before  # window unchanged
-
-    second, model = poll(env, subject, [report_from_transcript])
-
-    ((_, resumed),) = second
-    assert resumed.status == "published", resumed  # not blocked(INCOMPATIBLE_STATE)
-    assert resumed.reason != "INCOMPATIBLE_STATE"
-    assert len(model.calls) >= 1
-    assert event["content"]["text"] in json.dumps(model.calls[0].messages)
-    outcome, snapshot = durable_outcome(
-        env.store, env.events, "1", "attach-handoff-follow-up", subject
-    )
-    assert snapshot["run"]["run_id"] == run_id
-    assert outcome.final_state == "completed" and outcome.report_available
-    assert "worker_resumed" in outcome.actions
-
-
 def test_step1_successor_run_after_attached_episode_reframes_on_new_episode():
     """#305 W1-B (optional, not an F2 gate; needs PR #346)."""
     env = lab()
@@ -1412,7 +1373,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
         assert outcome.human_interaction == "handoff"
         assert outcome.report_available is False and outcome.evidence_ids == ()
 
-        # A human follow_up re-queues a parked Run; it is never parked again.
+        # A human resume re-queues a parked Run; it is never parked again
+        # (workbench contract D7b: a parked Run without a validated report
+        # takes no message).
         revived = parked[0]
         generation = storm_conn.execute(
             "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s",
@@ -1423,10 +1386,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
             app,
             f"/incidents/{revived}/control",
             {
-                "action": "follow_up",
+                "action": "resume",
                 "expected_generation": str(generation),
                 "idempotency_key": uuid4().hex,
-                "text": "Please look at this one now.",
             },
             headers={**basic(), **same_origin(), "accept": "application/json"},
         )

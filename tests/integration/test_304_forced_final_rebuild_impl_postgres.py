@@ -29,34 +29,6 @@ def _bad(call):
     return reply(content="not a report")
 
 
-def test_a_follow_up_after_a_forced_final_handoff_resumes_the_same_run():
-    h = Harness(budget_limit=8, model_requests=8)
-    first = h.runner([*_tool_rounds(1), _bad, _bad]).resume(h.incident)
-    assert first.status == "handed_off", first
-    assert first.reason == "REPORT_INVALID"
-    final_row = next(s for s in h.rows()["steps"] if s["logical_key"] == "ctx0:round-3")
-    assert final_row["response"]["context"]["final"] is True
-    assert h.rows()["run"]["state"] == "waiting_human"
-
-    generation = h.store.control(
-        h.incident, 0, "follow_up", "operator", {"question": "check payments too"}
-    )
-    assert generation == 1
-    sent: list = []
-
-    def record_then_report(call):
-        sent.append(list(call.messages))
-        return report_from_transcript(call)
-
-    outcome = h.runner([record_then_report]).resume(h.incident)
-
-    assert outcome.status == "published", outcome
-    assert len(sent) == 1
-    assert '"question":"check payments too"' in sent[0][-1]["content"]
-    assert h.store.run_usage(h.run)["model_requests_used"] == 4
-    assert h.rows()["run"]["state"] == "completed"
-
-
 def test_a_valid_forced_final_report_is_published_after_a_crash_before_its_conclusion(
     monkeypatch,
 ):

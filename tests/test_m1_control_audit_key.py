@@ -32,8 +32,8 @@ CASES = {
     "cancel": ({}, ()),
     "resume": ({}, ()),
     "new_run": ({}, ("cancel",)),
-    "follow_up": ({"text": "Same note twice."}, ()),
-    "correct": ({"text": "Same note twice."}, ()),
+    # follow_up/correct are message aliases since workbench P2 (contract
+    # O2): an input, never a control decision with an audit row.
 }
 
 
@@ -148,88 +148,6 @@ def test_an_audit_row_without_a_key_never_confirms_a_textless_intent(action):
     assert retry.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
     assert workbench.ledger.get("control", f"{subject}:A") is None
     assert workbench.ledger.get("control_intent", f"{subject}:A") is not None
-    assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
-        "control_applied"
-    ) == 0
-
-
-def test_a_text_audit_row_without_a_key_is_still_matched_by_its_text():
-    """A follow_up/correct row written before #128 has its text as the proof;
-    that recovery keeps working across the upgrade."""
-    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    text = "Restarted at 09:00."
-    workbench.ledger.put(
-        "control_intent", f"{subject}:A", _intent("follow_up", 0, {"text": text})
-    )
-    workbench.ledger.put(
-        "control_intent", f"{subject}:B", _intent("follow_up", 0, {"text": "Other."})
-    )
-    assert (
-        workbench.incidents.control(
-            subject, 0, "follow_up", ACTOR, {"text": text, "channel": "web"}
-        )
-        == 1
-    )
-    retry_b = _control(app, incident, _form("follow_up", 0, "B", {"text": "Other."}))
-    assert retry_b.status == 409 and retry_b.json()["code"] == "CONTROL_CONFLICT"
-    retry_a = _control(app, incident, _form("follow_up", 0, "A", {"text": text}))
-    assert retry_a.status == 200 and retry_a.json()["replayed"] is True
-
-
-def test_a_keyed_text_row_is_not_confirmed_for_a_different_key_with_the_same_text():
-    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    text = "Same note twice."
-    for key in ("A", "B"):
-        workbench.ledger.put(
-            "control_intent", f"{subject}:{key}", _intent("correct", 0, {"text": text})
-        )
-    assert (
-        workbench.incidents.control(
-            subject,
-            0,
-            "correct",
-            ACTOR,
-            {"text": text, "channel": "web", "idempotency_key": f"{subject}:A"},
-        )
-        == 1
-    )
-    retry_b = _control(app, incident, _form("correct", 0, "B", {"text": text}))
-    assert retry_b.status == 409 and retry_b.json()["code"] == "CONTROL_CONFLICT"
-    retry_a = _control(app, incident, _form("correct", 0, "A", {"text": text}))
-    assert retry_a.status == 200 and retry_a.json()["replayed"] is True
-
-
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_a_text_audit_row_without_a_key_is_ambiguous_between_same_text_intents(
-    action,
-):
-    """Independent review of PR #152, P2: two pending intents with the same
-    text and a pre-#128 row (text, no key). Neither the page reconcile nor
-    either retry may claim the row: refused with the current generation."""
-    app, workbench, _ = build_workbench(targets=ANY_TARGETS)
-    incident = submit_incident(app).json()["incident_id"]
-    subject = workbench.list_incidents()[0].incident_id
-    text = "Same note twice."
-    for key in ("A", "B"):
-        workbench.ledger.put(
-            "control_intent", f"{subject}:{key}", _intent(action, 0, {"text": text})
-        )
-    assert (
-        workbench.incidents.control(
-            subject, 0, action, ACTOR, {"text": text, "channel": "web"}
-        )
-        == 1
-    )
-    workbench.reconcile(subject)
-    for key in ("B", "A"):
-        retry = _control(app, incident, _form(action, 0, key, {"text": text}))
-        assert retry.status == 409, retry.text
-        assert retry.json() == {"code": "CONTROL_CONFLICT", "current_generation": 1}
-        assert workbench.ledger.get("control", f"{subject}:{key}") is None
     assert [e.kind for e in workbench.events.read_after(subject, 0)].count(
         "control_applied"
     ) == 0

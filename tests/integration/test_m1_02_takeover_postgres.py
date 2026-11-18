@@ -291,65 +291,6 @@ def test_takeover_steps_the_generation_revokes_observation_and_parks_the_run(
         owner.claim(incident, run, uuid4(), VERSIONS)
 
 
-def test_a_remediation_under_human_ownership_observes_without_a_new_run(
-    owner: DurableStore, controller: ObservationStore, observer: ObservationStore
-) -> None:
-    incident, run, uid = _incident(owner)
-    assert owner.control(incident, 0, "takeover", "operator") == 1
-    runs_before = _runs(owner, incident)
-
-    assert _register(controller, incident, uid, expected=1) == 2
-
-    row = _incident_row(owner, incident)
-    assert (row["mode"], row["lifecycle"], row["control_generation"]) == (
-        "human_owned",
-        "observing_recovery",
-        2,
-    )
-    (session,) = _sessions(owner, incident)
-    assert (
-        session["state"] == "authorized" and session["subject_control_generation"] == 2
-    )
-    assert _runs(owner, incident) == runs_before
-    assert _run_row(owner, run)["state"] == "waiting_human"
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        owner.claim(incident, run, uuid4(), VERSIONS)
-    assert owner.claimable_incidents(limit=100).count(incident) == 0
-    # The Observer may sample the human-authorized session.
-    _due_now(owner, session["session_id"])
-    assert any(
-        item.session_id == session["session_id"]
-        for item in observer.claim_due_samples(uuid4())
-    )
-    # A note is recorded for the human; the Run stays parked, no renewal.
-    assert (
-        owner.control(
-            incident,
-            2,
-            "follow_up",
-            "operator",
-            {"text": "handled", "channel": "web"},
-            renew_run_id=uuid4(),
-            renew_deadline=_now() + timedelta(minutes=5),
-        )
-        == 3
-    )
-    assert _runs(owner, incident) == runs_before
-    assert _run_row(owner, run)["state"] == "waiting_human"
-    # A new Run after cancel is still refused under human ownership.
-    assert owner.control(incident, 3, "cancel", "operator") == 4
-    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
-        owner.new_run(
-            incident,
-            uuid4(),
-            expected_generation=4,
-            deadline=_now() + timedelta(minutes=5),
-            budget_limit=10,
-            versions=VERSIONS,
-            actor="operator",
-        )
-
-
 def test_a_takeover_racing_a_registration_is_serialized(
     owner: DurableStore, controller: ObservationStore
 ) -> None:
@@ -434,48 +375,6 @@ def test_resume_under_human_ownership_lifts_the_pause_only(
     assert owner.control(incident, 4, "pause", "operator") == 5
     assert _incident_row(owner, incident)["state"] == "paused"
     assert _run_row(owner, run)["state"] == "waiting_human"
-
-
-def test_notes_under_human_ownership_are_recorded_after_the_run_deadline(
-    owner: DurableStore, controller: ObservationStore
-) -> None:
-    """Review of PR #123, item 2 (its reproduction): with the old Run past
-    its deadline, follow_up and correct under human ownership are recorded,
-    audited and step the generation; no renewal, no new Run."""
-    incident, run, _ = _incident(owner)
-    assert owner.control(incident, 0, "takeover", "operator") == 1
-    with owner.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
-            (run,),
-        )
-    runs_before = _runs(owner, incident)
-    generation = 1
-    for action in ("follow_up", "correct"):
-        generation = owner.control(
-            incident,
-            generation,
-            action,
-            "operator",
-            {"text": f"human record via {action}", "channel": "web"},
-        )
-    assert generation == 3
-    with owner.transaction(snapshot=True) as conn:
-        inputs = conn.execute(
-            "SELECT kind,content->>'text' AS text,control_generation FROM opspilot_inputs WHERE incident_id=%s ORDER BY sequence",
-            (incident,),
-        ).fetchall()
-    assert [(i["kind"], i["text"], i["control_generation"]) for i in inputs] == [
-        ("follow_up", "human record via follow_up", 2),
-        ("correct", "human record via correct", 3),
-    ]
-    assert _audit(owner, incident) == ["takeover", "follow_up", "correct"]
-    assert _runs(owner, incident) == runs_before
-    assert _run_row(owner, run)["state"] == "waiting_human"
-    assert _incident_row(owner, incident)["mode"] == "human_owned"
-    # A note without content is still refused (nothing to record).
-    with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
-        owner.control(incident, 3, "follow_up", "operator")
 
 
 @pytest.mark.parametrize("scope", ["global", "target"])

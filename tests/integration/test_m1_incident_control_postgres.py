@@ -238,46 +238,6 @@ def test_releasing_a_suspension_leaves_control_paused_until_a_human_resumes(scop
 # -- the remaining rows on the real store --------------------------------------
 
 
-def test_publish_handoff_cancel_pause_resume_and_claim_on_postgres():
-    app, workbench, store = _build()
-    target = f"tgt-{uuid4()}"
-
-    # 9 claim, then 1 publish (marker stays queued in the database).
-    incident = _submit(app, target)
-    _claim(workbench, incident)
-    assert _detail(app, incident)
-    _assert_list_control(_index(app), incident, "")
-
-    published = _submit(app, target)
-    outcome = workbench.run_once(UUID(published), ScriptedInvestigator(_DbClock(store)))
-    assert outcome is not None and outcome.execution == "completed"
-    assert _detail(app, published)
-
-    # 3 cancel: control marker cancelled, lifecycle open.
-    cancelled = _submit(app, target)
-    _act(app, cancelled, "cancel", 0)
-    assert _detail(app, cancelled)
-    _assert_list_control(_index(app), cancelled, "cancelled")
-
-    # 4 pause of a claimed Run, then 8 resume.
-    paused = _submit(app, target)
-    _claim(workbench, paused)
-    _act(app, paused, "pause", 0)
-    assert _detail(app, paused)
-    _assert_list_control(_index(app), paused, "paused")
-    _act(app, paused, "resume", 1)
-    assert _stored_state(store, UUID(paused)) == "running"
-    assert _run_state(store, UUID(paused)) == "queued"
-    assert _detail(app, paused)
-    _assert_list_control(_index(app), paused, "")
-
-    # 8 follow_up on a fresh incident.
-    noted = _submit(app, target)
-    _act(app, noted, "follow_up", 0, text="check the 5xx panel")
-    assert _stored_state(store, UUID(noted)) == "running"
-    assert _detail(app, noted)
-
-
 def test_overdue_run_sweep_shows_waiting_human_without_control_marker():
     """Scenario 2 on the real store: the page load sweeps the overdue Run."""
     app, workbench, store = _build()

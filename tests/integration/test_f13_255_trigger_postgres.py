@@ -261,37 +261,6 @@ def _generate_once(stores, incident_id: UUID) -> dict:
 # --- U1: an unfinished Run holds generation back
 
 
-def test_follow_up_after_conclusion_does_not_trigger_generation(stores, dsn) -> None:
-    """#255 minimal reproduction: the follow-up revokes the observation and
-    queues a new Run; the revocation is not a generation trigger."""
-    _, jobs, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    assert incident_id not in jobs.candidates(limit=1000)  # observation running
-    _follow_up(durable, dsn, incident_id)
-    _assert_nothing_generated(stores, incident_id, ScriptedModel())
-
-
-@pytest.mark.parametrize("state", UNFINISHED)
-def test_no_candidate_while_the_renewed_run_is_unfinished(stores, dsn, state) -> None:
-    _, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    _set_current_run(dsn, incident_id, state)
-    _assert_nothing_generated(stores, incident_id, ScriptedModel())
-
-
-def test_takeover_hands_the_run_to_a_human_and_still_no_candidate(stores, dsn) -> None:
-    """The human handoff through the public control: the Run waits for the
-    human (waiting_human), which is not terminal."""
-    _, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    generation = _incident(dsn, incident_id)["control_generation"]
-    durable.control(incident_id, generation, "takeover", "operator")
-    assert _current_run_state(dsn, incident_id) == "waiting_human"
-    _assert_nothing_generated(stores, incident_id, ScriptedModel())
-
-
 @pytest.mark.parametrize("state", UNFINISHED)
 def test_an_observation_that_ended_normally_waits_for_the_run_too(
     stores, dsn, state
@@ -306,102 +275,7 @@ def test_an_observation_that_ended_normally_waits_for_the_run_too(
 # --- U2: a terminal Run makes the incident a candidate again, once
 
 
-@pytest.mark.parametrize("state", TERMINAL)
-def test_a_terminal_run_restores_the_candidate_and_generates_once(
-    stores, dsn, state
-) -> None:
-    _, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    _assert_nothing_generated(stores, incident_id, ScriptedModel())
-    _set_current_run(dsn, incident_id, state)
-    _generate_once(stores, incident_id)
-
-
-def test_cancel_through_the_control_restores_the_candidate_at_once(stores, dsn) -> None:
-    _, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    generation = _incident(dsn, incident_id)["control_generation"]
-    durable.control(incident_id, generation, "cancel", "operator")
-    assert _current_run_state(dsn, incident_id) == "cancelled"
-    _generate_once(stores, incident_id)
-
-
-def test_repeated_follow_ups_generate_one_draft_after_the_last_run(stores, dsn) -> None:
-    """Scenario A shape: three follow-ups, each renewing the Run and revoking
-    the automatic observation, each Run publishing a conclusion that
-    re-authorizes observation. Nothing is generated or voided on the way;
-    the last Run finishing (no new observation) yields one version, and no
-    attempt anywhere failed with WATERMARK_MOVED."""
-    knowledge, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    idle = ScriptedModel()
-    for _ in range(3):
-        _follow_up(durable, dsn, incident_id)
-        _assert_nothing_generated(stores, incident_id, idle)
-        _publish_and_observe(dsn, incident_id)
-        _assert_nothing_generated(stores, incident_id, idle)
-    _follow_up(durable, dsn, incident_id)
-    _assert_nothing_generated(stores, incident_id, idle)
-    _set_current_run(dsn, incident_id, "completed")
-    view = _generate_once(stores, incident_id)
-    assert all(a["error_code"] != "WATERMARK_MOVED" for a in view["attempts"])
-    runs = _one(
-        dsn,
-        "SELECT count(*) AS n FROM opspilot_runs WHERE incident_id=%s",
-        (incident_id,),
-    )["n"]
-    assert runs == 5
-
-
 # --- U3: generation after close keeps its current behaviour
-
-
-def test_close_during_a_handed_over_run_generates_once(stores, dsn) -> None:
-    """Scenario A's ending: follow-up, takeover (waiting_human), close. Close
-    cancels the Run and the incident becomes a candidate (G5), once."""
-    _, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    generation = _incident(dsn, incident_id)["control_generation"]
-    generation = durable.control(incident_id, generation, "takeover", "operator")
-    _assert_nothing_generated(stores, incident_id, ScriptedModel())
-    durable.control(incident_id, generation, "close", "operator")
-    assert _incident(dsn, incident_id)["lifecycle"] == "closed"
-    assert _current_run_state(dsn, incident_id) == "cancelled"
-    _generate_once(stores, incident_id)
-
-
-def test_close_after_a_generated_version_regenerates_once(stores, dsn) -> None:
-    """Unchanged: close moves the control generation, so the version under
-    review goes stale in the close transaction and one new version is
-    generated at the new watermark."""
-    knowledge, _, durable = stores
-    incident_id = _concluded_and_observing(dsn)
-    _follow_up(durable, dsn, incident_id)
-    _set_current_run(dsn, incident_id, "completed")
-    _generate_once(stores, incident_id)
-    generation = _incident(dsn, incident_id)["control_generation"]
-    durable.control(incident_id, generation, "close", "operator")
-    stale = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
-    assert [(v["version"], v["state"]) for v in stale] == [(1, "stale")]
-
-    model = ScriptedModel(_reply(incident_id))
-    outcomes = [
-        o for o in _worker(stores, model).poll_once() if o.incident_id == incident_id
-    ]
-    assert [(o.status, o.version, o.state) for o in outcomes] == [
-        ("succeeded", 2, "under_review")
-    ]
-    idle = ScriptedModel()
-    assert all(o.incident_id != incident_id for o in _worker(stores, idle).poll_once())
-    assert idle.calls == []
-    versions = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
-    assert [(v["version"], v["state"]) for v in versions] == [
-        (1, "stale"),
-        (2, "under_review"),
-    ]
 
 
 # --- U1 across the attempt: a Run opened after the claim voids it
@@ -486,39 +360,3 @@ def _generates_once_after_the_void(stores, incident_id: UUID) -> None:
     view = knowledge.incident_postmortem(incident_id)
     assert [v["state"] for v in view["postmortem"]["versions"]] == ["under_review"]
     assert [a["status"] for a in view["attempts"]].count("succeeded") == 1
-
-
-@pytest.mark.parametrize("pause", ["before_read_input", "during_model_call"])
-def test_a_run_opened_after_the_claim_voids_the_attempt(stores, dsn, pause) -> None:
-    """Review finding on #255: claim succeeds, then a follow-up (via reopen)
-    opens an unfinished Run, then the attempt reads its input / calls the
-    model and would record a draft. Insertion points:
-
-    * ``before_read_input``: between ``claim`` and ``read_input`` (the
-      ``_ReadInputHook`` proxy) -- the attempt's watermark already includes
-      the new Run, so only the Run state can void it;
-    * ``during_model_call``: between ``read_input`` and ``record_draft``
-      (``_HookedModel``).
-    """
-    knowledge, jobs, durable = stores
-    incident_id = _seed(dsn)  # Run completed, recovery confirmed: a candidate
-    assert incident_id in jobs.candidates(limit=1000)
-
-    def follow_up() -> None:
-        _reopen_and_follow_up(durable, dsn, incident_id)
-
-    if pause == "before_read_input":
-        model = ScriptedModel(_reply(incident_id))
-        worker_jobs = _ReadInputHook(jobs, follow_up)
-    else:
-        model = _HookedModel(follow_up, _reply(incident_id))
-        worker_jobs = jobs
-    # poll_once, not generate: a refusal raised inside the attempt is the
-    # worker's to log, the outcome is read from the view below
-    _worker((knowledge, worker_jobs, durable), model).poll_once()
-    assert _current_run_state(dsn, incident_id) == "queued"  # the hook ran
-    _assert_attempt_voided(stores, incident_id)
-    assert incident_id not in jobs.candidates(limit=1000)
-
-    _set_current_run(dsn, incident_id, "completed")
-    _generates_once_after_the_void(stores, incident_id)

@@ -188,38 +188,6 @@ def test_new_run_after_an_attached_alert_is_framed_at_its_creation(
     assert _policy(successor["input"])["window"] != _policy(original)["window"]
 
 
-def test_follow_up_after_conclusion_moves_the_same_way(
-    owner: DurableStore,
-    web: ReleaseStore,
-    observer: ObservationStore,
-    catalog: Catalog,
-    bench: Callable[..., Workbench],
-) -> None:
-    current, incident, _, original, _ = _attached_release(
-        owner, web, observer, catalog, bench
-    )
-    _tamper(
-        "UPDATE opspilot_incidents SET conclusion=%s::jsonb WHERE incident_id=%s",
-        ('{"summary": "347 test conclusion"}', incident),
-    )
-    current.workbench.control(
-        incident,
-        actor_id="operator:test",
-        action="follow_up",
-        expected_generation=int(_incident(incident)["control_generation"]),
-        idempotency_key=f"follow-{uuid4()}",
-        text="Did the alert come from the release?",
-    )
-    rows = _runs(incident)
-    assert len(rows) == 2
-    _assert_moved(
-        rows[1]["input"],
-        original,
-        end=_created(rows[1]),
-        released=_released_at(incident),
-    )
-
-
 def test_no_attachment_keeps_the_release_frame_byte_for_byte(
     owner: DurableStore,
     web: ReleaseStore,
@@ -312,34 +280,6 @@ def test_a_successor_a_day_after_the_release_clamps_the_anchor(
     end = _second(deadline - timedelta(seconds=RUN_SECONDS))
     _assert_moved(raw, original, end=end, released=_released_at(incident))
     assert _policy(raw)["anchor"] == (end - timedelta(hours=24)).isoformat()
-
-
-def test_a_waiting_run_follow_up_requeues_the_same_run_and_input(
-    owner: DurableStore,
-    web: ReleaseStore,
-    observer: ObservationStore,
-    catalog: Catalog,
-    bench: Callable[..., Workbench],
-) -> None:
-    current, incident, run, original, _ = _attached_release(
-        owner, web, observer, catalog, bench
-    )
-    _tamper("UPDATE opspilot_runs SET state='waiting_human' WHERE run_id=%s", (run,))
-    _tamper(
-        "UPDATE opspilot_incidents SET state='waiting_human' WHERE incident_id=%s",
-        (incident,),
-    )
-    current.workbench.control(
-        incident,
-        actor_id="operator:test",
-        action="follow_up",
-        expected_generation=int(_incident(incident)["control_generation"]),
-        idempotency_key=f"follow-{uuid4()}",
-        text="look again",
-    )
-    (row,) = _runs(incident)
-    assert row["run_id"] == run
-    assert row["input"] == original
 
 
 def test_fresh_fallback_takes_the_same_frame(

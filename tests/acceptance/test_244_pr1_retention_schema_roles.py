@@ -30,8 +30,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 BEFORE_RETENTION = "0022_incident_association"
-# Alembic head after upgrade_head (0023 retention; head moved to 0024 with #427).
-RETENTION_HEAD = "0024_trace_outbox"
+# Alembic head after upgrade_head (0023 retention; head moved to 0024 with #427, 0025 with workbench P2).
+RETENTION_HEAD = "0025_web_session_rebind"
 
 
 @pytest.fixture
@@ -362,8 +362,19 @@ def test_pr1_web_worker_and_observer_catalog_is_unchanged_by_retention_migration
     schema.upgrade_head(scratch_dsn)
     with psycopg.connect(scratch_dsn) as conn:
         after = {role: catalog_grants(conn, role) for role in roles}
+    # 0025 (user grant 2026-11-17, workbench A11 r4) adds exactly one web
+    # column: UPDATE(subject_control_generation) on the observation sessions.
+    expected = {role: dict(grants) for role, grants in before.items()}
+    sessions = set(expected["opspilot_web"]["opspilot_observation_sessions"])
+    (update,) = [item for item in sessions if item.startswith("UPDATE(")]
+    columns = sorted(
+        {*update[len("UPDATE(") : -1].split(","), "subject_control_generation"}
+    )
+    expected["opspilot_web"]["opspilot_observation_sessions"] = frozenset(
+        (sessions - {update}) | {f"UPDATE({','.join(columns)})"}
+    )
     for role in roles:
-        for relation, grants in before[role].items():
+        for relation, grants in expected[role].items():
             assert after[role][relation] == grants, (role, relation)
 
 

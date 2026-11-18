@@ -20,7 +20,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from opspilot.investigation.loop import ModelError
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore
 from opspilot.tools.fixture import (
@@ -45,7 +44,6 @@ from opspilot.web import (
 from opspilot.worker import Worker
 from opspilot.worker_main import WorkerLoop
 from scripts.m0.postgres_lab import DSN
-from tests.integration.test_m1_deadline_sweep_postgres import _expire, _run_row
 from tests.m1_investigation_support import (
     ScriptedModel,
     reply,
@@ -248,53 +246,6 @@ def test_a_workbench_incident_is_claimed_investigated_and_streamed():
     assert loop.poll_once() == []
 
 
-def test_a_follow_up_after_a_handoff_is_picked_up_by_the_worker():
-    app, workbench, store, events, evidence = _build()
-    submitted = _submit(app, f"web-worker-followup-{uuid4()}")
-    subject = UUID(submitted["incident_id"])
-    # The provider rejects the first request: a handoff, parked, with one
-    # of the Run's four requests spent (a follow_up re-queues the same Run
-    # and its budget).
-    first, _ = _worker(
-        store, events, evidence, [ModelError("MODEL_REJECTED")], subject=subject
-    )
-    ((_, outcome),) = first.poll_once()
-    assert outcome.status == "handed_off" and outcome.reason == "MODEL_REJECTED"
-    assert store.rebuild(subject)["run"]["state"] == "waiting_human"
-    assert first.poll_once() == []  # parked: not claimable
-    follow = _control(
-        app,
-        str(subject),
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f1",
-            "text": "Query the metric and cite it.",
-        },
-    )
-    assert follow.status == 200 and follow.json()["generation"] == 1
-    assert store.rebuild(subject)["run"]["state"] == "queued"
-    second, model = _worker(
-        store,
-        events,
-        evidence,
-        [_tool_round(), report_from_transcript],
-        subject=subject,
-    )
-    ((_, outcome),) = second.poll_once()
-    assert outcome.status == "published", outcome
-    # The note reached the second attempt's model context.
-    assert any(
-        "Query the metric and cite it." in str(m.get("content"))
-        for call_ in model.calls
-        for m in call_.messages
-    )
-    kinds = _kinds(events, subject)
-    assert kinds.count("run_handoff") == 1 and kinds.count("run_completed") == 1
-    assert kinds.index("control_applied") < kinds.index("run_completed")
-    assert "run_claim_refused" not in kinds
-
-
 def test_a_worker_killed_mid_run_is_resumed_by_the_next_worker():
     app, workbench, store, events, evidence = _build()
     submitted = _submit(app, f"web-worker-kill-{uuid4()}")
@@ -368,93 +319,3 @@ def test_two_workers_never_double_run_one_incident():
     assert rebuilt["run"]["state"] == "completed" and rebuilt["run"]["epoch"] == 1
     assert store.run_usage(run_id)["tool_operations_used"] == 1
     assert _kinds(events, subject).count("run_claimed") == 1
-
-
-def test_resume_on_an_overdue_run_is_refused_and_no_dead_row_is_polled():
-    app, workbench, store, events, evidence = _build()
-    submitted = _submit(app, f"web-worker-resume-{uuid4()}")
-    subject, run_id = UUID(submitted["incident_id"]), UUID(submitted["run_id"])
-    store.claim(subject, run_id, uuid4(), fixture_versions(), lease_seconds=300)
-    _expire(store, run_id)
-    loop, _ = _worker(store, events, evidence, [], subject=subject)
-    assert loop.poll_once() == []  # swept, not claimed
-    assert _run_row(store, run_id)["state"] == "waiting_human"
-    refused = _control(
-        app,
-        str(subject),
-        {"action": "resume", "expected_generation": "0", "idempotency_key": "r"},
-    )
-    assert refused.status == 409 and refused.json() == {"code": "ILLEGAL_TRANSITION"}
-    assert _run_row(store, run_id)["state"] == "waiting_human"
-    assert store.rebuild(subject)["control_generation"] == 0
-    assert loop.poll_once() == []
-    kinds = _kinds(events, subject)
-    assert kinds.count("run_handoff") == 1 and "run_claim_refused" not in kinds
-    # The ways forward: a note renews into a Run the worker then runs.
-    follow = _control(
-        app,
-        str(subject),
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Look again.",
-        },
-    )
-    assert follow.status == 200
-    renewed = store.rebuild(subject)["run"]
-    assert renewed["run_id"] != run_id and renewed["input"] is not None
-    assert renewed["input"]["evidence_context"]["run_id"] == str(renewed["run_id"])
-    again, _ = _worker(
-        store,
-        events,
-        evidence,
-        [_tool_round(), report_from_transcript],
-        subject=subject,
-    )
-    ((_, outcome),) = again.poll_once()
-    assert outcome.status == "published"
-
-
-def test_a_queued_run_the_worker_never_reached_is_swept_and_renewable():
-    """Bot review (PR #52): worker down while the wall passes -- the next
-    poll parks the still-queued Run as DEADLINE_EXCEEDED (one event), and a
-    follow_up renews it into a Run the worker then completes (#47)."""
-    app, workbench, store, events, evidence = _build()
-    submitted = _submit(app, f"web-worker-queued-overdue-{uuid4()}")
-    subject, run_id = UUID(submitted["incident_id"]), UUID(submitted["run_id"])
-    _expire(store, run_id)  # no worker claimed it before its wall
-    assert subject not in store.claimable_incidents(limit=1000)
-    loop, model = _worker(store, events, evidence, [], subject=subject)
-    assert loop.poll_once() == []
-    assert _run_row(store, run_id)["state"] == "waiting_human"
-    assert model.calls == []
-    assert loop.poll_once() == []  # idempotent: not re-parked, not announced twice
-    kinds = _kinds(events, subject)
-    assert kinds == ["intake_accepted", "run_handoff"]
-    handoff = next(e for e in events.read_after(subject, 0) if e.kind == "run_handoff")
-    assert handoff.payload["reasons"] == ["DEADLINE_EXCEEDED"]
-    assert handoff.payload["parked"] is True
-    follow = _control(
-        app,
-        str(subject),
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Look again.",
-        },
-    )
-    assert follow.status == 200
-    renewed = store.rebuild(subject)["run"]
-    assert renewed["run_id"] != run_id and renewed["input"] is not None
-    again, _ = _worker(
-        store,
-        events,
-        evidence,
-        [_tool_round(), report_from_transcript],
-        subject=subject,
-    )
-    ((_, outcome),) = again.poll_once()
-    assert outcome.status == "published"
-    assert _kinds(events, subject)[-1] == "run_completed"

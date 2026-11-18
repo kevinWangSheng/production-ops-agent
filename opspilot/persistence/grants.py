@@ -142,7 +142,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_observation_sessions": _g(
             "INSERT(active_sample_due_at,active_sample_job_id,active_sample_sequence,authorization_source,authorized_by,authorized_global_generation,authorized_target_generation,deadline_at,health_profile_revision,incident_id,issued_sequence,max_samples,observation_generation,purpose,release_budget_used_at_authorization,release_observation_id,release_policy_revision,sample_interval_seconds,session_id,subject_control_generation,sustained_window_seconds,target,target_id)",
             "SELECT",
-            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,adopted_window_end,ended_reason,healthy_since,state,updated_at)",
+            # subject_control_generation: 0025, workbench A11 r4 (a cancelled
+            # continuation rebinds the recovery session; user 2026-11-17).
+            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,adopted_window_end,ended_reason,healthy_since,state,subject_control_generation,updated_at)",
         ),
         "opspilot_observation_signal_readings": S,
         "opspilot_postmortem_conclusions": S,

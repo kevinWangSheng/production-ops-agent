@@ -239,45 +239,20 @@ class _ControlOps(_StoreBase):
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
-        *,
-        renew_run_id: UUID | None = None,
-        renew_deadline: datetime | None = None,
-        renew_input: dict[str, Any] | None = None,
-        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         """Apply one human decision under ``expected_generation``.
 
-        ``renew_run_id`` / ``renew_deadline`` (user decision 2026-09-25): a
-        follow_up or correct on a Run whose ``deadline`` has passed (parked by
-        the sweep as ``DEADLINE_EXCEEDED``, or still ``running``/``queued``
-        while overdue -- every claim and write is fenced either way) cannot
-        continue that Run. Mirroring upstream, where a message after TIMEOUT
-        is a new request, the note is recorded and a fresh Run starts under
-        the same generation step, exactly as ``new_run`` builds one: the old
-        Run is cancelled, the new row keeps its budget limit and versions,
-        takes ``renew_deadline`` and ``renew_input`` (the successor's own
-        input snapshot, ``None`` like ``new_run``'s default: an input bound
-        to the old Run's id cannot be reused as is), and the incident points
-        at it. The new Run reads every prior human input (``begin_round``
-        freezes the incident's inputs, not the Run's). Without a renewal the
-        note is refused (``ILLEGAL_TRANSITION``) rather than re-queueing a
-        row nothing can ever claim. A Run that is not overdue is re-queued as
-        before and the renewal arguments are unused. Published conclusions
-        and completed/cancelled incidents also require a successor for text
-        actions; terminal old Runs keep their state. Under human ownership,
-        text actions with a payload only record a note, leaving the Run and
-        control mirror untouched. A note that would start a successor
-        on a resolved/closed incident (automatic mode, concluded, completed or
-        cancelled) requires reopening first (REOPEN_REQUIRED, F12 contract r2);
-        other notes on those lifecycles behave as before.
+        A human message to the investigation is not a decision: it is an
+        input (``append_message``, workbench contract B1) and never passes
+        here; the follow_up/correct actions that used to re-queue or renew a
+        Run on a note are gone (contract O2). A published conclusion freezes
+        pause/resume/cancel only while no continuation Run is active
+        (contract A11).
 
-        Close stops unfinished Runs and observation before closing the lifecycle.
-        Reopen only returns resolved/closed incidents to open; it starts no work.
-
-        Optional ``renew_basis`` binds successor input to its snapshot's
-        Run identity and published-conclusion presence. A renewal whose
-        locked row differs raises RENEW_INPUT_STALE before any write, so
-        callers can rebuild and retry. Callers omitting it retain prior behavior.
+        Close stops unfinished Runs and observation before closing the
+        lifecycle; with a published conclusion the incident keeps it and is
+        not marked cancelled (A11 r5). Reopen only returns resolved/closed
+        incidents to open; it starts no work.
         """
         # payload 只接受 JSON 对象：列表/标量虽是合法 JSON，落库后模型侧投影
         # （非 Mapping 一律丢弃）会把操作者的文字静默吞掉，而 control() 却已报告
@@ -347,8 +322,6 @@ class _ControlOps(_StoreBase):
                 "cancel",
                 "pause",
                 "resume",
-                "follow_up",
-                "correct",
                 "takeover",
                 "close",
                 "reopen",
@@ -363,11 +336,7 @@ class _ControlOps(_StoreBase):
                 "merge_into",
             }:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            note = action in {"follow_up", "correct"}
             human_owned = row["mode"] == "human_owned"
-            human_note = human_owned and note
-            if human_note and payload is None:
-                raise PersistenceError("ILLEGAL_TRANSITION")
             if action in {"close", "reopen"}:
                 allowed = (
                     {"open", "observing_recovery", "resolved"}
@@ -393,8 +362,16 @@ class _ControlOps(_StoreBase):
                         "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked') RETURNING run_id",
                         (nxt, incident_id),
                     ).fetchall()
-                    if any(r["run_id"] == row["current_run_id"] for r in cancelled):
+                    if row["conclusion"] is None and any(
+                        r["run_id"] == row["current_run_id"] for r in cancelled
+                    ):
                         state = "cancelled"
+                    elif row["conclusion"] is not None and state == "paused":
+                        # A11 r5: an incident with a published conclusion
+                        # keeps it and is not cancelled by closing (a
+                        # continuation Run is only stopped); a pause it
+                        # leaves behind is lifted, as cancel does.
+                        state = "running"
                 conn.execute(
                     "UPDATE opspilot_incidents SET lifecycle=%s,state=%s WHERE incident_id=%s",
                     ("closed" if action == "close" else "open", state, incident_id),
@@ -545,7 +522,7 @@ class _ControlOps(_StoreBase):
             # 这个 incident 的状态，因此先判为不一致，不推进任何状态。
             run = (
                 conn.execute(
-                    "SELECT state AS run_state,deadline,budget_limit,versions FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
+                    "SELECT state AS run_state,deadline FROM opspilot_runs WHERE run_id=%s AND incident_id=%s FOR UPDATE",
                     (row["current_run_id"], incident_id),
                 ).fetchone()
                 if row["current_run_id"] is not None
@@ -553,81 +530,43 @@ class _ControlOps(_StoreBase):
             )
             if not run:
                 raise PersistenceError("INCONSISTENT_STATE")
-            # 超时的 Run 换新 Run：条件与清扫同源（数据库时钟、行锁下判定），
-            # 因此与清扫并发时无论谁先到，结果都是「旧 Run 关闭、新 Run 排队」。
             overdue = run["run_state"] in _CONTROL_OPEN_RUN_STATES and run[
                 "deadline"
             ] <= self._db_now(conn)
-            # human_owned（C3 §10）：不恢复 Agent 自动调查——不自动续开（过期的
-            # Run 也不换新 Run），带内容的追问/纠正只记录为输入、照常审计与推进
-            # 代际，Run 留在人手里；resume 只解除主体暂停（领域 apply_control 的
-            # resume 不改 mode），同样不碰 Run（独立审查 PR #123 第 1、2 条）。
-            concluded = (
-                row["state"] in {"cancelled", "completed"}
-                or row["conclusion"] is not None
+            # Workbench contract A11 (r4): a published conclusion freezes the
+            # controls only once no Run is active. A continuation Run (one a
+            # message started beside the conclusion, contract A1) takes
+            # pause/resume/cancel like any Run; cancel stops only that Run and
+            # keeps the conclusion, lifecycle and observation.
+            continuation = row["conclusion"] is not None and run["run_state"] in {
+                "queued",
+                "running",
+                "paused",
+            }
+            concluded = row["state"] in {"cancelled", "completed"} or (
+                row["conclusion"] is not None and not continuation
             )
-            # F12 合同 r2（用户 2026-10-15）：只有会开出新 Run 的追问/纠正
-            # （automatic、已结论或已完成/取消）在 resolved/closed 上要求先重新
-            # 打开；续开会把生命周期写回 open，不能由一句追问翻掉「已恢复」。
-            # 其余追问照旧：未结论的 Run 重新排队、human_owned 只记输入，
-            # 生命周期都不变。
-            if (
-                note
-                and concluded
-                and not human_owned
-                and row["lifecycle"] in {"resolved", "closed"}
-            ):
-                raise PersistenceError("REOPEN_REQUIRED")
-            renew = note and (overdue or concluded) and not human_owned
             # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
-            # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
-            # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
-            # human_owned 下 resume 不排队任何 Run，所以不受此限。
+            # 留下一行谁都领不到、每次轮询都被拒绝的 queued。出路是 cancel +
+            # new_run（Re-investigate）。human_owned 下 resume 不排队任何 Run，
+            # 所以不受此限。
             if action == "resume" and overdue and not human_owned:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if concluded and not (human_note or renew):
+            if concluded:
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 暂停态只接受 resume 与 cancel，与 opspilot/domain/runs.py 的
-            # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
-            # 追问与纠正不得静默解除人工暂停：带 payload 的 follow_up/correct
-            # 只是被记录（下方 keep_paused 保持暂停），不带 payload 的一律拒绝；
-            # 对已暂停事故再次 pause 无论是否带 payload 都是非法迁移。
-            if (
-                row["state"] == "paused"
-                and action in {"pause", "follow_up", "correct"}
-                and (action == "pause" or payload is None)
-            ):
+            # RUN_EXECUTION（paused -> human_resume / human_cancel）一致；对已暂停
+            # 事故再次 pause 是非法迁移。
+            if row["state"] == "paused" and action == "pause":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个
             # 状态，`failed`/`budget_exhausted` 这类终态一旦开始被写入就会静默
             # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
-            if (
-                action != "cancel"
-                and not (human_note or renew)
-                and run["run_state"] not in _CONTROL_OPEN_RUN_STATES
-            ):
+            if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if renew:
-                if renew_basis is not None and (
-                    not isinstance(renew_basis, dict)
-                    or str(renew_basis.get("run_id")) != str(row["current_run_id"])
-                    or renew_basis.get("concluded")
-                    is not (row["conclusion"] is not None)
-                ):
-                    raise PersistenceError("RENEW_INPUT_STALE")
-                if renew_run_id is None or renew_deadline is None:
-                    raise PersistenceError("ILLEGAL_TRANSITION")
-                if conn.execute(
-                    "SELECT 1 FROM opspilot_runs WHERE run_id=%s", (renew_run_id,)
-                ).fetchone():
-                    raise PersistenceError("IDENTITY_CONFLICT")
             keep_paused = action != "cancel" and (
-                scope["global_suspended"]
-                or scope["target_suspended"]
-                or (row["state"] == "paused" and action in {"follow_up", "correct"})
+                scope["global_suspended"] or scope["target_suspended"]
             )
-            if human_owned and action in {"follow_up", "correct"} and payload is None:
-                raise PersistenceError("ILLEGAL_TRANSITION")
             nxt = expected_generation + 1
             state = (
                 "cancelled"
@@ -636,9 +575,10 @@ class _ControlOps(_StoreBase):
             )
             if keep_paused:
                 state = "paused"
-            if human_owned and action in {"follow_up", "correct"}:
-                # A note under human ownership changes no control mirror.
-                state = row["state"]
+            if action == "cancel" and continuation:
+                # A11: the incident keeps its conclusion; its control mirror
+                # leaves a pause behind but never says cancelled.
+                state = "running" if row["state"] == "paused" else row["state"]
             # human_owned 下的 resume 只解除主体暂停：镜像走上面的默认值
             # （running），但 keep_paused 仍优先——全局/目标挂起期间 resume 不能
             # 把镜像写成 running（C3 §4 范围暂停优先于主体 resume；复验 PR #123）。
@@ -646,11 +586,10 @@ class _ControlOps(_StoreBase):
                 "UPDATE opspilot_incidents SET control_generation=%s,state=%s WHERE incident_id=%s",
                 (nxt, state, incident_id),
             )
-            # C3 §10：暂停、取消、更换 Run（续开）在同一事务里撤销观察授权；
-            # 续开路径下面还把生命周期写回 open，撤销必须先于它（结束记录按
-            # 当前生命周期写）。其余动作不显式撤销：代际一变，会话绑定的控制
-            # 代际过期，下一次采样按 binding_stale 结束会话。
-            if action in {"pause", "cancel"} or renew:
+            # C3 §10：暂停、取消在同一事务里撤销观察授权。其余动作不显式撤销：
+            # 代际一变，会话绑定的控制代际过期，下一次采样按 binding_stale 结束
+            # 会话。A11：取消续接 Run 不动观察。
+            if action == "pause" or (action == "cancel" and not continuation):
                 from opspilot.observation.revocation import revoke_authorized_sessions
 
                 revoke_authorized_sessions(conn, incident_id)
@@ -659,43 +598,22 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
-            elif human_owned and action in {"pause", "resume", "follow_up", "correct"}:
+                if continuation:
+                    # A11 r4: the recovery observation outlives the cancel.
+                    # The authorized session is rebound to the new generation
+                    # and its sample lease released, so a sample in flight
+                    # under the old one is filed as lease-invalid history
+                    # instead of ending the session as binding_stale.
+                    conn.execute(
+                        "UPDATE opspilot_observation_sessions SET subject_control_generation=%s,active_sample_owner=NULL,active_sample_lease_until=NULL WHERE incident_id=%s AND purpose='incident_recovery' AND state='authorized'",
+                        (nxt, incident_id),
+                    )
+            elif human_owned and action in {"pause", "resume"}:
                 # Under human ownership the Run is the human's (waiting_human):
-                # pausing, resuming and notes change the incident's control
-                # mirror and inputs, never the Run.
+                # pausing and resuming change the incident's control mirror,
+                # never the Run.
                 pass
-            elif renew:
-                # 与 new_run 同一套写入：旧 Run 关闭、新行沿用预算上限与版本、
-                # 事故指向新 Run；只是代际推进一步而不是两步，审计行仍是这条追问。
-                # 必须排在 keep_paused 分支之前：暂停的事故 / 挂起的范围下追问同样
-                # 不能把过期 Run 留在原地，新 Run 以 paused 开出（独立审查 P1-1）。
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
-                    (nxt, incident_id),
-                )
-                conn.execute(
-                    "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (
-                        renew_run_id,
-                        incident_id,
-                        "paused" if keep_paused else "queued",
-                        nxt,
-                        run["budget_limit"],
-                        renew_deadline,
-                        Jsonb(run["versions"]),
-                        None if renew_input is None else Jsonb(renew_input),
-                    ),
-                )
-                conn.execute(
-                    "UPDATE opspilot_incidents SET current_run_id=%s,lifecycle='open',conclusion=NULL WHERE incident_id=%s",
-                    (renew_run_id, incident_id),
-                )
-            elif action == "pause" and not keep_paused:
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
-                    (nxt, incident_id),
-                )
-            elif keep_paused:
+            elif action == "pause" or keep_paused:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='paused',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('running','waiting_human')",
                     (nxt, incident_id),
@@ -703,11 +621,6 @@ class _ControlOps(_StoreBase):
             elif action == "resume":
                 conn.execute(
                     "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human')",
-                    (nxt, incident_id),
-                )
-            elif action in {"follow_up", "correct"} and not human_owned:
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='queued',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','running','waiting_human')",
                     (nxt, incident_id),
                 )
             conn.execute(
@@ -722,32 +635,14 @@ class _ControlOps(_StoreBase):
                     Jsonb(payload) if payload is not None else None,
                 ),
             )
-            if action in {"follow_up", "correct"}:
-                content = payload if payload is not None else {}
-                seq = self._require_row(
-                    conn.execute(
-                        "SELECT COALESCE(MAX(sequence),0)+1 AS next_sequence FROM opspilot_inputs WHERE incident_id=%s",
-                        (incident_id,),
-                    )
-                )["next_sequence"]
-                conn.execute(
-                    "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-                    (uuid4(), incident_id, seq, action, Jsonb(content), actor, nxt),
-                )
-            # M1-03 D18: the control generation (and possibly the Run or the
-            # inputs) moved; drafts behind it are stale in this transaction.
+            # M1-03 D18: the control generation moved; drafts behind it are
+            # stale in this transaction.
             from opspilot.knowledge.store import mark_stale_in
 
             mark_stale_in(
                 conn,
                 incident_id,
-                reason="run_added"
-                if renew
-                else (
-                    "input_added"
-                    if action in {"follow_up", "correct"}
-                    else "control_generation_changed"
-                ),
+                reason="control_generation_changed",
                 source=f"control.{action}",
             )
             return nxt
@@ -854,6 +749,235 @@ class _ControlOps(_StoreBase):
         with self.transaction() as conn:
             return append_input_in(conn, incident_id, input_id, content, actor=actor)
 
+    def append_message(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str,
+    ) -> tuple[int, bool]:
+        """Receive one human message for the investigation (workbench
+        contract B1, D1-D10): a ``message`` input, never a control decision.
+
+        The generation, the Runs, the lease, the lifecycle, the conclusion and
+        the observation stay as they are. Admission is decided under the
+        incident lock (r3: separate from the relay's predicate): an incident
+        without a Run (handed to a human at intake) is ``HANDOFF_ONLY``, a
+        merged one ``MERGED``; under human ownership the note is only
+        recorded; an automatic incident that was cancelled, or whose
+        investigation ended with neither a published conclusion nor any
+        validated report (failed or timed out, D7b), is
+        ``INVESTIGATION_NOT_AVAILABLE``. Idempotent on ``input_id``:
+        returns ``(sequence, replayed)``.
+        """
+        if not isinstance(content, dict):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            scope = self._lock_scope(conn, incident_id)
+            row = conn.execute(
+                "SELECT mode,state,conclusion IS NOT NULL AS concluded,current_run_id,merged_into_incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                (incident_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            existing = conn.execute(
+                "SELECT incident_id,sequence FROM opspilot_inputs WHERE input_id=%s",
+                (input_id,),
+            ).fetchone()
+            if existing is not None and existing["incident_id"] == incident_id:
+                # A retried request replays whatever happened since; the
+                # content check is append_input_in's.
+                return (
+                    append_input_in(
+                        conn,
+                        incident_id,
+                        input_id,
+                        content,
+                        actor=actor,
+                        kind="message",
+                    ),
+                    True,
+                )
+            if row["current_run_id"] is None:
+                raise PersistenceError("HANDOFF_ONLY")
+            if row["merged_into_incident_id"] is not None:
+                raise PersistenceError("MERGED")
+            if row["mode"] != "human_owned":
+                if row["state"] == "cancelled":
+                    raise PersistenceError("INVESTIGATION_NOT_AVAILABLE")
+                run = self._require_row(
+                    conn.execute(
+                        "SELECT state FROM opspilot_runs WHERE run_id=%s",
+                        (row["current_run_id"],),
+                    )
+                )
+                active = (
+                    run["state"] in {"queued", "running", "paused"}
+                    or row["state"] == "paused"
+                    or scope["global_suspended"]
+                    or scope["target_suspended"]
+                )
+                if not (
+                    active
+                    or row["concluded"]
+                    or _validated_report_in(conn, incident_id)
+                ):
+                    raise PersistenceError("INVESTIGATION_NOT_AVAILABLE")
+            return (
+                append_input_in(
+                    conn, incident_id, input_id, content, actor=actor, kind="message"
+                ),
+                False,
+            )
+
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]:
+        """Incidents that may need a continuation Run (workbench contract
+        R1/R2): automatic, not cancelled/paused/merged, with a ``message``
+        no Run has read and no active current Run. Rows carry
+        ``incident_id``, ``intake_key``, ``current_run_id`` and
+        ``max_unread`` (the highest unread message sequence), so the caller
+        can drop an incident whose current Run is already the relay Run of
+        that very message (it ended before reading it, D12). A hint for the
+        relay pass; ``relay_continuation`` re-checks everything under the
+        lock."""
+        if type(limit) is not int or limit < 1:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT i.incident_id,i.intake_key,i.current_run_id,"
+                "(SELECT max(u.sequence) FROM opspilot_inputs u WHERE u.incident_id=i.incident_id AND u.kind='message' "
+                "AND u.sequence>(SELECT COALESCE(max(y.input_watermark),0) FROM opspilot_runs y WHERE y.incident_id=i.incident_id)) AS max_unread "
+                "FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+                "JOIN opspilot_scope_controls sc ON sc.scope_id=1 "
+                "LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id "
+                "WHERE i.mode='automatic' AND i.state NOT IN ('cancelled','paused') AND i.merged_into_incident_id IS NULL "
+                "AND NOT sc.global_suspended AND NOT COALESCE(ts.suspended,false) "
+                "AND r.state NOT IN ('queued','running') "
+                f"AND {_relayable_message_sql('i.incident_id')} "
+                f"AND (i.conclusion IS NOT NULL OR {_validated_report_sql('i.incident_id')}) "
+                "ORDER BY i.priority,i.incident_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(dict(row) for row in rows)
+
+    def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None:
+        """What a continuation Run of ``incident_id`` would start from now
+        (contract R1/B4), or ``None`` when the relay predicate does not hold:
+        ``{"current_run_id", "max_unread", "floor", "mode"}``. A snapshot
+        read; ``relay_continuation`` re-derives it under the lock."""
+        with self.transaction(snapshot=True) as conn:
+            scope = self._lock_scope(conn, incident_id, lock=False)
+            return _relay_basis_in(conn, incident_id, scope, lock=False)
+
+    def relay_continuation(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        basis: dict[str, Any],
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+    ) -> bool:
+        """Open the continuation Run (workbench contract A1, A10, R3, R4).
+
+        One transaction, scope lock then incident lock: an existing
+        ``run_id`` is a replay (``False``, nothing written); the relay
+        predicate is re-checked and must still give ``basis`` (else
+        ``RENEW_INPUT_STALE``, the caller rebuilds the input; ``False`` when
+        it no longer holds at all). Then the incident's unfinished inactive
+        Runs (waiting_human, blocked, a leftover paused) are cancelled, the
+        queued Run is inserted at the incident's current generation and the
+        incident points at it. No control audit row, no generation step, no
+        observation revoke, no lifecycle change, the conclusion kept.
+        """
+        with self.transaction() as conn:
+            scope = self._lock_scope(conn, incident_id)
+            if conn.execute(
+                "SELECT 1 FROM opspilot_runs WHERE run_id=%s", (run_id,)
+            ).fetchone():
+                return False
+            now = _relay_basis_in(conn, incident_id, scope, lock=True)
+            if now is None:
+                return False
+            if now != basis:
+                raise PersistenceError("RENEW_INPUT_STALE")
+            generation = self._require_row(
+                conn.execute(
+                    "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s",
+                    (incident_id,),
+                )
+            )["control_generation"]
+            conn.execute(
+                "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL WHERE incident_id=%s AND state IN ('waiting_human','blocked','paused')",
+                (incident_id,),
+            )
+            conn.execute(
+                "INSERT INTO opspilot_runs(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) VALUES(%s,%s,'queued',%s,%s,%s,%s,%s)",
+                (
+                    run_id,
+                    incident_id,
+                    generation,
+                    budget_limit,
+                    deadline,
+                    Jsonb(versions),
+                    None if input is None else Jsonb(input),
+                ),
+            )
+            conn.execute(
+                "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
+                (run_id, incident_id),
+            )
+            from opspilot.knowledge.store import mark_stale_in
+
+            mark_stale_in(conn, incident_id, reason="run_added", source="relay")
+            return True
+
+    def has_validated_report(self, incident_id: UUID) -> bool:
+        """Contract D7a: whether any Run of the incident ended on a validated
+        report (published, or handed off as self-declared incomplete)."""
+        with self.transaction(snapshot=True) as conn:
+            return _validated_report_in(conn, incident_id)
+
+    def conversation_floor(self, incident_id: UUID) -> int:
+        """Contract B4/B7: the highest input sequence any Run of the incident
+        has committed a step over (its read watermark)."""
+        with self.transaction(snapshot=True) as conn:
+            return _floor_in(conn, incident_id)
+
+    def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Contract B8: every validated reply the incident's Runs committed
+        (tool steps' ``replies`` and conclusion steps' ``conclusion.replies``),
+        by the message answered, then the step's database time."""
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT s.response FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id "
+                "WHERE r.incident_id=%s AND s.status<>'late_result' "
+                "ORDER BY s.observed_at,s.sequence,s.step_id",
+                (incident_id,),
+            ).fetchall()
+        found: list[dict[str, Any]] = []
+        for row in rows:
+            response = row["response"]
+            if not isinstance(response, dict):
+                continue
+            items = (
+                (response.get("conclusion") or {}).get("replies")
+                if response.get("kind") == "conclusion"
+                and isinstance(response.get("conclusion"), dict)
+                else response.get("replies")
+            )
+            if isinstance(items, list):
+                found.extend(item for item in items if isinstance(item, dict))
+        return sorted(
+            found,
+            key=lambda item: (
+                item["to_input_seq"] if type(item.get("to_input_seq")) is int else 0
+            ),
+        )
+
     def read_inputs(
         self, incident_id: UUID, *, after_sequence: int = 0
     ) -> list[dict[str, Any]]:
@@ -927,6 +1051,116 @@ def _merge_event(
     }
 
 
+def _floor_in(conn: Connection, incident_id: UUID) -> int:
+    return int(
+        _StoreBase._require_row(
+            conn.execute(
+                "SELECT COALESCE(max(input_watermark),0) AS floor FROM opspilot_runs WHERE incident_id=%s",
+                (incident_id,),
+            )
+        )["floor"]
+    )
+
+
+def _validated_report_sql(incident: str) -> str:
+    """Whether any Run of the incident ``incident`` (an SQL expression) ended
+    on a validated report: its conclusion step's ``execution`` is
+    ``completed`` (published, or handed off only as self-declared
+    incomplete -- contract D7a, R1 r2)."""
+    return (
+        "EXISTS (SELECT 1 FROM opspilot_steps vs JOIN opspilot_runs vr ON vr.run_id=vs.run_id "
+        f"WHERE vr.incident_id={incident} AND vs.status<>'late_result' AND vs.response->>'kind'='conclusion' "
+        "AND vs.response->'conclusion'->>'execution'='completed')"
+    )
+
+
+def _relayable_message_sql(incident: str) -> str:
+    """Whether the incident ``incident`` (an SQL expression) holds a
+    ``message`` no Run has read (above the floor, contract B7) that was
+    received after its latest human cancel or close: after such a decision
+    only a later message opens a continuation (human control first). One
+    fragment for ``relay_candidates`` and ``_relay_basis_in``."""
+    return (
+        "EXISTS (SELECT 1 FROM opspilot_inputs m "
+        f"WHERE m.incident_id={incident} AND m.kind='message' "
+        "AND m.sequence>(SELECT COALESCE(max(x.input_watermark),0) FROM opspilot_runs x "
+        f"WHERE x.incident_id={incident}) "
+        "AND m.received_at>COALESCE((SELECT max(c.created_at) FROM opspilot_controls c "
+        f"WHERE c.incident_id={incident} AND c.action IN ('cancel','close')),"
+        "'-infinity'::timestamptz))"
+    )
+
+
+def _row_bool(conn: Connection, sql: str, incident_id: UUID) -> bool:
+    row = conn.execute(sql, {"incident_id": incident_id}).fetchone()
+    return bool(row and row["ok"])
+
+
+def _validated_report_in(conn: Connection, incident_id: UUID) -> bool:
+    return _row_bool(
+        conn,
+        f"SELECT {_validated_report_sql('%(incident_id)s')} AS ok",
+        incident_id,
+    )
+
+
+def _relay_basis_in(
+    conn: Connection, incident_id: UUID, scope: dict[str, Any], *, lock: bool
+) -> dict[str, Any] | None:
+    """The relay predicate (workbench contract R1) and, when it holds, the
+    continuation's basis. ``scope`` is the caller's scope row (locked when
+    ``lock``); the incident row is locked here when ``lock``."""
+    row = conn.execute(
+        "SELECT mode,state,lifecycle,conclusion IS NOT NULL AS concluded,current_run_id,merged_into_incident_id FROM opspilot_incidents WHERE incident_id=%s"
+        + (" FOR UPDATE" if lock else ""),
+        (incident_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceError("UNKNOWN_IDENTITY")
+    if (
+        row["mode"] != "automatic"
+        or row["state"] in {"cancelled", "paused"}
+        or row["merged_into_incident_id"] is not None
+        or row["current_run_id"] is None
+        or scope["global_suspended"]
+        or scope["target_suspended"]
+    ):
+        return None
+    run = conn.execute(
+        "SELECT state FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+        (row["current_run_id"], incident_id),
+    ).fetchone()
+    # A paused Run of an incident that is neither paused nor suspended is a
+    # leftover (a suspension released without re-queueing it, A10).
+    if run is None or run["state"] in {"queued", "running"}:
+        return None
+    floor = _floor_in(conn, incident_id)
+    unread = conn.execute(
+        "SELECT max(sequence) AS seq FROM opspilot_inputs WHERE incident_id=%s AND kind='message' AND sequence>%s",
+        (incident_id, floor),
+    ).fetchone()
+    if unread is None or unread["seq"] is None:
+        return None
+    # Human control first (PRODUCT-CONSTRAINTS): the shared fragment
+    # ``relay_candidates`` filters on too.
+    if not _row_bool(
+        conn,
+        f"SELECT {_relayable_message_sql('%(incident_id)s')} AS ok",
+        incident_id,
+    ):
+        return None
+    if not row["concluded"] and not _validated_report_in(conn, incident_id):
+        return None
+    return {
+        "current_run_id": str(row["current_run_id"]),
+        "max_unread": int(unread["seq"]),
+        "floor": floor,
+        "mode": "reply_only"
+        if row["lifecycle"] in {"resolved", "closed"}
+        else "report_optional",
+    }
+
+
 def _register_target_in(conn: Connection, resource_uid: str) -> UUID:
     """Register ``resource_uid`` in the caller's transaction (the rows
     ``register_target`` writes); a concurrent first registration of the same
@@ -959,13 +1193,16 @@ def append_input_in(
     content: dict[str, Any],
     *,
     actor: str,
+    kind: str = "event",
 ) -> int:
     """``append_input`` inside the caller's transaction (the alert intake
     appends a re-fired episode with its delivery record, F2 PR-C; F11 PR-4
     reuses it). Locks the incident row, so a caller that also holds the scope
     or target suspension locks must take them first (R-C2). Idempotent on
     ``input_id``; a different incident, content or actor under the same id is
-    ``IDENTITY_CONFLICT``. Returns the input's sequence."""
+    ``IDENTITY_CONFLICT``. ``kind`` is ``event`` unless a human message
+    (``message``, workbench contract B1) is recorded. Returns the input's
+    sequence."""
     if not isinstance(content, dict):
         raise PersistenceError("INVALID_INPUT")
     row = conn.execute(
@@ -982,6 +1219,7 @@ def append_input_in(
             existing["incident_id"] != incident_id
             or existing["content"] != content
             or existing["actor"] != actor
+            or existing["kind"] != kind
         ):
             raise PersistenceError("IDENTITY_CONFLICT")
         return int(existing["sequence"])
@@ -992,11 +1230,12 @@ def append_input_in(
         )
     )["sequence"]
     conn.execute(
-        "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,'event',%s,%s,%s)",
+        "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,%s,%s,%s,%s)",
         (
             input_id,
             incident_id,
             seq,
+            kind,
             Jsonb(content),
             actor,
             row["control_generation"],
