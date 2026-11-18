@@ -241,6 +241,23 @@ D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两�
 
 修订：r9 = P3 预审表、E1 迁移号 0026、场景函数上限 11（lead 2026-11-18）。
 
+### P6 关联展示（r11，2026-11-18 预审 `~/.agent/handoffs/opspilot-workbench-p5p6-prereview-2026-11-18.md` 表二，无 USER 项，lead 按推荐）
+
+| 编号 | 裁决要点 |
+|---|---|
+| L1 | 主事故身份区下加「Linked incidents」块：每个被并入的事故一行，标题（列表 `title_of` 同规则）、合并时的 lifecycle（取主事故合并 event 的 `source_lifecycle`）、开始时间、合并人与时间、理由；最多 20 个，多出注明 |
+| L2 | 理由取来源事故 `merge_into` 审计 `payload.text`（脱敏），主事故与来源事故都显示；没写显示「no reason given」，并带固定「same target」；理由不改必填 |
+| L3 | 日志加系统事件条目，只用系统字段：「Incident X merged into this · by Y」（合并审计时间）、「Alert re-fired · attached」（`opspilot_alert_deliveries` `outcome='attached'` 且 firing，每个 delivery_key 一条）、「Version change Z joined」（发布链接 `disposition='attached'`）；不显示告警原文，不计入消息数与 Queued |
+| L4 | 列表页主事故行加「N linked」；来源行保持 Merged +「into xxx」；计数在同一条列表语句里 |
+| L5 | 不做 Unlink；保留「Cannot be undone」 |
+| L6 | 已关闭事故身份区加「Followed by new incident Y」（`related_incident_id` 反查，只读，不改授权） |
+| L7 | 发布链接 disposition 写成一句话（opened / joined / opened after a closed one / opened for a person）；换目标加时间 |
+| L8 | 新块放在 `identity()` 里，随 `/live` 片段刷新，不加事件种类 |
+| L9 | 保留 `merged-from`/`release-link`/`related-incident`/`current-target` 等 id 与 class；不加场景函数、不占浏览器路径；`test_245_merge_into.py` 两句断言由独立测试作者加 |
+| L10 | 无迁移、无授权变化 |
+
+修订：r11 = P6 关联展示表（lead 2026-11-18）。
+
 ### 将被删除的旧测试（按 PR 分组）
 
 来源是 grep，不是试跑：`follow_up`/`correct` 共 72 个文件，`REOPEN_REQUIRED` 9 个文件。下面分三档：**整文件删**（文件主题就是被取代的行为）、**删用例**（文件主题还有效，其中钉旧行为的用例删掉）、**顺带用到**（只是拿追问当触发手段，命中 3 处以内；对应用例失败就删，不失败不动）。P2、P4 的最终清单以各自 PR 的首次 CI 失败为准，这里是上界。

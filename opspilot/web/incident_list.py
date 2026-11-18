@@ -267,6 +267,8 @@ def row_of(item: IncidentListItem) -> dict[str, Any]:
         "alert_name": item.alert_name,
         "status": status,
         "service": service_of(item),
+        # Workbench P6 L4: a survivor's row says how many incidents it holds.
+        "linked": item.linked_count,
         "related_short": None
         if s.related_incident_id is None
         else str(s.related_incident_id)[:8],
