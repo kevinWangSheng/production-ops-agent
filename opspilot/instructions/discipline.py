@@ -170,7 +170,7 @@ CLUSTER_AWARENESS: Final = (
     " Never relabel data from one cluster as another: every fact drawn from those other data sources names the cluster its data came from."
 )
 """多集群提醒（6 句），#722（r10 H-U1，2026-11-18 用户裁决）新增，改写自 HolmesGPT
-``generic_ask.jinja2:7-17``：不点工具名与 ``kubectl``，删去产品专有的「改指数据源或
+``generic_ask.jinja2:7-17``：不点工具名与命令行客户端名，删去产品专有的「改指数据源或
 Holmes agent」建议，「top of your answer」改为 summary 开头，「finding」改为 fact。
 ``{cluster_name}`` 是 L1b 占位符（运维配置的本地集群名，记在 Run 输入里），出现 3 次，
 取值不进 revision。仅 ``replay-candidate-k8s-cluster`` 含此段。"""
