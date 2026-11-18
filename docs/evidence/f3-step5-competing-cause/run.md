@@ -2,6 +2,8 @@
 
 两次真实 Run 的运行过程、时间线、trace 与余额见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)。本文件只记录审查者结论与证据的两项说明。
 
+> 2026-11-17（#695 + #690，r3 D21）：#676 合同 r2 的三份（`prompt-replay-candidate-8688f6e52275`，Run `8b06fee1`、`41b97848`、`9d3c1236`）移到了 [prompt-8688f6e52275/](prompt-8688f6e52275/)，内容未改；`run-1/`–`run-3/` 留给 r3 新 revision（`860b743085d1`）的重跑，入库前本目录无当前 revision 的 Run。
+>
 > 2026-11-16（#676 r2，D11）：#676 第一版（`prompt-replay-candidate-14eb2a0a6afd`）的两份移到了 [prompt-14eb2a0a6afd/](prompt-14eb2a0a6afd/)，内容未改；`run-1/`、`run-2/` 留给 r2 新 revision 的重跑，入库前本目录无当前 revision 的 Run。
 >
 > 2026-11-16（#676）：`run-1/`、`run-2/` 又换成了 `prompt-replay-candidate-14eb2a0a6afd` 下的两次重跑（Run `a10cf725`、`f3b73c46`），#646 那两份移到了 [prompt-a6b4dfd02030/](prompt-a6b4dfd02030/)。
@@ -68,3 +70,23 @@
 - 合计：第 2 步 summary 一致性 3 次 Run 两名审查者均判一致（#664 的问题在 r2 下未再出现）；第 5 步 Run 1 审查者分歧，Run 2、Run 3 均为两名审查者 PASS。
 - **裁决**：Run 1 按 FAIL 处理（用户 2026-11-17 同意 r3 计划时随计划一并认可，未单独确认；依据与 2026-11-16 U-A 一致：分歧按不通过、不挑样）。验收测试读 `run-1`、`run-2`，所以 F3 第 5 步在 `prompt-replay-candidate-8688f6e52275` 下记为未达成，`passes` 仍为 false；下一版（r3，#695/#690，PR #697）revision 变化后重跑三次。B 指出的问题（把无样本时段写成 0）正是 #690 第 2 句「无样本时段是 unknown 不是 zero」要约束的行为。
 - 审查原文：审查者 B 的输出与审查者 A 的复述留在 lead 会话目录，未入库（只入结论）。运行事实见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「#676 合同 r2」。
+
+## r3 重跑（`prompt-replay-candidate-860b743085d1`，2026-11-17）
+
+- `run-1/` 对应 Run `58c89f82`（事故 `6da466da`），`run-2/` 对应 `c9dee6bd`（`e842b2bb`），`run-3/` 对应 `f547e772`（`77ba9d9a`）。#676 r2 那三份已移到 [prompt-8688f6e52275/](prompt-8688f6e52275/)。收集方式同上（UI `close` 之后、只读角色）；`lab_readings` 中 Run 1 为 `continuous_monitoring: false`（读数器晚于 Run 1 完成才启动），Run 2、Run 3 为连续读数。三份 `run_versions` 都等于当前代码的 `otel_demo_versions()`。
+- 确定性判定：三份都为空；验收测试读 `run-1`、`run-2`，15 条全过。
+- **审查者判定（2026-11-17）**：两名全新上下文、未参与运行的审查者按冻结 rubric（`b58974b2…1d956`）、answer（`a35361da…37a`）独立判定，只读两份 summary 与冻结文件，互不交流。**偏离**：两名审查者都是 Claude Opus 子 Agent，审查者 B 不是另一模型；用户 2026-11-17 起不再使用 Codex，所以本轮没有异模型审查者。
+
+  | Run | 审查者 | rubric 1–8 | 第 2 步 summary 一致性 | 记录的弱点（不作门槛） |
+  |---|---|---|---|---|
+  | Run 1 `58c89f82` | A | **FAIL（第 5 项）** | 一致 | 唯一针对这次部署的否定只否定「换了新镜像」，只引用镜像 digest，D5-a 三条都不满足；部署作为配置变更的备选假设保留，next_steps 还建议回滚 checkout 做检验；能满足 (i)/(iii) 的证据（部署后成功 PlaceOrder、起点晚 5 分 26 秒）已在 Run 里，只写进了 hypothesis；claim 11 措辞混乱；Run 1 无调查窗内的 lab 读数 |
+  | Run 1 `58c89f82` | B | **FAIL（第 5 项）** | 一致 | 同一处：否定的是「换了镜像」不是「部署导致故障」；「24h 增量等于 10m 增量」实际只覆盖约 1.4 小时（lab 19:09Z 才安装）；「new pod served successful PlaceOrder」没有 Pod 字段依据 |
+  | Run 2 `c9dee6bd` | A | PASS（8/8） | 一致 | 否定是软否定（「not sufficient on its own」），唯一依据是 Run 1 的注入故障（20:50Z）；本 Run 已有的 (i)/(iii) 读数没有引进否定；claim 3 的 checkout 依据来自早先那批 trace；「payment 是最深观察到的起点」是 hypothesis，summary 写得更肯定；e 类数值误差（claim 5 的 0.0111 写成 0、区间错一个采样点，claim 8 的 CAD 时刻） |
+  | Run 2 `c9dee6bd` | B | PASS（8/8，第 5 项弱） | 一致 | 同上软否定与 Run 1 故障依据（证明的是部署不是必要条件）；同上几处 e 类误差，另 counter_evidence 的 563 µs 来自未引用的视图；summary「failing leaf」「config-only redeploy」比 hypothesis 与 gap 语气强 |
+  | Run 3 `f547e772` | A | PASS（8/8） | 一致 | 否定的主要例子是 Run 2 的注入故障（22:04Z），报告没有说明；第二条理由（payment Pod 没变）不能排除 checkout 发了不同内容；fact 7「not checkout」比 gap 4 强；e 类边界误差（ratio 在 22:10:54 是 0.833 不是 1；claim 5 的 600 s 窗口错位） |
+  | Run 3 `f547e772` | B | PASS（8/8） | 一致 | 同上 22:04Z 依据与边界误差；summary「1.0 … across 21:58–22:13」比证据强；counter_evidence 13 把前约 5 分钟无样本写成 0；把三次注入读成「约 40 分钟开关节律」，时间有误 |
+
+  三次 `root_cause` 都是 Deployment `payment`，不是 flag；两名审查者都判这不违反 D2/D5（flag 留在 hypothesis 里）。
+- 合计：第 2 步 summary 一致性三次 Run 两名审查者均判一致；第 5 步 Run 1 两名审查者都判 FAIL（无分歧），Run 2、Run 3 均为两名审查者 PASS。
+- **用户裁决（2026-11-17）**：F3 `passes` 保持 false。原标准是前两次 Run 都通过，Run 1 不通过，所以第 5 步在 `prompt-replay-candidate-860b743085d1` 下未达成；Run 3 通过不改变这一点（不挑样）。F3 不再为此调提示词。`feature_list.json` 未改。
+- 审查原文留在 lead 会话目录，未入库（只入结论）。运行事实见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「r3（860b743085d1）」。

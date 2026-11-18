@@ -145,7 +145,7 @@ def duplicate_count(section: str) -> int | None:
 
 # Printed on main @ e2fcea4 (pre-review section 0, re-printed by this author);
 # prompt revision moved to F11 PR-4b's contract-approved bump when #336 merged main.
-MAIN_PROMPT_REVISION = "prompt-replay-candidate-8688f6e52275"
+MAIN_PROMPT_REVISION = "prompt-replay-candidate-860b743085d1"
 MAIN_CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
 MAIN_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-5"
 MAIN_PROJECTION_REVISION = "m1-01-tool-view-v11"
