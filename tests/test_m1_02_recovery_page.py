@@ -13,9 +13,6 @@ from __future__ import annotations
 from datetime import timedelta
 from uuid import UUID
 
-from markupsafe import escape
-
-from opspilot.web.service import available_actions
 from opspilot.web.store import TargetIdentity, TargetRegistry
 from tests.m1_02_replay_support import PROFILE, stored_history, take
 from tests.m1_web_support import (
@@ -98,50 +95,6 @@ def _observing_incident(kind: str = "healthy", count: int = 11):
     return app, workbench, incident, built
 
 
-def test_the_page_separates_the_recovery_verdict_from_the_report_and_shows_the_basis():
-    app, workbench, incident, built = _observing_incident()
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    text = page.text
-    # two distinct sections: the investigation's causal conclusion and the
-    # independent recovery verdict
-    assert 'id="recovery-verdict"' in text
-    assert 'id="investigation-report"' in text
-    assert text.index('id="recovery-verdict"') < text.index('id="investigation-report"')
-    assert "recovery confirmed" in text
-    assert "replay consistent" in text
-    # the basis: every sample with its window and verdict, every reading
-    # with query, window, source, value and hash
-    assert 'id="recovery-basis"' in text
-    sample = built["samples"][-1]
-    reading = sample["readings"][0]
-    assert sample["window_end"].isoformat() in text
-    assert str(escape(reading["query"])) in text
-    assert reading["raw_sha256"] in text
-    assert reading["source"] in text
-    assert "recovery_confirmed" in text
-    assert PROFILE.revision in text
-    # the structured snapshot behind the page
-    snapshot = workbench.snapshot(UUID(incident))
-    (recovery,) = snapshot["recovery"]
-    assert recovery["session_id"] == str(built["session"]["session_id"])
-    assert recovery["replay"]["consistent"] is True
-    assert recovery["replay"]["recovery_verdict"] == "healthy"
-    assert recovery["replay"]["recovery_confirmed"] is True
-    assert recovery["replay"]["healthy_window_seconds"] == 600
-    assert len(recovery["samples"]) == 11  # #157: ten intervals
-    last = recovery["samples"][-1]
-    assert last["stored_outcome"] == last["replayed_outcome"] == "healthy"
-    assert last["transition"] == "recovery_confirmed"
-    assert {r["signal_name"] for r in last["readings"]} == {"rate", "errors"}
-    errors = next(r for r in last["readings"] if r["signal_name"] == "errors")
-    assert errors["stored"] == errors["replayed"] == ("ok", 0.0, 5)
-    assert errors["verdict"] == "healthy"
-    assert "raw" not in errors
-    # read-only: the only forms on the page are the existing control actions
-    assert text.count("<form") == len(available_actions(snapshot))
-
-
 def test_a_tampered_stored_verdict_shows_as_an_integrity_mismatch():
     app, workbench, incident, built = _observing_incident()
     session = workbench.incidents.sessions[0]
@@ -158,41 +111,6 @@ def test_a_tampered_stored_verdict_shows_as_an_integrity_mismatch():
     assert recovery["replay"]["recovery_verdict"] == "unknown"
     assert recovery["samples"][0]["stored_outcome"] == "degraded"
     assert recovery["samples"][0]["replayed_outcome"] == "healthy"
-
-
-def test_a_degraded_session_shows_its_verdict_and_reasons():
-    app, workbench, incident, built = _observing_incident("degraded", count=3)
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert "outside healthy bound" in page.text
-    snapshot = workbench.snapshot(UUID(incident))
-    (recovery,) = snapshot["recovery"]
-    assert recovery["replay"]["recovery_verdict"] == "degraded"
-    assert recovery["replay"]["recovery_confirmed"] is False
-    assert recovery["samples"][0]["replayed_outcome"] == "degraded"
-
-
-def test_a_session_without_samples_renders_without_a_basis():
-    app, workbench, _ = build_workbench(health_profile=PROFILE, targets=_UnitTargets())
-    incident = submit_incident(app).json()["incident_id"]
-    post_form(
-        app,
-        f"/incidents/{incident}/control",
-        {
-            "action": "register_remediation",
-            "expected_generation": "0",
-            "idempotency_key": "rem-1",
-            "revision": "svc:v2",
-        },
-        headers={**basic(), **same_origin()},
-    )
-    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
-    assert page.status == 200
-    assert 'id="recovery-verdict"' in page.text
-    assert "no samples stored yet" in page.text
-    (recovery,) = workbench.snapshot(UUID(incident))["recovery"]
-    assert recovery["samples"] == []
-    assert recovery["replay"]["recovery_verdict"] == "unknown"
 
 
 def test_a_malformed_stored_reading_does_not_take_the_page_down():

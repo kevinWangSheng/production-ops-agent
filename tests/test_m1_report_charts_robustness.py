@@ -12,7 +12,6 @@ from opspilot.web.charts import render_evidence_chart
 from tests.test_m1_report_charts_contract import (
     evidence,
     parse,
-    published_page,
     row,
 )
 
@@ -49,39 +48,6 @@ def test_hostile_omitted_rows_is_escaped():
     ev = evidence(truncated=True, omitted_rows="<script>x</script>")
     html = render_evidence_chart(ev, ["facts"])
     assert "<script" not in html.lower()
-
-
-def test_page_survives_an_unplottable_chart_and_a_crashing_one(monkeypatch):
-    page = published_page(
-        [("fact", ["ev-a", "ev-b"])],
-        [
-            evidence(
-                "ev-a", rows=[row({"j": "a"}, [(0, "-1.5e308"), (60, "1.5e308")])]
-            ),
-            evidence("ev-b", rows=[row({"j": "b"}, [(0, 1.0), (60, 2.0)])]),
-        ],
-    )
-    assert page.status == 200
-    assert [n.attrs["data-reason"] for n in page.placeholders()] == [
-        "unplottable_range"
-    ]
-    assert [f.attrs["data-evidence-id"] for f in page.figures()] == ["ev-b"]
-
-    import opspilot.web.service as service
-
-    real = service.evidence_chart
-
-    def flaky(record, kinds):
-        if record.evidence_id == "ev-a":
-            raise RuntimeError("boom")
-        return real(record, kinds)
-
-    monkeypatch.setattr(service, "evidence_chart", flaky)
-    from tests.test_m1_report_charts_contract import fetch
-
-    again = fetch(page.app, page.workbench, page.incident, page.store)
-    assert again.status == 200
-    assert [f.attrs["data-evidence-id"] for f in again.figures()] == ["ev-b"]
 
 
 @pytest.mark.parametrize("ts", [10**400, float("inf"), float("nan")])

@@ -111,6 +111,7 @@ from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
 from opspilot.persistence import Lease, PersistenceError
+from opspilot.redaction import redact_credentials, redact_payload
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
@@ -2792,6 +2793,44 @@ class Workbench:
         if report is None and outcome is not None and outcome.kind == "run_handoff":
             shown_conclusion = _last_live_response(rebuilt["steps"])
             handoff_report = _report_view(shown_conclusion)
+        # Redesign A9: after a continuation Run became current, the shown
+        # report and its evidence are an earlier Run's.
+        report_steps: list[dict[str, Any]] = []
+        report_coverage = None
+        reader_run = getattr(self.incidents, "report_run", None)
+        if report is not None and reader_run is not None:
+            found_run = reader_run(incident_id)
+            if found_run is not None:
+                report_steps = [_step_view(step) for step in found_run["steps"]]
+                earlier = run_coverage(
+                    found_run["run_id"], found_run["input"], found_run["steps"]
+                )
+                report_coverage = _coverage_view(earlier)
+        # Redesign A8/D7a: with no published report, the newest validated
+        # report any Run of this incident marked incomplete, looked up across
+        # Runs (a later continuation Run may end with none of its own).
+        incomplete_report = None
+        reader = getattr(self.incidents, "latest_incomplete_report", None)
+        if report is None and reader is not None:
+            found = reader(incident_id)
+            if found is not None:
+                view = _report_view(found[1])
+                if view is not None and view.get("parsed"):
+                    incomplete_report = {"run_id": str(found[0]), "report": view}
+                    # A9: an earlier Run's incomplete report keeps that Run's
+                    # evidence and coverage on the page.
+                    record_of = getattr(self.incidents, "run_record", None)
+                    if record_of is not None and str(found[0]) != str(run["run_id"]):
+                        record = record_of(incident_id, found[0])
+                        if record is not None:
+                            report_steps = [
+                                _step_view(step) for step in record["steps"]
+                            ]
+                            report_coverage = _coverage_view(
+                                run_coverage(
+                                    record["run_id"], record["input"], record["steps"]
+                                )
+                            )
         # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
         # never shown to the model.
         coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
@@ -2815,8 +2854,14 @@ class Workbench:
                 "budget_spent": int(run["budget_spent"]),
                 "budget_unknown": int(run["budget_unknown"]),
                 "deadline": run["deadline"],
+                # Contract B4: a continuation Run's conversation mode.
+                "conversation": (input_snapshot.get("scope_facts") or {}).get(
+                    "conversation"
+                ),
             },
             "steps": steps,
+            "report_steps": report_steps,
+            "report_coverage": report_coverage,
             "not_integrated": not_integrated,
             "coverage": _coverage_view(coverage)
             if rebuilt["steps"] or coverage.sources_recorded
@@ -2826,6 +2871,12 @@ class Workbench:
             "report": report,
             "knowledge": knowledge_view,
             "handoff_report": handoff_report,
+            "incomplete_report": incomplete_report,
+            # Redesign B7/U3 (P4 page): people's messages, the read
+            # watermark that says which are still queued, and every validated
+            # reply any Run of the incident gave. Empty for a store without
+            # these reads (the in-memory test double).
+            **self._conversation(incident_id),
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": controls,
@@ -2872,6 +2923,37 @@ class Workbench:
             "rebinds": self._rebinds(incident_id),
             "rebind_targets": [
                 uid for uid in self._registry_keys() if uid != self._target_uid(summary)
+            ],
+        }
+
+    def _conversation(self, incident_id: UUID) -> dict[str, Any]:
+        reader = getattr(self.incidents, "message_inputs", None)
+        rows = [] if reader is None else reader(incident_id)
+        floor_of = getattr(self.incidents, "conversation_floor", None)
+        floor = 0 if floor_of is None else int(floor_of(incident_id))
+        replies_of = getattr(self.incidents, "prior_replies", None)
+        replies = [] if replies_of is None or not rows else replies_of(incident_id)
+        messages = []
+        for row in rows:
+            content = row["content"] if isinstance(row["content"], Mapping) else {}
+            text = content.get("text")
+            messages.append(
+                {
+                    "sequence": int(row["sequence"]),
+                    "author": row["actor"],
+                    "text": redact_credentials(text) if isinstance(text, str) else "",
+                    "channel": content.get("channel"),
+                    "received_at": None
+                    if row["received_at"] is None
+                    else _utc(row["received_at"]).isoformat(),
+                    "unread": int(row["sequence"]) > floor,
+                }
+            )
+        return {
+            "messages": messages,
+            "read_floor": floor,
+            "conversation_replies": [
+                _reply_view(r) for r in replies if isinstance(r, Mapping)
             ],
         }
 
@@ -3704,8 +3786,19 @@ def _coverage_view(coverage: RunCoverage) -> dict[str, Any]:
     }
 
 
+#: The longest visible model note a log step shows (contract C1: 500).
+_NOTE_CHARS = 500
+
+
 def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     response = step.get("response") or {}
+    if not isinstance(response, Mapping):
+        response = {}
+    assistant = response.get("assistant")
+    if not isinstance(assistant, Mapping):
+        assistant = {}
+    planned = assistant.get("tool_calls")
+    planned = planned if isinstance(planned, list) else []
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
@@ -3715,38 +3808,167 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(source_error, Mapping):
             source_error = {}
         error = source_error.get("error")
+        ordinal = item.get("ordinal")
         tools.append(
             {
-                "ordinal": item.get("ordinal"),
+                "ordinal": ordinal,
                 "evidence_id": result.get("evidence_id"),
                 "status": result.get("status"),
                 "reason": result.get("reason"),
                 "adopted": result.get("adopted"),
                 "source_contact": result.get("source_contact"),
-                "tool": result.get("tool"),
+                "tool": result.get("tool") or _planned_name(planned, ordinal),
                 "target_id": result.get("target_id"),
                 "http_status": source_error.get("http_status"),
                 "source_error": error if isinstance(error, str) else None,
                 "source_error_truncated": source_error.get("error_truncated") is True,
+                # Workbench redesign (prototype v2): what one tool call ran
+                # and returned, read from the committed tool result. The
+                # model's arguments are its own query text; the result view
+                # is redacted for display like the evidence page's.
+                "arguments": _planned_arguments(planned, ordinal),
+                "query": redact_payload(result.get("query")),
+                "source": result.get("source"),
+                "window": result.get("window")
+                if isinstance(result.get("window"), Mapping)
+                else None,
+                "data_as_of": result.get("data_as_of"),
+                "freshness_seconds": result.get("freshness_seconds"),
+                "dispatch_started_at": result.get("dispatch_started_at"),
+                "result_observed_at": result.get("observed_at"),
+                "duration_ms": _duration_ms(
+                    result.get("dispatch_started_at"), result.get("observed_at")
+                ),
+                "content": redact_payload(result.get("content")),
+                "message": redact_payload(result.get("message"))
+                if isinstance(result.get("message"), str)
+                else None,
+                "truncated": result.get("truncated") is True,
+                "incomplete": result.get("incomplete") is True,
+                "returned_count": result.get("returned_count"),
+                "result_count": result.get("result_count"),
+                "omitted_rows": result.get("omitted_rows"),
+                "duplicate_of_evidence_id": result.get("duplicate_of_evidence_id"),
             }
         )
-    assistant = response.get("assistant") if isinstance(response, Mapping) else None
-    planned = assistant.get("tool_calls") if isinstance(assistant, Mapping) else None
+    conclusion = None
+    if response.get("kind") == CONCLUSION_KIND and isinstance(
+        response.get("conclusion"), Mapping
+    ):
+        inner = response["conclusion"]
+        reasons = inner.get("handoff_reasons")
+        conclusion = {
+            "execution": inner.get("execution"),
+            "handoff": inner.get("handoff") is True,
+            "reasons": [str(r) for r in reasons] if isinstance(reasons, list) else [],
+            "model_requests_used": inner.get("model_requests_used"),
+        }
+    content = assistant.get("content")
+    # The visible text of a tool round is the model's note; a round without
+    # tool calls carries the final report, which the page shows elsewhere.
+    # A note the loop stored on the row (contract C1) wins.
+    stored_note = response.get("note")
+    if isinstance(stored_note, str) and stored_note.strip():
+        note: str | None = stored_note
+    elif planned and isinstance(content, str) and content.strip():
+        note = content
+    else:
+        note = None
+    if note is not None:
+        note = redact_credentials(" ".join(note.split()))
+        if len(note) > _NOTE_CHARS:
+            note = note[: _NOTE_CHARS - 1].rstrip() + "…"
+    replies = response.get("replies")
+    if conclusion is not None:
+        # Contract C6/C7: the final output's replies sit on the conclusion.
+        replies = response["conclusion"].get("replies")
     return {
         "step_id": str(step["step_id"]),
         "sequence": int(step.get("sequence", 0)),
         "logical_key": step["logical_key"],
         "status": step["status"],
         "control_generation": int(step["control_generation"]),
-        "finish_reason": response.get("finish_reason")
-        if isinstance(response, Mapping)
-        else None,
-        "planned_tools": len(planned) if isinstance(planned, list) else 0,
+        "finish_reason": response.get("finish_reason"),
+        "planned_tools": len(planned),
         "tools": tools,
         "history_only": step["status"] == "late_result",
         # #572 U1 6: when the round's model reply was committed (column
         # default ``clock_timestamp()``), UTC ISO text; ``None`` if absent.
         "observed_at": _observed_at(step.get("observed_at")),
+        "note": note,
+        "final_round": not planned and conclusion is None,
+        "conclusion": conclusion,
+        "input_watermark": _input_watermark(response),
+        # Contract C1/C2: validated replies the loop stores on the step row
+        # (P1). Absent on rows written before it.
+        "replies": [_reply_view(r) for r in replies if isinstance(r, Mapping)]
+        if isinstance(replies, list)
+        else [],
+    }
+
+
+def _planned_name(planned: list[Any], ordinal: Any) -> str | None:
+    call = _planned_call(planned, ordinal)
+    name = call.get("name") if call else None
+    return name if isinstance(name, str) else None
+
+
+def _planned_call(planned: list[Any], ordinal: Any) -> Mapping[str, Any] | None:
+    if not isinstance(ordinal, int) or not 0 <= ordinal < len(planned):
+        return None
+    entry = planned[ordinal]
+    function = entry.get("function") if isinstance(entry, Mapping) else None
+    return function if isinstance(function, Mapping) else None
+
+
+def _planned_arguments(planned: list[Any], ordinal: Any) -> Any:
+    """The tool call's arguments as the model wrote them: parsed JSON when
+    it parses, else the text; redacted for display."""
+    call = _planned_call(planned, ordinal)
+    raw = call.get("arguments") if call else None
+    if not isinstance(raw, str):
+        return None
+    try:
+        return redact_payload(json.loads(raw))
+    except ValueError:
+        return redact_credentials(raw)
+
+
+def _duration_ms(start: Any, end: Any) -> int | None:
+    begin, finish = _instant(start), _instant(end)
+    if begin is None or finish is None or finish < begin:
+        return None
+    return int((finish - begin).total_seconds() * 1000)
+
+
+def _instant(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return _utc(value)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _input_watermark(response: Mapping[str, Any]) -> int | None:
+    context = response.get("context")
+    if not isinstance(context, Mapping):
+        return None
+    mark = context.get("input_watermark")
+    return mark if isinstance(mark, int) else None
+
+
+def _reply_view(reply: Mapping[str, Any]) -> dict[str, Any]:
+    text = reply.get("text")
+    ids = reply.get("evidence_ids")
+    seq = reply.get("to_input_seq")
+    return {
+        "to_input_seq": seq if isinstance(seq, int) else None,
+        "text": redact_credentials(text) if isinstance(text, str) else "",
+        "evidence_ids": [str(i) for i in ids] if isinstance(ids, list) else [],
+        "unsupported": reply.get("unsupported") is True,
     }
 
 

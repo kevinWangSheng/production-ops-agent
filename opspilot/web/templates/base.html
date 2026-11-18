@@ -122,8 +122,9 @@
       dl.kv dd { margin-bottom: 6px; }
     }
   </style>
+  {%- block head %}{% endblock %}
 </head>
-<body>
+<body{% block body_attrs %}{% endblock %}>
   {%- set current = nav if nav is defined else "incidents" %}
   <header class="top">
     <div class="top-in">
@@ -141,10 +142,13 @@
       <span class="user">Signed in as <code>{{ principal.actor_id }}</code></span>
       <a class="logout" href="/logout">Log out</a>
       {%- endif %}
+      {%- block top_extra %}{% endblock %}
     </div>
   </header>
+  {%- block main %}
   <main class="wrap">
   {% block body %}{% endblock %}
   </main>
+  {%- endblock %}
 </body>
 </html>

@@ -717,6 +717,62 @@ class DurableIncidentStore:
     def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]:
         return self._store.prior_replies(incident_id)
 
+    def report_run(self, incident_id: UUID) -> dict[str, Any] | None:
+        """The Run whose conclusion step is the incident's published
+        conclusion, with its input and committed steps; ``None`` when there
+        is no conclusion or it is the current Run's (contract A1/A9: a
+        continuation Run becomes current while the report stays an earlier
+        Run's)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.run_id,r.input FROM opspilot_incidents i"
+                " JOIN opspilot_runs r ON r.incident_id=i.incident_id"
+                " JOIN opspilot_steps s ON s.run_id=r.run_id"
+                " WHERE i.incident_id=%s AND i.conclusion IS NOT NULL"
+                " AND r.run_id IS DISTINCT FROM i.current_run_id"
+                " AND s.status<>'late_result' AND s.response=i.conclusion"
+                " ORDER BY s.observed_at DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self.run_record(incident_id, row["run_id"])
+
+    def run_record(self, incident_id: UUID, run_id: UUID) -> dict[str, Any] | None:
+        """One Run of this incident with its input and committed steps (the
+        page shows an earlier Run's report with that Run's evidence, A9)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT run_id,input FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+                (run_id, incident_id),
+            ).fetchone()
+            if row is None:
+                return None
+            steps = conn.execute(
+                "SELECT step_id,run_id,sequence,logical_key,status,response,"
+                "tool_results,control_generation,observed_at"
+                " FROM opspilot_steps WHERE run_id=%s"
+                " ORDER BY sequence,observed_at,step_id",
+                (run_id,),
+            ).fetchall()
+        return {
+            "run_id": row["run_id"],
+            "input": row["input"] or {},
+            "steps": list(steps),
+        }
+
+    def message_inputs(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The people's messages to the investigation (input kind
+        ``message``, contract B1), oldest first, for the incident page."""
+        with self._store.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT sequence,actor,content,received_at FROM opspilot_inputs"
+                    " WHERE incident_id=%s AND kind='message' ORDER BY sequence",
+                    (incident_id,),
+                ).fetchall()
+            )
+
     def new_run(
         self,
         incident_id: UUID,
@@ -1024,6 +1080,29 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(rows)
 
+    def latest_incomplete_report(
+        self, incident_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        """The newest conclusion step of any Run of this incident that ended
+        with a validated report the Agent marked incomplete: execution
+        ``completed`` and handoff reasons exactly ``INCOMPLETE_INVESTIGATION``
+        (the loop sets that reason only after the report validated).
+        Redesign contract A8/D7a: the page keeps showing it after a later
+        Run (a reply-only continuation) ends without a report of its own."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT s.run_id,s.response FROM opspilot_steps s"
+                " JOIN opspilot_runs r ON r.run_id=s.run_id"
+                " WHERE r.incident_id=%s AND s.status<>'late_result'"
+                " AND s.response->>'kind'='conclusion'"
+                " AND s.response->'conclusion'->>'execution'='completed'"
+                " AND s.response->'conclusion'->'handoff_reasons'"
+                "='[\"INCOMPLETE_INVESTIGATION\"]'::jsonb"
+                " ORDER BY s.observed_at DESC,s.sequence DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        return None if row is None else (row["run_id"], row["response"])
+
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
@@ -1131,17 +1210,17 @@ _ITEM_JOINS = (
 
 _SERVICE_LIMIT = 200
 #: The list group ``incident_list.status_of`` gives a row, in SQL, in the
-#: same first-match order (web UX spec 3.7). Change both together; the
-#: consistency test compares them over every status.
+#: same first-match order as ``status.incident_status`` (redesign contract
+#: A8). Change both together.
 _PAGE_GROUP = (
     "CASE"
     " WHEN i.lifecycle='closed' THEN CASE WHEN pm.state='under_review'"
     " AND pm.postmortem_id IS NOT NULL THEN 'needs_human' ELSE 'closed' END"
-    f" WHEN COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) IS NOT NULL THEN 'needs_human'"
-    " WHEN i.state='paused' OR r.state='paused' THEN 'needs_human'"
-    " WHEN r.state='blocked' OR i.mode='human_owned' OR r.state='waiting_human'"
-    " OR i.lifecycle='resolved' THEN 'needs_human'"
-    " WHEN i.lifecycle='observing_recovery' OR r.state IN ('queued','running')"
+    " WHEN i.lifecycle='resolved' THEN 'needs_human'"
+    " WHEN i.state IN ('cancelled','paused') OR r.state='paused' THEN 'needs_human'"
+    " WHEN i.mode='human_owned' THEN 'needs_human'"
+    " WHEN r.state IN ('queued','running') THEN 'in_progress'"
+    " WHEN i.conclusion IS NOT NULL AND i.lifecycle='observing_recovery'"
     " THEN 'in_progress'"
     " ELSE 'needs_human' END"
 )

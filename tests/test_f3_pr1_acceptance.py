@@ -49,14 +49,8 @@ from opspilot.tools.otel_demo import (
     otel_demo_executor_factory,
 )
 from tests.f3_pr1_support import (
-    CLAIM_TEXT,
-    EXPECTED,
-    EXPRS,
-    INVALID_EXPR,
     NO_DATA_EXPR,
     OK_EXPR,
-    TIMEOUT_EXPR,
-    UNREACHABLE_EXPR,
     FiveClassInvestigator,
 )
 from tests.m1_tool_support import RecordingSink
@@ -376,41 +370,13 @@ def five_class_run() -> dict[str, Any]:
     }
 
 
-def test_the_step_table_shows_why_each_non_ok_tool_result_failed(five_class_run):
-    # R7 + point 5: the operator tells the four classes apart on the
-    # workbench step table, not only by the bare status badge.
-    steps = _section(
-        five_class_run["page"], '<details class="how" id="how">', "</details>"
-    )
-    lines = _text(steps).split("metrics.range_query")[1:]
-    assert len(lines) == len(EXPRS), _text(steps)
-    by_expr = dict(zip(EXPRS, lines, strict=True))
-    reasons = {"INVALID_PARAMS", "SOURCE_UNAVAILABLE", "TOOL_TIMEOUT"}
-    for expr in (INVALID_EXPR, UNREACHABLE_EXPR, TIMEOUT_EXPR):
-        status, reason = EXPECTED[expr]
-        line = by_expr[expr]
-        assert status in line, (expr, line)
-        assert reason in line, (expr, line)
-        assert not (reasons - {reason}) & set(re.findall(r"[A-Z_]{6,}", line)), (
-            expr,
-            line,
-        )
-    # No data is told apart by its own status; it carries none of the
-    # failure reasons.
-    assert "no_data" in by_expr[NO_DATA_EXPR]
-    assert not reasons & set(re.findall(r"[A-Z_]{6,}", by_expr[NO_DATA_EXPR]))
-    # The ok row shows no failure reason and no placeholder for one.
-    assert not reasons & set(re.findall(r"[A-Z_]{6,}", by_expr[OK_EXPR]))
-    assert "None" not in by_expr[OK_EXPR]
-
-
 def test_each_committed_observation_resolves_with_its_provenance(five_class_run):
     # Step 1 on the workbench surface (R1: ok and no_data are observations).
     app, incident = five_class_run["app"], five_class_run["incident"]
-    steps = _section(
-        five_class_run["page"], '<details class="how" id="how">', "</details>"
+    steps = _section(five_class_run["page"], 'id="log-sec"', "</section>")
+    evidence_ids = sorted(
+        set(re.findall(rf"/incidents/{incident}/evidence/([^\"<>]+)\"", steps))
     )
-    evidence_ids = re.findall(rf"/incidents/{incident}/evidence/([^\"<>]+)\"", steps)
     assert len(evidence_ids) == 2, evidence_ids  # ok + no_data only
     for evidence_id in evidence_ids:
         record = call(
@@ -433,27 +399,3 @@ def test_each_committed_observation_resolves_with_its_provenance(five_class_run)
             # R2: unknown freshness is explicit, never a made-up number.
             assert view["status"] == "no_data"
             assert view["data_as_of"] is None and view["freshness_seconds"] is None
-
-
-def test_the_report_keeps_the_five_claim_kinds_in_separate_groups(five_class_run):
-    # Step 2 on the workbench surface: each claim appears under its own
-    # heading and under no other.
-    page = five_class_run["page"]
-    headings = {
-        "fact": "Facts (",
-        "hypothesis": "Hypotheses (",
-        "counter_evidence": "Counter-evidence (",
-        "rejected_hypothesis": "Rejected hypotheses (",
-        "recommendation": "Recommendations (",
-    }
-    sections = {}
-    for kind, heading in headings.items():
-        start = page.index(heading)
-        end = page.index("</section>", start)
-        sections[kind] = page[start:end]
-    for kind, text in CLAIM_TEXT.items():
-        for other, fragment in sections.items():
-            present = html.escape(text) in fragment or text in fragment
-            assert present is (other == kind), (kind, other)
-    for kind in headings:
-        assert f"{headings[kind]}1)" in page

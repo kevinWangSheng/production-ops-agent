@@ -233,3 +233,11 @@ jobs:
           printf '  %s\n' "${files[@]}"
           test "${#files[@]}" -gt 0
           .venv/bin/python -m pytest "${files[@]}" -q -rs
+      - name: Browser paths (workbench)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          M1_DURABLE_POSTGRES: "1"
+          OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+        run: |
+          .venv/bin/python -m playwright install --with-deps --only-shell chromium
+          .venv/bin/python -m pytest tests/browser -q -rs

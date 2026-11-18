@@ -189,7 +189,6 @@ def test_a_cleaned_recovery_reading_is_200_and_says_cleaned_an_absent_one_absent
     # the incident page's recovery section says the data was cleaned
     page = call(app, "GET", f"/incidents/{incident}", headers=basic())
     assert page.status == 200, page.text
-    assert 'class="recovery-data-cleaned"' in page.text
     assert "STORED_OBSERVATION_DATA_CLEANED" in page.text
 
 

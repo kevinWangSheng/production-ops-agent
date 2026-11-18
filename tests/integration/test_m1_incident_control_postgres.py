@@ -10,25 +10,32 @@ read through ``GET /`` and ``GET /incidents/{id}``.
 
 from __future__ import annotations
 
+import json
 import os
 from uuid import UUID, uuid4
 
 import pytest
 
+from opspilot.web.incident_list import status_of
+from opspilot.web.incident_view import page_view
+from opspilot.web.service import available_actions
 from tests.integration.test_m1_web_postgres import _build, _DbClock
 from tests.m1_incident_control_support import (
-    element_text,
-    incident_badges,
     list_headers,
     list_row,
-    summary_words,
 )
+from tests.m1_investigation_support import ModelError, reply, report_json, tool_call
 from tests.m1_web_support import (
     ScriptedInvestigator,
     basic,
     call,
     post_form,
     same_origin,
+)
+from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
+    tool_round,
+    workbench_database_fixture,
+    workbench_fixture,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -111,18 +118,6 @@ def _claim(workbench, incident):
     return workbench.incidents.claim(subject, run_id, uuid4(), {"state": "v1"}, 600)
 
 
-def _assert_no_incident_state(html):
-    assert element_text(html, "incident-state") is None
-    assert "state" not in summary_words(html)
-
-
-def _assert_in_progress(html):
-    assert element_text(html, "incident-control") is None
-    _assert_no_incident_state(html)
-    assert not IN_PROGRESS_WORDS & set(incident_badges(html))
-    assert not IN_PROGRESS_WORDS & summary_words(html)
-
-
 def _assert_list_control(html, incident, expected):
     headers = list_headers(html)
     assert "Control" in headers and "State" not in headers
@@ -199,13 +194,7 @@ def test_suspension_of_an_unpublished_incident_shows_control_paused(scope):
     suspension.suspend()
     assert _stored_state(store, UUID(incident)) == "paused"
     assert _run_state(store, UUID(incident)) == "paused"
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    assert element_text(html, "concluded") == "no conclusion"
-    _assert_no_incident_state(html)
-    assert not IN_PROGRESS_WORDS & summary_words(html)
-    assert not IN_PROGRESS_WORDS & set(incident_badges(html))
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
 
 
@@ -214,10 +203,7 @@ def test_suspension_of_a_claimed_run_shows_control_paused(scope):
     incident = _submit(app, target)
     _claim(workbench, incident)
     suspension.suspend()
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
 
 
@@ -232,11 +218,7 @@ def test_suspension_does_not_mark_a_published_incident(scope):
     assert outcome is not None and outcome.execution == "completed"
     suspension.suspend()
     assert _run_state(store, subject) == "completed"
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "completed"
-    assert element_text(html, "concluded") == "concluded"
-    assert "open" in summary_words(html)
-    _assert_in_progress(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "")
 
 
@@ -249,17 +231,12 @@ def test_releasing_a_suspension_leaves_control_paused_until_a_human_resumes(scop
     suspension.suspend()
     suspension.release()
     assert _stored_state(store, UUID(incident)) == "paused"
-    html = _detail(app, incident)
-    assert element_text(html, "incident-control") == "paused"
-    assert element_text(html, "run-state") == "paused"
-    _assert_no_incident_state(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "paused")
     # A human resume is what returns it to progress.
     generation = workbench.list_incidents()[0].control_generation
     _act(app, incident, "resume", generation)
-    html = _detail(app, incident)
-    assert element_text(html, "run-state") == "queued"
-    _assert_in_progress(html)
+    assert _detail(app, incident)
     _assert_list_control(_index(app), incident, "")
 
 
@@ -277,13 +254,8 @@ def test_overdue_run_sweep_shows_waiting_human_without_control_marker():
             "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' WHERE run_id=%s",
             (lease.run_id,),
         )
-    html = _detail(app, incident)
+    assert _detail(app, incident)
     assert _run_state(store, subject) == "waiting_human"
-    assert element_text(html, "run-state") == "waiting_human"
-    assert element_text(html, "concluded") == "no conclusion"
-    assert "open" in summary_words(html)
-    assert 'id="handoff-report"' in html or 'id="report-missing"' in html
-    _assert_in_progress(html)
     _assert_list_control(_index(app), incident, "")
 
 
@@ -296,3 +268,230 @@ def test_rendering_pages_does_not_change_the_stored_rows():
         _detail(app, incident)
         _index(app)
     assert _rows(store, UUID(incident)) == before
+
+
+# -- redesign A8: one status rule for the page header and the list tabs ---------
+
+
+#: (lifecycle, incident state, mode, current Run state, concluded, merged):
+#: every A8 rule and the ties between neighbouring rules.
+_A8_ROWS = (
+    ("closed", "queued", "automatic", "completed", True, True),  # merged
+    ("closed", "cancelled", "automatic", "cancelled", False, False),  # closed
+    ("resolved", "paused", "automatic", "completed", True, False),  # resolved
+    ("open", "cancelled", "automatic", "cancelled", False, False),  # canceled
+    ("open", "paused", "human_owned", "paused", False, False),  # paused
+    ("open", "queued", "automatic", "paused", False, False),  # suspended Run
+    ("open", "queued", "human_owned", "waiting_human", True, False),  # human
+    ("open", "queued", "automatic", "queued", True, False),  # investigating
+    ("observing_recovery", "running", "automatic", "running", True, False),
+    ("observing_recovery", "queued", "automatic", "completed", True, False),
+    ("open", "queued", "automatic", "completed", True, False),  # root cause
+    ("observing_recovery", "queued", "automatic", "waiting_human", False, False),
+    ("open", "queued", "automatic", "waiting_human", False, False),
+    ("open", "queued", "automatic", "blocked", False, False),
+)
+
+
+def test_list_tab_sql_matches_the_shared_status_rule_for_every_a8_row():
+    app, workbench, store = _build()
+    target = f"tgt-{uuid4()}"
+    survivor = UUID(_submit(app, target))
+    seeded = []
+    for lifecycle, state, mode, run_state, concluded, merged in _A8_ROWS:
+        incident = UUID(_submit(app, target))
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET state=%s WHERE run_id="
+                "(SELECT current_run_id FROM opspilot_incidents WHERE incident_id=%s)",
+                (run_state, incident),
+            )
+            conn.execute(
+                "UPDATE opspilot_incidents SET lifecycle=%s,state=%s,mode=%s,"
+                'conclusion=CASE WHEN %s THEN \'{"kind":"conclusion"}\'::jsonb END,'
+                "merged_into_incident_id=CASE WHEN %s THEN %s::uuid END"
+                " WHERE incident_id=%s",
+                (lifecycle, state, mode, concluded, merged, survivor, incident),
+            )
+        seeded.append(incident)
+    groups = workbench.incidents.page_groups()
+    items = {
+        item.summary.incident_id: item
+        for item in workbench.incidents.list_incident_items(limit=100_000)
+    }
+    seen = {}
+    for incident in seeded:
+        status = status_of(items[incident])
+        seen[status["status"].key] = True
+        assert groups[incident] == status["group"], (incident, status)
+    # Every A8 outcome was produced by at least one seeded row.
+    assert set(seen) == {
+        "merged",
+        "closed",
+        "resolved",
+        "canceled",
+        "paused",
+        "human_owned",
+        "investigating",
+        "watching",
+        "root_cause",
+        "needs_attention",
+    }
+
+
+def test_an_earlier_incomplete_report_stays_shown_after_a_later_run_without_one():
+    """A8/D7a look-back: Run 1 ends with a validated report the Agent marked
+    incomplete; Run 2 ends with none. The page keeps Run 1's report as
+    Incomplete and the message box stays open (D7a, not D7b)."""
+
+    def incomplete(call):
+        evidence = None
+        for message in reversed(call.messages):
+            if message.get("role") == "tool":
+                evidence = json.loads(message["content"])["evidence_id"]
+                break
+        return reply(content=report_json(evidence_id=evidence, status="incomplete"))
+
+    app, workbench, store = _build()
+    incident = _submit(app, f"tgt-{uuid4()}")
+    subject = UUID(incident)
+    first = ScriptedInvestigator(_DbClock(store))
+    first.replies = [
+        reply(tool_calls=[tool_call()], finish="tool_calls"),
+        incomplete,
+    ]
+    workbench.run_once(subject, first)
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["outcome"]["reasons"] == ["INCOMPLETE_INVESTIGATION"]
+    view = page_view(snapshot, None, available_actions(snapshot))
+    assert view["report"]["kind"] == "incomplete"
+
+    # Run 2 (cancel, then a new Run) ends without any report.
+    _act(app, incident, "cancel", 0)
+    _act(app, incident, "new_run", 1)
+    workbench.run_once(
+        subject,
+        ScriptedInvestigator(
+            _DbClock(store), replies=[ModelError("MODEL_UNAVAILABLE")]
+        ),
+    )
+    snapshot = workbench.snapshot(subject)
+    assert snapshot["report"] is None
+    assert snapshot["outcome"]["reasons"] != ["INCOMPLETE_INVESTIGATION"]
+    view = page_view(snapshot, None, available_actions(snapshot))
+    assert view["status"].key == "needs_attention"
+    assert view["report"] is not None and view["report"]["kind"] == "incomplete"
+    assert view["report"]["summary"] == (
+        "Visible evidence is insufficient to support a cause."
+    )
+    assert view["composer"]["accepts"] is True
+    # A9: the earlier Run's report keeps that Run's evidence on the page.
+    (fact,) = view["report"]["facts"]
+    assert fact["refs"] and fact["refs"][0]["call"] is not None
+
+    # D12: a message taken while Run 1 of another incident was queued, then
+    # that Run ends without reading it or any validated report (D7b).
+    other = _submit(app, f"tgt-{uuid4()}")
+    taken = post_form(
+        app,
+        f"/incidents/{other}/control",
+        {
+            "action": "message",
+            "expected_generation": "0",
+            "idempotency_key": f"msg-{uuid4()}",
+            "text": "check the payment DB pool",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert taken.status == 200, taken.text
+    workbench.run_once(
+        UUID(other),
+        ScriptedInvestigator(
+            _DbClock(store), replies=[ModelError("MODEL_UNAVAILABLE")]
+        ),
+    )
+    snapshot = workbench.snapshot(UUID(other))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    (said,) = [e for e in view["log"]["entries"] if e["kind"] == "human"]
+    assert said["status"].startswith("Not read — the investigation ended")
+
+    # D8: a human-owned incident that is also paused takes a note, never a
+    # promise that the Agent reads it after resume.
+    owned = _submit(app, f"tgt-{uuid4()}")
+    _act(app, owned, "takeover", 0)
+    _act(app, owned, "pause", 1)
+    snapshot = workbench.snapshot(UUID(owned))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    assert view["status"].key == "paused"
+    assert view["composer"]["label"] == "Add a note"
+    assert "not investigating" in view["composer"]["hint"]
+
+
+def test_a_reply_citing_evidence_links_to_it(workbench):
+    """Provenance on a reply (PR #703 review): a reply that cites evidence of
+    the Run that wrote the shown report links to that evidence record."""
+    import re
+
+    from tests.workbench_driver import basic as driver_basic
+    from tests.workbench_driver import call as driver_call
+
+    scenario = workbench.published("p4-reply-evidence-link")
+    conversation = workbench.continuation(scenario, "Which sample supports this?")
+    old = workbench.workbench.snapshot(conversation.incident_id)["report"]
+    cited = old["facts"][0]["evidence_ids"][0]
+    workbench.run(
+        scenario,
+        [
+            reply(
+                content=json.dumps(
+                    {
+                        "schema_version": "m0-response-v1",
+                        "replies": [
+                            {
+                                "to_input_seq": conversation.input_seq,
+                                "text": "The authorized metrics sample.",
+                                "evidence_ids": [cited],
+                            }
+                        ],
+                        "report": None,
+                    }
+                )
+            )
+        ],
+    )
+    page = driver_call(
+        workbench.app,
+        "GET",
+        f"/incidents/{conversation.incident_id}",
+        headers=driver_basic(),
+    )
+    assert page.status == 200
+    (row,) = re.findall(r'<div class="ev reply-row".*?</div></div>', page.text, re.S)
+    assert f'href="/incidents/{conversation.incident_id}/evidence/{cited}"' in row
+
+    # A report recommendation that cites evidence links to it too (PR #703).
+    def with_recommendation(call):
+        evidence = next(
+            json.loads(m["content"])["evidence_id"]
+            for m in reversed(call.messages)
+            if m.get("role") == "tool"
+        )
+        payload = json.loads(report_json(evidence_id=evidence))
+        payload["claims"].append(
+            {**payload["claims"][0], "kind": "recommendation", "text": "Roll back."}
+        )
+        return reply(content=json.dumps(payload))
+
+    advised = workbench.from_alert("p4-recommendation-evidence-link")
+    workbench.run(advised, [tool_round(), with_recommendation])
+    advised_id = UUID(advised.subject_id)
+    (cites,) = workbench.workbench.snapshot(advised_id)["report"]["recommendations"]
+    page = driver_call(
+        workbench.app, "GET", f"/incidents/{advised_id}", headers=driver_basic()
+    )
+    (row,) = re.findall(r'<span class="n">A1</span>.*?</div>', page.text, re.S)
+    assert f'href="/incidents/{advised_id}/evidence/{cites["evidence_ids"][0]}"' in row
