@@ -169,9 +169,13 @@
     <h2 id="h-fb">Feedback <span class="sub">for evaluation · the Agent and Chat never read it</span></h2>
     {%- if feedback %}{{ feedback_summary(feedback) }}{% else %}<p class="small" id="feedback-none">No feedback on this report yet.</p>{% endif %}
     {%- if fo %}
-    {%- set fb = feedback or {} %}
-    <details class="fbd" id="feedback-form"><summary class="btn">{{ "Edit feedback" if feedback else "Add feedback" }}</summary>
+    {%- set fb = feedback_draft or feedback or {} %}
+    {%- if feedback_error %}<p class="fberr" id="feedback-error" role="alert">{{ feedback_error }}</p>{% endif %}
+    <details class="fbd" id="feedback-form"{% if feedback_error %} open{% endif %}><summary class="btn">{{ "Edit feedback" if feedback else "Add feedback" }}</summary>
     <form class="fbf" method="post" action="/incidents/{{ inc.incident_id }}/feedback">
+      {#- F9 (r12): the report this rates; a revised report refuses the save. #}
+      <input type="hidden" name="rated_run_id" value="{{ fo.run_id }}">
+      <input type="hidden" name="rated_report_sha256" value="{{ fo.sha256 }}">
       <fieldset><legend>Is the root cause correct?</legend>
         <label class="opt"><input type="radio" name="verdict" value="correct" required{% if fb.verdict == "correct" %} checked{% endif %}> Correct</label>
         <label class="opt"><input type="radio" name="verdict" value="incorrect"{% if fb.verdict == "incorrect" %} checked{% endif %}> Incorrect</label>

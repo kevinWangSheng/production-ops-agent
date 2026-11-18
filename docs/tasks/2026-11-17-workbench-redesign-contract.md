@@ -300,7 +300,7 @@ D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两�
 | F5 | 照 AWS 五项，「Mitigation correctness」改为「Next steps correct」；真实根因只在 incorrect 时保存、正确做法只在下一步 incorrect 时保存，否则丢弃（库里有 CHECK）；文本同消息的长度与字符检查，显示与导出过 `redact_credentials` |
 | F6–F7 | 一个事故一份，最新提交整体替换，后写的赢；任何登录用户都能给，`updated_by` 取会话用户 |
 | F8 | 页面显示的报告能解析（已发布或 D7a 不完整）且事故未合并时提供；Resolved/Closed 放主按钮，其他状态放 More；服务端同条件拒绝 `NO_REPORT`/`MERGED`（409），合并在写入语句里再判一次 |
-| F9 | 记下当时显示报告的 Run 和 sha256；报告之后被修订，卡片加「Rated an earlier report」，不清掉 |
+| F9 | 记下当时显示报告的 Run 和 sha256；报告之后被修订，卡片加「Rated an earlier report」，不清掉。提交须带所评报告的 Run/sha；不一致拒绝 REPORT_CHANGED（409，不写入；页面说明原因并保留填写内容；不带这两项的调用方按提交时显示的报告记，PR #716 机器人发现，lead 裁决） |
 | F10 | 结论下方一张卡片 + 页内 `<details>` 表单；`/live` 片段带上卡片，表单打开或聚焦时不替换；不加 SSE 事件种类 |
 | F11 | 见上（用户选 A）：复盘审核页只读显示 |
 | F12 | 不直接进知识库 |

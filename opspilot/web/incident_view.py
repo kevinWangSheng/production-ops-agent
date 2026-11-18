@@ -1545,9 +1545,15 @@ def feedback_offer(
     """F8: offered while the page shows a report and the incident is not
     merged; Resolved and Closed put it among the primary buttons, every other
     status under More."""
-    if status.key == "merged" or shown_report_ref(snapshot) is None:
+    ref = shown_report_ref(snapshot)
+    if status.key == "merged" or ref is None:
         return None
-    return {"primary": status.key in ("resolved", "closed")}
+    # F9 (r12): the form carries the report it rates.
+    return {
+        "primary": status.key in ("resolved", "closed"),
+        "run_id": ref[0],
+        "sha256": ref[1] or "",
+    }
 
 
 def page_view(

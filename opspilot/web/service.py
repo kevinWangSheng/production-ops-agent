@@ -1710,6 +1710,12 @@ class Workbench:
         ref = shown_report_ref(self.snapshot(incident_id))
         if ref is None:
             raise WorkbenchError("NO_REPORT")
+        # F9 (r12): the page's form names the report the person rated; a
+        # report revised since then is refused, never silently retargeted.
+        # A caller naming no report rates the one shown now.
+        claimed = _rated_ref(fields)
+        if claimed is not None and claimed != ref:
+            raise WorkbenchError("REPORT_CHANGED")
         try:
             row = self._feedback().save(
                 incident_id,
@@ -4100,6 +4106,26 @@ def _feedback_fields(fields: Mapping[str, Any]) -> dict[str, Any]:
     if next_steps != "incorrect":
         clean["correct_next_steps"] = None
     return clean
+
+
+def _rated_ref(fields: Mapping[str, Any]) -> tuple[str, str | None] | None:
+    """The ``(run_id, sha256)`` a submission says it rates (F9 r12), or
+    ``None`` when it names none. Malformed values are ``INVALID_INPUT``."""
+    run = fields.get("rated_run_id")
+    sha = fields.get("rated_report_sha256")
+    if run in (None, "") and sha in (None, ""):
+        return None
+    if not isinstance(run, str) or not isinstance(sha, (str, type(None))):
+        raise WorkbenchError("INVALID_INPUT")
+    try:
+        run = str(UUID(run))
+    except ValueError:
+        raise WorkbenchError("INVALID_INPUT") from None
+    if sha == "":
+        sha = None
+    if sha is not None and not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise WorkbenchError("INVALID_INPUT")
+    return run, sha
 
 
 def _feedback_view(
