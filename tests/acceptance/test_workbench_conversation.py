@@ -17,6 +17,8 @@ import pytest
 from tests.m1_investigation_support import reply, report_from_transcript
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
     UI_USER,
+    basic,
+    call,
     step_contract,
     tool_round,
     workbench_database_fixture,
@@ -1170,3 +1172,201 @@ def test_p7_chat_answers_without_touching_investigation_and_forwards_only_the_us
     assert "reasoning_content" not in stored
     assert CHAT_REASONING not in stored
     assert INVESTIGATION_REASONING not in stored
+
+
+# P5 independent acceptance (prereview 2026-11-18 F16): the twelfth and
+# last scenario function. Every feedback seam goes through the
+# tests.workbench_driver accessors marked "contract P5 interface".
+
+FEEDBACK_ROOT_CAUSE = (
+    "p5-actual-root-cause: the nightly batch exhausted the payment-db pool"
+)
+FEEDBACK_NEXT_STEPS = "p5-correct-next-steps: cap the batch job's pool share"
+# F5: shown and exported text passes redact_credentials; a synthetic
+# userinfo URL is a span it always redacts.
+FEEDBACK_SECRET = "p5-synthetic-pass"
+FEEDBACK_NOTES = (
+    f"p5-notes: replayed via postgres://p5svc:{FEEDBACK_SECRET}@payment-db.internal"
+)
+
+
+def feedback_accepted(response):
+    # F3: PRG back to the incident page for a form; JSON 2xx otherwise.
+    assert 200 <= response.status < 300 or response.status == 303, (
+        f"HTTP {response.status} {response.text[:500]}"
+    )
+
+
+@pytest.mark.parametrize("case", ["recorded", "no_report", "merged"])
+def test_p5_feedback_is_recorded_without_touching_the_investigation(workbench, case):
+    """F1-F13: a signed-in user rates the shown report and corrects it; the
+    latest submission replaces the earlier one and is shown with its author
+    on the incident page and to the postmortem reviewer, and exported to a
+    signed-in user. It is not an input, a control or a chat turn: nothing
+    in the investigation, observation or postmortem draft freshness moves."""
+    if case != "recorded":
+        if case == "no_report":
+            incident_id = UUID(
+                workbench.from_alert("workbench-p5-no-report").subject_id
+            )
+        else:
+            incident_id = UUID(
+                workbench.published("workbench-p5-merged-src").subject_id
+            )
+            survivor = UUID(workbench.published("workbench-p5-merged-dst").subject_id)
+            admitted(
+                workbench.control(
+                    incident_id, "merge_into", into_incident_id=str(survivor)
+                )
+            )
+            assert (
+                workbench.incident(incident_id)["merged_into_incident_id"] == survivor
+            )
+        before = investigation_state(workbench, incident_id)
+        refused = workbench.feedback_submit(
+            incident_id, verdict="incorrect", actual_root_cause=FEEDBACK_ROOT_CAUSE
+        )
+        # F8: no shown report, or merged -> refused by the server.
+        assert 400 <= refused.status < 500, refused.text[:500]
+        assert refused.json()["code"] == (
+            "NO_REPORT" if case == "no_report" else "MERGED"
+        )
+        assert workbench.feedback_rows(incident_id) == []
+        assert workbench.feedback_shown(incident_id) is None
+        assert investigation_state(workbench, incident_id) == before
+        return
+
+    scenario = workbench.published("workbench-p5-feedback")
+    incident_id = UUID(scenario.subject_id)
+    draft = workbench.postmortem_draft(incident_id)
+    rated_run_id = workbench.incident(incident_id)["current_run_id"]
+    before = investigation_state(workbench, incident_id)
+    observation_before = workbench.observation(incident_id)
+    postmortem_before = workbench.postmortem_state(incident_id)
+    assert postmortem_before["moved"] == [()], "setup: the draft is fresh"
+
+    # Thumbs up. F5: a root cause sent with "correct" is discarded.
+    feedback_accepted(
+        workbench.feedback_submit(
+            incident_id,
+            verdict="correct",
+            actual_root_cause="p5-must-be-discarded",
+            notes="p5-first-notes",
+        )
+    )
+    (row,) = workbench.feedback_rows(incident_id)
+    assert row["verdict"] == "correct"
+    assert row["actual_root_cause"] is None
+    assert row["notes"] == "p5-first-notes"
+    assert row["updated_by"] == UI_USER, "F7: the signed-in user"
+    assert row["rated_run_id"] == rated_run_id, "F9: the Run whose report was shown"
+    assert row["rated_report_sha256"]
+    rated_sha = row["rated_report_sha256"]
+    shown = workbench.feedback_shown(incident_id)
+    assert shown == {
+        "verdict": "correct",
+        "actual_root_cause": None,
+        "author": UI_USER,
+        "earlier_report": False,
+    }
+
+    # Thumbs down with a correction: replaces the whole earlier one (F6).
+    feedback_accepted(
+        workbench.feedback_submit(
+            incident_id,
+            verdict="incorrect",
+            actual_root_cause=FEEDBACK_ROOT_CAUSE,
+            steering_needed="true",
+            next_steps_verdict="incorrect",
+            correct_next_steps=FEEDBACK_NEXT_STEPS,
+            notes=FEEDBACK_NOTES,
+        )
+    )
+    (row,) = workbench.feedback_rows(incident_id)
+    assert row["verdict"] == "incorrect"
+    assert row["actual_root_cause"] == FEEDBACK_ROOT_CAUSE
+    assert row["steering_needed"] is True
+    assert row["next_steps_verdict"] == "incorrect"
+    assert row["correct_next_steps"] == FEEDBACK_NEXT_STEPS
+    assert "p5-first-notes" not in json.dumps(row, default=str)
+    assert row["updated_by"] == UI_USER
+    assert (row["rated_run_id"], row["rated_report_sha256"]) == (
+        rated_run_id,
+        rated_sha,
+    )
+    shown = workbench.feedback_shown(incident_id)
+    assert shown == {
+        "verdict": "incorrect",
+        "actual_root_cause": FEEDBACK_ROOT_CAUSE,
+        "author": UI_USER,
+        "earlier_report": False,
+    }
+    page = call(workbench.app, "GET", f"/incidents/{incident_id}", headers=basic())
+    assert FEEDBACK_ROOT_CAUSE in page.text
+    assert FEEDBACK_SECRET not in page.text
+
+    # F2-F4, F11: not an input, not a control, not a chat turn; Runs, steps,
+    # generation, conclusion, observation and draft freshness never move.
+    assert investigation_state(workbench, incident_id) == before
+    assert workbench.observation(incident_id) == observation_before
+    assert workbench.postmortem_state(incident_id) == postmortem_before
+    for text in (FEEDBACK_ROOT_CAUSE, FEEDBACK_NEXT_STEPS, "p5-first-notes"):
+        assert text not in json.dumps(workbench.inputs(incident_id), default=str)
+        assert text not in json.dumps(workbench.chat_rows(incident_id), default=str)
+
+    # F11 (ruling A): the postmortem reviewer sees it beside the draft.
+    reviewer = workbench.postmortem_feedback(draft.object_id, draft.version)
+    assert reviewer is not None, "the review page must show the feedback"
+    assert reviewer["verdict"] == "incorrect"
+    assert reviewer["actual_root_cause"] == FEEDBACK_ROOT_CAUSE
+    assert reviewer["author"] == UI_USER
+    assert FEEDBACK_ROOT_CAUSE in reviewer["html"]
+    assert FEEDBACK_SECRET not in reviewer["html"]
+    assert workbench.postmortem_state(incident_id) == postmortem_before
+
+    # F13: export to a signed-in user only.
+    stranger = workbench.feedback_export(signed_in=False)
+    assert stranger.status == 401, stranger.status
+    assert FEEDBACK_ROOT_CAUSE not in stranger.text
+    unsigned = workbench.feedback_submit(
+        incident_id, signed_in=False, verdict="correct"
+    )
+    assert unsigned.status == 401, unsigned.status
+    assert workbench.feedback_rows(incident_id) == [row]
+    exported = workbench.feedback_export()
+    assert exported.status == 200, exported.text[:500]
+    assert FEEDBACK_SECRET not in exported.text, "F5: export is redacted"
+    (line,) = [
+        item
+        for item in workbench.feedback_export_lines(exported)
+        if item["incident_id"] == str(incident_id)
+    ]
+    assert line["verdict"] == "incorrect"
+    assert line["actual_root_cause"] == FEEDBACK_ROOT_CAUSE
+    assert line["correct_next_steps"] == FEEDBACK_NEXT_STEPS
+    assert line["rated_run_id"] == str(rated_run_id)
+    (rated_run,) = [
+        r for r in workbench.runs(incident_id) if r["run_id"] == rated_run_id
+    ]
+    assert line["prompt_revision"] == rated_run["versions"]["prompt_revision"]
+    assert "model" in line
+
+    # F9: a later revised report keeps the feedback and flags it as rating
+    # an earlier report; nothing clears it.
+    report = json.loads(workbench.terminal(incident_id)["report_content"])
+    report["summary"] = f"p5 revised conclusion {incident_id}"
+    admitted(workbench.message(incident_id, "Please update the report."))
+    seq = last_message(workbench, incident_id)["sequence"]
+    workbench.run(
+        scenario, [response(replies=[answer(seq, "Updated.")], report=report)]
+    )
+    assert (
+        workbench.incident(incident_id)["conclusion_bytes"]
+        != before["conclusion_bytes"]
+    ), "setup: the report was revised"
+    (after_revision,) = workbench.feedback_rows(incident_id)
+    assert after_revision["verdict"] == "incorrect"
+    assert after_revision["rated_run_id"] == rated_run_id
+    assert after_revision["rated_report_sha256"] == rated_sha
+    shown = workbench.feedback_shown(incident_id)
+    assert shown is not None and shown["earlier_report"] is True
