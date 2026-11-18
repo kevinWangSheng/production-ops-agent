@@ -1063,7 +1063,7 @@ class ElasticsearchTransport:
         reasons: list[str] = []
         if size and (total["value"] > len(hits) or total["relation"] != "eq"):
             reasons.append(
-                f"size: {len(hits)} of {total['value']} matching documents are "
+                f"total: {total['value']} documents matched and {len(hits)} are "
                 "shown; narrow the query or the window, aggregate with "
                 "aggregations, or page with from_offset"
             )
@@ -1077,6 +1077,8 @@ class ElasticsearchTransport:
                 f"shards: {failed_count} shards failed and their documents are "
                 "missing from the result"
             )
+        # B1-8: each reason is also stated in notes, beside incomplete_reason.
+        notes.extend(f"Incomplete result ({reason})." for reason in reasons)
         if cut:
             notes.append(
                 f"String values longer than {MAX_VALUE_CHARS} characters are cut "
