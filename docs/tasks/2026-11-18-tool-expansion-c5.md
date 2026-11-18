@@ -31,7 +31,8 @@
 - 设了 `OPSPILOT_LOKI_URL` 就必须配凭据（Basic 用户名密码或 bearer，二选一），否则启动报 `LOKI_CONFIG_MISSING`；两个都配报 `LOKI_CONFIG_INVALID`。产品的只读身份就是网关账号（C5-U1）。
 - 地址可以带路径前缀（网关或 Grafana 数据源代理的基址），请求发往 `<前缀>/loki/api/v1/query_range`；带用户信息、查询串、片段的地址报 `LOKI_CONFIG_INVALID`；lab 闸门只看主机。
 - C5a 不支持自定义请求头认证。
-- 每次请求的查询键固定为 `query`、`start`、`end`、`limit`、`direction=backward`；时间用带 `Z` 的 RFC3339。
+- 每次请求的查询键固定为 `query`、`start`、`end`、`limit`、`direction=backward`；时间用带 `Z` 的 RFC3339。指标查询（有范围选择器）另带 `step=<n>s`，`n = max(floor(推后的求值区间秒数/250), 1)`；推后的起点向上、终点向下取整到 `n` 的纪元整数倍（Loki 自己会把起点向下、终点向上对齐到 step，独立审查实测曾让第一个点早于起点 3 秒），对齐后起点晚于终点则发请求前报 `QUERY_OUT_OF_WINDOW`；视图的 `window` 与 `lookback_start_at` 取对齐后的起点减回看。日志查询不带 `step`。
+- LogQL 的字面量扫描按 Loki 词法从左到右走一遍：`"…"`（含转义）与 `` `…` ``（无转义）是字符串；字符串之外出现 `'`、`/*`、`//` 拒绝（`QUERY_CONSTRUCT_NOT_ALLOWED`，Loki 会把它们当字符字面量或注释跳过，引号藏在里面能让检查与 Loki 读到的不一致，独立审查实测绕过）；`#` 起注释到查询末尾，检查前去掉。
 - LogQL：字符串字面量之外的 `offset`、`@` 拒绝；`[a:b]` 与孤立的 `]` 拒绝（LogQL 没有子查询）；范围时长按 Prometheus 语法（含 `1h30m`、`500ms`），向上取整到秒后与查询窗比较；转义引号留在字面量内；含换行或制表符的查询报 `INVALID_QUERY`。
 - 租户含 `|`、空白或超过 150 字符报 `LOKI_CONFIG_INVALID`；没设地址却设了租户、CA 或凭据报 `LOKI_CONFIG_INVALID`；http 地址配 CA 也报 `LOKI_CONFIG_INVALID`。
 - 只有 400 回显 Loki 的错误文本（截短、脱敏）；401、403、404 只带状态。

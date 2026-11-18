@@ -142,8 +142,10 @@ MAX_QUERY_CHARS = 4000
 #: Loki's own tenant ID limit (``tenant.MaxTenantIDLength``).
 MAX_TENANT_CHARS = 150
 
-# LogQL string literals: double-quoted with escapes, or raw backtick strings.
-_LOGQL_STRING = re.compile(r'"(?:\\.|[^"\\])*"|`[^`]*`')
+# Loki's lexer runs Go's text/scanner: "..." with escapes and raw `...`
+# without, ' starts a char literal, /* */ and // are comments, and LogQL
+# adds # comments to the end of the line (independent review, PR #724).
+_DOUBLE_QUOTED = re.compile(r'"(?:\\.|[^"\\])*"')
 _OFFSET = re.compile(r"\boffset\b", re.IGNORECASE)
 # Prometheus duration syntax (``model.ParseDuration``): units in descending
 # order, each at most once.
@@ -369,8 +371,48 @@ class LokiClient:
 # -- LogQL checks ------------------------------------------------------------------
 
 
+class _Construct(Exception):
+    """A token the outside-string scan refuses (``'``, ``/*``, ``//``)."""
+
+
 def _without_strings(query: str) -> str:
-    return _LOGQL_STRING.sub('""', query)
+    """The query with every string literal blanked to ``""`` and a ``#``
+    comment dropped, scanned left to right as Loki's tokenizer reads it.
+
+    Raises ``_Construct`` for a char literal (``'``) or a ``/*``/``//``
+    comment outside a string: Loki skips or re-reads what they cover, so a
+    quote inside one would desynchronise this scan from Loki's. An
+    unterminated literal stays visible (fail closed; Loki refuses it).
+    """
+    out: list[str] = []
+    index = 0
+    while index < len(query):
+        char = query[index]
+        if char == '"':
+            match = _DOUBLE_QUOTED.match(query, index)
+            if match is None:
+                out.append(query[index:])
+                break
+            out.append('""')
+            index = match.end()
+            continue
+        if char == "`":
+            close = query.find("`", index + 1)
+            if close < 0:
+                out.append(query[index:])
+                break
+            out.append('""')
+            index = close + 1
+            continue
+        if char == "'":
+            raise _Construct("'")
+        if char == "/" and query[index + 1 : index + 2] in ("*", "/"):
+            raise _Construct(query[index : index + 2])
+        if char == "#":
+            break  # a comment to the end of the (single-line) query
+        out.append(char)
+        index += 1
+    return "".join(out)
 
 
 def _duration_seconds(text: str) -> float | None:
@@ -441,7 +483,14 @@ def logql_problem(query: str, window_seconds: float) -> tuple[str, str] | None:
             f"query must be a non-empty LogQL query of at most {MAX_QUERY_CHARS} "
             "printable characters (no line breaks or tabs)."
         )
-    stripped = _without_strings(query)
+    try:
+        stripped = _without_strings(query)
+    except _Construct as found:
+        return "QUERY_CONSTRUCT_NOT_ALLOWED", (
+            f"{found} outside a string literal is refused: no char literals "
+            "('...') and no /* */ or // comments; quote strings with \"...\" "
+            "or `...`. A # comment is allowed."
+        )
     if _OFFSET.search(stripped) or "@" in stripped:
         return "QUERY_OUT_OF_WINDOW", (
             "offset and @ move the evaluation outside the query window and "
@@ -466,8 +515,28 @@ def logql_problem(query: str, window_seconds: float) -> tuple[str, str] | None:
 def logql_lookback_seconds(query: str) -> int:
     """Whole seconds (rounded up) each evaluation point of an accepted query
     reads back; 0 for a log (stream) query or one that does not parse."""
-    lookback = _logql_lookback(_without_strings(query)) or 0.0
+    try:
+        lookback = _logql_lookback(_without_strings(query)) or 0.0
+    except _Construct:
+        return 0
     return math.ceil(lookback)
+
+
+def metric_step_seconds(range_seconds: float) -> int:
+    """The step sent with a metric query (lead decision, PR #724 review):
+    Loki's own default, ``max(floor(range / 250), 1)`` seconds."""
+    return max(math.floor(range_seconds / 250), 1)
+
+
+def _aligned(start: datetime, end: datetime, step: int) -> tuple[datetime, datetime]:
+    """``start`` rounded up and ``end`` down to epoch multiples of ``step``
+    seconds, so Loki's own alignment (start down, end up) changes nothing."""
+    low = math.ceil(start.timestamp() / step) * step
+    high = math.floor(end.timestamp() / step) * step
+    return (
+        datetime.fromtimestamp(low, tz=timezone.utc),
+        datetime.fromtimestamp(high, tz=timezone.utc),
+    )
 
 
 def _seconds_text(seconds: float) -> str:
@@ -594,21 +663,31 @@ class LokiTransport:
         if problem is not None:
             return _refused(*problem)
         lookback = logql_lookback_seconds(query)
+        keys: list[tuple[str, str]] = [("query", query)]
+        read_window = window
+        if lookback:
+            # C5-6: a metric query is evaluated from the window start plus
+            # its lookback, so the first point reads from the window start.
+            # Loki rounds start down and end up to the step (PR #724
+            # review), so the step is sent and both are pre-aligned inside.
+            start = window.start + timedelta(seconds=lookback)
+            step = metric_step_seconds((window.end - start).total_seconds())
+            start, end = _aligned(start, window.end, step)
+            if start > end:
+                return _refused(
+                    "QUERY_OUT_OF_WINDOW",
+                    f"after aligning to the {step} s step no evaluation point "
+                    f"lies in the window; widen start/end or use a range "
+                    f"shorter than {lookback} s.",
+                )
+            read_window = Window(start - timedelta(seconds=lookback), end)
+            keys += [("start", _z(start)), ("end", _z(end)), ("step", f"{step}s")]
+        else:
+            keys += [("start", _z(window.start)), ("end", _z(window.end))]
+        keys += [("limit", str(limit)), ("direction", "backward")]
         endpoint = self._endpoint(request)
-        # C5-6: a metric query is evaluated from the window start plus its
-        # lookback, so the first point reads [window.start, start + lookback].
-        start = window.start + timedelta(seconds=lookback)
         fetched = self._client.query_range(
-            endpoint,
-            [
-                ("query", query),
-                ("start", _z(start)),
-                ("end", _z(window.end)),
-                ("limit", str(limit)),
-                ("direction", "backward"),
-            ],
-            deadline=deadline,
-            max_bytes=READ_LIMIT_BYTES,
+            endpoint, keys, deadline=deadline, max_bytes=READ_LIMIT_BYTES
         )
         if fetched.status != 200:
             return _source_error(fetched)
@@ -620,7 +699,7 @@ class LokiTransport:
         if result_type == "streams":
             return self._streams(request, data["result"], window, limit)
         if result_type == "matrix":
-            return self._matrix(request, data["result"], window, lookback)
+            return self._matrix(request, data["result"], read_window, lookback)
         return TransportResponse(body=b"")
 
     def _streams(
@@ -914,9 +993,11 @@ _DESCRIPTION = (
     "one, otherwise the 1 hour ending at the authorized window's end). "
     "Metric queries such as count_over_time({...}[5m]) or "
     'sum by (pod) (rate({...} |= "error" [1m])) are evaluated from the '
-    "window start plus their range, so every point counts only lines inside "
-    "the window; a range longer than the window, offset and @ are refused "
-    "(INVALID_PARAMS, QUERY_OUT_OF_WINDOW). "
+    "window start plus their range (aligned to the step the tool sends), so "
+    "every point counts only lines inside the window; a range longer than "
+    "the window, offset and @ are refused (INVALID_PARAMS, "
+    'QUERY_OUT_OF_WINDOW). Quote strings with "..." or `...`; single '
+    "quotes and /* */ or // comments are refused (QUERY_CONSTRUCT_NOT_ALLOWED). "
     "A log query returns at most limit lines (default 100, at most 500), the "
     "newest first, as {timestamp, labels, line}; reaching limit marks the "
     "result incomplete because older lines in the window were not returned. "
@@ -982,6 +1063,7 @@ _ERROR_CLASSES: dict[str, str] = {
     "INVALID_QUERY": "INVALID_PARAMS",
     "INVALID_LIMIT": "INVALID_PARAMS",
     "QUERY_OUT_OF_WINDOW": "INVALID_PARAMS",
+    "QUERY_CONSTRUCT_NOT_ALLOWED": "INVALID_PARAMS",
 }
 
 _LIMITS = (
@@ -1031,8 +1113,9 @@ def loki_registrations(*, max_window_seconds: int) -> tuple[ToolRegistration, ..
                 values_format=(
                     "The authorized target is appended as {values}. query is "
                     f"LogQL of at most {MAX_QUERY_CHARS} printable characters "
-                    "without offset or @, every range a Prometheus duration "
-                    "no longer than the window; limit 1 to 500."
+                    "without offset or @, single quotes, /* */ or // "
+                    "comments, every range a Prometheus duration no longer "
+                    "than the window; limit 1 to 500."
                 ),
                 limits=_LIMITS,
                 cannot_prove=_CANNOT_PROVE,

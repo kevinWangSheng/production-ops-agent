@@ -68,6 +68,9 @@ NGINX_IMAGE = (
 READ_PATH = "/loki/api/v1/query_range"
 _UPSTREAM = re.compile(r"[A-Za-z0-9.-]+:[0-9]{1,5}")
 _HOST = re.compile(r"[0-9.]+|[A-Za-z0-9.-]+")
+#: The product's own tenant rule (``loki_logs._tenant_ok``): printable, no
+#: whitespace or ``|``, at most 150 characters.
+_TENANT = re.compile(r"[!-{}~]{1,150}")
 
 
 class SetupError(Exception):
@@ -145,8 +148,8 @@ events { worker_connections 128; }
 http {
   log_format opspilot '$time_iso8601 $server_port $remote_user $request_method $uri $status';
   access_log ACCESS_LOG opspilot;
-  # A 4000-character LogQL query is up to ~12k once URL-encoded.
-  large_client_header_buffers 4 32k;
+  # A 4000-character LogQL query is up to ~36k once URL-encoded (non-ASCII).
+  large_client_header_buffers 4 64k;
   client_max_body_size 64k;
 """
             + body
@@ -307,6 +310,14 @@ def main(argv: list[str] | None = None) -> int:
             args.upstream
         ):
             raise SetupError("--upstream must be host:port")
+        if (
+            args.command == "start"
+            and args.tenant
+            and not _TENANT.fullmatch(args.tenant)
+        ):
+            raise SetupError(
+                "--tenant must be 1 to 150 printable characters without whitespace or |"
+            )
         message = {"start": start, "switch": switch, "stop": stop}[args.command](args)
     except (SetupError, OSError, ValueError, IndexError) as error:
         print(f"loki_readonly_gateway: {error}", file=sys.stderr)

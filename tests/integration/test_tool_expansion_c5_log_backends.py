@@ -74,8 +74,9 @@ LINES_APP = {
     "a3": (NOW - timedelta(minutes=10), "level=info cart updated"),
     "a-long": (NOW - timedelta(minutes=20), "L" * 5000),
     "a-secret": (NOW - timedelta(minutes=15), f"user login password={CANARY} ok"),
-    "a-old": (NOW - timedelta(hours=3), "level=error old outage"),
-    "a-ancient": (NOW - timedelta(hours=30), "level=error ancient outage"),
+    # Inside Loki's query_ingesters_within (3 h): nothing is flushed to the
+    # store in CI, so an older line could not be read back at all.
+    "a-old": (NOW - timedelta(hours=2, minutes=30), "level=error old outage"),
     "a-future": (NOW + timedelta(minutes=3), "level=error future event"),
 }
 IN_DEFAULT_WINDOW = {"a1", "a2", "a3", "a-long", "a-secret"}
@@ -456,19 +457,27 @@ def test_line_filter_regex_with_brackets_is_not_a_range(tools):
     assert len(_rows(outcome)) == 50
 
 
-def test_future_and_ancient_lines_never_return(tools):
+def test_lines_outside_the_query_window_never_return(loki, tools):
+    # Control: Loki itself serves both lines (read on the engineer port).
+    assert _direct_lines(loki, '{job="c5-app"} |= "future event"') == 1
+    assert _direct_lines(loki, '{job="c5-app"} |= "old outage"') == 1
     future = tools.execute(_call({"query": '{job="c5-app"} |= "future event"'}))
     assert (future.status, future.reason) == ("no_data", "NO_DATA")
-    ancient = tools.execute(
+    old = tools.execute(_call({"query": '{job="c5-app"} |= "old outage"'}))
+    assert (old.status, old.reason) == ("no_data", "NO_DATA")
+    # The widest window the frame allows returns the old line, never the
+    # future one.
+    widest = tools.execute(
         _call(
             {
-                "query": '{job="c5-app"} |= "ancient"',
+                "query": '{job="c5-app"} |= "outage"',
                 "start": _z(FRAME.start),
                 "end": _z(FRAME.end),
             }
         )
     )
-    assert (ancient.status, ancient.reason) == ("no_data", "NO_DATA")
+    assert widest.status == "ok", _view(widest)
+    assert _lines(widest) == [LINES_APP["a-old"][1]]
 
 
 def test_metric_evaluation_starts_after_the_lookback(tools):
@@ -484,13 +493,18 @@ def test_metric_evaluation_starts_after_the_lookback(tools):
     assert outcome.status == "ok", _view(outcome)
     view = _view(outcome)
     assert view["lookback_seconds"] == 600
-    assert view["lookback_start_at"] == BURST_WINDOW.start.isoformat()
+    # The tool sends step = max(floor(1200 s / 250), 1) = 4 s and rounds the
+    # evaluation start up to it, so the read starts at most one step after
+    # the window start and never before it.
+    read_start = datetime.fromisoformat(view["lookback_start_at"])
+    assert BURST_WINDOW.start <= read_start < BURST_WINDOW.start + timedelta(seconds=4)
+    assert view["window"]["start"] == view["lookback_start_at"]
     rows = _rows(outcome)
     assert len(rows) == 1
     points = rows[0]["values"]
     assert points
     first = min(float(point[0]) for point in points)
-    assert first >= (BURST_WINDOW.start + timedelta(minutes=10)).timestamp()
+    assert first == (read_start + timedelta(minutes=10)).timestamp()
     # The burst before the window is never counted, the three inside are.
     assert {int(float(point[1])) for point in points} == {BURST_INSIDE}
 
@@ -541,6 +555,12 @@ def test_window_and_construct_refusals_are_never_sent(loki3, k8s_ca):
         {"query": 'count_over_time({job="c5-app"}[1h] offset 5m)'},
         {"query": 'count_over_time({job="c5-app"}[2h])'},
         {"query": 'count_over_time({job="c5-app"}[5 minutes])'},
+        # PR #724 review: Loki's lexer skips comments and reads '...' as a
+        # char literal, so a quote inside one must not hide a range or offset.
+        {"query": 'sum(count_over_time({job="c5-app"} /* " */ [1h] /* " */))'},
+        {"query": 'sum(count_over_time({job="c5-app"}[1m] /* " */ offset 29m))'},
+        {"query": "sum by ('\"') (count_over_time({job=`c5-app`}[1h])) #\""},
+        {"query": 'sum(count_over_time({job="c5-app"}[1m])) // [30d]'},
         {
             "query": '{job="c5-app"}',
             "start": _z(FRAME.start - timedelta(hours=1)),
