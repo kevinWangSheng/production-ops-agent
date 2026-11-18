@@ -281,6 +281,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         "opspilot/web/app.py",
         "    shown = redact_json_bytes(raw)\n",
         "    shown = raw\n",
+        pg=True,
     ),
     Mutation(
         "M32",
@@ -288,7 +289,6 @@ MUTATIONS: tuple[Mutation, ...] = (
         "opspilot/tools/otel_demo.py",
         '    raw = redact_credentials(text).encode("utf-8")\n',
         '    raw = redact_credentials(\n        text.encode("utf-8")[:MAX_DETAIL_BYTES_PER_FIELD].decode("utf-8", "ignore")\n    ).encode("utf-8")\n',
-        pg=True,
     ),
     Mutation(
         "M33",
@@ -319,5 +319,12 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    text = redact_credentials(str(value))\n",
         "    text = str(value)\n",
         pg=True,
+    ),
+    Mutation(
+        "M36",
+        "credentials: assignments in escaped (double-encoded) JSON are redacted (#710)",
+        "opspilot/redaction.py",
+        "    redacted = _redact_escaped_quotes(redacted)\n",
+        "    pass\n",
     ),
 )
