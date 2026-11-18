@@ -151,8 +151,7 @@
     {%- if rep %}
     <h2 id="h-concl">Conclusion {% if rep.kind == "incomplete" %}<span class="chip warnc">Incomplete · not published</span>{% else %}<span class="chip {{ 'okc' if rep.level == 'supported' else '' }}">{{ rep.level_words }}</span>{% endif %}</h2>
     {%- if view.revising %}<p class="note-run"><span class="dot pulse" aria-hidden="true"></span>Agent is responding — the report may be revised.</p>{% endif %}
-    <p class="concl">{{ rep.lede or rep.summary }}</p>
-    {%- if rep.lede and rep.lede != rep.summary %}<details class="fullsum"><summary class="small">Full summary</summary><p>{{ rep.summary }}</p></details>{% endif %}
+    <p class="concl"><span class="lede">{{ rep.lede }}</span>{% if rep.rest %} <span class="rest">{{ rep.rest }}</span>{% endif %}</p>
     {%- if rep.kind == "incomplete" %}<p class="small" id="handoff-report">The Agent said its investigation is incomplete, so this report was not published as the incident's conclusion. Incomplete is not the same as uncertain.</p>{% endif %}
     {%- if snapshot.collection_truncated %}<p class="small" id="collection-truncated">Collection stopped at the model-request limit: the Agent had to report on its last request, so evidence it might still have gathered is missing.</p>{% endif %}
     <p class="small" id="report-status">{{ rep.facts | length }} fact{{ "" if rep.facts | length == 1 else "s" }} · the investigator's causal conclusion; it does not certify recovery</p>
@@ -269,9 +268,9 @@
     <p class="small" id="log-fresh" hidden><span class="dot pulse" aria-hidden="true"></span> New activity. <button type="button" class="chip" id="refresh">Show it</button></p>
 
     {%- if view.queued %}
-    <div class="queue" id="queue"><span class="lbl">Queued requests</span>
+    <section class="queue" id="queue" aria-labelledby="h-queued"><h3 id="h-queued" class="lbl">Queued requests</h3>
       <ol>{% for q in view.queued %}<li><b>{{ q.author }}</b>{% if q.time %} · {{ q.time }}{% endif %} · “{{ q.text }}”</li>{% endfor %}</ol>
-      <span class="small">Read before the Agent's next step. The step it is on is not interrupted.</span></div>
+      <span class="small">Read before the Agent's next step. The step it is on is not interrupted.</span></section>
     {%- endif %}
 
     {%- set cp = view.composer %}

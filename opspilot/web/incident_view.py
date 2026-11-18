@@ -418,7 +418,7 @@ def _report_block(
             "partially_supported": "Partly supported",
             "inconclusive": "Inconclusive",
         }.get(level, level.replace("_", " ").capitalize()),
-        "lede": opening(report.get("summary"), 320),
+        **_lede(report.get("summary")),
         "summary": report.get("summary") or "",
         "incomplete": bool(report.get("incomplete")),
         "facts": with_calls(groups.get("facts", [])),
@@ -431,6 +431,17 @@ def _report_block(
         "sha256": report.get("content_sha256"),
         "cited": claims["cited"],
     }
+
+
+def _lede(summary: Any) -> dict[str, str]:
+    """The summary verbatim (whitespace folded), split after its first
+    sentence: the page sets the first sentence large and keeps the rest
+    beside it, so nothing of the published summary is hidden."""
+    text = " ".join(str(summary or "").split())
+    match = re.search(r"(?<=[.!?])\s", text)
+    if match is None:
+        return {"lede": text, "rest": ""}
+    return {"lede": text[: match.start()], "rest": text[match.end() :]}
 
 
 def _could_not_see(snapshot: Mapping[str, Any]) -> list[dict[str, str]]:
