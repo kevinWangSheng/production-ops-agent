@@ -204,12 +204,18 @@ def relay_loop(workbench: Workbench, interval: float, stop: threading.Event) -> 
     ``stop`` is set (workbench contract R2: the fallback that opens a
     continuation Run for unread messages on an idle incident; the message
     request relays first). A failed pass is logged and the next one runs on
-    time: the relay is keyed and re-checked under the incident lock."""
+    time: the relay is keyed and re-checked under the incident lock. Then
+    the Chat forward backup (workbench P7-9 b): answered ``steer`` turns
+    the page did not forward, keyed ``chat:{turn_id}``."""
     while not stop.wait(interval):
         try:
             workbench.relay_pass()
         except Exception:
             _log.exception("relay pass failed")
+        try:
+            workbench.chat_forward_pass()
+        except Exception:
+            _log.exception("chat forward pass failed")
 
 
 def _target_registry() -> MappingTargetRegistry | None:

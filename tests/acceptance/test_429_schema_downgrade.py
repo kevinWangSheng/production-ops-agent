@@ -20,9 +20,11 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0025_web_session_rebind"
+CURRENT = "0026_chat_panel"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
+# 0026 (workbench P7) sits above PREVIOUS too: its two chat tables go with it.
+CHAT_TABLES = ("opspilot_chat_sessions", "opspilot_chat_turns")
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",
@@ -80,8 +82,8 @@ def _business_counts(dsn: str) -> dict[str, int]:
         names = conn.execute(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema='public' AND table_name LIKE 'opspilot\\_%%' "
-            "AND table_name <> %s ORDER BY table_name",
-            (OUTBOX,),
+            "AND table_name <> ALL(%s) ORDER BY table_name",
+            ([OUTBOX, *CHAT_TABLES],),
         ).fetchall()
         return {
             name: conn.execute(
@@ -162,5 +164,10 @@ def test_success_uses_owner_dsn_reports_target_and_drops_only_outbox(
             "SELECT count(*) FROM information_schema.tables "
             "WHERE table_schema='public' AND table_name=%s",
             (OUTBOX,),
+        ).fetchone() == (0,)
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_name = ANY(%s)",
+            (list(CHAT_TABLES),),
         ).fetchone() == (0,)
     assert _business_counts(scratch_dsn) == before_counts

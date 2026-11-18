@@ -1,6 +1,6 @@
 # OpsPilot 事故页重设计：合同预审（P1 回复合同、P2 消息输入）
 
-日期 2026-11-17 · 预审者：未参与实现的只读 Agent · 基线 `main @ afc303b9` · 修订 r0（待 lead 写入任务记录后成为 r1）
+日期 2026-11-17 · 预审者：未参与实现的只读 Agent · 基线 `main @ afc303b9` · 修订 r0（待 lead 写入任务记录后成为 r1）；当前 r10（P7，2026-11-18）
 
 输入：实施交接（`opspilot-workbench-redesign-implement-2026-11-17.md`）、设计稿（同目录 `…-design-…`）、独立审查（`attachments/…-fable-review-…`）、原型 v2。交接文件里「User decisions / DECIDED / CORRECTION / 审查项 1–10」视为已定，本表不重开。
 
@@ -141,11 +141,11 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| E1 | 存哪 | | 两张新表：会话（谁开的、挂在哪个事故或不挂）和发言（序号、用户或助手、正文、状态 pending/answered/failed、转发出去的输入编号）。迁移 0026（r9：0025 已被 A11 的 `0025_web_session_rebind.py` 占用）。web 能读能插；worker 能读、能改状态和正文。只给新表授权，旧表授权不动。 | P7。已知会失败的钉值：`tests/acceptance/test_347_release_reframe_input.py::test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen` 钉了迁移头和全部授权，P7 要更新它。 | |
+| E1 | 存哪 | | 两张新表：会话（谁开的、挂在哪个事故）和发言。迁移 `0026_chat_panel`（r9：0025 已被 A11 的 `0025_web_session_rebind.py` 占用）。**r10（P7-2、P7-3）**：会话 `incident_id NOT NULL`，列表页没有面板；发言**一问一答一行**（`opspilot_chat_turns`：问题列 web 写、回答列 worker 写、转发列 web 写），worker 只要 UPDATE、不要 INSERT，web 在列级上写不了回答。授权按 U-P7（见下 P7 节），只给新表授权，旧表授权不动。 | P7。已知会失败的钉值：`tests/acceptance/test_347_release_reframe_input.py::test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen` 钉了迁移头和全部授权，P7 要更新它。 | |
 | E2 | 模型调用放哪个进程 | 模型密钥只在 worker 的密钥文件里（`deploy/compose/compose.yaml:130-153、230-231`；`install.sh:33、162`）。① worker 领取待回答的发言、调用模型、写回答案。② 把密钥也给 web。②是凭据位置变更，属用户门。 | **①**。 | P7：worker 多一个轮询步骤。 | |
-| E3 | 能读什么 | | 只读当前事故的记录：已发布报告、步骤的可见内容和工具调用参数、工具结果的脱敏视图（不是原始结果）、证据视图、人的消息（经 `project_input_content` 脱敏，`context.py:1262-1284`）、控制审计、观察会话摘要。**永远不读步骤里的 `reasoning_content`**（PRODUCT-CONSTRAINTS 第 50 行：私有协议字段只回到同一个供应商的同一个 Run）。超过单次请求大小上限时，保留报告和最近若干步并注明已截断。不在事故页时（列表页）只回答「打开一个事故再问」，不做跨事故查询。「只读记录」是我们自己收窄，不是 AWS 行为。 | P7。 | |
+| E3 | 能读什么 | | 只读当前事故的记录：已发布报告、步骤的可见内容和工具调用参数、工具结果的脱敏视图（不是原始结果）、证据视图、人的消息（经 `project_input_content` 脱敏，`context.py:1262-1284`）、控制审计、观察会话摘要。**永远不读步骤里的 `reasoning_content`**（PRODUCT-CONSTRAINTS 第 50 行：私有协议字段只回到同一个供应商的同一个 Run）。超过单次请求大小上限时，保留报告和最近若干步并注明已截断。不在事故页时（列表页）只回答「打开一个事故再问」，不做跨事故查询。「只读记录」是我们自己收窄，不是 AWS 行为。**r10（P7-4）**：上下文由 web 在提问时从页面自己的 `page_view` 投影按白名单构建，写进发言行的 `context` 与 `context_sha256`；人的话再过一次 `project_input_content`；上限 200 KB，超出从最旧的日志条目删起并记 `log_omitted`。worker 只读聊天表，所以也记下了模型看到了什么。 | P7。 | |
 | E4 | 一句话花多少 | | 每句一次模型调用，不带工具，不启动也不触碰调查。每个用户每 10 分钟 20 句的上限（技术保护，数字可调）。v1 不把 Chat 调用导出到 LangSmith（不新增导出面）。 | P7。 | |
-| E5 | 怎么判定是「指挥调查」 | | 模型返回 `{"answer", "steer": true/false}`。`steer` 为真时，**服务端把用户刚发的那一句原文**按 B1 的路径写进调查队列，署用户自己的名字，`channel` 记 `chat_forward`，输入编号由发言编号算出（重复不重发）。**模型写的任何文字都不进队列。** 面板显示「Sent to investigation」；如果事故处于 D6/D7b/D9/D10，不转发，显示「Not sent — use Re-investigate」。即使记录里的不可信文本诱导模型把 `steer` 置真，最坏结果也只是用户自己的原话被转发。 | P7。 | |
+| E5 | 怎么判定是「指挥调查」 | | 模型返回 `{"answer", "steer": true/false}`。`steer` 为真时，**服务端把用户刚发的那一句原文**按 B1 的路径写进调查队列，署用户自己的名字，`channel` 记 `chat_forward`，输入编号由发言编号算出（重复不重发）。**模型写的任何文字都不进队列。** 面板显示「Sent to investigation」；如果事故处于 D6/D7b/D9/D10，不转发，显示「Not sent — use Re-investigate」。即使记录里的不可信文本诱导模型把 `steer` 置真，最坏结果也只是用户自己的原话被转发。**r10（P7-9）**：**由 web 转发，worker 只写 `steer`**：页面轮询看到 `steer` 且未转发时 POST `…/chat/turns/{tid}/forward`，web 接力循环另有一遍兜底；调用 `message(channel="chat_forward", idempotency_key="chat:{turn_id}")`，署提问人；结果写 `forward_state`（`sent`/`refused`）、`forward_code`、`forwarded_input_sequence`。worker 不写 `opspilot_inputs`。 | P7。 | |
 | E6 | 保留期与可见范围 | | 和输入表一样随事故保留，v1 不删除。单团队产品：登录用户都能看全部会话（AWS 也是团队共享），每条记作者。History 列表显示最近 50 个会话。 | P7。 | |
 | E7 | P4 做到哪 | | 只做面板外壳：位置、开合、400px 下的抽屉形态、禁用的输入框和一句「Chat is not available yet」。不加接口、不加表。浏览器路径 (c) 归 P7。P7 开工前把设计稿 §3「否决单独聊天」和 §6「跳过」两处改掉。 | P4、P7。 | |
 
@@ -240,6 +240,53 @@ D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两�
 | P3-22 | 无钉旧行为的测试要删；关注 `test_m1_incident_control_postgres.py:417` 与 `tests/m1_web_support.py` 替身 |
 
 修订：r9 = P3 预审表、E1 迁移号 0026、场景函数上限 11（lead 2026-11-18）。
+
+### P7 Chat 面板（r10，2026-11-18 预审，lead 裁决全部按推荐）
+
+**U-P7（用户 2026-11-18 批准方案 A）**：迁移 `0026_chat_panel` 新建两张表，只给这两张表授权，旧表授权不动；降级删除两表（先 `RAISE NOTICE` 只报会话数与发言数，同 0024 先例），聊天记录全部丢失。
+- `opspilot_web`：`opspilot_chat_sessions` SELECT + `INSERT(created_by,incident_id,session_id,title)`；`opspilot_chat_turns` SELECT + `INSERT(author,context,context_sha256,idempotency_key,question,session_id,turn_id)` + `UPDATE(forward_code,forward_state,forwarded_at,forwarded_input_sequence)`。
+- `opspilot_worker`：`opspilot_chat_sessions` SELECT；`opspilot_chat_turns` SELECT + `UPDATE(answer,answered_at,attempts,claim_owner,claim_until,completion_tokens,error_code,prompt_tokens,refs,status,steer)`。
+- 没有角色能 DELETE；retention 与 Observer 无权限。时间来自数据库默认值，identity 列不要序列授权。
+
+| 编号 | 裁决要点 |
+|---|---|
+| P7-1 | 迁移 `0026_chat_panel`，down_revision `0025_web_session_rebind`；更新迁移头钉值 |
+| P7-2 | 一问一答一行；worker 只 UPDATE；web 列级上写不了回答 |
+| P7-3 | 会话必须挂事故（`incident_id NOT NULL`）；列表页无面板、无模型调用 |
+| P7-4 | web 提问时从 `page_view` 投影按白名单建上下文，写入 `context` + `context_sha256`；不读步骤原始行；200 KB 上限，保留报告与最近若干步并标截断 |
+| P7-5 | `seq` identity；`UNIQUE(session_id, idempotency_key)`；每会话最多一个 `pending`（部分唯一索引，第二问 `CHAT_BUSY`） |
+| P7-6 | worker 新线程 `opspilot-chat`，1 s 轮询（`OPSPILOT_CHAT_POLL_SECONDS`），`FOR UPDATE SKIP LOCKED` 领取，180 s 租约，最多 2 次尝试，10 分钟未答记 `failed CHAT_TIMEOUT`；worker 池下限改为 capacity+4，Compose 5→6 |
+| P7-7 | 同一 `DeepSeekClient` 与模型；`json_mode`、无工具、max_tokens 4096、超时 90 s；只存回答与用量，**不存 `reasoning_content` 与原始响应**；计入 `ModelCallStats`；失败记码、不自动重试，Retry 作为新一问重发原文 |
+| P7-8 | 输出 `{"answer","steer","refs"}`，未知证据编号丢弃，解析不出 `CHAT_REPLY_INVALID`；消息顺序：系统提示 → 记录 → 本会话最近 10 轮 → 本问；问题与历史发送前过凭据脱敏，存储保留原文；页面只按纯文本显示回答 |
+| P7-9 | web 转发、worker 只写 `steer`（见 E5 r10） |
+| P7-10 | 各状态都回答；转发标记：D1–D5/D7a「Sent to investigation」，D2 加「read after resume」，D8「Recorded as a note — the agent is not investigating」，D6/D7b「Not sent — use Re-investigate」，D10「Not sent — merged into X」；D9 无面板；转发后标记链接到日志里那条消息并显示其 Queued/Read/Answered，不把调查的回复抄进聊天 |
+| P7-11 | 每人 10 分钟 20 问（数据库时钟，插入时计数，超出 429 `CHAT_RATE_LIMITED`，并发可多过几条，接受）；问题长度与字符检查同消息，转发不会因此失败 |
+| P7-12 | 登录用户都能看、都能在任一会话里问，每问记作者；History 显示本事故最近 50 个会话；「New chat」在第一问时建会话；不删除，随事故保留 |
+| P7-13 | 有 pending 时页面每 1.5 s 拉一次会话，没有就停；不加 SSE 事件；显示耗时，不显示推理 |
+| P7-14 | `POST /incidents/{id}/chat`、`GET …/chat/sessions`、`GET …/chat/sessions/{sid}`、`POST …/chat/turns/{tid}/forward`；只接 UI 身份加 Origin，不接 bearer 与事件 token |
+| P7-15 | 改设计稿 §3「否决单独聊天」与 §6「跳过」；C3 §9 加一句 Chat 面板、开发指南迁移清单加 0026；改 C3 使本 PR 成为用户门，合并前简报；数据流不变（同一供应商） |
+| P7-16 | 不加新验收步骤，`passes` 不动 |
+| P7-17 | 场景函数加 1 个（上限 11，记入 T 行超额）；浏览器路径 (c) 为第 3 条也是最后一条 |
+| P7-18 | 改钉值：迁移头与授权指纹（事实 1 所列），池下限 +4 的钉值；实现中另发现的同类钉值一并改，清单见任务记录 |
+
+修订：r10 = P7 预审表、U-P7 授权批准、E1/E3/E5 按 P7-1/2/3/4/9 修订（lead 2026-11-18）。
+
+### P6 关联展示（r11，2026-11-18 预审 `~/.agent/handoffs/opspilot-workbench-p5p6-prereview-2026-11-18.md` 表二，无 USER 项，lead 按推荐）
+
+| 编号 | 裁决要点 |
+|---|---|
+| L1 | 主事故身份区下加「Linked incidents」块：每个被并入的事故一行，标题（列表 `title_of` 同规则）、合并时的 lifecycle（取主事故合并 event 的 `source_lifecycle`）、开始时间、合并人与时间、理由；最多 20 个，多出注明 |
+| L2 | 理由取来源事故 `merge_into` 审计 `payload.text`（脱敏），主事故与来源事故都显示；没写显示「no reason given」，并带固定「same target」；理由不改必填 |
+| L3 | 日志加系统事件条目，只用系统字段：「Incident X merged into this · by Y」（合并审计时间）、「Alert fired · attached to this incident」（不论是否同一 fingerprint，统一此措辞）（`opspilot_alert_deliveries` `outcome='attached'` 且 firing，每个 delivery_key 一条）、「Version change Z joined」（发布链接 `disposition='attached'`）；不显示告警原文，不计入消息数与 Queued |
+| L4 | 列表页主事故行加「N linked」；来源行保持 Merged +「into xxx」；计数在同一条列表语句里 |
+| L5 | 不做 Unlink；保留「Cannot be undone」 |
+| L6 | 已关闭事故身份区加「Followed by new incident Y」（`related_incident_id` 反查，只读，不改授权） |
+| L7 | 发布链接 disposition 写成一句话（opened / joined / opened after a closed one / opened for a person）；换目标加时间 |
+| L8 | 新块放在 `identity()` 里，随 `/live` 片段刷新，不加事件种类 |
+| L9 | 保留 `merged-from`/`release-link`/`related-incident`/`current-target` 等 id 与 class；不加场景函数、不占浏览器路径；`test_245_merge_into.py` 两句断言由独立测试作者加 |
+| L10 | 无迁移、无授权变化 |
+
+修订：r11 = P6 关联展示表（lead 2026-11-18）。
 
 ### 将被删除的旧测试（按 PR 分组）
 
