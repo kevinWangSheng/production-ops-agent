@@ -36,7 +36,7 @@
 | A7 | 自动恢复观察判定看「发布当前结论的那个 Run」，不看当前 Run |
 | A8–A9 | 页面与列表共用一条九级状态判定；续接期间显示 Investigating，结果区继续显示上一份报告 |
 | A10 | 接力前把遗留的未结束不活跃 Run 写成 cancelled |
-| A11 | 续接 Run 活跃时 `rebind_target` 维持现状（state 写成 cancelled），不在 A11 范围。续接 Run 活跃时 pause/resume/cancel 照常作用在它上面；cancel 只取消续接 Run，结论、lifecycle、观察保留（r4）；有结论时 close 同样只取消续接 Run、不写 cancelled，关闭后仍可只回复（r5） |
+| A11 | 用户 2026-11-17 批准授权，用于 A11 r4「取消续接 Run 保留观察」：迁移 0025 给 `opspilot_web` 加 `opspilot_observation_sessions.UPDATE(subject_control_generation)`，取消时同一事务重绑会话代际并释放采样租约。续接 Run 活跃时 `rebind_target` 维持现状（state 写成 cancelled），不在 A11 范围。续接 Run 活跃时 pause/resume/cancel 照常作用在它上面；cancel 只取消续接 Run，结论、lifecycle、观察保留（r4）；有结论时 close 同样只取消续接 Run、不写 cancelled，关闭后仍可只回复（r5） |
 | B1–B7 | 新输入类型 `message`；Run 输入 `scope_facts["conversation"]={floor, mode}`，新消息带 `new: true`；旧类型渲染字节不变；未读 = 序号大于所有 Run 已提交水位最大值；B8 后继输入带上此前通过校验的回复正文（不带 assistant 原文和 reasoning_content），对话跨 Run 连贯（r6） |
 | C1–C3 | 工具轮回复写在可见 content 的 JSON `{note, replies}` 里，解析不出不算错；校验结果另存步骤行顶层字段，`assistant` 字节不动；回复只查证据编号存在，不认识的去掉并标 unsupported |
 | C4–C5 | 回复说明作为独立尾随模板，只在有新消息的轮次发送；**不进 `prompt_revision`，只在步骤行记哈希**（做法③），P1 PR 给 C3 §5 加一句增补并在简报单列 |

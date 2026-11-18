@@ -202,7 +202,7 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
         == otel_demo_versions()["prompt_revision"]
         == "prompt-replay-candidate-8688f6e52275"
     )
-    assert schema.head_revision() == "0024_trace_outbox"
+    assert schema.head_revision() == "0025_web_session_rebind"
     grants = {
         role: {table: sorted(values) for table, values in tables.items()}
         for role, tables in RUNTIME_GRANTS.items()
@@ -211,4 +211,4 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
     frozen = hashlib.sha256(
         json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    assert frozen == "ef10b10682915469375c7929f6d30b15812b4e6fbac286384c5c1fb57240bcc4"
+    assert frozen == "3ba1ef6349a3f036aad814f84c80346ad273a42687076e6d45196ea9e7b3b502"

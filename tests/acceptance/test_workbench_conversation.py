@@ -7,7 +7,8 @@ C4/C5/C9 prompt wording and version values are deliberately not asserted.
 """
 
 import json
-from uuid import UUID
+from datetime import timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -19,6 +20,52 @@ from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
     workbench_database_fixture,
     workbench_fixture,
 )
+
+
+def one_observation_sample(workbench, incident_id):
+    """Claim and submit one real Observer sample on the incident's session
+    (A11 r4 review check); returns the receipt."""
+    from opspilot.domain.evidence import QueryWindow
+    from opspilot.domain.observation import HealthSample
+    from opspilot.observation import ObservationStore
+    from opspilot.persistence import PoolConfig
+
+    with workbench.store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET active_sample_due_at="
+            "clock_timestamp() WHERE incident_id=%s AND state='authorized'",
+            (incident_id,),
+        )
+    observer = ObservationStore(
+        workbench.store.dsn, pool=PoolConfig(min_size=0, max_size=2)
+    )
+    try:
+        (lease,) = [
+            item
+            for item in observer.claim_due_samples(uuid4(), limit=10_000)
+            if item.incident_id == incident_id
+        ]
+        assert observer.lease_scope_current(lease) is True
+        now = observer.current_time()
+        return observer.submit_sample(
+            lease,
+            HealthSample(
+                sample_id=str(uuid4()),
+                session_id=str(lease.session_id),
+                sequence=lease.sequence,
+                window=QueryWindow(
+                    start=now - timedelta(minutes=5), end=now - timedelta(minutes=1)
+                ),
+                outcome="healthy",
+                subject_control_generation=lease.subject_control_generation,
+                observation_generation=lease.observation_generation,
+                health_profile_revision=lease.health_profile_revision,
+                required_signals_present=True,
+            ),
+            [],
+        )
+    finally:
+        observer.close()
 
 
 def response(*, replies, report=None):
@@ -448,9 +495,36 @@ def test_p2_mid_run_message_reads_next_round_and_continuation_honors_control(
     else:
         assert after["state"] != "cancelled", "A11: only the continuation is cancelled"
         if continuation_control == "cancel":
-            assert workbench.observation(incident_id) == before["observation"], (
+            # A11 r4 + user grant 2026-11-17: cancel rebinds the session to the new generation
+            def unbound(rows):
+                return {
+                    **rows,
+                    "sessions": [
+                        {
+                            k: v
+                            for k, v in s.items()
+                            if k != "subject_control_generation"
+                        }
+                        for s in rows["sessions"]
+                    ],
+                }
+
+            observed_after = workbench.observation(incident_id)
+            assert unbound(observed_after) == unbound(before["observation"]), (
                 "A11 r4: cancelling a continuation preserves recovery observation"
             )
+            assert [
+                s["subject_control_generation"] for s in observed_after["sessions"]
+            ] == [workbench.incident(incident_id)["control_generation"]]
+            # A11 r4 (review P1-1): a real sample after the cancel leaves the
+            # session active and authorized (no binding_stale ending).
+            one_observation_sample(workbench, incident_id)
+            (session,) = workbench.observation(incident_id)["sessions"]
+            assert (session["state"], session["ended_reason"]) == (
+                "authorized",
+                None,
+            )
+            assert session["authorized"] is True
             # Human control first (review P1-2): the message admitted before
             # the cancel opens nothing; a message after it does.
             runs_after_cancel = len(workbench.runs(incident_id))

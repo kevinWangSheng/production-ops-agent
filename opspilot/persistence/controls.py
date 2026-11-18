@@ -598,6 +598,16 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked')",
                     (nxt, incident_id),
                 )
+                if continuation:
+                    # A11 r4: the recovery observation outlives the cancel.
+                    # The authorized session is rebound to the new generation
+                    # and its sample lease released, so a sample in flight
+                    # under the old one is filed as lease-invalid history
+                    # instead of ending the session as binding_stale.
+                    conn.execute(
+                        "UPDATE opspilot_observation_sessions SET subject_control_generation=%s,active_sample_owner=NULL,active_sample_lease_until=NULL WHERE incident_id=%s AND purpose='incident_recovery' AND state='authorized'",
+                        (nxt, incident_id),
+                    )
             elif human_owned and action in {"pause", "resume"}:
                 # Under human ownership the Run is the human's (waiting_human):
                 # pausing and resuming change the incident's control mirror,
