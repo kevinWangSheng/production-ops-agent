@@ -26,9 +26,20 @@
 - 接真实后端的集成测试（R8-25，C5-16 至 C5-20 的 Loki 部分）：CI 新 job `log-backends`，Loki 2.9.0 与最新 3.x、nginx 只读网关（C5-18），合成数据相对当前时间，断言真实返回、时间过滤、截断、错误分类与两层只读拒绝（经网关写入 403、数据条数不变）；不调模型。
 - 交给 #671/#669：环境变量清单、网关配置与切换脚本（预审「交给 #671 / #669 租机冒烟」节）。
 
+## 实现决定（lead 与实现者自定，可逆，2026-11-18）
+
+- 设了 `OPSPILOT_LOKI_URL` 就必须配凭据（Basic 用户名密码或 bearer，二选一），否则启动报 `LOKI_CONFIG_MISSING`；两个都配报 `LOKI_CONFIG_INVALID`。产品的只读身份就是网关账号（C5-U1）。
+- 地址可以带路径前缀（网关或 Grafana 数据源代理的基址），请求发往 `<前缀>/loki/api/v1/query_range`；带用户信息、查询串、片段的地址报 `LOKI_CONFIG_INVALID`；lab 闸门只看主机。
+- C5a 不支持自定义请求头认证。
+- 每次请求的查询键固定为 `query`、`start`、`end`、`limit`、`direction=backward`；时间用带 `Z` 的 RFC3339。
+- LogQL：字符串字面量之外的 `offset`、`@` 拒绝；`[a:b]` 与孤立的 `]` 拒绝（LogQL 没有子查询）；范围时长按 Prometheus 语法（含 `1h30m`、`500ms`），向上取整到秒后与查询窗比较；转义引号留在字面量内；含换行或制表符的查询报 `INVALID_QUERY`。
+- 租户含 `|`、空白或超过 150 字符报 `LOKI_CONFIG_INVALID`；没设地址却设了租户、CA 或凭据报 `LOKI_CONFIG_INVALID`；http 地址配 CA 也报 `LOKI_CONFIG_INVALID`。
+- 只有 400 回显 Loki 的错误文本（截短、脱敏）；401、403、404 只带状态。
+- 扩展档位 revision：无后端 `otel-demo-ext-c63f058afb18`、仅 ES `otel-demo-ext-4f7faf728706` 不变；仅 Loki `otel-demo-ext-a35f0bf41c73`，ES 加 Loki `otel-demo-ext-45871bd8d52a`。
+
 ## 证据
 
-（实施后填写）
+- 本机：独立作者合同测试 `tests/test_tool_expansion_c5a_contract.py` 113 passed（作者未看实现，对自写替身做 23 处变异全部检出）；B1 合同与 tracing 222 passed；ruff、mypy 干净。全量与真实 Loki 集成测试交 CI（`log-backends`）。
 
 ## 待决
 
