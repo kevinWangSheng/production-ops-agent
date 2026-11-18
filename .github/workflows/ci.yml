@@ -524,3 +524,129 @@ jobs:
           curl -fsS -u "elastic:${B1_ELASTIC_PASSWORD}" "${B1_ES_URL}" | jq -r '"elasticsearch " + .version.number'
           curl -fsS "${B1_OPENSEARCH_URL}" | jq -r '"opensearch " + .version.number'
           .venv/bin/python -m pytest tests/integration/test_tool_expansion_b1_search_backends.py -q -rs
+
+  # C5a (#569, r10 C5-16 ... C5-20): grafana_loki_query against real Loki
+  # 2.9.0 and Loki 3.x (auth enabled, two tenants) behind the nginx read-only
+  # gateway of C5-U1, synthetic data relative to now, no model. Plain
+  # containers, not services: the gateway's config is rendered by
+  # scripts/loki_readonly_gateway.py (the rental hosts run the same rules)
+  # and Loki 3 needs an extra flag. The fixtures write to each Loki's own
+  # port; the tool only reaches the gateway, with a CI-only low-entropy
+  # account that may only GET /loki/api/v1/query_range. Gateway ports:
+  # 53100 -> Loki 3, 53101 -> Loki 2.9.0, 53102 refuses every request (403).
+  log-backends:
+    name: log-backends
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      # Same scope pre-check as the jobs above: only a PR whose every change is
+      # an added or edited regular *.md file may skip the run.
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start Loki 2.9.0, Loki 3.x and the read-only gateway
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # grafana/loki:3.7.10 and grafana/loki:2.9.0 multi-platform indexes,
+          # nginx:1.30.7-alpine (stable), read from Docker Hub on 2026-11-18.
+          LOKI3_IMAGE: grafana/loki@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
+          LOKI29_IMAGE: grafana/loki@sha256:b025a0220f390baaab01578aea2fe0ba677584d9f248c3fe5af15f84dd1de60d
+          NGINX_IMAGE: nginx@sha256:b24de00298eb7fb23839442d46c780991be7bc7ddb081b6c0876ac777012e352
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          docker network create c5-logs
+          docker run -d --name loki3 --network c5-logs --cpus=1 --memory=512m \
+            -p 127.0.0.1:53111:3100 "$LOKI3_IMAGE" \
+            -config.file=/etc/loki/local-config.yaml -auth.enabled=true
+          docker run -d --name loki29 --network c5-logs --cpus=1 --memory=512m \
+            -p 127.0.0.1:53110:3100 "$LOKI29_IMAGE" \
+            -config.file=/etc/loki/local-config.yaml
+          for port in 53111 53110; do
+            ready=
+            for _ in $(seq 1 90); do
+              if curl -fsS --max-time 3 "http://127.0.0.1:${port}/ready" > /dev/null; then
+                ready=1; break
+              fi
+              sleep 2
+            done
+            [ -n "$ready" ] || { echo "Loki on ${port} never became ready" >&2; exit 1; }
+          done
+          mkdir -p "$RUNNER_TEMP/c5-gateway" "$RUNNER_TEMP/c5-gateway-logs"
+          chmod 0777 "$RUNNER_TEMP/c5-gateway-logs"
+          python3 -I scripts/loki_readonly_gateway.py render \
+            --server 8080=loki3:3100 --server 8081=loki29:3100 --deny-port 8082 \
+            --bind 0.0.0.0 --access-log /var/log/opspilot/access.log \
+            > "$RUNNER_TEMP/c5-gateway/nginx.conf"
+          # A CI-only account, never a real secret; {SSHA} as on rental hosts.
+          C5_SCRIPTS="$GITHUB_WORKSPACE/scripts" python3 -I -c 'import os, sys; sys.path.insert(0, os.environ["C5_SCRIPTS"]); from loki_readonly_gateway import ssha_entry; print(ssha_entry("reader", os.environ["C5_GATEWAY_PASSWORD"]))' \
+            > "$RUNNER_TEMP/c5-gateway/htpasswd"
+          chmod 0644 "$RUNNER_TEMP/c5-gateway/nginx.conf" "$RUNNER_TEMP/c5-gateway/htpasswd"
+          docker run -d --name loki-gateway --network c5-logs --cpus=0.5 --memory=64m \
+            -p 127.0.0.1:53100:8080 -p 127.0.0.1:53101:8081 -p 127.0.0.1:53102:8082 \
+            -v "$RUNNER_TEMP/c5-gateway:/etc/opspilot-gateway:ro" \
+            -v "$RUNNER_TEMP/c5-gateway-logs:/var/log/opspilot" \
+            "$NGINX_IMAGE" nginx -g 'daemon off;' -c /etc/opspilot-gateway/nginx.conf
+          for _ in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:53100/" || true)
+            [ "$status" = "401" ] && break
+            sleep 1
+          done
+          [ "$status" = "401" ] || { docker logs loki-gateway >&2; exit 1; }
+          curl -fsS http://127.0.0.1:53111/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
+          curl -fsS http://127.0.0.1:53110/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Loki tool against real backends
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_LOG_BACKENDS: "1"
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          jq --version
+          C5_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5-gateway-logs/access.log" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5_log_backends.py -q -rs
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          for name in loki3 loki29 loki-gateway; do
+            echo "--- $name"
+            docker logs --tail 200 "$name" 2>&1 || true
+          done
+          tail -n 50 "$RUNNER_TEMP/c5-gateway-logs/access.log" 2>/dev/null || true
