@@ -48,6 +48,13 @@ Configuration comes from the environment only, and only as hashes:
   three off: no release is then observed (it stays pending until its
   deadline sweep ends it ``unknown``), and ending records are durable, so
   a stopped anomaly pass loses nothing and the next one consumes them.
+* ``OPSPILOT_RELAY_INTERVAL_SECONDS`` seconds between two message relay
+  passes (``Workbench.relay_pass``, workbench contract R2): a thread of its
+  own, independent of the automatic-observation setting, opens the
+  continuation Run for unread messages on idle incidents (the fallback for
+  the relay the message request runs itself). Default ``30``; ``0`` turns
+  it off (logged at start); anything but ``0`` or a positive finite number
+  refuses to start.
 * ``OPSPILOT_HEALTH_BIND``     the health listener's ``host:port``
   (``opspilot.health``, separate from the app on ``OPSPILOT_BIND``; default
   ``127.0.0.1:9464``, empty turns it off;
@@ -105,6 +112,8 @@ _log = logging.getLogger(__name__)
 #: the automatic authorization as the system's. ``0`` in the environment
 #: turns the loop off.
 SELF_HEAL_INTERVAL_SECONDS = 30.0
+#: Workbench contract R2: the background message relay, its own thread.
+RELAY_INTERVAL_SECONDS = 30.0
 
 
 def _pairs(raw: str) -> dict[str, str]:
@@ -145,28 +154,33 @@ def _session_secret() -> bytes:
     return secret
 
 
-def _self_heal_interval() -> float:
-    raw = os.environ.get("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS")
+def _interval(name: str, default: float) -> float:
+    raw = os.environ.get(name)
     if raw is None:
-        return SELF_HEAL_INTERVAL_SECONDS
+        return default
     try:
         value = float(raw)
     except ValueError:
-        raise SystemExit(
-            "OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be a number"
-        ) from None
+        raise SystemExit(f"{name} must be a number") from None
     if not math.isfinite(value) or value < 0:
-        raise SystemExit("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be 0 or positive")
+        raise SystemExit(f"{name} must be 0 or positive")
     return value
+
+
+def _self_heal_interval() -> float:
+    return _interval("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS", SELF_HEAL_INTERVAL_SECONDS)
+
+
+def _relay_interval() -> float:
+    return _interval("OPSPILOT_RELAY_INTERVAL_SECONDS", RELAY_INTERVAL_SECONDS)
 
 
 def self_heal_loop(
     workbench: Workbench, interval: float, stop: threading.Event
 ) -> None:
     """Run ``workbench.self_heal_pass()``,
-    ``workbench.release_authorize_pass()``,
-    ``workbench.release_anomaly_pass()`` and then ``workbench.relay_pass()``
-    every ``interval`` seconds until
+    ``workbench.release_authorize_pass()`` and then
+    ``workbench.release_anomaly_pass()`` every ``interval`` seconds until
     ``stop`` is set. Each pass catches its own failure, which is logged; the
     others still run and the next round runs on time: every decision is
     durable and keyed, so nothing is lost by retrying."""
@@ -183,10 +197,16 @@ def self_heal_loop(
             workbench.release_anomaly_pass()
         except Exception:
             _log.exception("release anomaly pass failed")
+
+
+def relay_loop(workbench: Workbench, interval: float, stop: threading.Event) -> None:
+    """Run ``workbench.relay_pass()`` every ``interval`` seconds until
+    ``stop`` is set (workbench contract R2: the fallback that opens a
+    continuation Run for unread messages on an idle incident; the message
+    request relays first). A failed pass is logged and the next one runs on
+    time: the relay is keyed and re-checked under the incident lock."""
+    while not stop.wait(interval):
         try:
-            # Workbench contract R2: the fallback that opens a continuation
-            # Run for unread messages on an idle incident (the message
-            # request itself relays first).
             workbench.relay_pass()
         except Exception:
             _log.exception("relay pass failed")
@@ -281,6 +301,7 @@ def _serve() -> int:
         raise SystemExit("OPSPILOT_WEB_DSN is required")
     bind = os.environ.get("OPSPILOT_BIND", "127.0.0.1:8080")
     interval = _self_heal_interval()
+    relay_interval = _relay_interval()
     # Browsers send Origin on every form POST, so an empty allow-list would
     # refuse the dev UI itself; default to the bind address over plain http.
     origins = os.environ.get("OPSPILOT_ALLOWED_ORIGINS") or f"http://{bind}"
@@ -349,6 +370,20 @@ def _serve() -> int:
             daemon=True,
         )
         healer.start()
+    relayer = None
+    if relay_interval > 0:
+        relayer = threading.Thread(
+            target=relay_loop,
+            args=(workbench, relay_interval, stop),
+            name="opspilot-message-relay",
+            daemon=True,
+        )
+        relayer.start()
+    else:
+        _log.warning(
+            "message relay pass disabled (OPSPILOT_RELAY_INTERVAL_SECONDS=0): "
+            "unread messages wait for the next message request to relay them"
+        )
     try:
         # log_config=None: uvicorn's loggers propagate to the root handler
         # ``logs.configure()`` installed, one format per process (F8L-R6).
@@ -368,6 +403,8 @@ def _serve() -> int:
             # transactions; a pass still running after this is abandoned
             # with the process (daemon thread), its transaction rolled back.
             healer.join(timeout=10)
+        if relayer is not None:
+            relayer.join(timeout=10)
         knowledge.close()
         store.close()
     return 0
