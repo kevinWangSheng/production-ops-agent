@@ -181,6 +181,15 @@ MUTATIONS: tuple[Mutation, ...] = (
     ),
     Mutation(
         "M19",
+        "credentials: the gateway's configured token never reaches the model",
+        "opspilot/tools/otel_demo.py",
+        "                        body = error.read(ERROR_BODY_BYTES)\n",
+        "                        body = error.read(ERROR_BODY_BYTES).replace(\n"
+        '                            b"after 401", (token or "").encode()\n'
+        "                        )\n",
+    ),
+    Mutation(
+        "M20",
         "report validation: a claim citing an undelivered evidence id is refused",
         "opspilot/investigation/reports.py",
         "        if unknown_ids:\n"
@@ -192,7 +201,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         "        if target_catalog is not None:\n",
     ),
     Mutation(
-        "M20",
+        "M21",
         "report validation: a fact may not cite a failed or no-data view",
         "opspilot/investigation/reports.py",
         "        if non_ok:\n"
@@ -201,28 +210,28 @@ MUTATIONS: tuple[Mutation, ...] = (
         "",
     ),
     Mutation(
-        "M21",
+        "M22",
         "report validation: a claim's target must be one its views observed",
         "opspilot/investigation/reports.py",
         "        if any(ref not in observed for ref in claim.target_refs):",
         "        if False:",
     ),
     Mutation(
-        "M22",
+        "M23",
         "report validation: an incomplete investigation is never a finding",
         "opspilot/investigation/reports.py",
         '        if self.assessment_status == "incomplete" and (',
         "        if False and (",
     ),
     Mutation(
-        "M23",
+        "M24",
         "report validation: a supported conclusion needs a cited fact",
         "opspilot/investigation/reports.py",
         '        if self.conclusion == "supported" and not any(',
         "        if False and not any(",
     ),
     Mutation(
-        "M24",
+        "M25",
         "recovery: the Observer imports nothing from the investigation side",
         "opspilot/observer/loop.py",
         "from __future__ import annotations\n",

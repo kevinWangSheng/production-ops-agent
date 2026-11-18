@@ -32,6 +32,7 @@ _PG_GATE = re.compile(r"M1_DURABLE_POSTGRES|M0_B_POSTGRES|OPSPILOT_TEST_DATABASE
 _PG_SKIP_REASON = re.compile(
     r"M1_DURABLE_POSTGRES|M0_B_POSTGRES|OPSPILOT_TEST_DATABASE_URL"
     r"|explicit PG opt-in required|需要显式启用临时 PG 验收"
+    r"|test PG unavailable|self-owned initdb binaries/user unavailable"
 )
 # Separate opt-ins that no CI job provides (M0 spike stores, throwaway
 # clusters a test starts itself): a skip in a module gated on one of these is

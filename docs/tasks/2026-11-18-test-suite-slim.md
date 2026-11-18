@@ -55,10 +55,14 @@
   | `test_safety_human_control_postgres.py` | 工作台中途 pause/cancel 的决定压过 Run 的迟到报告；暂停的事故不会被 claim | 3 |
   | `test_safety_runtime_roles_postgres.py` | 目录权限等于 `RUNTIME_GRANTS`；独立于声明钉住：worker 不写已审知识，web 不能签发租约，删除只限两条已声明路径，没有 TRUNCATE 与 CREATE，observer 只能改 lifecycle | 10 |
 
-- **变异清单 18 条**（`tests/mutation/mutations.py`）：只对 `tests/safety` 跑一遍，结果 18/18 killed（含 PG 3 条，本机临时 PG）。命令是 `make mutation`，带 PG 环境；结果表附在 PR 正文。
+- **独立审查（#709，MERGEABLE）后的三处修复**：
+  - `pg-integration` 安装 PG 17 服务端并把 `/usr/lib/postgresql/17/bin` 加进 PATH。这让 #392 roles、#429 downgrade、F11 U2 register 这 7 例自起 initdb 集群的用例在 CI 里真跑。守卫也把它们的「self-owned initdb binaries/user unavailable」跳过算作漏洞。这些文件 PR2 会删，修复照样落在 PR1。
+  - gateway 自己配置的 `K8S_TOKEN`/`OTEL_TOKEN` 加进凭据断言，补了一条变异 M19：模拟 transport 把自己的 token 回显进源错误，结果被抓到。源错误回显测试改用 Prometheus 的错误外壳，并断言回显确实发生，免得断言落空。
+  - 守卫把「test PG unavailable」也算作 PG 作业里的失败。
+- **变异清单 19 条**（`tests/mutation/mutations.py`）：只对 `tests/safety` 跑一遍，结果 19/19 killed（含 PG 3 条，本机临时 PG）。命令是 `make mutation`，带 PG 环境；结果表附在 PR 正文。
   - 第一轮 5 条存活。M06、M10、M13、M15 的原因是用例没打中那条规则，已补用例（嵌套 lookback 用例、无名 Bearer、伪造 healthy 样本、窗口过期）。
   - M16 存活的原因是 publish 的人工控制栅栏有多层，单删一层会被其余层兜住；已把该条改成同时去掉 publish 判定与 `_lease_revoked` 两层。
-- **产品问题候选**（不修）：带转义引号的 JSON 文本（日志里再次序列化的 `\"token\": \"v\"`）不被脱敏；`redact_credentials` 只处理键名本身用转义拼写的情况。
+- **产品问题候选**（不修）：带转义引号的 JSON 文本（日志里再次序列化的 `\"token\": \"v\"`）不被脱敏；`redact_credentials` 只处理键名本身用转义拼写的情况。已开 [#710](https://github.com/kevinWangSheng/production-ops-agent/issues/710)，PR2 之后修。
 
 ### PR2
 
@@ -87,8 +91,8 @@
 - **去掉墙钟等待**（只改测试，不改产品）：
   - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
   - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
-- **变异清单 24 条**（新增 M19–M23 报告校验、M24 Observer 独立性）：删后对 `tests/safety` 跑，24/24 killed（含 PG 3 条），见 PR 正文。
-  - M19–M23 在删前的两份报告测试文件上只能抓到 M19、M22，所以新加了报告校验表。
+- **变异清单 25 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性）：删后对 `tests/safety` 跑，25/25 killed（含 PG 3 条），见 PR 正文。
+  - M20–M24 在删前的两份报告测试文件上只能抓到 M20、M23，所以新加了报告校验表。
   - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
 - **passes 证据**：
   - 各功能步骤原本作为证据的确定性文件全部保留、原名不变，旧→新映射表在 PR 正文。

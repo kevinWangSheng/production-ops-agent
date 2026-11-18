@@ -31,7 +31,7 @@
 | 模型 profile | 出站名 `deepseek-flash`，单次真实探针通过 | [任务记录](docs/tasks/2026-09-15-model-profile-v41.md)。 |
 | LangGraph（ADR-0004） | 推迟，视为已决 | [ADR-0004](docs/adr/0004-langgraph-orchestration.md)；需要扩大比较时另立合同。 |
 | M0 遗留入口条件 | 待规划：逐项提议已写，E1 待用户决定（#90）；E2 已决（2026-10-09：不阻塞 M1-03，M1-03 有界开放）；子项 #91 #92 #93；K8s RBAC 可借 M1-02 的 kind 环境取证 | [任务记录](docs/tasks/2026-10-05-m0-entry-conditions.md)；[M0 退出矩阵](docs/evidence/m0-real-investigation/m0-exit-matrix.md)；供应商账单对账改为余额差记账，不再是入口条件。 |
-| 测试纪律 | 2026-11-18 测试精简（用户方向「少而有用」）：只留场景驱动验收、工作台 HTTP/浏览器、集中安全套件 `tests/safety`、最小 PG 迁移合同与报告校验；CI 按 `pg` 标记选 PG 测试；`make mutation` 跑 24 条不变量变异。红证明 CI 仍只报告不阻塞（#49） | [任务记录](docs/tasks/2026-11-18-test-suite-slim.md)；[红证明记录](docs/tasks/2026-09-26-red-proof-ci.md) |
+| 测试纪律 | 2026-11-18 测试精简（用户方向「少而有用」）：只留场景驱动验收、工作台 HTTP/浏览器、集中安全套件 `tests/safety`、最小 PG 迁移合同与报告校验；CI 按 `pg` 标记选 PG 测试；`make mutation` 跑 25 条不变量变异。红证明 CI 仍只报告不阻塞（#49） | [任务记录](docs/tasks/2026-11-18-test-suite-slim.md)；[红证明记录](docs/tasks/2026-09-26-red-proof-ci.md) |
 
 ## 交付顺序
 
