@@ -1,6 +1,6 @@
 # OpsPilot 事故页重设计：合同预审（P1 回复合同、P2 消息输入）
 
-日期 2026-11-17 · 预审者：未参与实现的只读 Agent · 基线 `main @ afc303b9` · 修订 r0（待 lead 写入任务记录后成为 r1）；当前 r10（P7，2026-11-18）
+日期 2026-11-17 · 预审者：未参与实现的只读 Agent · 基线 `main @ afc303b9` · 修订 r0（待 lead 写入任务记录后成为 r1）；当前 r12（P5，2026-11-18）
 
 输入：实施交接（`opspilot-workbench-redesign-implement-2026-11-17.md`）、设计稿（同目录 `…-design-…`）、独立审查（`attachments/…-fable-review-…`）、原型 v2。交接文件里「User decisions / DECIDED / CORRECTION / 审查项 1–10」视为已定，本表不重开。
 
@@ -179,7 +179,7 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 
 **总量上限（整个重设计 P1–P7 合计，不是每个 PR）**
 
-- 场景测试：最多 **11 个测试函数**（r9：原定 8 个，P1/P2 落地后已有 10 个；P3 不新增，P7 加 1 个），全部在 `tests/acceptance/test_workbench_conversation.py`。真实 Postgres + 脚本化模型客户端 + HTTP，只断言看得见的结果。
+- 场景测试：最多 **12 个测试函数**（r9：原定 8 个，P1/P2 落地后已有 10 个；P3 不新增，P7 加 1 个；r12：P5 加 1 个，上限改 12），全部在 `tests/acceptance/test_workbench_conversation.py`。真实 Postgres + 脚本化模型客户端 + HTTP，只断言看得见的结果。
 - 浏览器路径：**3 条**，在 `tests/browser/test_workbench_paths.py`。
 - 共用一个驱动：`tests/workbench_driver.py`。不再新增别的支持文件。
 - 每个触碰调查循环的 PR（P1、P2）另附一次有界真实 Run 的 trace 链接和 `summary.json`（ADR-0006），不算在上限内。
@@ -194,6 +194,7 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 | 6 | 空闲且有未读 | P2 | 恰好一个续接 Run；接力重复执行不多开。用两种空闲事故各走一遍：有已发布结论的（D3），做完但不完整的（D7a） |
 | 7 | 观察期间修订报告 | P2 | 新报告发布；观察会话还是同一个；没有第二次授权 |
 | 8 | Chat 面板提问与指挥 | P7 | 提问后输入数、Run 数、步骤数都不变；指挥的话原文进队列、署用户名 |
+| 9 | 反馈 | P5 | 提交 → 显示 → 再提交整体替换；输入数、Run 数、代际、观察都不变；导出里有这一行 |
 
 D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两句断言，不单开测试。
 
@@ -287,6 +288,29 @@ D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两�
 | L10 | 无迁移、无授权变化 |
 
 修订：r11 = P6 关联展示表（lead 2026-11-18）。
+
+### P5 反馈（r12，2026-11-18 预审，lead 裁决按推荐）
+
+**用户 2026-11-18 裁决**：F1 照做——新表 `opspilot_investigation_feedback`，迁移 `0027_investigation_feedback`，`down_revision="0026_chat_panel"`，只给 web 授权；F11 选 A——反馈只显示在复盘审核页给审核人看，**不送进复盘起草模型**，F13 输入策略版本与草稿过期规则不变。
+
+| 编号 | 裁决要点 |
+|---|---|
+| F1 | 一个事故一行（主键 `incident_id`，外键事故）：`verdict`（correct/incorrect，必填）、`actual_root_cause`、`steering_needed`（可空）、`next_steps_verdict`（correct/incorrect/not_applicable，可空）、`correct_next_steps`、`notes`、`rated_run_id`、`rated_report_sha256`、`updated_by`、`updated_at`、`created_at`。web：SELECT + 列级 INSERT/UPDATE（列见 `grants.py`）；worker、Observer、retention 无；无 DELETE。降级只报行数后删表 |
+| F2–F4 | 不存成 `opspilot_inputs`；不是控制动作：独立端点 `POST /incidents/{id}/feedback`（UI 身份 + Origin，表单 PRG 回 `#feedback`，JSON 返回反馈），不推进代际、不写控制审计、不撤销观察、不算人工处理；永不进调查与 Chat 的输入 |
+| F5 | 照 AWS 五项，「Mitigation correctness」改为「Next steps correct」；真实根因只在 incorrect 时保存、正确做法只在下一步 incorrect 时保存，否则丢弃（库里有 CHECK）；文本同消息的长度与字符检查，显示与导出过 `redact_credentials` |
+| F6–F7 | 一个事故一份，最新提交整体替换，后写的赢；任何登录用户都能给，`updated_by` 取会话用户 |
+| F8 | 页面显示的报告能解析（已发布或 D7a 不完整）且事故未合并时提供；Resolved/Closed 放主按钮，其他状态放 More；服务端同条件拒绝 `NO_REPORT`/`MERGED`（409），合并在写入语句里再判一次 |
+| F9 | 记下当时显示报告的 Run 和 sha256；报告之后被修订，卡片加「Rated an earlier report」，不清掉。提交须带所评报告的 Run/sha；不一致拒绝 REPORT_CHANGED（409，不写入；页面说明原因并保留填写内容；不带这两项的调用方按提交时显示的报告记，PR #716 机器人发现，lead 裁决） |
+| F10 | 结论下方一张卡片 + 页内 `<details>` 表单；`/live` 片段带上卡片，表单打开或聚焦时不替换；不加 SSE 事件种类 |
+| F11 | 见上（用户选 A）：复盘审核页只读显示 |
+| F12 | 不直接进知识库 |
+| F13 | 登录后的 `GET /feedback/export`，`application/x-ndjson`：事故 id、反馈字段（已脱敏）、`rated_run_id`、`rated_report_sha256`、被评 Run 的 `model`（该 Run 最新模型步骤的 `response_model`）与 `prompt_revision`、修改人与时间；不建评测流水线，不新增接收方，不做 accuracy 统计与上报 |
+| F14 | 不进保留清理 |
+| F15 | 改钉值：迁移头、授权指纹、表数 46→47、0023/0021/0014 降级测试计入新表，清单见任务记录 |
+| F16 | （lead）场景函数上限 11 → 12，P5 加 1 个；不占浏览器路径 |
+| F17 | 不新增 feature 条目，不翻 `passes` |
+
+修订：r12 = P5 预审表、用户 F1/F11 裁决、场景函数上限 12（lead 2026-11-18）。
 
 ### 将被删除的旧测试（按 PR 分组）
 

@@ -105,6 +105,17 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "resulting_generation)",
         ),
         "opspilot_evidence": S,
+        # 0027 (workbench P5, user F1 2026-11-18): the web alone keeps the
+        # one feedback row per incident; it is never an input or a control
+        "opspilot_investigation_feedback": _g(
+            "SELECT",
+            "INSERT(actual_root_cause,correct_next_steps,incident_id,"
+            "next_steps_verdict,notes,rated_report_sha256,rated_run_id,"
+            "steering_needed,updated_by,verdict)",
+            "UPDATE(actual_root_cause,correct_next_steps,next_steps_verdict,notes,"
+            "rated_report_sha256,rated_run_id,steering_needed,updated_at,updated_by,"
+            "verdict)",
+        ),
         "opspilot_f13_audit": _g(
             "SELECT",
             "INSERT(action,actor_id,event_id,expected_generation,idempotency_key,object_id,"
@@ -283,6 +294,8 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "UPDATE(committed,control_generation,input_watermark)",
         ),
         "opspilot_inputs": S,
+        # 0027 (P5 F4): nothing the investigation or Chat reads sees feedback
+        "opspilot_investigation_feedback": NONE,
         "opspilot_knowledge_entries": NONE,
         "opspilot_knowledge_revision_states": S,
         "opspilot_knowledge_revisions": S,

@@ -184,6 +184,10 @@ _WORKBENCH_STATUS = {
     "STORAGE_UNAVAILABLE": 503,
     "RETRY": 503,
     "TIMEOUT": 503,
+    # Workbench P5 (feedback, F8): no report on the page to rate
+    "NO_REPORT": 409,
+    "REPORT_CHANGED": 409,
+    "FEEDBACK_UNAVAILABLE": 503,
     # Workbench P7 (Chat panel)
     "CHAT_RATE_LIMITED": 429,
     "CHAT_BUSY": 409,
@@ -620,8 +624,11 @@ def create_app(
         release_links = snapshot.get("release_links")
         if release_links is None:  # a handoff-only snapshot does not read them
             release_links = await in_thread(workbench.release_links_for, subject)
+        # Workbench P5: the incident's feedback card (F10).
+        feedback = await in_thread(workbench.feedback_for, subject, snapshot)
         actions = available_actions(snapshot)
         return {
+            "feedback": feedback,
             "principal": principal,
             "snapshot": snapshot,
             "release_links": release_links,
@@ -682,11 +689,15 @@ def create_app(
         # UI redesign 3.3: the heading names what the incident is about, read
         # like its list row (one single-row query).
         incident = await in_thread(workbench.incident_subject, page["incident_id"])
+        # Workbench P5 F11 (user, option A): the reviewer sees the
+        # incident's feedback here; it is never sent to the drafting model.
+        feedback = await in_thread(workbench.feedback_for, page["incident_id"])
         response = render(
             "postmortem.html",
             principal=principal,
             page=page,
             incident=incident,
+            feedback=feedback,
             error=error,
             postmortem_kinds=EVENT_KINDS,
             form_nonce=uuid4().hex,
@@ -1094,6 +1105,63 @@ def create_app(
             }
         )
 
+    # -- feedback (workbench P5, contract r12) ----------------------------
+    # UI identity and Origin, as a control; it is not one (F3).
+
+    @app.post("/incidents/{incident_id}/feedback")
+    async def feedback(request: Request, incident_id: str) -> Response:
+        principal = await ui_mutation(request)
+        subject = incident_of(incident_id)
+        content_type = request.headers.get("content-type", "").split(";")[0].strip()
+        fields: Mapping[str, Any] = (
+            await json_of(request)
+            if content_type == "application/json"
+            else await form_of(request)
+        )
+        try:
+            result = await in_thread(
+                workbench.submit_feedback,
+                subject,
+                actor_id=principal.actor_id,
+                fields=fields,
+            )
+        except _Refusal as exc:
+            if exc.code != "REPORT_CHANGED" or not wants_html(request):
+                raise
+            # F9 (r12): the page again, with the new report, the reason and
+            # what the person wrote, still unsaved.
+            snapshot = await in_thread(workbench.snapshot, subject)
+            context = await incident_context(principal, subject, snapshot)
+            response = render(
+                "incident.html",
+                **context,
+                feedback_error=(
+                    "The report changed while you were writing — review it "
+                    "and submit again."
+                ),
+                feedback_draft=_feedback_draft(fields),
+            )
+            response.status_code = 409
+            return response
+        if wants_html(request):
+            return RedirectResponse(f"/incidents/{subject}#feedback", status_code=303)
+        return JSONResponse(result)
+
+    @app.get("/feedback/export")
+    async def feedback_export(request: Request) -> Response:
+        """F13: JSON lines for evaluation, to the signed-in user only."""
+        await ui(request)
+        rows = await in_thread(workbench.feedback_export)
+        body = "".join(
+            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows
+        )
+        response = Response(body, media_type="application/x-ndjson")
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Disposition"] = (
+            'attachment; filename="opspilot-feedback.jsonl"'
+        )
+        return response
+
     # -- Chat panel (workbench P7-14) -------------------------------------
     # UI identity only (session cookie or Basic), Origin on every POST; the
     # bearer and event tokens are refused by ``ui``.
@@ -1406,6 +1474,26 @@ def _review_extra(exc: ReviewError) -> dict[str, Any]:
     extra = exc.payload()
     extra.pop("code")
     return extra
+
+
+def _feedback_draft(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """A refused feedback form's own values, to fill the form again."""
+
+    def text(name: str) -> str | None:
+        value = fields.get(name)
+        return value if isinstance(value, str) and value.strip() else None
+
+    steering = {"yes": True, "true": True, "no": False, "false": False}.get(
+        str(fields.get("steering_needed", "")).strip().lower()
+    )
+    return {
+        "verdict": text("verdict"),
+        "actual_root_cause": text("actual_root_cause"),
+        "steering_needed": steering,
+        "next_steps_verdict": text("next_steps_verdict"),
+        "correct_next_steps": text("correct_next_steps"),
+        "notes": text("notes"),
+    }
 
 
 def _invalid(name: str) -> _Refusal:

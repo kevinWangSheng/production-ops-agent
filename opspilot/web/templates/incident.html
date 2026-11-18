@@ -43,6 +43,7 @@
   <div id="results">
   {{ r.results() }}
   </div>
+  <div id="feedback-wrap">{{ r.feedback_card() }}</div>
 
   {#- ---------------- investigation log ---------------- #}
   <section id="log-sec" aria-labelledby="h-log">
@@ -674,6 +675,9 @@
     var actions = $("#actions");
     if (!actions.contains(document.activeElement) && !$$("details[open]", actions).length) swap("actions", doc);
     swap("results", doc);
+    /* the feedback form keeps what is being typed: swapped only while closed */
+    var fbw = $("#feedback-wrap");
+    if (fbw && !fbw.contains(document.activeElement) && !$$("details[open]", fbw).length) swap("feedback-wrap", doc);
     swap("log-sum", doc);
     mergeLog(doc.getElementById("log"));
     swap("queue-wrap", doc);

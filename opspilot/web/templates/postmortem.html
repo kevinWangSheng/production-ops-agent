@@ -21,6 +21,10 @@
       route reads; no form at all when the version is not reviewable. -#}
 <style>
   .crumb { font-size: 12.5px; color: var(--ink2); margin: 0 0 6px; }
+  .pfb { margin-bottom: 8px; }
+  .pfb h2 { border-top: 0; padding-top: 0; margin-top: 32px; }
+  .pfb p { margin: 4px 0; }
+  .pfbt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
   .crumb code { font-size: 12px; }
   .ptitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
   .ptitle h1 { margin: 0; }
@@ -438,6 +442,21 @@
 </div>
 
 <aside id="decision">
+{#- Workbench P5 F11 (user, option A): the incident's feedback, for the
+    reviewer only; the drafting model never saw it. -#}
+<section class="pfb" id="feedback" aria-labelledby="h-pfb">
+<h2 id="h-pfb">Feedback on the investigation</h2>
+{% if feedback %}
+<p class="pfbv" id="feedback-current" data-verdict="{{ feedback.verdict }}"><b>{{ feedback.verdict_words }}</b>{% if feedback.steering_needed is sameas true %} · steering was needed{% elif feedback.steering_needed is sameas false %} · no steering needed{% endif %}{% if feedback.next_steps_words %} · {{ feedback.next_steps_words | lower }}{% endif %}</p>
+{% if feedback.actual_root_cause %}<p class="small">Actual root cause</p><p class="pfbt" id="feedback-actual">{{ feedback.actual_root_cause }}</p>{% endif %}
+{% if feedback.correct_next_steps %}<p class="small">What the next steps should have been</p><p class="pfbt">{{ feedback.correct_next_steps }}</p>{% endif %}
+{% if feedback.notes %}<p class="small">Notes</p><p class="pfbt">{{ feedback.notes }}</p>{% endif %}
+<p class="small" id="feedback-meta">by {{ feedback.updated_by }} · {{ (feedback.updated_at or "")[:16] | replace("T", " ") }} UTC</p>
+<p class="small">Shown to reviewers; not sent to the drafting model. If it disagrees with the draft, return or reject the version.</p>
+{% else %}
+<p class="small" id="feedback-none">No one has rated the investigation's root cause. Feedback is added on the <a href="/incidents/{{ page.incident_id }}#feedback">incident page</a>.</p>
+{% endif %}
+</section>
 <h2>Your decision</h2>
 {% if sm.actions %}
 <p class="small">None of these actions touches the investigated system.{% if ns.flagged %} {{ ns.flagged | length }} statement{{ " is" if ns.flagged | length == 1 else "s are" }} flagged; see <a href="#conclusion-{{ ns.flagged[0][1].conclusion_key }}">the first one</a>.{% endif %}</p>

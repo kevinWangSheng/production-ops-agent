@@ -1,6 +1,6 @@
 # 工作台重设计：对标 AWS DevOps Agent
 
-- 状态：合同 r10 已定，P1–P4 已合并，P7 实施中
+- 状态：合同 r12 已定，P1–P4、P6、P7 已合并，P5 实施中
 - 更新日期：2026-11-18
 - 依据：[设计稿](../design/workbench-redesign-2026-11-17.md)、[合同决定表](2026-11-17-workbench-redesign-contract.md)、PRODUCT-CONSTRAINTS、C3 §5/§9/§10、ADR-0005；取代 [layout-B 规格](../design/web-ux-spec-2026-11-16.md) 的交互模型
 - 工作区：本记录 `chore/workbench-redesign-record`；各 PR 的分支与 worktree 开工时补在下面「执行进展」
@@ -23,7 +23,7 @@
 - D10 观察期间的消息或报告修订不停观察；D19 不显示 `reasoning_content`；D20 消息（Chat 面板或调查输入框）不算 #184 的「人工处理」，只有控制动作算（用户明确「不算」）。
 - 页面以原型 v2 为准；v1 标签页式原型被否。
 
-## 合同（r10）
+## 合同（r12）
 
 完整决定表（选项、代价、代码出处）见 [合同决定表](2026-11-17-workbench-redesign-contract.md)。预审需用户裁决 0 项；以下全部按推荐采纳，lead 2026-11-17 裁决。
 
@@ -45,12 +45,13 @@
 | R1–R5 | （P2 审查，人工控制优先）人工取消或关闭之后，只有该决定之后收下的消息才触发接力，开出的 Run 仍读 floor 以上全部未读消息。接力条件里的 D7a 判定往回找本事故任一 Run 的通过校验报告，不只看当前 Run（r2）；收下消息按 D 组状态表判定，与接力判定分开（r3）；接力在 web 进程循环和发消息请求里共用一个函数执行，角色 `opspilot_web`，不改授权；Run 编号 `uuid5("{intake_key}:relay:{最大未读序号}")`；不写控制审计、不撤销观察、不改 lifecycle、不清结论 |
 | E1–E7 | Chat 面板：两张新表（P7 迁移）；模型调用放 worker（密钥只在 worker）；只读本事故记录，不读 `reasoning_content`，人的话走 `project_input_content` 脱敏；`steer` 只转发用户原句；团队共享、随事故保留；P4 只做面板外壳 |
 | P7-1–P7-18 | （r10）迁移 `0026_chat_panel`，一问一答一行、会话必须挂事故；上下文由 web 在提问时从页面投影按白名单构建并存进发言行；worker 线程 `opspilot-chat` 领取作答（无工具、json 模式、不存推理、不开 trace），池下限 capacity+4；web 转发 `steer` 的原句（`chat_forward`，幂等 `chat:{turn_id}`），worker 只写 `steer`；每人 10 分钟 20 问；History 本事故最近 50 个会话。**U-P7：用户 2026-11-18 批准方案 A**（两张新表的列级授权，降级删表并只报计数）。明细见决定表「P7」节 |
+| F1–F17 | （r12，P5 反馈）新表 `opspilot_investigation_feedback`（迁移 0027，一个事故一行，最新提交整体替换，只给 web 授权）；独立端点，不是控制动作、不是输入，不推进代际、不算人工处理，调查、Chat、复盘起草模型都读不到；结论下方卡片 + 页内表单，Resolved/Closed 主按钮、其他状态 More；记下被评的 Run 与报告 sha256，报告修订后标「Rated an earlier report」；复盘审核页只读显示；`GET /feedback/export` JSON lines。**用户 2026-11-18：F1 照做，F11 选 A**。明细见决定表「P5」节 |
 | U1–U3 | 首个 Run 无报告时显示「已收集的证据」和「最近一步」；外观以原型 v2 为准、系统字体、不加载外部资源；回复不用展开就能看到且在 Messages 筛选下可见 |
 | O1–O4 | 复盘草稿过期保持现状；`follow_up`/`correct` HTTP 别名保留一版，存储层分支和 `m1_live_runner` 两个开关在 P2 删；反馈每个调查一份（照 AWS，取代 D25）；F7 第 5 步审计重建补输入表来源 |
 | P3-1–P3-22 | （r9）一条日志覆盖全部 Run、全事故统一步骤计数、读取时计算 not answered 与 Retry、「Agent couldn't respond」、SSE 只作变化信号由 `/live` 片段就地更新、`message_received` 事件；不迁移、不改授权。明细见决定表「P3」节 |
-| T | 整个重设计最多 11 个场景测试（r9）（`tests/acceptance/test_workbench_conversation.py`）+ 3 条浏览器路径，一个共用驱动；不测清单与旧测试删除清单见决定表第五节 |
+| T | 整个重设计最多 12 个场景测试（r9 定 11，r12 改 12）（`tests/acceptance/test_workbench_conversation.py`）+ 3 条浏览器路径，一个共用驱动；不测清单与旧测试删除清单见决定表第五节 |
 
-修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）；r7 = A3 补「无回复 + 不完整报告」走不完整交接（P1 独立审查）；r8 = C4 `reply_only` 最终轮不发最终报告指令（P2 真实 Run 1 中模型按最终报告指令返回裸报告，判 `RESPONSE_INVALID`）；r9 = P3 预审表、E1 迁移号改 0026、场景函数上限改 11（lead 2026-11-18）；r10 = P7 预审表、U-P7 授权批准、E1/E3/E5 按 P7-1/2/3/4/9 修订（同日）。
+修订：r1 = 预审全部推荐（2026-11-17）；r2 = R1 的 D7a 判定往回找（PR #694 机器人发现，同日）；r3 = 收下与接力分成两个判定（同上）；r4 = A11 续接 Run 活跃时人工控制可用（同上）；r5 = A11 补 close 路径（同上）；r6 = B8 续接 Run 带上之前的回复（同上）；r7 = A3 补「无回复 + 不完整报告」走不完整交接（P1 独立审查）；r8 = C4 `reply_only` 最终轮不发最终报告指令（P2 真实 Run 1 中模型按最终报告指令返回裸报告，判 `RESPONSE_INVALID`）；r9 = P3 预审表、E1 迁移号改 0026、场景函数上限改 11（lead 2026-11-18）；r10 = P7 预审表、U-P7 授权批准、E1/E3/E5 按 P7-1/2/3/4/9 修订（同日）；r11 = P6 关联展示表（同日）；r12 = P5 预审表、用户 F1/F11 裁决、场景函数上限 12（同日）。
 
 ## PR 顺序
 
@@ -70,6 +71,7 @@ P1 回复合同 → P2 消息输入与接力 → P3 日志投影与 SSE → P4 �
 
 - P7 Chat 面板（`feature/workbench-p7-chat`，worktree `../poa-wb-p7`，对齐 r10）：实现 Opus；场景函数与浏览器路径 (c) 由独立测试作者在另一分支编写。行为：右侧面板可提问、看回答（纯文本、引用证据可点）、History 切换会话、New chat；回答只来自页面上的记录，问答不改调查的输入、Run 与步骤；`steer` 时面板显示转发结果并链接到日志里那条「from Chat」消息。改的钉值：迁移头（P7-18 所列 11 处）、授权指纹、表数 44→46、0023/0021 降级测试把 0026 两表计入、池下限 +4（`test_427_outbox_impl`、`test_427_pool_compose`、`test_f2_b1_impl`、`test_f2_b1_capacity_priority_postgres`、`test_393_compose_static_impl`）。
 - P7 真实模型检查（2026-11-18，用户跑 `~/.agent/p7run.sh`，PR #711 头 `b896be6b`）：DeepSeek 2 次调用均成功；提问得到回答且 `steer=false`、引用记录证据，调查的输入、Run、步骤不变；指挥调查的问题得到 `steer=true`，转发成输入 1，署提问人、`chat_forward`、正文等于原问题；模型文字不进输入，发言行不含推理。按 E4 不导出 trace。证据：[summary.json](../evidence/workbench-p7-chat-live/summary.json)。
+- P5 反馈（`feature/workbench-p5-feedback`，worktree `../poa-wb-p5`，对齐 r12）：实现 Opus；场景函数由独立测试作者在另一分支编写。行为：结论下方可给根因对错、真实根因、是否需要指挥、下一步对错与正确做法、备注，再提交整体替换；提交不改输入、Run、代际、控制审计、观察；复盘审核页只读显示；`GET /feedback/export` 导出 JSON lines。无模型调用。改的钉值（#714 删测试之后仍在的）：迁移头 0026→0027（`test_245_rebind_target` 3 处、`test_429_schema_downgrade`、`test_schema_migrations_postgres`、`test_schema_baseline`、`f11_release_observation_postgres_support`）、表数 46→47、降级测试计入新表（`test_429_schema_downgrade`）、`test_f7_step1_entry_points` 路由清单加两条。
 
 ## 下一步与交接
 

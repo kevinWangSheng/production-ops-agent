@@ -507,6 +507,9 @@ class Workbench:
     #: one on first use from the durable incident store's DSN and pool, as
     #: ``releases`` does; a store without one (in-memory tests) has no Chat.
     chat: Any = None
+    #: The ``FeedbackStore`` (workbench P5); ``None`` derives one on first
+    #: use from the durable incident store's DSN and pool, as ``chat`` does.
+    feedback_store: Any = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -1668,6 +1671,103 @@ class Workbench:
             "elapsed_ms": turn.get("elapsed_ms"),
             "forward": forward,
         }
+
+    # -- feedback (workbench P5, contract r12) ----------------------------
+
+    def _feedback(self) -> Any:
+        if self.feedback_store is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise WorkbenchError("FEEDBACK_UNAVAILABLE")
+            from opspilot.web.feedback import FeedbackStore
+
+            self.feedback_store = FeedbackStore(
+                dsn, pool=getattr(durable, "pool_config", None)
+            )
+        return self.feedback_store
+
+    def submit_feedback(
+        self, incident_id: UUID, *, actor_id: str, fields: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Save the incident's one feedback row, replacing any earlier one
+        (F6). Not a control action (F3): no generation, audit row, input,
+        Run, lifecycle or observation changes, and nothing the
+        investigation, Chat or the postmortem model reads sees it (F4, F11
+        A). Offered and accepted only while the page shows a parsed report
+        and the incident is not merged (F8); the rating records that
+        report's Run and sha256 (F9)."""
+        clean = _feedback_fields(fields)
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.merged_into_incident_id is not None:
+            raise WorkbenchError("MERGED")
+        if summary.handoff_only:
+            raise WorkbenchError("NO_REPORT")
+        from opspilot.web.incident_view import shown_report_ref
+
+        ref = shown_report_ref(self.snapshot(incident_id))
+        if ref is None:
+            raise WorkbenchError("NO_REPORT")
+        # F9 (r12): the page's form names the report the person rated; a
+        # report revised since then is refused, never silently retargeted.
+        # A caller naming no report rates the one shown now.
+        claimed = _rated_ref(fields)
+        if claimed is not None and claimed != ref:
+            raise WorkbenchError("REPORT_CHANGED")
+        try:
+            row = self._feedback().save(
+                incident_id,
+                fields=clean,
+                rated_run_id=UUID(ref[0]),
+                rated_report_sha256=ref[1],
+                updated_by=actor_id,
+            )
+        except PersistenceError as exc:
+            raise WorkbenchError(str(exc)) from None
+        return {"incident_id": str(incident_id), "feedback": _feedback_view(row, ref)}
+
+    def feedback_for(
+        self, incident_id: UUID, snapshot: Mapping[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """The incident's feedback as the pages show it (redacted), with
+        ``earlier_report`` when the shown report is no longer the rated one
+        (F9). ``None`` without a row, or without a durable store."""
+        try:
+            store = self._feedback()
+        except WorkbenchError:
+            return None
+        try:
+            row = store.get(incident_id)
+        except PersistenceError as exc:
+            # The card is optional: a failed read hides it rather than
+            # failing the incident page, /live or the review page.
+            _log.warning("feedback read failed incident=%s code=%s", incident_id, exc)
+            return None
+        if row is None:
+            return None
+        ref = None
+        if snapshot is not None:
+            from opspilot.web.incident_view import shown_report_ref
+
+            ref = shown_report_ref(snapshot)
+        return _feedback_view(row, ref)
+
+    def feedback_export(self) -> list[dict[str, Any]]:
+        """F13: every feedback row for evaluation, redacted, with the rated
+        Run's model and prompt revision. Read by a signed-in user only."""
+        rows = self._feedback().export()
+        out = []
+        for row in rows:
+            view = _feedback_view(row, None)
+            view.pop("earlier_report", None)
+            view.pop("verdict_words", None)
+            view.pop("next_steps_words", None)
+            view["model"] = row.get("model")
+            view["prompt_revision"] = row.get("prompt_revision")
+            out.append(view)
+        return out
 
     def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
         """Prove this decision's deterministic Run exists, even after another renewal."""
@@ -3281,6 +3381,9 @@ class Workbench:
             },
             "steps": steps,
             "report_steps": report_steps,
+            # A9/P5 F9: the earlier Run the shown report is from (``None``:
+            # the current Run's).
+            "report_run_id": report_run_id,
             "report_coverage": report_coverage,
             "not_integrated": not_integrated,
             "coverage": _coverage_view(coverage)
@@ -3947,6 +4050,118 @@ class Workbench:
 
 
 # -- views ----------------------------------------------------------------
+
+
+_FEEDBACK_TEXTS = ("actual_root_cause", "correct_next_steps", "notes")
+_YES_NO = {"yes": True, "true": True, "no": False, "false": False}
+
+
+def _feedback_fields(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one feedback submission (F5). The actual root cause is kept
+    only with an ``incorrect`` verdict and the correct next steps only with
+    ``incorrect`` next steps; otherwise they are dropped, as AWS does. Each
+    text has a message's limits and checks; blank means none."""
+    from opspilot.web.feedback import NEXT_STEPS_VERDICTS, VERDICTS
+
+    verdict = fields.get("verdict")
+    if verdict not in VERDICTS:
+        raise WorkbenchError("INVALID_INPUT")
+    steering = fields.get("steering_needed")
+    if isinstance(steering, str):
+        if steering.strip() == "":
+            steering = None
+        elif steering.strip().lower() in _YES_NO:
+            steering = _YES_NO[steering.strip().lower()]
+        else:
+            raise WorkbenchError("INVALID_INPUT")
+    elif steering is not None and not isinstance(steering, bool):
+        raise WorkbenchError("INVALID_INPUT")
+    next_steps = fields.get("next_steps_verdict")
+    if next_steps == "":
+        next_steps = None
+    if next_steps is not None and next_steps not in NEXT_STEPS_VERDICTS:
+        raise WorkbenchError("INVALID_INPUT")
+    clean: dict[str, Any] = {
+        "verdict": verdict,
+        "steering_needed": steering,
+        "next_steps_verdict": next_steps,
+    }
+    for name in _FEEDBACK_TEXTS:
+        value = fields.get(name)
+        if value is None:
+            clean[name] = None
+            continue
+        if not isinstance(value, str) or len(value) > _MAX_TEXT:
+            raise WorkbenchError("INVALID_INPUT")
+        if not value.strip():
+            clean[name] = None
+            continue
+        try:
+            _reject_ambiguous_text(value)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        clean[name] = value
+    if verdict != "incorrect":
+        clean["actual_root_cause"] = None
+    if next_steps != "incorrect":
+        clean["correct_next_steps"] = None
+    return clean
+
+
+def _rated_ref(fields: Mapping[str, Any]) -> tuple[str, str | None] | None:
+    """The ``(run_id, sha256)`` a submission says it rates (F9 r12), or
+    ``None`` when it names none. Malformed values are ``INVALID_INPUT``."""
+    run = fields.get("rated_run_id")
+    sha = fields.get("rated_report_sha256")
+    if run in (None, "") and sha in (None, ""):
+        return None
+    if not isinstance(run, str) or not isinstance(sha, (str, type(None))):
+        raise WorkbenchError("INVALID_INPUT")
+    try:
+        run = str(UUID(run))
+    except ValueError:
+        raise WorkbenchError("INVALID_INPUT") from None
+    if sha == "":
+        sha = None
+    if sha is not None and not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise WorkbenchError("INVALID_INPUT")
+    return run, sha
+
+
+def _feedback_view(
+    row: Mapping[str, Any], shown: tuple[str, str | None] | None
+) -> dict[str, Any]:
+    def text(name: str) -> str | None:
+        value = row.get(name)
+        return redact_credentials(value) if isinstance(value, str) else None
+
+    rated_run = str(row["rated_run_id"])
+    rated_sha = row.get("rated_report_sha256")
+    # F9: the shown report was revised after this rating.
+    earlier = shown is not None and (shown[0], shown[1]) != (rated_run, rated_sha)
+    return {
+        "incident_id": str(row["incident_id"]),
+        "verdict": row["verdict"],
+        "verdict_words": {
+            "correct": "Root cause correct",
+            "incorrect": "Root cause incorrect",
+        }.get(row["verdict"], row["verdict"]),
+        "actual_root_cause": text("actual_root_cause"),
+        "steering_needed": row.get("steering_needed"),
+        "next_steps_verdict": row.get("next_steps_verdict"),
+        "next_steps_words": {
+            "correct": "Next steps correct",
+            "incorrect": "Next steps incorrect",
+            "not_applicable": "Next steps not applicable",
+        }.get(str(row.get("next_steps_verdict")), None),
+        "correct_next_steps": text("correct_next_steps"),
+        "notes": text("notes"),
+        "rated_run_id": rated_run,
+        "rated_report_sha256": rated_sha,
+        "updated_by": row["updated_by"],
+        "updated_at": _iso(row.get("updated_at")),
+        "earlier_report": earlier,
+    }
 
 
 def _invalid_alert(item: object, code: str) -> AlertResult:

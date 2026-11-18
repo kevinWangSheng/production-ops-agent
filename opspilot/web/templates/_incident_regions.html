@@ -135,12 +135,71 @@
         {%- if st.key == "merged" %}
         <a class="btn" href="/incidents/{{ inc.merged_into_incident_id }}">Merged into {{ (inc.merged_into_incident_id|string)[:8] }} →</a>
         {%- endif %}
+        {%- set fo = view.feedback_offer %}
         {%- for a in view.actions.primary %}{{ action_form(a) }}{% endfor %}
-        {%- if view.actions.more %}
+        {%- if fo and fo.primary %}<a class="btn" id="feedback-button" href="#feedback-form" data-open-step="feedback-form">{{ "Edit feedback" if feedback else "Add feedback" }}</a>{% endif %}
+        {%- if view.actions.more or (fo and not fo.primary) %}
         <details class="more" id="more"><summary class="btn">More <span aria-hidden="true">▾</span></summary>
-          <div class="menu">{% for a in view.actions.more %}{{ action_form(a, in_menu=true) }}{% endfor %}</div>
+          <div class="menu">{% for a in view.actions.more %}{{ action_form(a, in_menu=true) }}{% endfor %}
+          {%- if fo and not fo.primary %}<div class="act inmenu"><a class="btn" id="feedback-button" href="#feedback-form" data-open-step="feedback-form">{{ "Edit feedback" if feedback else "Add feedback" }}</a><span class="small">Rate the root cause for evaluation. The Agent never reads it.</span></div>{% endif %}</div>
         </details>
         {%- endif %}
+{%- endmacro %}
+
+{#- Workbench P5: what a person said about the shown report (F10). Shown
+    on the incident page under the conclusion and, read-only, on the
+    postmortem review page. Never an input to the Agent, Chat or the
+    postmortem draft. -#}
+{% macro feedback_summary(fb) -%}
+  <div class="fbcard" id="feedback-current" data-verdict="{{ fb.verdict }}">
+    <p class="fbline"><span class="chip {{ 'okc' if fb.verdict == 'correct' else 'errc' }}">{{ fb.verdict_words }}</span>
+      {%- if fb.steering_needed is sameas true %} <span class="chip">Steering was needed</span>{% elif fb.steering_needed is sameas false %} <span class="chip">No steering needed</span>{% endif %}
+      {%- if fb.next_steps_words %} <span class="chip">{{ fb.next_steps_words }}</span>{% endif %}</p>
+    {%- if fb.actual_root_cause %}<p><span class="muted">Actual root cause</span><span class="fbt" id="feedback-actual">{{ fb.actual_root_cause }}</span></p>{% endif %}
+    {%- if fb.correct_next_steps %}<p><span class="muted">What the next steps should have been</span><span class="fbt">{{ fb.correct_next_steps }}</span></p>{% endif %}
+    {%- if fb.notes %}<p><span class="muted">Notes</span><span class="fbt">{{ fb.notes }}</span></p>{% endif %}
+    <p class="small" id="feedback-meta">by {{ fb.updated_by }} · <time datetime="{{ fb.updated_at }}">{{ (fb.updated_at or "")[:16] | replace("T", " ") }} UTC</time>{% if fb.earlier_report %} · <b id="feedback-earlier">Rated an earlier report</b>{% endif %}</p>
+  </div>
+{%- endmacro %}
+
+{% macro feedback_card() -%}
+  {%- set fo = view.feedback_offer %}
+  {%- if feedback or fo %}
+  <section class="fb" id="feedback" aria-labelledby="h-fb">
+    <h2 id="h-fb">Feedback <span class="sub">for evaluation · the Agent and Chat never read it</span></h2>
+    {%- if feedback %}{{ feedback_summary(feedback) }}{% else %}<p class="small" id="feedback-none">No feedback on this report yet.</p>{% endif %}
+    {%- if fo %}
+    {%- set fb = feedback_draft or feedback or {} %}
+    {%- if feedback_error %}<p class="fberr" id="feedback-error" role="alert">{{ feedback_error }}</p>{% endif %}
+    <details class="fbd" id="feedback-form"{% if feedback_error %} open{% endif %}><summary class="btn">{{ "Edit feedback" if feedback else "Add feedback" }}</summary>
+    <form class="fbf" method="post" action="/incidents/{{ inc.incident_id }}/feedback">
+      {#- F9 (r12): the report this rates; a revised report refuses the save. #}
+      <input type="hidden" name="rated_run_id" value="{{ fo.run_id }}">
+      <input type="hidden" name="rated_report_sha256" value="{{ fo.sha256 }}">
+      <fieldset><legend>Is the root cause correct?</legend>
+        <label class="opt"><input type="radio" name="verdict" value="correct" required{% if fb.verdict == "correct" %} checked{% endif %}> Correct</label>
+        <label class="opt"><input type="radio" name="verdict" value="incorrect"{% if fb.verdict == "incorrect" %} checked{% endif %}> Incorrect</label>
+      </fieldset>
+      <label>Actual root cause <span class="muted">(kept only when incorrect)</span><textarea name="actual_root_cause" rows="2" maxlength="8192">{{ fb.actual_root_cause or "" }}</textarea></label>
+      <fieldset><legend>Was steering needed?</legend>
+        <label class="opt"><input type="radio" name="steering_needed" value="yes"{% if fb.steering_needed is sameas true %} checked{% endif %}> Yes</label>
+        <label class="opt"><input type="radio" name="steering_needed" value="no"{% if fb.steering_needed is sameas false %} checked{% endif %}> No</label>
+        <label class="opt"><input type="radio" name="steering_needed" value=""{% if fb.steering_needed is not sameas true and fb.steering_needed is not sameas false %} checked{% endif %}> Not sure</label>
+      </fieldset>
+      <fieldset><legend>Were the next steps right?</legend>
+        <label class="opt"><input type="radio" name="next_steps_verdict" value="correct"{% if fb.next_steps_verdict == "correct" %} checked{% endif %}> Correct</label>
+        <label class="opt"><input type="radio" name="next_steps_verdict" value="incorrect"{% if fb.next_steps_verdict == "incorrect" %} checked{% endif %}> Incorrect</label>
+        <label class="opt"><input type="radio" name="next_steps_verdict" value="not_applicable"{% if fb.next_steps_verdict == "not_applicable" %} checked{% endif %}> Not applicable</label>
+        <label class="opt"><input type="radio" name="next_steps_verdict" value=""{% if not fb.next_steps_verdict %} checked{% endif %}> Skip</label>
+      </fieldset>
+      <label>What the next steps should have been <span class="muted">(kept only when incorrect)</span><textarea name="correct_next_steps" rows="2" maxlength="8192">{{ fb.correct_next_steps or "" }}</textarea></label>
+      <label>Notes<textarea name="notes" rows="2" maxlength="8192">{{ fb.notes or "" }}</textarea></label>
+      <p class="small">Saving replaces any earlier feedback on this incident. It is kept for evaluation and shown to postmortem reviewers; it does not change the investigation, and the Agent, Chat and the postmortem draft never read it.</p>
+      <button type="submit" class="primary">Save feedback</button>
+    </form></details>
+    {%- endif %}
+  </section>
+  {%- endif %}
 {%- endmacro %}
 
 {% macro status() -%}
