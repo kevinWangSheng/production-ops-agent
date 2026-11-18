@@ -1454,6 +1454,7 @@ def test_credentials_never_appear_in_views_notes_or_trace(es):
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
+
     from tests.test_tracing import lab_env
 
     es.hits = [_hit("1", NOW - timedelta(minutes=5), message="ok", service="cart")]
