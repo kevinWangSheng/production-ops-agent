@@ -1019,12 +1019,8 @@ def _log(
             words = unread_words or "Queued · read before the Agent's next step"
         elif status["state"] == "answered":
             words = "Answered"
-            if status["step"]:
-                words += f" · read at step {status['step']}"
         elif status["state"] == "not_answered":
             words = "Not answered"
-            if status["step"]:
-                words += f" · read at step {status['step']}"
             if message.get("retried"):
                 words += " · sent again"
             elif retry_ok:
@@ -1049,7 +1045,8 @@ def _log(
                 else None,
                 "status": words,
                 "state": status["state"],
-                "read_step": status["step"],
+                # P3-5: stays after the message is answered.
+                "read_at_step": status["step"],
                 "sequence": seq,
                 "retry": retry,
             },
