@@ -266,6 +266,11 @@ def k8s_from_env_file(path: Path) -> K8sTarget:
         raise RoundAbort("K8S_ENV_FILE_INCOMPLETE") from None
 
 
+def _strs(env: Mapping[str, object]) -> dict[str, str]:
+    """A child environment is str -> str (a ``Path`` value becomes its text)."""
+    return {str(k): str(v) for k, v in env.items()}
+
+
 def tool_env(cfg: Config) -> dict[str, str]:
     """The tool profile's addresses, the same for web and worker."""
     return {
@@ -281,7 +286,7 @@ def web_env(
     cfg: Config, pg: Any, identities: Path, account: UiAccount
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
-    return (
+    return _strs(
         services.base_env()
         | tool_env(cfg)
         | {
@@ -326,7 +331,7 @@ def worker_env(
             env["LANGSMITH_PROJECT"] = cfg.project_name
     if cluster_name:
         env["OPSPILOT_CLUSTER_NAME"] = cluster_name
-    return env
+    return _strs(env)
 
 
 _WEB_FORBIDDEN = (

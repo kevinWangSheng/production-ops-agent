@@ -46,7 +46,7 @@ def setup_env(
     env["ES_UPDATE_SHARD_LIMIT"] = "true"
     if kubeconfig is not None:
         env["KUBECONFIG"] = str(kubeconfig)
-    return env
+    return {str(k): str(v) for k, v in env.items()}
 
 
 @dataclass(frozen=True)

@@ -32,7 +32,7 @@ def judge_env(environ: Mapping[str, str]) -> dict[str, str]:
     env = base_env(environ)
     env.update({k: environ[k] for k in JUDGE_KEYS if environ.get(k)})
     env["PYTHON_DOTENV_DISABLED"] = "1"
-    return env
+    return {str(k): str(v) for k, v in env.items()}
 
 
 def main(argv: Sequence[str] | None = None) -> int:
