@@ -141,16 +141,17 @@ def test_the_migration_holds_frozen_copies_of_the_shapes_and_grants():
     )
 
 
-@pytest.mark.parametrize(("capacity", "pool"), [("2", 4), ("1", 3), ("4", 6)])
-def test_a_pool_below_capacity_plus_three_is_refused(monkeypatch, capacity, pool):
+# workbench P7-6: the Chat thread raised the floor from capacity+3 to +4
+@pytest.mark.parametrize(("capacity", "pool"), [("2", 5), ("1", 4), ("4", 7)])
+def test_a_pool_below_capacity_plus_four_is_refused(monkeypatch, capacity, pool):
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", capacity)
-    with pytest.raises(SystemExit, match=r"OPSPILOT_WORKER_CAPACITY\+3"):
+    with pytest.raises(SystemExit, match=r"OPSPILOT_WORKER_CAPACITY\+4"):
         worker_main.worker_capacity(PoolConfig(max_size=pool))
 
 
 @pytest.mark.parametrize(
     ("capacity", "pool", "ok"),
-    [("2", "4", False), ("2", "5", True), ("4", "7", True), ("4", "6", False)],
+    [("2", "5", False), ("2", "6", True), ("4", "8", True), ("4", "7", False)],
 )
 def test_validate_pool_capacity_reads_the_environment(monkeypatch, capacity, pool, ok):
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", capacity)
@@ -162,18 +163,18 @@ def test_validate_pool_capacity_reads_the_environment(monkeypatch, capacity, poo
             worker_main.validate_pool_capacity()
 
 
-def test_main_refuses_an_explicit_pool_of_capacity_plus_two_before_the_database(
+def test_main_refuses_an_explicit_pool_of_capacity_plus_three_before_the_database(
     monkeypatch,
 ):
     monkeypatch.setenv("OPSPILOT_WORKER_DSN", "host=127.0.0.1 port=1 dbname=none")
     monkeypatch.delenv("OPSPILOT_WORKER_CAPACITY", raising=False)
-    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "4")
+    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "5")
 
     def no_store(*_args, **_kwargs):
         raise AssertionError("opened the store")
 
     monkeypatch.setattr(worker_main, "DurableStore", no_store)
-    with pytest.raises(SystemExit, match="OPSPILOT_POOL_MAX_SIZE=4"):
+    with pytest.raises(SystemExit, match="OPSPILOT_POOL_MAX_SIZE=5"):
         worker_main.main([])
 
 
@@ -193,7 +194,7 @@ def test_main_takes_the_floor_when_the_pool_size_is_unset(monkeypatch):
     monkeypatch.setattr(worker_main, "DurableStore", opened)
     with pytest.raises(Opened):
         worker_main.main([])
-    assert PoolConfig.from_env().max_size == 6
+    assert PoolConfig.from_env().max_size == 7
 
 
 class _Store:

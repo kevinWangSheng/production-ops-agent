@@ -87,6 +87,18 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "starts_at,starts_at_raw,target_id,workload)",
         ),
         "opspilot_budget_reservations": NONE,
+        # 0026 (workbench P7, user U-P7 2026-11-18): the web starts sessions,
+        # writes the question with the record snapshot the model reads, and
+        # the forward result; it can never write an answer
+        "opspilot_chat_sessions": _g(
+            "SELECT", "INSERT(created_by,incident_id,session_id,title)"
+        ),
+        "opspilot_chat_turns": _g(
+            "SELECT",
+            "INSERT(author,context,context_sha256,idempotency_key,question,session_id,"
+            "turn_id)",
+            "UPDATE(forward_code,forward_state,forwarded_at,forwarded_input_sequence)",
+        ),
         "opspilot_controls": _g(
             "SELECT",
             "INSERT(action,actor,audit_id,expected_generation,incident_id,payload,"
@@ -237,6 +249,14 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "SELECT",
             "INSERT(amount,reservation_id,reserved_seconds,run_id)",
             "UPDATE(seconds,state)",
+        ),
+        # 0026 (workbench P7, U-P7): the chat thread claims a turn and writes
+        # its answer; no INSERT, never the question or the forward columns
+        "opspilot_chat_sessions": S,
+        "opspilot_chat_turns": _g(
+            "SELECT",
+            "UPDATE(answer,answered_at,attempts,claim_owner,claim_until,"
+            "completion_tokens,error_code,prompt_tokens,refs,status,steer)",
         ),
         "opspilot_controls": S,
         "opspilot_evidence": _g(

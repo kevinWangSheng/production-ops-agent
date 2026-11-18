@@ -264,13 +264,25 @@
 </div></main>
 
 <aside class="panel" id="chat" aria-label="Chat">
-  <div class="ph"><b>Chat</b><button class="x" id="closeChat" type="button" aria-label="Close chat">×</button></div>
+  <div class="ph"><b>Chat</b>
+    <div class="ctabs" role="tablist" aria-label="Chat views">
+      <button type="button" role="tab" id="chatTabChat" aria-selected="true" aria-controls="chatMsgs">Current</button>
+      <button type="button" role="tab" id="chatTabHist" aria-selected="false" aria-controls="chatHist">History</button>
+    </div>
+    <span class="phr"><button type="button" class="chatnew" id="chatNew">New chat</button><button class="x" id="closeChat" type="button" aria-label="Close chat">×</button></span></div>
   <div class="ctx">About: <b>{{ (inc.incident_id|string)[:8] }}</b> · {{ hd.title | truncate(60) }}</div>
-  <div class="msgs"><p class="small">Chat is not available yet. When it is, it answers from this incident's record without changing the investigation, and can pass what you ask for to the investigation.</p></div>
-  <div class="pf"><form class="composer" onsubmit="return false">
-    <label for="chatIn" class="vh">Ask</label>
-    <textarea id="chatIn" rows="2" placeholder="Chat is not available yet" disabled></textarea>
-    <div class="bar"><span>Chat is not available yet</span><button class="primary" type="submit" disabled>Send</button></div>
+  <div class="msgs" id="chatMsgs" role="tabpanel" aria-labelledby="chatTabChat" aria-live="polite">
+    <p class="small" id="chatEmpty">Ask about this incident. Answers come from its record only and never change the investigation. If you ask the investigation to look into something, your own words are passed to it as your message.</p>
+    <div id="chatTurns"></div>
+  </div>
+  <div class="msgs" id="chatHist" role="tabpanel" aria-labelledby="chatTabHist" hidden>
+    <p class="small" id="chatHistEmpty">No chats on this incident yet.</p>
+    <ul class="chist" id="chatHistList"></ul>
+  </div>
+  <div class="pf"><form class="composer" id="chatForm" novalidate>
+    <label for="chatIn" class="vh">Ask about this incident</label>
+    <textarea id="chatIn" rows="2" placeholder="Ask about this incident"></textarea>
+    <div class="bar"><span id="chatNote">Answers from the record · Enter to send</span><button class="primary" type="submit" id="chatSend">Send</button></div>
   </form></div>
 </aside>
 </div>
@@ -376,6 +388,197 @@
   });
   narrow.addEventListener("change", function () { setChat(!narrow.matches && pref !== "closed", false); });
 
+  /* Chat (workbench P7): answers come from the record; a steer forwards the
+     person's own words. Text is always set with textContent (P7-8). */
+  var chatBase = "/incidents/" + incident + "/chat";
+  var chatSession = null, chatPoll = null, chatBusy = false, chatData = null;
+  var chatIn = $("#chatIn"), chatSend = $("#chatSend"), chatNote = $("#chatNote");
+  var chatTurns = $("#chatTurns"), chatEmpty = $("#chatEmpty");
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function hhmm(iso) { var d = new Date(iso); return isNaN(d) ? "" : d.toISOString().slice(11, 16) + " UTC"; }
+  function secs(ms) { var s = Math.max(0, Math.round((ms || 0) / 1000)); return s >= 60 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : s + "s"; }
+  function jsonReq(method, url, body) {
+    var opts = { method: method, credentials: "same-origin", cache: "no-store", headers: { "Accept": "application/json" } };
+    if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    return fetch(url, opts).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._status = r.status; return j; }); });
+  }
+  var chatErrors = {
+    CHAT_RATE_LIMITED: "Too many questions in the last 10 minutes. Try again in a few minutes.",
+    CHAT_BUSY: "Wait for the answer to the previous question.",
+    INVALID_INPUT: "That question cannot be sent. Check its length and characters.",
+    HANDOFF_ONLY: "This incident has no investigation to chat about."
+  };
+  var failWords = {
+    CHAT_TIMEOUT: "No answer in time.",
+    CHAT_REPLY_INVALID: "The answer could not be read.",
+    MODEL_UNAVAILABLE: "The model is unavailable.",
+    MODEL_REJECTED: "The model refused the request."
+  };
+  function logStatus(seq) {
+    var row = document.querySelector('#log [data-key="msg-' + seq + '"] .msg-status');
+    return row ? row.textContent.trim() : "";
+  }
+  function renderTurn(t) {
+    var box = el("div", "cturn"); box.setAttribute("data-turn", t.turn_id); box.setAttribute("data-status", t.status);
+    var q = el("div", "cq");
+    q.appendChild(el("span", "who", t.author + " · " + hhmm(t.asked_at)));
+    q.appendChild(el("p", "ctext", t.question));
+    box.appendChild(q);
+    var a = el("div", "ca");
+    a.appendChild(el("span", "who", "Chat"));
+    if (t.status === "pending") {
+      var w = el("p", "cwait"); w.appendChild(el("span", "dot pulse")); w.appendChild(document.createTextNode(" Reading the record… "));
+      var since = el("span"); since.setAttribute("data-since", t.asked_at); w.appendChild(since);
+      a.appendChild(w);
+    } else if (t.status === "failed") {
+      a.appendChild(el("p", "cfail", "Couldn't answer. " + (failWords[t.error_code] || "") + " (" + t.error_code + ")"));
+      var retry = el("button", "chip", "Retry"); retry.type = "button"; retry.setAttribute("data-retry", t.question);
+      a.appendChild(retry);
+    } else {
+      a.appendChild(el("p", "ctext", t.answer));
+      if (t.refs && t.refs.length) {
+        var refs = el("p", "crefs", "Evidence: ");
+        t.refs.forEach(function (eid, i) {
+          var link = el("a", "mono", eid); link.href = "/incidents/" + incident + "/evidence/" + encodeURIComponent(eid);
+          if (i) refs.appendChild(document.createTextNode(" · "));
+          refs.appendChild(link);
+        });
+        a.appendChild(refs);
+      }
+      a.appendChild(el("span", "small", "Answered in " + secs(t.elapsed_ms) + " · from the record"));
+    }
+    var f = t.forward;
+    if (f) {
+      var chip = el("p", "cfwd " + (f.state === "refused" ? "no" : f.state === "pending" ? "wait" : "yes"));
+      chip.setAttribute("data-forward", f.state);
+      if (f.state === "sent" && f.input_sequence != null) {
+        var go = el("a", null, f.words); go.href = "#log"; go.setAttribute("data-msg", f.input_sequence);
+        chip.appendChild(go);
+        var st = logStatus(f.input_sequence);
+        if (st) chip.appendChild(el("span", "small", " · " + st));
+      } else if (f.state === "refused" && f.merged_into) {
+        var m = el("a", null, f.words); m.href = "/incidents/" + f.merged_into; chip.appendChild(m);
+      } else {
+        chip.textContent = f.words;
+      }
+      a.appendChild(chip);
+    }
+    box.appendChild(a);
+    return box;
+  }
+  var chatShape = "";
+  function renderSession(data) {
+    chatData = data;
+    chatTurns.textContent = "";
+    var turns = (data && data.turns) || [];
+    turns.forEach(function (t) { chatTurns.appendChild(renderTurn(t)); });
+    chatEmpty.hidden = turns.length > 0;
+    tick();
+    /* follow new turns and answers; a log refresh alone keeps the scroll */
+    var shape = (data && data.session_id || "") + turns.map(function (t) { return t.turn_id + t.status; }).join();
+    if (shape !== chatShape) { chatShape = shape; var box = $("#chatMsgs"); box.scrollTop = box.scrollHeight; }
+    var waiting = turns.some(function (t) { return t.status === "pending"; });
+    setComposer(!waiting);
+    turns.forEach(function (t) {
+      if (t.forward && t.forward.state === "pending") { forward(t.turn_id); }
+    });
+    if (waiting) schedulePoll(); else stopPoll();
+  }
+  function setComposer(ready) {
+    chatBusy = !ready;
+    chatSend.disabled = !ready;
+    chatNote.textContent = ready ? "Answers from the record · Enter to send" : "Waiting for the answer…";
+  }
+  function stopPoll() { if (chatPoll) { clearTimeout(chatPoll); chatPoll = null; } }
+  function schedulePoll() { stopPoll(); chatPoll = setTimeout(loadSession, 1500); }
+  function loadSession() {
+    chatPoll = null;
+    if (!chatSession) return;
+    jsonReq("GET", chatBase + "/sessions/" + chatSession).then(function (j) {
+      if (j._status === 200) renderSession(j); else schedulePoll();
+    }, schedulePoll);
+  }
+  var forwarding = {};
+  function forward(turnId) {
+    if (forwarding[turnId]) return;
+    forwarding[turnId] = true;
+    jsonReq("POST", chatBase + "/turns/" + turnId + "/forward").then(function (j) {
+      if (j._status === 200 && j.turn) { loadSession(); }
+      else { setTimeout(function () { forwarding[turnId] = false; loadSession(); }, 3000); }
+    }, function () { setTimeout(function () { forwarding[turnId] = false; }, 3000); });
+  }
+  function ask(text) {
+    if (chatBusy || !text.trim()) return;
+    setComposer(false);
+    var body = { question: text, idempotency_key: "chat-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) };
+    if (chatSession) body.session_id = chatSession;
+    jsonReq("POST", chatBase, body).then(function (j) {
+      if (j._status === 200 || j._status === 201) {
+        chatSession = j.session_id; chatIn.value = "";
+        try { sessionStorage.setItem("opspilot-chat-" + incident, chatSession); } catch (e) {}
+        loadSession();
+      } else {
+        setComposer(true);
+        chatNote.textContent = chatErrors[j.code] || ("Not sent (" + (j.code || j._status) + ")");
+      }
+    }, function () { setComposer(true); chatNote.textContent = "Not sent — check the connection and try again."; });
+  }
+  $("#chatForm").addEventListener("submit", function (e) { e.preventDefault(); ask(chatIn.value); });
+  chatIn.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(chatIn.value); }
+  });
+  chatTurns.addEventListener("click", function (e) {
+    var r = e.target.closest("[data-retry]");
+    if (r) { ask(r.getAttribute("data-retry")); return; }
+    var m = e.target.closest("[data-msg]");
+    if (m) {
+      var row = document.querySelector('#log [data-key="msg-' + m.getAttribute("data-msg") + '"]');
+      if (row) { e.preventDefault(); if (narrow.matches) setChat(false, false); row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(function () { row.classList.remove("flash"); }, 1600); }
+    }
+  });
+  function showTab(hist) {
+    $("#chatTabChat").setAttribute("aria-selected", String(!hist));
+    $("#chatTabHist").setAttribute("aria-selected", String(hist));
+    $("#chatMsgs").hidden = hist; $("#chatHist").hidden = !hist;
+    if (hist) loadHistory();
+  }
+  $("#chatTabChat").addEventListener("click", function () { showTab(false); });
+  $("#chatTabHist").addEventListener("click", function () { showTab(true); });
+  $("#chatNew").addEventListener("click", function () {
+    chatSession = null; stopPoll();
+    try { sessionStorage.removeItem("opspilot-chat-" + incident); } catch (e) {}
+    renderSession({ turns: [] }); showTab(false); chatIn.focus();
+  });
+  function loadHistory() {
+    var list = $("#chatHistList");
+    jsonReq("GET", chatBase + "/sessions").then(function (j) {
+      list.textContent = "";
+      var items = (j && j.sessions) || [];
+      $("#chatHistEmpty").hidden = items.length > 0;
+      items.forEach(function (s) {
+        var li = el("li"), b = el("button", "chist-item"); b.type = "button"; b.setAttribute("data-session", s.session_id);
+        b.appendChild(el("span", "chist-title", s.title));
+        b.appendChild(el("span", "small", s.created_by + " · " + hhmm(s.created_at) + " · " + s.turns + (s.turns === 1 ? " question" : " questions")));
+        li.appendChild(b); list.appendChild(li);
+      });
+    });
+  }
+  $("#chatHistList").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-session]"); if (!b) return;
+    chatSession = b.getAttribute("data-session");
+    try { sessionStorage.setItem("opspilot-chat-" + incident, chatSession); } catch (e2) {}
+    showTab(false); loadSession();
+  });
+  /* reopen the chat this tab was in; else the incident's newest session */
+  try { chatSession = sessionStorage.getItem("opspilot-chat-" + incident); } catch (e) {}
+  if (chatSession) { loadSession(); }
+  else {
+    jsonReq("GET", chatBase + "/sessions").then(function (j) {
+      var first = j && j.sessions && j.sessions[0];
+      if (first && !chatSession) { chatSession = first.session_id; loadSession(); }
+    });
+  }
+
   /* live view (P3-14..16): every event only says "something changed"; the
      page then reads /live and swaps its regions in place, keeping what is
      open, the filter, Expand all, the scroll position and the draft. New log
@@ -477,6 +680,7 @@
     swapComposer(doc);
     swap("recovery-verdict", doc);
     apply(); tick();
+    if (chatData && chatData.turns && chatData.turns.some(function (t) { return t.forward && t.forward.state === "sent"; })) renderSession(chatData);
   }
   function refresh() {
     if (busy) { again = true; return; }

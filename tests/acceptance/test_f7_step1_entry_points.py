@@ -91,6 +91,18 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/incidents/{incident_id}/events"): "read: progress stream",
     # Workbench P3-14: the incident page's regions, same login and data.
     ("GET", "/incidents/{incident_id}/live"): "read: incident page live view",
+    # Workbench P7-14: the Chat panel. Answers come from the record; a
+    # forward only writes the asker's own words as an OpsPilot message input.
+    ("POST", "/incidents/{incident_id}/chat"): "write: OpsPilot chat question",
+    ("GET", "/incidents/{incident_id}/chat/sessions"): "read: chat history",
+    (
+        "GET",
+        "/incidents/{incident_id}/chat/sessions/{session_id}",
+    ): "read: chat session",
+    (
+        "POST",
+        "/incidents/{incident_id}/chat/turns/{turn_id}/forward",
+    ): "write: OpsPilot chat forward to the investigation",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
     # F11 PR-5a (pre-review D1), registered by the independent test author.
     ("GET", "/version-changes"): "read: release observation list",

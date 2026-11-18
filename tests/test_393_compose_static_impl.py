@@ -19,7 +19,7 @@ def test_worker_capacity_and_pool_size_are_explicit_with_three_spare_connections
     env = SERVICES["worker"]["environment"]
     capacity = int(env["OPSPILOT_WORKER_CAPACITY"])
     pool = int(env["OPSPILOT_POOL_MAX_SIZE"])
-    assert capacity >= 1 and pool >= capacity + 3
+    assert capacity >= 1 and pool >= capacity + 4  # workbench P7-6
 
 
 def test_each_runtime_runs_exactly_one_replica():

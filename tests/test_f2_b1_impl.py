@@ -314,12 +314,12 @@ def test_capacity_must_be_positive():
 @pytest.mark.parametrize(
     ("env", "pool", "expected"),
     [
-        ({}, 5, 2),
-        ({"OPSPILOT_WORKER_CAPACITY": "1"}, 4, 1),
-        ({"OPSPILOT_WORKER_CAPACITY": "4"}, 7, 4),
+        ({}, 6, 2),
+        ({"OPSPILOT_WORKER_CAPACITY": "1"}, 5, 1),
+        ({"OPSPILOT_WORKER_CAPACITY": "4"}, 8, 4),
     ],
 )
-def test_worker_capacity_accepts_a_pool_of_capacity_plus_three(
+def test_worker_capacity_accepts_a_pool_of_capacity_plus_four(
     monkeypatch, env, pool, expected
 ):
     monkeypatch.delenv("OPSPILOT_WORKER_CAPACITY", raising=False)
@@ -329,7 +329,7 @@ def test_worker_capacity_accepts_a_pool_of_capacity_plus_three(
 
 
 @pytest.mark.parametrize(
-    ("raw", "pool"), [("3", 5), ("0", 5), ("-1", 5), ("two", 5), (None, 4)]
+    ("raw", "pool"), [("3", 6), ("0", 6), ("-1", 6), ("two", 6), (None, 5)]
 )
 def test_worker_capacity_refuses_to_start(monkeypatch, raw, pool):
     monkeypatch.delenv("OPSPILOT_WORKER_CAPACITY", raising=False)
