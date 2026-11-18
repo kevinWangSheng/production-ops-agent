@@ -129,8 +129,8 @@ OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.we
 # 同时带会话 cookie 与 Basic 头时，有效会话优先（表单登录的用户就是当前用户）。已知遗留：浏览器若曾在旧的 Basic 弹窗里缓存过口令，Log out 后仍会凭缓存的 Basic 保持登录，直到重启浏览器。
 # 「登记处置」用的 HealthProfile 默认是随产品发布的 otel-demo-checkout.json；OPSPILOT_HEALTH_PROFILE=<路径> 可换
 # web 进程内的自动观察循环（#184）每 OPSPILOT_SELF_HEAL_INTERVAL_SECONDS 秒（默认 30；设 0 关闭，设其他正数改间隔，非法值拒绝启动；F6/F13 投影把它记为系统授权，不计入人工动作）为当前代际已发布合格结论、未登记处置的事故自动授权一次恢复观察，身份与 HealthProfile 规则同「登记处置」
-# web 进程内的消息接力循环（工作台合同 R2）每 OPSPILOT_RELAY_INTERVAL_SECONDS 秒（默认 30；设 0 关闭并在启动时记一行日志；非法值拒绝启动）为空闲事故的未读消息开续接 Run，是发消息请求内接力的兜底；与自动观察循环各自一条线程，关掉自动观察不影响接力
 # 同一线程随后跑发布授权 pass（F11 PR-5b）：每个新登记、仍 pending、未暂停、从未授权、未到期、是该目标最新且该目标没有正在观察的发布（每个目标同时只观察一个发布；较旧的被取代、不观察，到期 unknown），以 system 身份按校准清单中目标与 HealthProfile 恰好匹配的条目调用一次 authorize_release（幂等键 auto-authorize:<observation_id>）；拒绝（挂起、清单不匹配、与人工暂停竞争等）写审计后不再重试，挂起解除也不补开，到期由清扫判 unknown；存储故障不写、下一轮重试。再跑发布异常消费 pass（F11 PR-4b）。间隔设 0 时三个 pass 都关闭，新发布不会被观察
+# web 进程内的消息接力循环（工作台合同 R2）每 OPSPILOT_RELAY_INTERVAL_SECONDS 秒（默认 30；设 0 关闭并在启动时记一行日志；非法值拒绝启动）为空闲事故的未读消息开续接 Run，是发消息请求内接力的兜底；与自动观察循环各自一条线程，关掉自动观察不影响接力
 # 另一个终端：worker（SIGTERM/Ctrl-C 停止领取，等在跑的尝试最多 OPSPILOT_WORKER_GRACE_SECONDS 秒）
 OPSPILOT_ENV_FILE=/绝对路径/.env .venv/bin/python -m opspilot.worker_main
 # 提交事故（目标固定为 fixture 的 checkout-prod；Origin 必须是绑定地址）
