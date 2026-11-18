@@ -112,4 +112,11 @@ def test_a_suspend_and_resume_during_a_run_revokes_its_lease(
     result, _ = workbench.run(scenario, [tool_round(), suspend_resume_then_report])
 
     assert result.status != "published", result
-    assert workbench.store.rebuild(incident)["conclusion"] is None
+    snapshot = workbench.store.rebuild(incident)
+    assert snapshot["conclusion"] is None
+    # The fenced report is kept, as history only (#718; as the F12 close case).
+    late = [s for s in snapshot["steps"] if s["status"] == "late_result"]
+    assert late, "the fenced report left no history row"
+    outcome = workbench.project(scenario)
+    assert outcome.report_available is False
+    assert "late_result_rejected" in outcome.actions

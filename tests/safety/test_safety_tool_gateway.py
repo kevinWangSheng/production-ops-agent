@@ -82,6 +82,12 @@ CANARIES = {
     "quoted": '"'.join(["", "api_key", ": ", "canary-quoted-33", ""]),
     "bearer": "Authorization: Bearer canary-bearer-34",
     "scheme": "retried upstream with Bearer canary-scheme-36 after 401",
+    # a log line that is itself JSON encoded into a string, once and twice
+    # (#710): the key's and value's quotes are backslash-escaped
+    "escaped": json.dumps(json.dumps({"password": "canary-escaped-37"})),
+    "escaped_twice": json.dumps(
+        json.dumps(json.dumps({"msg": "x", "client_secret": "canary-escaped-38"}))
+    ),
 }
 SECRET_VALUES = (
     "canary-userinfo-31",
@@ -89,6 +95,8 @@ SECRET_VALUES = (
     "canary-quoted-33",
     "canary-bearer-34",
     "canary-scheme-36",
+    "canary-escaped-37",
+    "canary-escaped-38",
     # The gateway's own configured credentials (PRODUCT-CONSTRAINTS data flow:
     # credentials remain outside model inputs and traces).
     K8S_TOKEN,
