@@ -136,7 +136,14 @@ MAX_VALUE_CHARS = 2000
 MAX_INDEX_CHARS = 1000
 MAX_TIME_FIELD_CHARS = 200
 DEFAULT_TIME_FIELD = "@timestamp"
-#: B1-6: refused anywhere in the model's JSON, compared case-folded.
+#: B1-6: refused anywhere in the model's JSON, compared case-folded. Any key
+#: containing ``script`` is refused as well (``FORBIDDEN_KEY_PART``), so
+#: Painless cannot arrive under a name this list does not spell out
+#: (``minimum_should_match_script``, ``bucket_script``, ``map_script``,
+#: ``_script`` ...). ``significant_terms``/``significant_text`` take their
+#: background counts from the whole index, outside the window, and
+#: ``children``/``parent`` join other documents; ``indexed_shape`` reads a
+#: shape from another document (independent review, PR #705).
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
     {
         "script",
@@ -149,8 +156,14 @@ FORBIDDEN_KEYS: frozenset[str] = frozenset(
         "pit",
         "scroll",
         "stored_scripts",
+        "significant_terms",
+        "significant_text",
+        "children",
+        "parent",
+        "indexed_shape",
     }
 )
+FORBIDDEN_KEY_PART = "script"
 #: B1-7: the two hidden aggregations that report the source time.
 _TIME_MIN_AGG = "opspilot_source_time_min"
 _TIME_MAX_AGG = "opspilot_source_time_max"
@@ -511,15 +524,45 @@ class _Forbidden(Exception):
         self.key = key
 
 
+def _references_document(key: str, inner: object) -> bool:
+    """Whether a clause reads data from another index or document by
+    reference, past the index check and the time filter: a ``terms`` lookup
+    (``{"terms": {field: {"index": .., "id": ..}}}``), a ``more_like_this``
+    ``like``/``unlike`` document naming ``_index``, or a ``percolate`` of a
+    stored document (``index``/``id``). A ``terms`` aggregation's own object
+    values (``order``, ``include`` partitions) carry neither key."""
+    if not isinstance(inner, Mapping):
+        return False
+    if key == "terms":
+        return any(
+            isinstance(value, Mapping) and ({"index", "id"} & set(value))
+            for value in inner.values()
+        )
+    if key == "more_like_this":
+        for side in ("like", "unlike"):
+            items = inner.get(side)
+            items = items if isinstance(items, list) else [items]
+            if any(isinstance(doc, Mapping) and "_index" in doc for doc in items):
+                return True
+        return False
+    if key == "percolate":
+        return bool({"index", "id"} & set(inner))
+    return False
+
+
 def _check_forbidden(value: object) -> None:
-    """Raise ``_Forbidden`` for the first forbidden key at any depth."""
+    """Raise ``_Forbidden`` for the first forbidden construct at any depth."""
     stack = [value]
     while stack:
         item = stack.pop()
         if isinstance(item, Mapping):
             for key, inner in item.items():
-                if isinstance(key, str) and key.lower() in FORBIDDEN_KEYS:
-                    raise _Forbidden(key.lower())
+                if isinstance(key, str):
+                    name = key.lower()
+                    if name in FORBIDDEN_KEYS or FORBIDDEN_KEY_PART in name:
+                        raise _Forbidden(name)
+                    if _references_document(name, inner):
+                        raise _Forbidden(f"{name} by document reference")
                 stack.append(inner)
         elif isinstance(item, list):
             stack.extend(item)
@@ -564,9 +607,11 @@ def _dsl_params(
             return {}, _refused(
                 "QUERY_CONSTRUCT_NOT_ALLOWED",
                 f"{name} contains {found.key}, which this tool refuses before "
-                "sending (scripts, script_score, script_fields, scripted_metric, "
-                "runtime_mappings, wrapper, global aggregations, pit, scroll and "
-                "stored_scripts are not allowed at any depth).",
+                "sending: no key containing script, no runtime_mappings, wrapper, "
+                "global, significant_terms, significant_text, children or parent "
+                "aggregations, pit, scroll or indexed_shape, and no terms lookup, "
+                "more_like_this document with _index or percolate of a stored "
+                "document, at any depth.",
             )
         decoded[name] = value
     aggregations = decoded.get("aggregations")
@@ -1425,9 +1470,11 @@ _SEARCH_DESCRIPTION = (
     "_truncated_fields. "
     "incomplete is true when more documents matched than are shown, the "
     "search timed out or shards failed. "
-    "script, script_score, script_fields, scripted_metric, runtime_mappings, "
-    "wrapper, global aggregations, pit, scroll and stored_scripts are refused "
-    "before sending (INVALID_PARAMS, QUERY_CONSTRUCT_NOT_ALLOWED). "
+    "Any key containing script, runtime_mappings, wrapper, pit, scroll, "
+    "indexed_shape, the global, significant_terms, significant_text, children "
+    "and parent aggregations, terms lookups, more_like_this documents with "
+    "_index and percolate of a stored document are refused before sending "
+    "(INVALID_PARAMS, QUERY_CONSTRUCT_NOT_ALLOWED). "
     + _TOO_LARGE_TEXT
     + " "
     + _ERRORS_TEXT
@@ -1495,7 +1542,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                             '{"by_service": {"terms": {"field": '
                             '"service.keyword", "size": 10}}}; terms, '
                             "date_histogram, avg, sum, min, max and "
-                            "cardinality are common. global is refused."
+                            "cardinality are common. global, significant_terms, "
+                            "significant_text, children and parent are refused."
                         ),
                     },
                     "sort": {
