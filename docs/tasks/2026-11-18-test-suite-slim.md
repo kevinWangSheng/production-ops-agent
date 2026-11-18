@@ -50,10 +50,10 @@
 
   | 文件 | 守什么 | 用例 |
   |---|---|---|
-  | `test_tool_gateway.py` | 按 `otel-demo-ext` 注册表枚举全部工具：只读注册、写动词拒绝、未注册目标与越权窗口在发请求前拒绝、K8s Secret 各种拼写拒绝、PromQL `offset`/`@`/嵌套 lookback 越窗拒绝、挂起与在途人工决定（结果只作历史）、源内容与源错误回显里的凭据（userinfo、赋值、带引号、Authorization、Bearer）不进模型视图与证据 | 199 |
-  | `test_recovery_authority.py` | 按全部已发布 HealthProfile 的每个必需信号枚举：缺失、各种非 ok 状态、点数不足、过旧、窗口过期、越界都不能确认恢复；未绑定 profile 不确认；带 healthy 字样但缺信号的样本不确认 | 76 |
-  | `test_human_control_postgres.py` | 工作台中途 pause/cancel 的决定压过 Run 的迟到报告；暂停的事故不会被 claim | 3 |
-  | `test_runtime_roles_postgres.py` | 目录权限等于 `RUNTIME_GRANTS`；独立于声明钉住：worker 不写已审知识，web 不能签发租约，删除只限两条已声明路径，没有 TRUNCATE 与 CREATE，observer 只能改 lifecycle | 10 |
+  | `test_safety_tool_gateway.py` | 按 `otel-demo-ext` 注册表枚举全部工具：只读注册、写动词拒绝、未注册目标与越权窗口在发请求前拒绝、K8s Secret 各种拼写拒绝、PromQL `offset`/`@`/嵌套 lookback 越窗拒绝、挂起与在途人工决定（结果只作历史）、源内容与源错误回显里的凭据（userinfo、赋值、带引号、Authorization、Bearer）不进模型视图与证据 | 199 |
+  | `test_safety_recovery_authority.py` | 按全部已发布 HealthProfile 的每个必需信号枚举：缺失、各种非 ok 状态、点数不足、过旧、窗口过期、越界都不能确认恢复；未绑定 profile 不确认；带 healthy 字样但缺信号的样本不确认 | 76 |
+  | `test_safety_human_control_postgres.py` | 工作台中途 pause/cancel 的决定压过 Run 的迟到报告；暂停的事故不会被 claim | 3 |
+  | `test_safety_runtime_roles_postgres.py` | 目录权限等于 `RUNTIME_GRANTS`；独立于声明钉住：worker 不写已审知识，web 不能签发租约，删除只限两条已声明路径，没有 TRUNCATE 与 CREATE，observer 只能改 lifecycle | 10 |
 
 - **变异清单 18 条**（`tests/mutation/mutations.py`）：只对 `tests/safety` 跑一遍，结果 18/18 killed（含 PG 3 条，本机临时 PG）。命令是 `make mutation`，带 PG 环境；结果表附在 PR 正文。
   - 第一轮 5 条存活。M06、M10、M13、M15 的原因是用例没打中那条规则，已补用例（嵌套 lookback 用例、无名 Bearer、伪造 healthy 样本、窗口过期）。
