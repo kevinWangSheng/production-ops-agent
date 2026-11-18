@@ -709,6 +709,130 @@ class WorkbenchDriver:
                 (incident_id,),
             ).fetchall()
 
+    # -- P7 Chat panel (prereview P7-2/6/9/13/14) -------------------------
+    # Every P7 seam the scenario and browser path use is one accessor below.
+    # Wire them to the implementation; never change the assertions.
+
+    def chat_ask(
+        self, incident_id: UUID, question: str, *, session_id=None, key=None
+    ) -> HTTPResponse:
+        # contract P7 interface: P7-14 POST /incidents/{id}/chat through
+        # ui_mutation (UI identity + Origin), with or without a session_id,
+        # carrying an idempotency key. Form-encoded like every UI mutation.
+        fields = {
+            "question": question,
+            "idempotency_key": key or f"workbench-chat-{uuid4()}",
+        }
+        if session_id is not None:
+            fields["session_id"] = str(session_id)
+        return call(
+            self.app,
+            "POST",
+            f"/incidents/{incident_id}/chat",
+            headers={
+                **basic(),
+                "origin": ORIGIN,
+                "content-type": "application/x-www-form-urlencoded",
+            },
+            body=urlencode(fields).encode(),
+        )
+
+    def chat_answer(self, script) -> ScriptedModel:
+        # contract P7 interface: P7-6 the worker's ChatWorker with the model
+        # client injected; one poll answers the pending turns. Returns the
+        # scripted model so callers can count model requests.
+        try:
+            from opspilot.chat import ChatWorker  # contract P7 interface
+        except ImportError:
+            raise NotImplementedError("P7-6: ChatWorker is not wired") from None
+        model = ScriptedModel(script)
+        worker = ChatWorker(store=self.store, model=model)
+        worker.poll_once()
+        return model
+
+    def chat_forward(self, incident_id: UUID, turn_id) -> HTTPResponse:
+        # contract P7 interface: P7-9(a)/P7-14 the page's forward trigger,
+        # POST /incidents/{id}/chat/turns/{tid}/forward (ui_mutation, no body).
+        return call(
+            self.app,
+            "POST",
+            f"/incidents/{incident_id}/chat/turns/{turn_id}/forward",
+            headers={**basic(), "origin": ORIGIN},
+        )
+
+    def chat_forward_backup(self):
+        # contract P7 interface: P7-9(b) the relay loop's forward-pending
+        # backup pass (the background step, not the page trigger).
+        forward = getattr(self.workbench, "chat_forward_pass", None)
+        if forward is None:
+            raise NotImplementedError("P7-9(b): the forward backup pass is not wired")
+        return forward(limit=10_000)
+
+    def chat_rows(self, incident_id: UUID) -> list[dict[str, Any]]:
+        # contract P7 interface: P7-2 table names. Every stored chat row
+        # (sessions and turns, all columns) for this incident, raw, so a
+        # caller can check nothing private was stored anywhere in them.
+        with self.store.transaction(snapshot=True) as conn:
+            sessions = conn.execute(
+                "SELECT * FROM opspilot_chat_sessions WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchall()
+            turns = conn.execute(
+                "SELECT t.* FROM opspilot_chat_turns t "
+                "JOIN opspilot_chat_sessions s USING (session_id) "
+                "WHERE s.incident_id=%s ORDER BY t.seq",
+                (incident_id,),
+            ).fetchall()
+        return [*sessions, *turns]
+
+    def chat_turns(self, incident_id: UUID) -> list[dict[str, Any]]:
+        # contract P7 interface: P7-2/U-P7 column names, normalized. One
+        # exchange per row, oldest first. ``forward`` is the stored forwarding
+        # result: None (not attempted), "sent" or "refused".
+        with self.store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT t.* FROM opspilot_chat_turns t "
+                "JOIN opspilot_chat_sessions s USING (session_id) "
+                "WHERE s.incident_id=%s ORDER BY t.seq",
+                (incident_id,),
+            ).fetchall()
+        return [
+            {
+                "turn_id": row["turn_id"],
+                "session_id": row["session_id"],
+                "author": row["author"],
+                "question": row["question"],
+                "status": row["status"],
+                "answer": row["answer"],
+                "steer": row["steer"],
+                "forward": row["forward_state"],
+                "forwarded_input_sequence": row["forwarded_input_sequence"],
+            }
+            for row in rows
+        ]
+
+    def chat_shown(self, incident_id: UUID, session_id) -> list[dict[str, Any]]:
+        # contract P7 interface: P7-13 what the panel shows, read from
+        # GET /incidents/{id}/chat/sessions/{sid}. Per turn, normalized:
+        # ``question``, ``answer`` (the text shown) and ``forward`` (the
+        # words the user reads about forwarding, e.g. "Sent to investigation"
+        # or "Not sent — use Re-investigate"; "" when there is nothing).
+        shown = call(
+            self.app,
+            "GET",
+            f"/incidents/{incident_id}/chat/sessions/{session_id}",
+            headers=basic(),
+        )
+        assert shown.status == 200, shown.text[:500]
+        return [
+            {
+                "question": turn.get("question"),
+                "answer": turn.get("answer"),
+                "forward": str(turn.get("forward_label") or ""),
+            }
+            for turn in shown.json()["turns"]
+        ]
+
 
 def tool_round(*, content=None, call_id="workbench-read"):
     return reply(
