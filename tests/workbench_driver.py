@@ -51,6 +51,7 @@ from opspilot.web import (
     hash_password,
     token_digest,
 )
+from opspilot.web.incident_view import page_view
 from opspilot.web.service import available_actions
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN, binary
@@ -637,6 +638,76 @@ class WorkbenchDriver:
         return outcome_from_durable(
             scenario, self.store.rebuild(UUID(scenario.subject_id))
         )
+
+    # -- P3 timeline projection (contract P3-1/5/10/11) -------------------
+
+    def page(self, incident_id: UUID) -> dict[str, Any]:
+        """The incident page's projection, built as GET /incidents/{id} builds
+        it (same snapshot, same actions); the page must also render."""
+        shown = call(self.app, "GET", f"/incidents/{incident_id}", headers=basic())
+        assert shown.status == 200, shown.text[:500]
+        snapshot = self.workbench.snapshot(incident_id)
+        return page_view(
+            snapshot, None, available_actions(snapshot), message_available=True
+        )
+
+    def log_entries(self, incident_id: UUID) -> list[dict[str, Any]]:
+        # contract P3 field/locator: the one Investigation log, in order.
+        return self.page(incident_id)["log"]["entries"]
+
+    @staticmethod
+    def messages_in_log(entries, text: str) -> list[dict[str, Any]]:
+        # contract P3 field/locator: a person's message entry, by its text.
+        return [
+            e for e in entries if e.get("kind") == "human" and e.get("text") == text
+        ]
+
+    @staticmethod
+    def message_status(entry: dict[str, Any]) -> str:
+        # contract P3 field/locator: the status words the user reads beside
+        # the message (P3-9: Queued / Read at step N / Answered / Not answered).
+        return str(entry.get("status") or "")
+
+    @staticmethod
+    def retry_offered(entry: dict[str, Any]) -> bool:
+        # contract P3 field/locator: the message carries a Retry control
+        # (P3-11), e.g. the seq its form posts as retry_of.
+        return bool(entry.get("retry"))
+
+    @staticmethod
+    def read_at_step(entry: dict[str, Any]) -> int | None:
+        # contract P3 field/locator: the N of "read at step N" (P3-5) that the
+        # message links to.
+        return entry.get("read_at_step")
+
+    @staticmethod
+    def step_entries(entries) -> list[dict[str, Any]]:
+        # contract P3 field/locator: numbered step rows of the log, any Run.
+        return [e for e in entries if e.get("kind") == "step"]
+
+    @staticmethod
+    def reply_entries(entries, to_seq: int) -> list[dict[str, Any]]:
+        # contract P3 field/locator: Agent reply rows answering message seq.
+        return [
+            e for e in entries if e.get("kind") == "reply" and e.get("to") == to_seq
+        ]
+
+    def retry(self, incident_id: UUID, seq: int) -> HTTPResponse:
+        # contract P3-11 interface: the Retry form posts action=message with
+        # retry_of=<seq>; the server copies the stored text. Each call uses a
+        # fresh form key, as two renders/clicks would; the server's own
+        # retry:{seq} key is what must make it send once.
+        return self.control(incident_id, "message", retry_of=str(seq))
+
+    def committed_steps(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Every non-late step of every Run, in database time order (P3-3/5)."""
+        with self.store.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT s.* FROM opspilot_steps s JOIN opspilot_runs r USING (run_id) "
+                "WHERE r.incident_id=%s AND s.status<>'late_result' "
+                "ORDER BY s.observed_at, s.sequence, s.step_id",
+                (incident_id,),
+            ).fetchall()
 
 
 def tool_round(*, content=None, call_id="workbench-read"):
