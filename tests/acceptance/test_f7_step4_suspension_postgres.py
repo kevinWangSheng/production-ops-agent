@@ -53,7 +53,7 @@ from opspilot.web import (
 )
 from opspilot.web.store import MappingTargetRegistry
 from scripts.m0.postgres_lab import DSN
-from tests.integration.test_m1_otel_demo_contract_postgres import (
+from tests.integration.m1_otel_demo_contract_postgres_support import (
     CHECKOUT_BODY,
     GOOD_EXPR,
     FakeOpener,

@@ -21,7 +21,7 @@ F13 第 4 步（后续调查使用知识）属 M2，不测；F13 `passes` 保持
 | 主体错绑 | 任一层记录不属于该事故 → `generation_status="unknown"`、`unknown_reasons=("SUBJECT_MISMATCH",)`，不投影部分记录（D11） |
 | 一致性 | `postmortem_records` 读完后复读复盘与相关条目代际，变化则重读（最多 3 次，否则 `RECORDS_UNSTABLE`）；调度与尝试不带代际，不在边界内（D34） |
 
-投影零模型、零遥测、无自有 SQL（R12；`tests/test_postmortem_outcome.py` 用 AST 检查导入）。
+投影零模型、零遥测、无自有 SQL（R12；`tests/safety/test_safety_report_validation.py::test_the_postmortem_projection_imports_no_model_telemetry_or_sql` 用 AST 检查导入，变异 M34）。
 
 ## 场景（[tests/acceptance/test_f13_postmortem.py](../../tests/acceptance/test_f13_postmortem.py)，21 例，PG opt-in）
 
@@ -35,15 +35,14 @@ F13 第 4 步（后续调查使用知识）属 M2，不测；F13 `passes` 保持
 | 3 | 批准记录来源版本/提议、审核者（认证主体，伪造表单字段无效）、时间、内容哈希；重放幂等、过期代际 409；替换后旧 revision `superseded`、新 `active`；撤销留下理由与墓碑、知识读取为空、历史内容不变 |
 | 1–3 | 无记录 `not_generated`；九类主体错绑（事故、视图、尝试、版本、结论、提议、争议、审计、知识）→ `unknown` |
 
-实现者测试：`tests/test_postmortem_outcome.py`（无 PG，19 例：复制、未生成、13 类错绑、稳定边界重读与放弃、导入检查）与
-`tests/integration/test_m1_03_postmortem_outcome_postgres.py`（PG，4 例）。
+实现者测试 `tests/test_postmortem_outcome.py` 与 `tests/integration/test_m1_03_postmortem_outcome_postgres.py` 已在 2026-11-18 测试精简中删除（[测试精简任务记录](../tasks/2026-11-18-test-suite-slim.md)）；投影行为由上面的场景文件守，导入检查移到 `tests/safety`。
 
 ## 运行
 
 ```bash
 OPSPILOT_LAB_DSN="host=127.0.0.1 port=<临时实例> dbname=m0_budget user=m0_lab" \
 M1_DURABLE_POSTGRES=1 M0_B_POSTGRES=1 \
-.venv/bin/python -m pytest tests/acceptance/test_f13_postmortem.py tests/integration/test_m1_03_postmortem_outcome_postgres.py tests/test_postmortem_outcome.py -q
+.venv/bin/python -m pytest tests/acceptance/test_f13_postmortem.py tests/safety/test_safety_report_validation.py -q
 ```
 
 CI `m0-postgres` 作业已包含 `tests/acceptance/test_f13_postmortem.py`。

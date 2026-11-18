@@ -23,12 +23,14 @@ from opspilot.tools import (
     MAX_RESULT_BYTES,
     READ_ONLY_VERBS,
     ToolContractError,
+    elasticsearch_logs,
     fixture,
     otel_demo,
 )
 from opspilot.tools.otel_demo_ext import _registrations as ext_registrations
 from tests.m1_tool_support import build, registration
 from tests.safety.gateway_support import (
+    ES_TOKEN,
     K8S_TOKEN,
     OTEL_TOKEN,
     OUTSIDE,
@@ -56,6 +58,9 @@ SOURCE_CALLS: dict[str, dict[str, object]] = {
     "kubernetes_count": {"kind": "pods", "jq_expr": ".items[]"},
     "kubernetes_tabular_query": {"kind": "pods", "columns": "NAME:.metadata.name"},
     "fetch_pod_logs": {"pod_name": "checkout-0", "namespace": "otel-demo"},
+    "elasticsearch_search": {"index": "logs-checkout"},
+    "elasticsearch_mappings": {"index": "logs-checkout"},
+    "elasticsearch_list_indices": {},
 }
 #: Reads only OpsPilot's own stored evidence for the same Run.
 INTERNAL_TOOLS = {"read_evidence"}
@@ -88,22 +93,37 @@ SECRET_VALUES = (
     # credentials remain outside model inputs and traces).
     K8S_TOKEN,
     OTEL_TOKEN,
+    ES_TOKEN,
 )
 
 
+def _es_registrations():
+    return elasticsearch_logs.elasticsearch_registrations(
+        max_window_seconds=otel_demo.OBSERVATION_SECONDS
+    )
+
+
 def _registered():
-    return {item.name: item for item in ext_registrations()}
+    return {item.name: item for item in (*ext_registrations(), *_es_registrations())}
 
 
 def _shipped_registrations():
-    return [fixture._registration(), *otel_demo._registrations(), *ext_registrations()]
+    return [
+        fixture._registration(),
+        *otel_demo._registrations(),
+        *ext_registrations(),
+        *_es_registrations(),
+    ]
 
 
 # -- registry: every tool is a bounded read ------------------------------------
 
 
-def test_every_registered_tool_is_classified():
+def test_every_registered_tool_is_classified(monkeypatch, tmp_path):
     assert set(_registered()) == set(SOURCE_CALLS) | INTERNAL_TOOLS
+    # The worker's real scope over the widest configuration lists the same.
+    scope = gateway(monkeypatch, tmp_path).executor.scope
+    assert set(scope.tool_names) == set(SOURCE_CALLS) | INTERNAL_TOOLS
     for tool in KIND_TOOLS:
         assert "kind" in _registered()[tool].parameters
     kind_taking = {n for n, r in _registered().items() if "kind" in r.parameters}
@@ -280,3 +300,26 @@ def test_a_source_error_echoing_credentials_is_redacted(monkeypatch, tmp_path, t
     echoed = (outcome.model_view or {}).get("source_error") or {}
     if tool in PROMQL_PARAMS:  # the echo exists, so the check is not vacuous
         assert echoed.get("error"), outcome.model_view
+
+
+def test_a_credential_across_the_span_detail_cut_is_redacted_first(
+    monkeypatch, tmp_path
+):
+    """Span detail is cut to 600 bytes per field; redaction runs before the
+    cut, so a URL credential straddling it never leaks a prefix (#311 rule)."""
+    from opspilot.tools.otel_demo import MAX_DETAIL_BYTES_PER_FIELD
+    from tests.acceptance.f7_hostile_support import jaeger_payload
+    from tests.safety.gateway_support import WINDOW
+
+    planted = "sk-straddle-" + "a" * 12  # low entropy, assembled for the scanner
+    value = "x" * (MAX_DETAIL_BYTES_PER_FIELD - 30) + (
+        f" dsn postgres://admin:{planted}@db.internal:5432/app"
+    )
+    base_us = int(WINDOW.start.timestamp() * 1_000_000) + 10_000_000
+    body = jaeger_payload({"key": "exception.message", "value": value}, base_us=base_us)
+    gw = gateway(monkeypatch, tmp_path, body=body)
+    outcome = gw.call("traces_search", SOURCE_CALLS["traces_search"])
+    assert outcome.status == "ok", outcome.model_view
+    seen = everything_seen(outcome, gw.evidence)
+    assert "x" * 100 in seen, "the detail field was not projected"
+    assert planted[:8] not in seen

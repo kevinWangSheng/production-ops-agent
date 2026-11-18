@@ -19,7 +19,7 @@ import pytest
 from opspilot.web.incident_list import status_of
 from opspilot.web.incident_view import page_view
 from opspilot.web.service import available_actions
-from tests.integration.test_m1_web_postgres import _build, _DbClock
+from tests.integration.m1_web_postgres_support import _build, _DbClock
 from tests.m1_incident_control_support import (
     list_headers,
     list_row,
