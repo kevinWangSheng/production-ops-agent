@@ -277,6 +277,26 @@ def test_scenario3b_invalid_reply_and_report_hand_off_without_erasing_conclusion
     assert workbench.replies_for(conversation.incident_id, conversation.input_seq) == []
     assert_preserved(workbench, conversation)
 
+    # P3 (C8, P3-10/11/12): the page says the message was not answered and
+    # offers Retry; Retry re-sends the stored text once as a new message.
+    incident_id = conversation.incident_id
+    (shown,) = workbench.messages_in_log(
+        workbench.log_entries(incident_id), "请更新结论。"
+    )
+    assert "not answered" in workbench.message_status(shown).lower(), shown
+    assert workbench.retry_offered(shown), "C8/P3-11: Retry on a not-answered message"
+
+    before = [r["sequence"] for r in workbench.inputs(incident_id)]
+    admitted(workbench.retry(incident_id, conversation.input_seq))
+    admitted(workbench.retry(incident_id, conversation.input_seq))
+    added = [r for r in workbench.inputs(incident_id) if r["sequence"] not in before]
+    assert len(added) == 1, "P3-11: a double-submitted Retry sends once"
+    assert added[0]["kind"] == "message"
+    assert added[0]["sequence"] > conversation.input_seq
+    assert added[0]["content"]["text"] == "请更新结论。", "Retry sends the stored text"
+    assert added[0]["actor"] == UI_USER, "the author is whoever clicks Retry"
+    assert_preserved(workbench, conversation)
+
 
 def test_back_compat_alert_without_messages_publishes_the_bare_report(workbench):
     scenario = workbench.from_alert("workbench-p1-bare-report")
@@ -837,6 +857,42 @@ def test_p2_idle_relay_is_idempotent_and_keeps_conversation_across_runs(
     ] == legacy
     assert workbench.unread(incident_id) == []
     unchanged_by_message(original, workbench.records(incident_id))
+
+    # P3-1: one log for the incident. The first Run's tool step and the
+    # earlier continuation Run's reply are in it, beside the current reply.
+    entries = workbench.log_entries(incident_id)
+    assert any(
+        call.get("ok")
+        for step in workbench.step_entries(entries)
+        for call in step.get("calls") or []
+    ), "P3-1: the first Run's tool step is shown in the one log"
+    assert [e.get("text") for e in workbench.reply_entries(entries, first_seq)] == [
+        prior["text"]
+    ]
+    assert [e.get("text") for e in workbench.reply_entries(entries, second_seq)] == [
+        "第二个方案是复核流量。"
+    ]
+    # P3-5: one step count across the incident; "read at step N" names the
+    # first committed step whose input watermark covers the message. Steps
+    # are numbered as the log numbers them: model rounds, not conclusion
+    # rows (which carry no watermark).
+    steps = [
+        step
+        for step in workbench.committed_steps(incident_id)
+        if not step_contract(step)["terminal"]
+    ]
+    for text, seq in (
+        ("先说明两个可选方案。", first_seq),
+        ("展开你刚才建议的第二个方案。", second_seq),
+    ):
+        (shown,) = workbench.messages_in_log(entries, text)
+        expected = next(
+            n
+            for n, step in enumerate(steps, start=1)
+            if (step_contract(step)["watermark"] or 0) >= seq
+        )
+        assert workbench.read_at_step(shown) == expected, (text, shown)
+        assert "not answered" not in workbench.message_status(shown).lower()
 
 
 @pytest.mark.parametrize(
