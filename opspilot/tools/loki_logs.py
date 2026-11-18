@@ -27,9 +27,11 @@ transport's own slot and is never rendered; the tenant (``X-Scope-OrgID``)
 comes only from configuration (C5-0). The read-only gateway in front of Loki
 is the second layer (C5-U1).
 
-Direct Loki only: the address is a Loki base URL without a path, so a
-Grafana datasource-proxy URL (``/api/datasources/proxy/uid/<uid>``) is
-refused as ``LOKI_CONFIG_INVALID`` (C5-4: an address with a path is invalid).
+The address may carry a path prefix -- a gateway's or Grafana's
+datasource-proxy base path (``/api/datasources/proxy/uid/<uid>``) -- and the
+request goes to ``<prefix>/loki/api/v1/query_range`` (lead decision
+2026-11-18); userinfo, a query string or a fragment in it is
+``LOKI_CONFIG_INVALID``.
 """
 
 from __future__ import annotations
@@ -172,9 +174,12 @@ def _clean_url(value: str) -> str:
         or "@" in parts.netloc
         or parts.query
         or parts.fragment
-        or parts.path not in ("", "/")
+        or "?" in value
+        or "#" in value
     ):
         raise ToolContractError("LOKI_CONFIG_INVALID")
+    # A path prefix (gateway or Grafana datasource proxy) is kept; the query
+    # path is appended to it.
     return value.rstrip("/")
 
 
