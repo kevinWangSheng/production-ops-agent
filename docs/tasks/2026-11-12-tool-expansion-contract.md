@@ -368,3 +368,17 @@ Agent 自定（可逆）：去掉每 Run 工具调用次数旧上限（#500）�
 - worker 环境变量：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；`OPSPILOT_ES_URL=http://127.0.0.1:<端口>`；`OPSPILOT_ES_API_KEY`（OpenSearch 用 `OPSPILOT_ES_USERNAME`/`OPSPILOT_ES_PASSWORD`）；HTTPS 时加 `OPSPILOT_ES_CA_FILE`。仍需要 `OPSPILOT_K8S_*` 和 Prometheus/Jaeger 地址，因为扩展档位的 worker 缺 K8s 配置就不启动（`profiles.py:99-121`）；269 等题本身也要 kind。
 - 一个脚本：用工程师凭据创建只读 API key 或 OpenSearch 只读用户（B1-5），写到 `LAB_DIR` 下权限为 600 的文件里，不回显；上游评测题的 `before_test` 用的是 `ELASTICSEARCH_URL`/`ELASTICSEARCH_API_KEY`（工程师 key），产品用的是只读 key，两者分开。
 - 冒烟需要的证据：至少一次真实 Run 调用了 `elasticsearch_*`，已发布的报告引用了它的证据；附 LangSmith trace 链接和冻结的 `summary.json`（lab 闸门通过，项目名以 `opspilot-lab-` 开头）；OpenSearch 跑 2 题（R8-12）。这些证据也满足 R8-9 的完成标准。
+
+## r10（2026-11-18）：C5（#569）与 #666 预审裁决
+
+预审者未参与实现，C5 对照 `main` `dde6fedd` 与上游 `a0009195`，全文在仓库外（`~/.agent/handoffs/opspilot-c5-prereview-2026-11-18.md`）；#666 见 [#666 任务记录](2026-11-18-holmes-evals-666.md)（预审全文 `~/.agent/handoffs/opspilot-666-prereview-2026-11-18.md`）。两名预审者各误见一行 C5 题的 `expected_output`（其一来自上游未加载的散落文件 `102a/test_case copy.yaml`），已在预审头部披露，两人此后不担任 C5 的实现者与测试作者。全量验收探针未跑（本机 swap 满），交各 PR 的 CI。
+
+用户裁决（2026-11-18）：
+
+| 编号 | 问题 | 裁决 |
+|---|---|---|
+| C5-U1 | Loki、VictoriaLogs 默认不做认证，产品的只读身份从哪来 | **A**：产品照上游接收地址加凭据（直连或经 Grafana 数据源代理；Basic、bearer 或请求头），不为评测改产品。CI 与租机上用 nginx 充当网关：要求登录，只放行工具用到的 GET 路径，其余 403；产品只持代理的只读账号；CI 证明经该账号写入被拒、数据条数不变。上游本身不保证只读（Loki 无用户体系，认证靠前置网关）；每个数据源一个凭据槽沿用 C3 §12，运维用统一网关时可把同一只读凭据配进各槽。备选 B（Grafana Viewer token 作统一入口）未选：Viewer 经数据源代理能否写入未核实 |
+| C5-U2 / R10-1 | 固定时间题的题面与数据（C5 的 100a、101、259_loki；同样适用于 #666 的 Elasticsearch 固定时间题） | 允许改写题目时间：数据与题面里的日期、时间按**同一平移量**由评测脚本机械改写，规则只看数据与题面、不看答案；送 judge 前按 #666 PR-A 的反平移还原报告里的时间；结果页披露。答案隔离（R8-6）不变。R8-2「题面原文」据此放宽为「题面原文，时间按平移规则改写」 |
+| H-U1 | 10 道多集群题的「本地集群名」 | **放进调查提示词，参考上游**（#722）：新增配置 `OPSPILOT_CLUSTER_NAME`，设了才在提示词里加多集群提醒（对标上游 `generic_ask.jinja2:7-17`），未设时提示词字节不变。产品改动单独一个 PR，开工前预审；#666 不改题面，部署时给 worker 设集群名 |
+
+C5 可逆默认（Agent 自定，理由见预审全文）：C5-0 租户由运维配置，模型不选租户；C5-1 拆两个 PR，C5a Loki 先（7 题）、C5b VictoriaLogs 后（2 题）；C5-2 工具名照上游（Loki 只有 `grafana_loki_query`，VictoriaLogs 五个）；C5-3 只发 GET、路径写死、不新增 POST；C5-4 凭据槽 `loki-ro`、`vlogs-ro` 与 `OPSPILOT_LOKI_*`、`OPSPILOT_VICTORIALOGS_*`；C5-5 lab 闸门加 `LOKI_NOT_LAB`、`VICTORIALOGS_NOT_LAB`；C5-6 LogQL 拒 `offset`、拒超出查询窗的范围选择器、求值起点后推（照 PromQL 规则）；C5-7 LogsQL fail-closed 清单（`options(`、`join`、`union`、`stream_context`、子查询）待 CI 实测再放；C5-8 参数 `start`/`end` 走 `_query_window`；C5-9 元数据类返回的来源时间为查询窗；C5-10 投影与上限沿用 B1；C5-11 错误分类；C5-12 只改工具描述、不改调查提示词；C5-13 新模块 `loki_logs.py`、`victorialogs_logs.py`；C5-14 扩展档位按已配置后端集合计算，无后端与仅 ES 的 revision 字节不变；C5-15 合同测试清单；C5-16 至 C5-21 R8-25 集成测试（CI job `log-backends`、Loki 2.9.0 与最新 3.x、VictoriaLogs、nginx 只读网关、合成数据与断言清单）。

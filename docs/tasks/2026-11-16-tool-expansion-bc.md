@@ -1,7 +1,7 @@
 # 工具面拓展 B/C 批次与第三方评测
 
-- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；各工具待开工前合同预审；B1 已合并（#705），下一项 C5
-- 更新日期：2026-11-16
+- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；B1 已合并（#705）；C5 与 #666 预审裁决完成（r10，2026-11-18），C5a、#666 PR-B、#722 开工
+- 更新日期：2026-11-18
 - 依据：[阶段 A 任务记录](2026-11-12-tool-expansion.md)与决定表 r1–r7（Q1–Q8、D1–D3、N4 继续有效，r8 改 Q6、Q7/N4 两处）；SPEC 2026-11-16 段；C3 第 8 节；HolmesGPT `a0009195`；预审材料在仓库外（HolmesGPT 评测集题单、第三方基准调研与 SREGym/ITBench-AA 核查，2026-11-16）
 - 工作区：本记录分支 `chore/tool-expansion-r8`；各工具开工时另开 worktree 写入下表
 
@@ -72,7 +72,7 @@
 | 序 | 项 | issue | 验收题来源 | 分支 / worktree |
 |---|---|---|---|---|
 | 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 代码已合并（PR #705，`4052ab4f`，[B1 记录](2026-11-16-tool-expansion-b1.md)）；真实 Run 归 #671 |
-| 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | |
+| 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | 预审与裁决完成（r10）；C5a Loki、C5b VictoriaLogs 两个 PR |
 | 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | |
 | 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
 | 5 | C1 任务清单 | #565 | HolmesGPT 评测集 1 题，加开关对照 | |
@@ -80,7 +80,8 @@
 | 7 | C3 Kafka 只读 | #567 | 自建，加 SREGym Kafka 题 | |
 | 8 | B4 Helm 变更历史 | #563 | 自建 | |
 | 9 | C4 ArgoCD 只读 | #568 | 自建 | |
-| — | HolmesGPT 评测集适配 / SREGym 适配 / Holmes 对照 | #666 / #667 / #668 | — | |
+| — | HolmesGPT 评测集适配 / SREGym 适配 / Holmes 对照 | #666 / #667 / #668 | — | #666 PR-A 已合并（#721），PR-B 开工；[#666 记录](2026-11-18-holmes-evals-666.md) |
+| — | 调查提示词注入本地集群名（r10 H-U1） | #722 | 10 道多集群题 | 预审后开工 |
 | — | 提前短租冒烟（B1 与 #666 合并后） | #671 | ES 2–3 题、SREGym 1–2 题 | |
 | — | 集中租机（先冒烟检查点再全量） | #669 | 全部 | |
 
