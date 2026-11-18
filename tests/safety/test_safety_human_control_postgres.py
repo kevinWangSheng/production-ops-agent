@@ -10,12 +10,17 @@ Drives the real web app, store and runner on PostgreSQL with a scripted model
 
 from __future__ import annotations
 
-from uuid import UUID
+from urllib.parse import urlencode
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 
 from tests.m1_investigation_support import report_from_transcript
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
+    ORIGIN,
+    basic,
+    call,
     tool_round,
     workbench_database_fixture,
     workbench_fixture,
@@ -59,3 +64,52 @@ def test_a_paused_incident_is_not_claimed_again_until_resumed(workbench):
     rows = workbench.store.rebuild(incident)
     assert rows["conclusion"] is None
     assert rows["state"] == "paused", rows["state"]
+
+
+def _suspension(workbench, *, suspended: bool, generation: int) -> None:
+    response = call(
+        workbench.app,
+        "POST",
+        "/controls/suspension",
+        headers={
+            **basic(),
+            "origin": ORIGIN,
+            "accept": "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+        },
+        body=urlencode(
+            {
+                "scope": "global",
+                "suspended": "true" if suspended else "false",
+                "expected_generation": str(generation),
+                "idempotency_key": f"safety-{uuid4()}",
+            }
+        ).encode(),
+    )
+    assert response.status in {200, 303}, response.text
+
+
+def test_a_suspend_and_resume_during_a_run_revokes_its_lease(
+    workbench, workbench_database
+):
+    """C3 section 4 全局与目标级暂停: a suspension that is lifted again before
+    the Run's next write still revokes the lease the Run held (the generation
+    moved), so the late report is history, not the conclusion."""
+    scenario = workbench.from_alert("safety-suspend-resume")
+    incident = UUID(scenario.subject_id)
+
+    def generation() -> int:
+        with psycopg.connect(workbench_database) as conn:
+            return conn.execute(
+                "SELECT global_generation FROM opspilot_scope_controls WHERE scope_id=1"
+            ).fetchone()[0]
+
+    def suspend_resume_then_report(model_call):
+        _suspension(workbench, suspended=True, generation=generation())
+        _suspension(workbench, suspended=False, generation=generation())
+        return report_from_transcript(model_call)
+
+    result, _ = workbench.run(scenario, [tool_round(), suspend_resume_then_report])
+
+    assert result.status != "published", result
+    assert workbench.store.rebuild(incident)["conclusion"] is None

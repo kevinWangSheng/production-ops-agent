@@ -70,10 +70,10 @@
 
   | | 删前 | 删后 |
   |---|---|---|
-  | `tests/` 下的 .py 文件 | 601 个 | 101 个（其中测试模块 60 个） |
-  | 行数 | 264,480 行 | 41,625 行 |
-  | 测试函数 | 7,508 个 | 581 个 |
-  | 收集用例 | 约 15,900 个 | 1,340 个（其中 PG 405 个） |
+  | `tests/` 下的 .py 文件 | 601 个 | 104 个（其中测试模块 63 个） |
+  | 行数 | 264,480 行 | 42,477 行 |
+  | 测试函数 | 7,508 个 | 598 个 |
+  | 收集用例 | 约 15,900 个 | 1,362 个（其中 PG 412 个） |
 
   另删 17 个只服务已删测试的 `*_AMBIGUITIES.md`。CI（run 44312153699）：墙钟约 3 分钟（前约 11 分钟），checks 的 pytest 步骤 46 s（前 578 s）。
 - **留下什么**：
@@ -94,13 +94,23 @@
   - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
   - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
 - **CI**：PR1 为 7 例自起 initdb 集群的用例加的「安装 PG 17 服务端」步骤，在 PR2 中随这三个文件（#392 roles、#429 downgrade impl、F11 U2 register）一起删掉；保留的测试都不调用 initdb。
-- **变异清单 26 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性、M26 trace 端点白名单）：删后对 `tests/safety` 加 `tests/test_tracing.py` 跑，26/26 killed（含 PG 3 条），见 PR 正文。
+- **变异清单 34 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性、M26 trace 端点白名单，以及 #714 审查后加的 M27–M34）：对 `tests/mutation/run.py` 默认选集（`tests/safety`、`test_tracing`、`test_f7_observer_redaction`、`test_f7_step4_suspension_postgres`）跑，34/34 killed（含 PG 9 条），见 PR 正文。
   - M20–M24 在删前的两份报告测试文件上只能抓到 M20、M23，所以新加了报告校验表。
   - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
 - **passes 证据**：
   - 各功能步骤原本作为证据的确定性文件全部保留、原名不变，旧→新映射表在 PR 正文。
   - 删掉的是子 PR 级的独立验收和实现者测试（例如 F11 PR-2b 至 PR-5b、F2 B1 的 PG 文件、`test_f2_query_deadline_acceptance`）。这些行为由保留的步骤文件和 `tests/safety` 覆盖。
   - 历史任务记录里对已删文件的路径引用保持原样，属于历史记录。`docs/development.md` 里仍描述现行把守的引用已改为新文件。
+
+- **#714 独立审查（FIX-FIRST）后的修复**：
+  - B1 凭据进模型输入：审查者变异的三处（intake question、Alertmanager 标签与注解、工作台消息 `message`/`follow_up`/`correct`），保留集原先都抓不到。新增 `tests/safety/test_safety_model_inputs_postgres.py`，经真实 web 与 runner，断言凭据不进任何模型调用、标记文本确实到达；告警还断言已存的投递记录同样脱敏。对应变异 M27–M29。
+  - N1：
+    - Observer 的 Prometheus 返回体入库前脱敏：恢复 `tests/test_f7_observer_redaction.py`，变异 M30。
+    - 证据页显示已存 raw 时脱敏：`test_the_evidence_page_never_shows_a_stored_credential`，M31。
+    - span 详情先脱敏再截断：`test_a_credential_across_the_span_detail_cut_is_redacted_first`，M32；保留的 `test_f7_step3_source_secrets_postgres` 抓不到这一条，所以补了这一例。
+  - N2：恢复 `tests/test_schema_subprocess_credentials.py`（pg_dump 不在命令行带 owner 密码）。
+  - N3：只去掉 `_lease_revoked` 里挂起代际条件的变异会存活。原因是全局与目标挂起都会把在途 Run 置为 `paused` 并清空 `owner`/`lease_until`（`opspilot/persistence/controls.py:86,184`），这一层先拦下了，代际条件在产品路径上触发不到，所以属于纵深防御。M33 改为两层一起去掉，被 `test_f7_step4_suspension_postgres` 抓到。另加 `test_a_suspend_and_resume_during_a_run_revokes_its_lease`。
+  - N4：`docs/testing/` 下 f2、f3、f6、f12、f13、f14 与 m0 文档里指向已删文件的引用已改指保留的测试或冻结证据，F12 第 1–4 步、F2 第 1 步里 #702 时就已不存在的用例名已更正。F13 R12 的 AST 导入检查移进 `tests/safety/test_safety_report_validation.py`，变异 M34。
 
 ### 已交接 Run 跟进的三处证据现状（F12 第 1–2 步、F2 第 1 步）
 

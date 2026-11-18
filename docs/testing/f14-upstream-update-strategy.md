@@ -12,7 +12,7 @@
 | 镜像 | 本地构建、未推送；arm64 image ID `sha256:3f2995d1…`（本机 kind lab）。开考主机上的 amd64 镜像 ID 不同，由 S9 另记，两种镜像的结果不混在一轮 | pin.json；S7 Holmes runner 任务记录 H8 |
 | 不可复现原因 | 基础镜像按 tag 引用、alpine edge 源、poetry 未锁版本、`apk upgrade` | pin.json `non_reproducible_because` |
 | 配置 | 只开 `prometheus/metrics` 与 GET-only `jaeger`，无 K8s 凭据，走 lab 只读代理 `holmes` 账号 | pin.json `config`；隔离取证 8 项全过 |
-| 代码里的钉子 | `scripts/holmes_baseline/config.py` 的 `UPSTREAM_COMMIT`（`run.py pin` 据此核对 checkout），`mapping.py` 的 `COMMIT`/`TREE`（`upstream-files --check` 与 `records` 要求 checkout 恰好是这个提交且无本地改动），`run.py` 的 `IMAGE`、默认 checkout 路径与镜像归档名；测试 `tests/test_holmes_baseline.py`、`tests/test_415_mapping_impl.py`、`tests/acceptance/test_396_container_and_outcome.py` 也钉了这个提交。完整清单用 `grep -rn -e a0009195 -e e94a57b3 scripts tests` 列出 | 源码 |
+| 代码里的钉子 | `scripts/holmes_baseline/config.py` 的 `UPSTREAM_COMMIT`（`run.py pin` 据此核对 checkout），`mapping.py` 的 `COMMIT`/`TREE`（`upstream-files --check` 与 `records` 要求 checkout 恰好是这个提交且无本地改动），`run.py` 的 `IMAGE`、默认 checkout 路径与镜像归档名；测试 `tests/test_holmes_baseline.py`、`tests/test_415_mapping_impl.py`、`tests/acceptance/test_396_container_and_outcome.py` 也钉了这个提交。完整清单用 `grep -rn -e a0009195 -e e94a57b3 scripts tests` 列出 | 源码（这三个测试文件已在 2026-11-18 测试精简中删除，[测试精简任务记录](../tasks/2026-11-18-test-suite-slim.md)；钉子仍由 `run.py pin`、`upstream-files --check` 自身核对，确定性映射由 `tests/acceptance/test_385_upstream_mapping.py` 守） |
 | 映射表 | 77 行，OpsPilot 侧对照 main `659bcd9c` | [mapping.json](../evidence/f14-upstream-mapping/mapping.json) |
 | 引用的上游文件 | 第 2 步 48 个、第 3 步另一份清单，均带 blob SHA 与行数 | [第 2 步](../evidence/f14-upstream-mapping/upstream-files.json)、[第 3 步](../evidence/f14-upstream-issues/upstream-files.json) |
 

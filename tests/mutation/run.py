@@ -29,7 +29,12 @@ from uuid import uuid4
 from tests.mutation.mutations import MUTATIONS, Mutation
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_SUITE = ("tests/safety", "tests/test_tracing.py")
+DEFAULT_SUITE = (
+    "tests/safety",
+    "tests/test_tracing.py",
+    "tests/test_f7_observer_redaction.py",
+    "tests/acceptance/test_f7_step4_suspension_postgres.py",
+)
 COPY_IGNORE = shutil.ignore_patterns(
     ".git", ".venv", "tmp", "docs", "__pycache__", ".pytest_cache", "node_modules"
 )

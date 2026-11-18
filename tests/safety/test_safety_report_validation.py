@@ -163,3 +163,30 @@ def test_an_incomplete_inconclusive_report_with_gaps_is_accepted():
         gaps=["traces not read"],
     )
     assert ReportV2.model_validate(payload).assessment_status == "incomplete"
+
+
+def test_the_postmortem_projection_imports_no_model_telemetry_or_sql():
+    """F13 R12: the postmortem acceptance projection reads only the records it
+    is handed; it calls no model, no telemetry and runs no SQL of its own."""
+    import ast
+    from pathlib import Path
+
+    import opspilot.acceptance_postmortem as seam
+
+    tree = ast.parse(Path(seam.__file__).read_text())
+    imported = {
+        node.module if isinstance(node, ast.ImportFrom) else alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+    assert imported <= {
+        "__future__",
+        "json",
+        "collections.abc",
+        "dataclasses",
+        "datetime",
+        "typing",
+        "uuid",
+        "opspilot.knowledge.contract",
+    }

@@ -300,3 +300,26 @@ def test_a_source_error_echoing_credentials_is_redacted(monkeypatch, tmp_path, t
     echoed = (outcome.model_view or {}).get("source_error") or {}
     if tool in PROMQL_PARAMS:  # the echo exists, so the check is not vacuous
         assert echoed.get("error"), outcome.model_view
+
+
+def test_a_credential_across_the_span_detail_cut_is_redacted_first(
+    monkeypatch, tmp_path
+):
+    """Span detail is cut to 600 bytes per field; redaction runs before the
+    cut, so a URL credential straddling it never leaks a prefix (#311 rule)."""
+    from opspilot.tools.otel_demo import MAX_DETAIL_BYTES_PER_FIELD
+    from tests.acceptance.f7_hostile_support import jaeger_payload
+    from tests.safety.gateway_support import WINDOW
+
+    planted = "sk-straddle-" + "a" * 12  # low entropy, assembled for the scanner
+    value = "x" * (MAX_DETAIL_BYTES_PER_FIELD - 30) + (
+        f" dsn postgres://admin:{planted}@db.internal:5432/app"
+    )
+    base_us = int(WINDOW.start.timestamp() * 1_000_000) + 10_000_000
+    body = jaeger_payload({"key": "exception.message", "value": value}, base_us=base_us)
+    gw = gateway(monkeypatch, tmp_path, body=body)
+    outcome = gw.call("traces_search", SOURCE_CALLS["traces_search"])
+    assert outcome.status == "ok", outcome.model_view
+    seen = everything_seen(outcome, gw.evidence)
+    assert "x" * 100 in seen, "the detail field was not projected"
+    assert planted[:8] not in seen

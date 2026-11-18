@@ -22,6 +22,6 @@
 
 ## 重放和未冻结项
 
-运行 `.venv/bin/python -m pytest tests/test_m0_outcomes.py`。六份 JSON 包覆盖正常发布、provider失败、缺证据、持续降级、恢复事故和已完成但不确定调查；变异测试检查权限、引用、身份和健康造假。文件均显式 public-development，模型版本 synthetic-v1，没有实际调用。
+（`tests/test_m0_outcomes.py` 测的是 M0 spike 合同，已在 2026-11-18 测试精简中删除，[测试精简任务记录](../tasks/2026-11-18-test-suite-slim.md)；JSON 包本身保留。）六份 JSON 包覆盖正常发布、provider失败、缺证据、持续降级、恢复事故和已完成但不确定调查；变异测试检查权限、引用、身份和健康造假。文件均显式 public-development，模型版本 synthetic-v1，没有实际调用。
 
 样例 5 分钟窗口、5 个最低样本、60 秒新鲜度只为有界合同断言。最终样本数、重复次数、评分权重、统计方法、准确率、非退化规则、成本/尾延迟等仍待开发 baseline 校准并在候选评测前冻结。完整初态/session/预算/环境重置快照、连续采样水位、外部运行 adapter、真实健康计算、全部 F1 场景和保留集设施不在本次完成项。失败/放弃的正式分母规则仍以 M0 §5 为准。

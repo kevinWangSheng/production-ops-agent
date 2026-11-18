@@ -123,7 +123,7 @@ PUBLIC 默认 TEMP 会被产品如实报告为 `database_temp`。夹具仅对自
 ## 执行证据（main 280e550 改接）
 
 - `137-recheck2-final.md` P2 已处置：映射先核主体 UUID、每个 revision 的存在/持久绑定及内容 SHA，一律不修正错绑。新增10类实际产品投影篡改负向检查（主体/subject_id、未知revision、已存在但属于另一会话的revision、持久digest、投影content、顶层profile缺失），全部直接AssertionError，不带xfail。该轮独立复验驱动检查21 passed，并确认原缺失profile复现现直接报错、不会清空样本。
-- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short` → **124 passed、2 xfailed、0 skipped**（9.66秒，退出0）。其中41产品外部、42领域、11原夹具、30驱动检查通过。
+- 指定PG定向：`M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55651 dbname=m0_budget user=m0_lab" OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump .venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short  # 原 tests/test_f6_recovery_outcome.py 已在 2026-11-18 测试精简删除` → **124 passed、2 xfailed、0 skipped**（9.66秒，退出0）。其中41产品外部、42领域、11原夹具、30驱动检查通过。
 - 改接阶段全新上下文独立审查者曾同命令复跑 **105 passed、2 xfailed**（8.27秒），未发现新增合同/正确性缺口。
 - `UV_CACHE_DIR=tmp/uv-cache make check` → **3192 passed、492 skipped、2个既有架构债xfailed**（72.18秒，退出0）；锁/Ruff/mypy全过。默认未启用PG，不能代替上条；另执行Ruff与git diff --check通过。
 - 最后两条P1独立复验：同一PG命令 **124 passed、2 xfailed**（9.62秒），较早会话隔离与8类动作审计负向检查通过，无未处理正确性缺口。
@@ -175,7 +175,7 @@ M1_DURABLE_POSTGRES=1 OPSPILOT_LAB_DSN="host=127.0.0.1 port=55671 dbname=m0_budg
 本轮实际运行：
 
 ```sh
-.venv/bin/python -m pytest tests/test_f6_recovery_outcome.py tests/test_f6_driver_guards.py -q --tb=short
+.venv/bin/python -m pytest tests/acceptance/test_f6_recovery.py tests/contracts/test_f6_observation.py tests/test_f6_driver_guards.py -q --tb=short
 ```
 
 在 issue #156 实现尚未合入的 `main`（072bf78）上，该命令为 **35 passed、9 failed、42 skipped**；9 个失败分别是缺少 `PrometheusReadOnlySource.clock`、`RecoveryOutcome.action_events` 和 `sent_at` 完整性校验，均对应本合同新增接口/行为。PG 定向命令按本文件约定在实现分支提供 PostgreSQL 后运行；本工作区没有把预期红改成绿，也未修改既有五步判定或 `read_only_query` 次数合同。
