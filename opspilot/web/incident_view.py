@@ -24,7 +24,25 @@ from typing import Any
 
 from opspilot.web.status import IncidentStatus, incident_status
 
-__all__ = ["page_view", "handoff_view", "clock", "opening"]
+__all__ = ["page_view", "handoff_view", "clock", "opening", "LIVE_KINDS"]
+
+#: Event kinds the incident page refreshes on (P3-14/17): every kind is a
+#: "something changed" signal; the page then reads the live view.
+LIVE_KINDS = (
+    "intake_accepted",
+    "run_claimed",
+    "run_claim_refused",
+    "run_resumed",
+    "step_committed",
+    "tool_committed",
+    "run_completed",
+    "run_handoff",
+    "control_applied",
+    "message_received",
+    "observation_authorized",
+    "auto_observation_handed_off",
+    "reload",
+)
 
 #: Claim groups of a report and the id letter each claim gets on the page.
 CLAIM_GROUPS = (
@@ -339,6 +357,8 @@ def _call(tool: Mapping[str, Any], day: str | None) -> dict[str, Any]:
         "result_text": text[:RESULT_CHARS] if text else "",
         "result_cut": cut,
         "has_result": content is not None,
+        # P3-6: an earlier Run's raw result is on its evidence page only.
+        "elided": bool(tool.get("elided")),
         "message": tool.get("message"),
         "counts": _counts(tool),
         "adopted": tool.get("adopted"),
@@ -583,238 +603,404 @@ def _run_trigger(snapshot: Mapping[str, Any]) -> str:
     return "for this incident"
 
 
+#: Run states in which a Run may still read or answer a message (C8).
+_ACTIVE = ("queued", "running", "paused")
+
+#: ``report_rejected_reason`` values in words (A3/A6); others as is.
+_REJECTED_WORDS = {
+    "REPLY_ONLY": "a reply-only Run keeps no report",
+    "INCOMPLETE_INVESTIGATION": "the Agent said the new report is incomplete",
+}
+
+
+def _runs_of(snapshot: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The incident's Runs oldest first (P3-1); a snapshot without the
+    per-Run read holds only the current Run."""
+    runs = snapshot.get("runs")
+    if runs:
+        return list(runs)
+    run = snapshot.get("run") or {}
+    conversation = run.get("conversation")
+    mode = conversation.get("mode") if isinstance(conversation, Mapping) else None
+    return [
+        {
+            "run_id": run.get("run_id"),
+            "state": run.get("state"),
+            "current": True,
+            "origin": {"kind": "resumed", "mode": mode}
+            if mode in ("report_optional", "reply_only")
+            else {"kind": "started"},
+            "steps": snapshot.get("steps") or [],
+            "inline": True,
+            "floor": 0,
+            "watermark": int(snapshot.get("read_floor") or 0),
+            "budget_limit": run.get("budget_limit"),
+        }
+    ]
+
+
+def _numbered(
+    runs: Sequence[Mapping[str, Any]],
+) -> list[tuple[Mapping[str, Any], Mapping[str, Any], int | None]]:
+    """Each Run's steps with one step count across the incident (P3-5):
+    ``(run, step, number)``, ``number`` ``None`` for a conclusion step and
+    for a late result (history only), so the count never depends on whether
+    a Run's late rows are read (P3-1: earlier Runs carry none)."""
+    out: list[tuple[Mapping[str, Any], Mapping[str, Any], int | None]] = []
+    number = 0
+    for run in runs:
+        for step in run.get("steps") or []:
+            if step.get("conclusion") is not None or step.get("history_only"):
+                out.append((run, step, None))
+                continue
+            number += 1
+            out.append((run, step, number))
+    return out
+
+
+def _message_status(
+    snapshot: Mapping[str, Any],
+    runs: Sequence[Mapping[str, Any]],
+    numbered: Sequence[tuple[Mapping[str, Any], Mapping[str, Any], int | None]],
+) -> dict[int, dict[str, Any]]:
+    """Per message: read at which step, answered, or not answered (P3-9,
+    C8 per Run: a message in a Run's range ``floor < seq <= watermark`` that
+    none of the Run's steps answered once the Run is no longer active).
+    Computed on read, never stored."""
+    answered: set[int] = set()
+    numbered = [item for item in numbered if not item[1].get("history_only")]
+    for _, step, _ in numbered:
+        for reply in step.get("replies") or []:
+            to = reply.get("to_input_seq")
+            if isinstance(to, int):
+                answered.add(to)
+    out: dict[int, dict[str, Any]] = {}
+    for message in snapshot.get("messages") or []:
+        seq = message["sequence"]
+        read_at = None
+        last = None
+        for _, step, number in numbered:
+            if number is not None:
+                last = number
+            mark = step.get("input_watermark")
+            if isinstance(mark, int) and mark >= seq:
+                read_at = number if number is not None else last
+                break
+        covering = [
+            r
+            for r in runs
+            if int(r.get("floor") or 0) < seq <= int(r.get("watermark") or 0)
+        ]
+        if message.get("unread"):
+            state = "queued"
+        elif seq in answered:
+            state = "answered"
+        elif any(r.get("state") in _ACTIVE for r in covering):
+            state = "read"
+        elif covering:
+            state = "not_answered"
+        else:
+            state = "read"
+        out[seq] = {"state": state, "step": read_at}
+    return out
+
+
 def _log(
     snapshot: Mapping[str, Any],
     calls_by_eid: dict[str, dict[str, Any]],
     report: dict[str, Any] | None,
     day: str | None,
     unread_words: str | None = None,
+    composer: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Log entries in time order: Run starts, steps with their tool calls,
-    the Agent's replies, people's messages and controls, report and
-    recovery-watch moments. Entries without a time keep their place after
-    the dated ones of their Run."""
+    """One log for the whole incident (P3-1), in time order: each Run's
+    start, its steps with their tool calls, the Agent's replies and the
+    Run's end; people's messages and controls; report and recovery-watch
+    moments. An entry without a time takes the time of the entry before it
+    in its Run (P3-4). Every entry has a stable ``key`` for live updates."""
+    incident = snapshot["incident"]
     run = snapshot.get("run") or {}
-    run_id = run.get("run_id")
+    runs = _runs_of(snapshot)
+    numbered = _numbered(runs)
     entries: list[tuple[datetime | None, int, dict[str, Any]]] = []
 
     def add(at: Any, entry: dict[str, Any]) -> None:
         entries.append((_dt(at), len(entries), entry))
 
-    events = snapshot.get("events") or []
-    claimed = [
-        e
-        for e in events
-        if e.get("kind") == "run_claimed"
-        and (e.get("payload") or {}).get("run_id") == run_id
-    ]
-    started_at = claimed[0].get("recorded_at") if claimed else None
-    for entry in snapshot.get("history") or []:
-        words = {
-            "completed": "ended with a report",
-            "cancelled": "was canceled",
-            "waiting_human": "stopped and handed back",
-            "blocked": "was blocked",
-        }.get(entry.get("state"), str(entry.get("state")))
-        add(
-            entry.get("started_at") or entry.get("concluded_at"),
-            {
-                "kind": "run",
-                "time": clock(
-                    entry.get("started_at") or entry.get("concluded_at"), day
-                ),
-                "title": f"Earlier investigation {words}",
-                "detail": opening((entry.get("report") or {}).get("summary"), 160)
-                if (entry.get("report") or {}).get("parsed")
-                else None,
-            },
-        )
-    first_step_at = next(
-        (
-            s.get("observed_at")
-            for s in snapshot.get("steps") or []
-            if s.get("observed_at")
-        ),
-        None,
-    )
-    begun = started_at or first_step_at
-    # Contract A1/B4: a continuation Run carries a conversation mode other
-    # than the first Run's report_required.
-    conversation = run.get("conversation")
-    if not isinstance(conversation, Mapping) or conversation.get("mode") in (
-        None,
-        "report_required",
-    ):
-        conversation = None
-    add(
-        begun or snapshot["incident"].created_at,
-        {
-            "kind": "run",
-            "time": clock(begun or snapshot["incident"].created_at, day),
-            "title": (
-                "Investigation resumed" if conversation else "Investigation started"
-            )
-            if begun
-            else ("Investigation resuming" if conversation else "Investigation queued"),
-            "detail": (
-                "after a message · reply only, no new queries"
-                if (conversation or {}).get("mode") == "reply_only"
-                else "after a message · same investigation, earlier report kept"
-                if conversation
-                else _run_trigger(snapshot)
-            )
-            + (
-                f" · up to {run.get('budget_limit')} model requests"
-                if run.get("budget_limit")
-                else ""
-            ),
-        },
-    )
+    claimed: dict[str, Any] = {}
+    for event in snapshot.get("events") or []:
+        if event.get("kind") == "run_claimed":
+            rid = str((event.get("payload") or {}).get("run_id"))
+            claimed.setdefault(rid, event.get("recorded_at"))
+    current_id = str(run.get("run_id"))
+    started_at = claimed.get(current_id)
     messages = {m["sequence"]: m for m in snapshot.get("messages") or []}
-    shown_replies: set[tuple[Any, str]] = set()
+    # P3-7: the newest published report is the one the result area shows.
+    published = [
+        step
+        for _, step, number in numbered
+        if number is None
+        and step.get("conclusion") is not None
+        and not step.get("history_only")
+        and step["conclusion"].get("execution") == "completed"
+        and not step["conclusion"].get("handoff")
+    ]
+    shown_step = (
+        published[-1]
+        if published and report is not None and report.get("kind") == "published"
+        else None
+    )
+    concluded = bool(incident.concluded)
 
     def reply_entry(
-        reply: Mapping[str, Any], at: Any, step: int | None, final: bool
+        run_entries: list[tuple[Any, dict[str, Any]]],
+        reply: Mapping[str, Any],
+        at: Any,
+        step: int | None,
+        final: bool,
+        key: str,
     ) -> None:
         to = reply.get("to_input_seq")
-        text = reply.get("text") or ""
-        shown_replies.add((to, text))
         asked = messages.get(to) if isinstance(to, int) else None
-        add(
-            at,
-            {
-                "kind": "reply",
-                "time": clock(at, day),
-                "step": step,
-                "final": final,
-                "text": text,
-                "to": to,
-                "to_author": None if asked is None else asked.get("author"),
-                "evidence_ids": reply.get("evidence_ids") or [],
-                # Provenance: each cited id, linked when this page knows the
-                # observation (this Run's or the shown report's Run's steps).
-                "evidence": [
-                    {
-                        "eid": str(eid),
-                        "call": calls_by_eid.get(str(eid)),
-                    }
-                    for eid in reply.get("evidence_ids") or []
-                ],
-                "unsupported": reply.get("unsupported"),
-            },
+        run_entries.append(
+            (
+                at,
+                {
+                    "kind": "reply",
+                    "key": key,
+                    "step": step,
+                    "final": final,
+                    "text": reply.get("text") or "",
+                    "to": to,
+                    "to_author": None if asked is None else asked.get("author"),
+                    "evidence_ids": reply.get("evidence_ids") or [],
+                    # Provenance: each cited id, linked when this page knows
+                    # the observation.
+                    "evidence": [
+                        {"eid": str(eid), "call": calls_by_eid.get(str(eid))}
+                        for eid in reply.get("evidence_ids") or []
+                    ],
+                    "unsupported": reply.get("unsupported"),
+                },
+            )
         )
 
-    def add_replies(step: Mapping[str, Any], at_step: int, *, final: bool) -> None:
-        for reply in step.get("replies") or []:
-            reply_entry(reply, step.get("observed_at"), at_step or None, final)
-
-    number = 0
-    steps = snapshot.get("steps") or []
-    for step in steps:
-        if step.get("conclusion") is not None:
-            c = step["conclusion"]
-            if c.get("handoff"):
+    first_run = True
+    seen_published = 0
+    for item in runs:
+        rid = str(item.get("run_id"))
+        is_current = bool(item.get("current"))
+        steps = [(s, n) for r, s, n in numbered if r is item]
+        run_entries: list[tuple[Any, dict[str, Any]]] = []
+        first_step_at = next(
+            (s.get("observed_at") for s, _ in steps if s.get("observed_at")), None
+        )
+        begun_at = claimed.get(rid) or first_step_at
+        begun = bool(begun_at) or bool(steps) or item.get("state") not in _ACTIVE
+        origin = item.get("origin") or {}
+        kind = origin.get("kind")
+        budget = (
+            f" · up to {item.get('budget_limit')} model requests"
+            if item.get("budget_limit")
+            else ""
+        )
+        if kind == "resumed":
+            title = "Investigation resumed" if begun else "Investigation resuming"
+            detail = (
+                "after a message · reply only, no new queries"
+                if origin.get("mode") == "reply_only"
+                else "after a message · same investigation, earlier report kept"
+            )
+        elif kind == "reinvestigated":
+            title = f"Re-investigated by {origin.get('actor')}"
+            detail = "a new investigation that reads every message so far"
+        elif kind == "continued":
+            title = "Investigation continued"
+            detail = "after a follow-up"
+        else:
+            title = "Investigation started" if begun else "Investigation queued"
+            detail = _run_trigger(snapshot)
+        boundary_at = (
+            begun_at
+            or item.get("opened_at")
+            or (incident.created_at if first_run else None)
+        )
+        first_run = False
+        run_entries.append(
+            (
+                boundary_at,
+                {
+                    "kind": "run",
+                    "key": f"run-{rid}",
+                    "title": title,
+                    "detail": detail + budget,
+                    "run_id": rid,
+                },
+            )
+        )
+        for step, number in steps:
+            at = step.get("observed_at")
+            sid = step.get("step_id") or f"{rid}-{len(run_entries)}"
+            late = bool(step.get("history_only"))
+            c = None if late else step.get("conclusion")
+            if c is not None:
                 reasons = c.get("reasons") or []
-                add(
-                    step.get("observed_at"),
-                    {
+                end: dict[str, Any]
+                if c.get("handoff") and "RESPONSE_INVALID" in reasons:
+                    end = {
                         "kind": "end",
                         "problem": True,
-                        "time": clock(step.get("observed_at"), day),
+                        "title": "Agent couldn't respond",
+                        "detail": _reason_words("RESPONSE_INVALID")
+                        + (" · the report is unchanged" if concluded else ""),
+                        "codes": reasons,
+                    }
+                elif (
+                    c.get("handoff")
+                    and c.get("execution") == "completed"
+                    and list(reasons) == ["INCOMPLETE_INVESTIGATION"]
+                ):
+                    end = {
+                        "kind": "report",
+                        "title": "Report written · incomplete",
+                        "detail": "the Agent said its investigation is incomplete; not published",
+                        "anchor": "#conclusion"
+                        if report is not None and report.get("kind") == "incomplete"
+                        else None,
+                    }
+                elif c.get("handoff"):
+                    end = {
+                        "kind": "end",
+                        "problem": True,
                         "title": "Run stopped",
                         "detail": "; ".join(_reason_words(r) for r in reasons)
                         or "handed to a human",
                         "codes": reasons,
-                    },
-                )
-            elif c.get("execution") == "completed":
-                shown = report is not None and report.get("kind") == "published"
-                add(
-                    step.get("observed_at"),
-                    {
+                    }
+                elif c.get("execution") == "completed":
+                    seen_published += 1
+                    shown = step is shown_step
+                    summary = ((item.get("report") or {}) if not shown else {}).get(
+                        "summary"
+                    )
+                    end = {
                         "kind": "report",
-                        "time": clock(step.get("observed_at"), day),
-                        "title": "Report published" if shown else "Report written",
+                        "title": "Report published"
+                        if seen_published == 1
+                        else "Report updated",
                         "detail": (
                             f"{_plural(len(report['facts']), 'fact')}, "
                             f"{_plural(len(report['hypotheses']), 'hypothesis', 'hypotheses')}, "
                             f"{len(report['ruled_out'])} ruled out"
                         )
                         if shown and report is not None
-                        else None,
+                        else opening(summary, 160),
                         "anchor": "#conclusion" if shown else None,
-                    },
-                )
-            elif c.get("execution") == "answered":
-                # Contract A3/A4: replied only; the report stays as it was.
-                add(
-                    step.get("observed_at"),
-                    {
+                    }
+                elif c.get("execution") == "answered":
+                    # Contract A3/A4: replied only; the report stays as it was.
+                    rejected = c.get("report_rejected")
+                    if rejected:
+                        end = {
+                            "kind": "end",
+                            "problem": False,
+                            "title": "Report update rejected",
+                            "detail": _REJECTED_WORDS.get(
+                                rejected, _reason_words(rejected)
+                            )
+                            + " · the report is unchanged",
+                            "codes": [rejected],
+                        }
+                    else:
+                        end = {
+                            "kind": "end",
+                            "problem": False,
+                            "title": "Replied",
+                            "detail": "the report is unchanged",
+                            "codes": [],
+                        }
+                else:
+                    end = {
                         "kind": "end",
-                        "problem": False,
-                        "time": clock(step.get("observed_at"), day),
-                        "title": "Replied",
-                        "detail": "the report is unchanged",
-                        "codes": [],
-                    },
-                )
-            else:
-                add(
-                    step.get("observed_at"),
-                    {
-                        "kind": "end",
-                        "problem": c.get("execution") != "completed",
-                        "time": clock(step.get("observed_at"), day),
+                        "problem": True,
                         "title": "Run ended",
                         "detail": str(c.get("execution") or ""),
-                        "codes": c.get("reasons") or [],
+                        "codes": reasons,
+                    }
+                end["key"] = f"end-{sid}"
+                run_entries.append((at, end))
+                # C7: the final output answers; it belongs to the Run's
+                # last numbered step (the final round).
+                last = max((n for _, n in steps if n is not None), default=None)
+                for index, reply in enumerate(step.get("replies") or []):
+                    reply_entry(
+                        run_entries, reply, at, last, True, f"reply-{sid}-{index}"
+                    )
+                continue
+            calls = []
+            for tool in step.get("tools") or []:
+                call = _call(tool, day)
+                eid = call["evidence_id"]
+                if (
+                    eid
+                    and eid in calls_by_eid
+                    and number is not None
+                    and calls_by_eid[eid].get("step") == number
+                ):
+                    call = calls_by_eid[eid]
+                call["cited_by"] = (
+                    (report or {}).get("cited", {}).get(eid, [])
+                    if eid and call["ok"]
+                    else []
+                )
+                calls.append(call)
+            problems = sum(1 for c in calls if c["problem"])
+            note = step.get("note")
+            if note is None and step.get("final_round"):
+                note = "Wrote the final answer"
+            anchor = f"late-{sid}" if late else f"step-{number}"
+            run_entries.append(
+                (
+                    at,
+                    {
+                        "kind": "step",
+                        "key": anchor,
+                        "number": number,
+                        "id": anchor,
+                        "note": note,
+                        "calls": calls,
+                        "problem": problems > 0,
+                        "problems": problems,
+                        "history_only": bool(step.get("history_only")),
+                        "planned": step.get("planned_tools") or 0,
+                        "earlier_run": not is_current,
                     },
                 )
-            add_replies(step, number, final=True)
-            continue
-        number += 1
-        calls = []
-        for tool in step.get("tools") or []:
-            call = _call(tool, day)
-            eid = call["evidence_id"]
-            if eid and eid in calls_by_eid and calls_by_eid[eid].get("step") == number:
-                call = calls_by_eid[eid]
-            call["cited_by"] = (
-                (report or {}).get("cited", {}).get(eid, [])
-                if eid and call["ok"]
-                else []
             )
-            calls.append(call)
-        problems = sum(1 for c in calls if c["problem"])
-        note = step.get("note")
-        if note is None and step.get("final_round"):
-            note = "Wrote the final answer"
-        add(
-            step.get("observed_at"),
-            {
-                "kind": "step",
-                "number": number,
-                "id": f"step-{number}",
-                "time": clock(step.get("observed_at"), day),
-                "note": note,
-                "calls": calls,
-                "problem": problems > 0,
-                "problems": problems,
-                "history_only": bool(step.get("history_only")),
-                "planned": step.get("planned_tools") or 0,
-            },
-        )
-        add_replies(step, number, final=False)
+            # A late result's replies were fenced off: never an answer.
+            for index, reply in enumerate([] if late else step.get("replies") or []):
+                reply_entry(
+                    run_entries, reply, at, number, False, f"reply-{sid}-{index}"
+                )
+        # P3-4: an entry without a time takes the time of the one before it
+        # in its Run; a Run start without one takes its first dated entry.
+        carry = next((at for at, _ in run_entries if at), None)
+        for at, entry in run_entries:
+            if at:
+                carry = at
+            add(carry, entry)
     for row in snapshot.get("decision_log") or []:
         action = row.get("action")
         if action == "auto_authorize_observation":
             continue  # drawn from the session row below
+        generation = row.get("generation")
         if action in MESSAGE_ACTIONS:
+            # B3: a legacy note; never queued, never "not answered".
             add(
                 row.get("decided_at"),
                 {
                     "kind": "human",
-                    "time": clock(row.get("decided_at"), day),
+                    "key": f"note-{generation}-{action}",
                     "author": row.get("actor_id"),
                     "text": row.get("text") or "",
                     "label": "correction" if action == "correct" else None,
@@ -825,52 +1011,62 @@ def _log(
             row.get("decided_at"),
             {
                 "kind": "control",
-                "time": clock(row.get("decided_at"), day),
+                "key": f"control-{generation}-{action}",
                 "title": f"{row.get('actor_id')} {DONE.get(action, str(action))}",
                 "system": bool(row.get("system")),
                 "detail": row.get("text") or None,
             },
         )
-    answered = {
-        r.get("to_input_seq") for r in snapshot.get("conversation_replies") or []
-    }
+    statuses = _message_status(snapshot, runs, numbered)
+    composer = composer or {}
+    retry_ok = bool(composer.get("enabled")) and incident.mode != "human_owned"
     for message in messages.values():
-        if message["unread"] and unread_words:
-            words = unread_words
-        elif message["unread"]:
-            words = "Queued · read before the Agent's next step"
-        elif message["sequence"] in answered:
-            words = "Read and answered"
+        seq = message["sequence"]
+        status = statuses.get(seq) or {"state": "read", "step": None}
+        retry = None
+        if status["state"] == "queued":
+            words = unread_words or "Queued · read before the Agent's next step"
+        elif status["state"] == "answered":
+            words = "Answered"
+        elif status["state"] == "not_answered":
+            words = "Not answered"
+            if message.get("retried"):
+                words += " · sent again"
+            elif retry_ok:
+                retry = seq
+            elif composer.get("reinvestigate"):
+                words += " · send it again after Re-investigate"
+        elif status["step"]:
+            words = f"Read at step {status['step']}"
         else:
             words = "Read"
         add(
             message.get("received_at"),
             {
                 "kind": "human",
-                "time": clock(message.get("received_at"), day),
+                "key": f"msg-{seq}",
                 "author": message.get("author"),
                 "text": message.get("text") or "",
-                "label": "from Chat"
+                "label": "sent again"
+                if message.get("retry_of") is not None
+                else "from Chat"
                 if message.get("channel") == "chat_forward"
                 else None,
                 "status": words,
+                "state": status["state"],
+                # P3-5: stays after the message is answered.
+                "read_at_step": status["step"],
+                "sequence": seq,
+                "retry": retry,
             },
         )
-        # Replies a Run other than the current one gave (contract B8) sit
-        # right after the message they answer.
-        for reply in snapshot.get("conversation_replies") or []:
-            if reply.get("to_input_seq") != message["sequence"]:
-                continue
-            if (reply.get("to_input_seq"), reply.get("text") or "") in shown_replies:
-                continue
-            reply_entry(reply, message.get("received_at"), None, False)
     for session in snapshot.get("observation_sessions") or []:
         automatic = session.get("authorization_source") == "automatic"
         add(
             session.get("authorized_at"),
             {
                 "kind": "watch",
-                "time": clock(session.get("authorized_at"), day),
+                "key": f"watch-{session.get('session_id')}",
                 "title": "Recovery watch started",
                 "detail": (
                     "automatically after the root cause"
@@ -890,7 +1086,7 @@ def _log(
                     at,
                     {
                         "kind": "watch",
-                        "time": clock(at, day),
+                        "key": f"confirmed-{view.get('session_id')}-{sample.get('sequence')}",
                         "title": "Recovery confirmed"
                         if verified
                         else "Recovery confirmation stored, not re-verified",
@@ -898,47 +1094,55 @@ def _log(
                     },
                 )
     floor = datetime.min.replace(tzinfo=timezone.utc)
-    ordered = [e for _, _, e in sorted(entries, key=lambda x: (x[0] or floor, x[1]))]
+    ordered = []
+    for at, _, entry in sorted(entries, key=lambda x: (x[0] or floor, x[1])):
+        entry["time"] = clock(at, day)
+        ordered.append(entry)
     state = run.get("state")
+    total_steps = sum(1 for _, _, n in numbered if n is not None)
     if state in ("queued", "running"):
         ordered.append(
             {
                 "kind": "live",
+                "key": "live",
                 "title": "Waiting for a worker to pick up the Run"
                 if state == "queued"
-                else f"Step {number + 1} running",
+                else f"Step {total_steps + 1} running",
                 "since": iso(started_at) if state == "running" else None,
             }
         )
     step_entries = [e for e in ordered if e["kind"] == "step"]
+    numbered_entries = [e for e in step_entries if e["number"] is not None]
     total_calls = sum(len(e["calls"]) for e in step_entries)
     bad = sum(e["problems"] for e in step_entries)
     return {
         "entries": ordered,
-        "steps": len(step_entries),
+        "steps": len(numbered_entries),
         "calls": total_calls,
         "problems": bad,
         "started_at": iso(started_at),
         "messages": sum(1 for e in ordered if e["kind"] in ("human", "reply")),
+        "runs": len(runs),
     }
 
 
 def _calls_by_eid(
-    steps: Sequence[Mapping[str, Any]], day: str | None
+    runs: Sequence[Mapping[str, Any]], day: str | None
 ) -> dict[str, dict[str, Any]]:
-    """Each evidence id's first successful call, with its step number."""
+    """Each evidence id's first call, with its step number in the one count
+    across the incident (P3-5) and whether its Run's raw results are drawn
+    on this page (P3-6)."""
     out: dict[str, dict[str, Any]] = {}
-    number = 0
-    for step in steps:
-        if step.get("conclusion") is not None:
+    for run, step, number in _numbered(runs):
+        if number is None:
             continue
-        number += 1
         for tool in step.get("tools") or []:
             eid = tool.get("evidence_id")
             if not eid or eid in out or tool.get("duplicate_of_evidence_id"):
                 continue
             call = _call(tool, day)
             call["step"] = number
+            call["inline"] = bool(run.get("inline"))
             out[str(eid)] = call
     return out
 
@@ -1224,12 +1428,15 @@ def page_view(
         mode=incident.mode,
         concluded=bool(incident.concluded),
     )
-    steps = snapshot.get("steps") or []
-    calls = _calls_by_eid(steps, day)
-    # A9: the shown report's evidence may be an earlier Run's steps.
-    for eid, call in _calls_by_eid(snapshot.get("report_steps") or [], day).items():
-        call["step"] = None
-        calls.setdefault(eid, call)
+    runs = _runs_of(snapshot)
+    calls = _calls_by_eid(runs, day)
+    # A9: the shown report's evidence may be an earlier Run's steps; without
+    # the per-Run read they have no number on this page.
+    earlier = [{"steps": snapshot.get("report_steps") or [], "inline": True}]
+    for eid, call in _calls_by_eid(earlier, day).items():
+        if eid not in calls:
+            call["step"] = None
+            calls[eid] = call
     shown, kind = _shown_report(snapshot)
     report = None
     unparsed = None
@@ -1253,12 +1460,16 @@ def page_view(
         unread_words = (
             "Not read — the investigation ended. Re-investigate will include it."
         )
-    log = _log(snapshot, calls, report, day, unread_words)
+    log = _log(snapshot, calls, report, day, unread_words, composer)
     recovery = _recovery(snapshot, day)
-    step_entries = [e for e in log["entries"] if e["kind"] == "step"]
+    step_entries = [
+        e for e in log["entries"] if e["kind"] == "step" and e["number"] is not None
+    ]
     latest = step_entries[-1] if step_entries else None
     # U1: without a report, what the Run has gathered so far.
-    collected = [] if report is not None else list(calls.values())
+    collected = (
+        [] if report is not None else [c for c in calls.values() if c.get("inline")]
+    )
     outcome = snapshot.get("outcome") or {}
     return {
         "day": day,

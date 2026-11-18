@@ -894,6 +894,7 @@ class Workbench:
         revision: str | None = None,
         to_target: str | None = None,
         into_incident_id: str | None = None,
+        retry_of: int | None = None,
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
@@ -912,6 +913,8 @@ class Workbench:
         """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
+        if retry_of is not None and action not in MESSAGE_ACTIONS:
+            raise WorkbenchError("INVALID_INPUT")
         if action in MESSAGE_ACTIONS:
             # Contract B1/O2: a message (or its old alias) is an input; the
             # expected generation is not a fence for it and is ignored.
@@ -921,14 +924,22 @@ class Workbench:
                 raise WorkbenchError("TARGET_NOT_ALLOWED")
             if into_incident_id is not None:
                 raise WorkbenchError("INTO_INCIDENT_NOT_ALLOWED")
-            if text is None:
-                raise WorkbenchError("TEXT_REQUIRED")
-            taken = self.message(
-                incident_id,
-                actor_id=actor_id,
-                text=text,
-                idempotency_key=idempotency_key,
-            )
+            if retry_of is not None:
+                # P3-11: Retry sends the stored text again; no text of its own.
+                if action != MESSAGE or text is not None:
+                    raise WorkbenchError("INVALID_INPUT")
+                taken = self.retry_message(
+                    incident_id, actor_id=actor_id, sequence=retry_of
+                )
+            else:
+                if text is None:
+                    raise WorkbenchError("TEXT_REQUIRED")
+                taken = self.message(
+                    incident_id,
+                    actor_id=actor_id,
+                    text=text,
+                    idempotency_key=idempotency_key,
+                )
             return ControlResult(
                 incident_id,
                 MESSAGE,
@@ -1265,6 +1276,21 @@ class Workbench:
                 "CONTROL_KEY_CONFLICT" if code == "IDENTITY_CONFLICT" else code
             ) from None
         try:
+            # P3-17: tell open pages a message arrived; the text reaches them
+            # through the live view, never through the event.
+            self.events.append_once(
+                incident_id,
+                "message_received",
+                {"input_sequence": sequence},
+                key={"input_sequence": sequence},
+            )
+        except (PersistenceError, DatabaseError, OSError, ValueError) as exc:
+            _log.warning(
+                "message event failed incident=%s code=%s",
+                incident_id,
+                _failure_code(exc),
+            )
+        try:
             run_id = self.relay(incident_id)
         except (PersistenceError, ContextError, DatabaseError, OSError) as exc:
             # The message is committed; the background pass relays it later
@@ -1282,6 +1308,32 @@ class Workbench:
             replayed,
             (current or summary).control_generation,
             run_id,
+        )
+
+    def retry_message(
+        self, incident_id: UUID, *, actor_id: str, sequence: int
+    ) -> MessageResult:
+        """Send a not-answered message again (P3-11): a new ``message`` input
+        with the stored text of message ``sequence``, signed by whoever
+        retries. The key ``retry:{sequence}`` makes a second click a replay.
+        The admission rules are :meth:`message`'s."""
+        reader = getattr(self.incidents, "message_inputs", None)
+        rows = [] if reader is None else reader(incident_id)
+        original = next((r for r in rows if int(r["sequence"]) == sequence), None)
+        content = (
+            original["content"]
+            if original is not None and isinstance(original["content"], Mapping)
+            else None
+        )
+        if content is None or not isinstance(content.get("text"), str):
+            raise WorkbenchError("INVALID_INPUT")
+        channel = content.get("channel")
+        return self.message(
+            incident_id,
+            actor_id=actor_id,
+            text=content["text"],
+            idempotency_key=f"retry:{sequence}",
+            channel=channel if channel in MESSAGE_CHANNELS else "investigation",
         )
 
     def relay(self, incident_id: UUID) -> UUID | None:
@@ -2698,43 +2750,154 @@ class Workbench:
             log.extend(by_key.values())
         return {"decision_log": log, "decision_log_truncated": truncated}
 
-    def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
-        rows = self.incidents.investigation_history(incident_id)
-        # Scan all retained pages: an old Run's completion may precede the
-        # page of recent progress displayed on the incident screen.
-        cursor = max(0, self.events.floor(incident_id) - 1)
-        hashes = {}
-        while True:
-            page = self.events.read_after(incident_id, cursor, limit=_EVENT_PAGE)
-            if not page:
-                break
-            for event in page:
-                if event.kind == "run_completed" and event.payload.get("report_sha256"):
-                    hashes[str(event.payload.get("run_id"))] = event.payload[
-                        "report_sha256"
-                    ]
-            cursor = page[-1].sequence
-        return [
-            {
-                "run_id": str(row["run_id"]),
-                "state": row["state"],
-                "control_generation": int(row["control_generation"]),
-                **{
-                    field: row[field].astimezone(timezone.utc).isoformat()
-                    if row[field] is not None
-                    else None
-                    for field in ("started_at", "concluded_at")
-                },
-                "report": _report_view(row["report"]),
-                "verified": (
-                    hashes[str(row["run_id"])] == _content_sha256(row["report"])
-                    if str(row["run_id"]) in hashes
-                    else None
+    def _runs(
+        self,
+        summary: IncidentSummary,
+        current: Mapping[str, Any],
+        current_steps: list[dict[str, Any]],
+        inline: Mapping[str, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Every Run of the incident for the one investigation log (P3-1),
+        oldest first (P3-3), each with its origin (P3-2), read range (C8),
+        report and steps. The current Run keeps its rebuilt steps (late
+        results included); ``inline`` holds the steps, with raw results, of
+        the earlier Run whose report the page shows (P3-6); every other
+        earlier Run's tool results come without raw content. A store without
+        the read (the in-memory double) yields the current Run only."""
+        run_id = str(current["run_id"])
+        intake_run = str(uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:0"))
+        reader = getattr(self.incidents, "incident_runs", None)
+        data: Mapping[str, Any] = (
+            {"runs": [], "steps": [], "events": [], "new_runs": []}
+            if reader is None
+            else reader(summary.incident_id)
+        )
+        rows = {str(row["run_id"]): row for row in data["runs"]}
+        if run_id not in rows:
+            rows[run_id] = {
+                "run_id": run_id,
+                "state": current["state"],
+                "control_generation": current["control_generation"],
+                "input_watermark": current.get("input_watermark") or 0,
+                "budget_limit": current.get("budget_limit"),
+                "conversation": (
+                    ((current.get("input") or {}).get("scope_facts") or {}).get(
+                        "conversation"
+                    )
                 ),
             }
-            for row in rows
-            if row["run_id"] != current_run_id
-        ]
+        raw_steps: dict[str, list[Mapping[str, Any]]] = {}
+        for step in data["steps"]:
+            raw_steps.setdefault(str(step["run_id"]), []).append(step)
+        hashes: dict[str, str] = {}
+        resumed: dict[str, datetime] = {}
+        for event in data["events"]:
+            rid = str(event["run_id"])
+            if event["kind"] == "run_completed" and event["report_sha256"]:
+                hashes[rid] = event["report_sha256"]
+            elif event["kind"] == "run_resumed" and event["recorded_at"] is not None:
+                resumed.setdefault(rid, event["recorded_at"])
+        opened_by: dict[str, Mapping[str, Any]] = {}
+        by_generation = {int(r["resulting_generation"]): r for r in data["new_runs"]}
+        for row in data["new_runs"]:
+            derived = uuid5(
+                _INTAKE_NAMESPACE,
+                f"{summary.intake_key}:run:{int(row['resulting_generation'])}",
+            )
+            opened_by[str(derived)] = row
+        out = []
+        for rid, row in rows.items():
+            current_run = rid == run_id
+            if current_run:
+                steps = current_steps
+            elif rid in inline:
+                steps = [s for s in inline[rid] if not s["history_only"]]
+            else:
+                steps = [_step_view(s) for s in raw_steps.get(rid, [])]
+                for step in steps:
+                    for tool in step["tools"]:
+                        tool["elided"] = True
+            conversation = row.get("conversation")
+            if not isinstance(conversation, Mapping):
+                conversation = {}
+            mode = conversation.get("mode")
+            audit = opened_by.get(rid) or (
+                None
+                if rid == intake_run or mode in ("report_optional", "reply_only")
+                else by_generation.get(int(row["control_generation"]))
+            )
+            if rid == intake_run:
+                origin = {"kind": "started"}
+            elif mode in ("report_optional", "reply_only"):
+                origin = {"kind": "resumed", "mode": mode}
+            elif audit is not None:
+                origin = {"kind": "reinvestigated", "actor": audit["actor"]}
+            else:
+                origin = {"kind": "continued"}
+            opened_at = resumed.get(rid) or (
+                None if audit is None else audit["created_at"]
+            )
+            first = next((s["observed_at"] for s in steps if s["observed_at"]), None)
+            report = None
+            verified = None
+            concluded_at = None
+            if row["state"] == "completed":
+                final = next(
+                    (
+                        s
+                        for s in reversed(raw_steps.get(rid, []))
+                        if isinstance(s["response"], Mapping)
+                        and s["response"].get("kind") == CONCLUSION_KIND
+                    ),
+                    None,
+                )
+                if final is not None:
+                    report = _report_view(final["response"])
+                    concluded_at = _observed_at(final["observed_at"])
+                    if rid in hashes:
+                        verified = hashes[rid] == _content_sha256(final["response"])
+            floor = conversation.get("floor")
+            out.append(
+                {
+                    "run_id": rid,
+                    "state": row["state"],
+                    "control_generation": int(row["control_generation"]),
+                    "current": current_run,
+                    "origin": origin,
+                    "opened_at": None
+                    if opened_at is None
+                    else _utc(opened_at).isoformat(),
+                    "started_at": first,
+                    "concluded_at": concluded_at,
+                    "floor": floor if type(floor) is int else 0,
+                    "watermark": int(row.get("input_watermark") or 0),
+                    "budget_limit": row.get("budget_limit"),
+                    "steps": steps,
+                    # P3-6: raw results drawn inline for this Run.
+                    "inline": current_run or rid in inline,
+                    "report": report,
+                    "verified": verified,
+                }
+            )
+
+        def order(item: dict[str, Any]) -> tuple[Any, ...]:
+            at = item["started_at"] or item["opened_at"]
+            if (
+                at is None
+                and item["origin"]["kind"] == "started"
+                and summary.created_at is not None
+            ):
+                at = _utc(summary.created_at).isoformat()
+            moment = _instant(at)
+            return (
+                moment is None,
+                moment or datetime.min.replace(tzinfo=timezone.utc),
+                item["control_generation"],
+                item["run_id"],
+            )
+
+        out.sort(key=order)
+        return out
 
     def snapshot(self, incident_id: UUID) -> dict[str, Any]:
         """Everything the incident page renders, read from committed rows."""
@@ -2796,12 +2959,14 @@ class Workbench:
         # Redesign A9: after a continuation Run became current, the shown
         # report and its evidence are an earlier Run's.
         report_steps: list[dict[str, Any]] = []
+        report_run_id: str | None = None
         report_coverage = None
         reader_run = getattr(self.incidents, "report_run", None)
         if report is not None and reader_run is not None:
             found_run = reader_run(incident_id)
             if found_run is not None:
                 report_steps = [_step_view(step) for step in found_run["steps"]]
+                report_run_id = str(found_run["run_id"])
                 earlier = run_coverage(
                     found_run["run_id"], found_run["input"], found_run["steps"]
                 )
@@ -2826,6 +2991,7 @@ class Workbench:
                             report_steps = [
                                 _step_view(step) for step in record["steps"]
                             ]
+                            report_run_id = str(record["run_id"])
                             report_coverage = _coverage_view(
                                 run_coverage(
                                     record["run_id"], record["input"], record["steps"]
@@ -2834,6 +3000,12 @@ class Workbench:
         # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
         # never shown to the model.
         coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
+        runs = self._runs(
+            summary,
+            run,
+            steps,
+            {} if report_run_id is None else {report_run_id: report_steps},
+        )
         shown = report or handoff_report
         truncated = (
             collection_truncated(input_snapshot, rebuilt["steps"], shown_conclusion)
@@ -2883,7 +3055,10 @@ class Workbench:
             # #572: human decisions and system rows (``actor`` ``system``,
             # e.g. ``auto_authorize_observation``) in commit order.
             **self._decision_log(incident_id, controls),
-            "history": self._history(incident_id, run["run_id"]),
+            # P3-1: every Run of the incident, oldest first, for the one log;
+            # ``history`` (the raw-records table) is the earlier ones.
+            "runs": runs,
+            "history": [item for item in runs if not item["current"]],
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
             # offline replay's agreement with it (step 5, #87).
@@ -2927,16 +3102,23 @@ class Workbench:
         }
 
     def _conversation(self, incident_id: UUID) -> dict[str, Any]:
+        """People's messages (B7 unread above the floor). A message sent
+        again with Retry (P3-11) carries the key ``retry:{seq}``; both rows
+        are marked so the page offers Retry once."""
         reader = getattr(self.incidents, "message_inputs", None)
         rows = [] if reader is None else reader(incident_id)
         floor_of = getattr(self.incidents, "conversation_floor", None)
         floor = 0 if floor_of is None else int(floor_of(incident_id))
-        replies_of = getattr(self.incidents, "prior_replies", None)
-        replies = [] if replies_of is None or not rows else replies_of(incident_id)
+        retry_prefix = f"{incident_id}:retry:"
         messages = []
         for row in rows:
             content = row["content"] if isinstance(row["content"], Mapping) else {}
             text = content.get("text")
+            key = content.get("idempotency_key")
+            retry_of = None
+            if isinstance(key, str) and key.startswith(retry_prefix):
+                tail = key[len(retry_prefix) :]
+                retry_of = int(tail) if tail.isdigit() else None
             messages.append(
                 {
                     "sequence": int(row["sequence"]),
@@ -2947,15 +3129,13 @@ class Workbench:
                     if row["received_at"] is None
                     else _utc(row["received_at"]).isoformat(),
                     "unread": int(row["sequence"]) > floor,
+                    "retry_of": retry_of,
                 }
             )
-        return {
-            "messages": messages,
-            "read_floor": floor,
-            "conversation_replies": [
-                _reply_view(r) for r in replies if isinstance(r, Mapping)
-            ],
-        }
+        retried = {m["retry_of"] for m in messages if m["retry_of"] is not None}
+        for message in messages:
+            message["retried"] = message["sequence"] in retried
+        return {"messages": messages, "read_floor": floor}
 
     def _merged_from(self, incident_id: UUID) -> list[str]:
         reader = getattr(self.incidents, "merged_from", None)
@@ -3862,6 +4042,10 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
             "handoff": inner.get("handoff") is True,
             "reasons": [str(r) for r in reasons] if isinstance(reasons, list) else [],
             "model_requests_used": inner.get("model_requests_used"),
+            # A3: why a continuation Run's report was not taken (P3-7).
+            "report_rejected": inner.get("report_rejected_reason")
+            if isinstance(inner.get("report_rejected_reason"), str)
+            else None,
         }
     content = assistant.get("content")
     # The visible text of a tool round is the model's note; a round without

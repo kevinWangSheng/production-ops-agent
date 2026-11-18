@@ -1103,6 +1103,56 @@ class DurableIncidentStore:
             ).fetchone()
         return None if row is None else (row["run_id"], row["response"])
 
+    def incident_runs(self, incident_id: UUID) -> dict[str, Any]:
+        """Every Run of the incident with its committed non-late steps, in
+        one snapshot (workbench redesign P3-1, the one investigation log).
+
+        Tool results come without their raw ``content`` (P3-6: an earlier
+        Run's raw result is read from its evidence page; the current Run and
+        the shown report's Run are read with content elsewhere). Alongside:
+        each Run's ``run_completed`` report hash and ``run_resumed`` time from
+        the event log, read by kind instead of scanning every retained page
+        (P3-19), and the ``new_run`` audit rows that opened a Run (P3-2/3).
+        """
+        with self._store.transaction(snapshot=True) as conn:
+            runs = conn.execute(
+                "SELECT run_id,state,control_generation,input_watermark,budget_limit,"
+                "input->'scope_facts'->'conversation' AS conversation"
+                " FROM opspilot_runs WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchall()
+            steps = conn.execute(
+                # E3/P7: the web never loads the model's private reasoning.
+                "SELECT s.step_id,s.run_id,s.sequence,s.logical_key,s.status,"
+                "s.response #- '{assistant,reasoning_content}' AS response,"
+                "(SELECT COALESCE(jsonb_agg(t #- '{result,content}' ORDER BY n),'[]'::jsonb)"
+                " FROM jsonb_array_elements(COALESCE(s.tool_results,'[]'::jsonb))"
+                " WITH ORDINALITY AS a(t,n)) AS tool_results,"
+                "s.control_generation,s.observed_at"
+                " FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id"
+                " WHERE r.incident_id=%s AND s.status<>'late_result'"
+                " ORDER BY s.sequence,s.observed_at,s.step_id",
+                (incident_id,),
+            ).fetchall()
+            events = conn.execute(
+                "SELECT kind,payload->>'run_id' AS run_id,"
+                "payload->>'report_sha256' AS report_sha256,recorded_at"
+                " FROM opspilot_subject_events WHERE subject_id=%s"
+                " AND kind IN ('run_completed','run_resumed') ORDER BY sequence",
+                (incident_id,),
+            ).fetchall()
+            opened = conn.execute(
+                "SELECT actor,resulting_generation,created_at FROM opspilot_controls"
+                " WHERE incident_id=%s AND action='new_run' ORDER BY resulting_generation",
+                (incident_id,),
+            ).fetchall()
+        return {
+            "runs": list(runs),
+            "steps": list(steps),
+            "events": list(events),
+            "new_runs": list(opened),
+        }
+
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(

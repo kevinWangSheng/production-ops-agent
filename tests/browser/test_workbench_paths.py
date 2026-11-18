@@ -207,6 +207,7 @@ def test_path_a_detail_step_query_raw_result(incident, served, browser_page):
 
 MESSAGE = "workbench-path-b: which deploy changed the checkout error rate?"
 REPLY = "workbench-path-b: the scripted agent answers the queued message."
+DRAFT = "workbench-path-b: a draft the live update must keep."
 
 
 def test_path_b_message_queued_then_reply_in_log(
@@ -255,13 +256,28 @@ def test_path_b_message_queued_then_reply_in_log(
             }
         )
     )
+    # P3-1/6/14: while the Run works the reader keeps the page open: the
+    # earlier Run's step is still in the one log, opened to its raw result,
+    # and a draft is in the composer. Nothing reloads the page under them.
+    detail.step().click()
+    detail.query().click()
+    expect(detail.log().get_by_text(RAW_MARKER)).to_be_visible()
+    composer = detail.composer()
+    expect(composer).to_be_enabled()
+    composer.fill(DRAFT)
+
+    # The events of this Run reach the served app's progress stream: the
+    # runner and the served app share one PostgreSQL event log.
     workbench.run(SimpleNamespace(subject_id=str(incident_id)), [answer])
 
-    page.reload()
     log = detail.log()
     expect(log).to_be_visible()
-    # The reply is readable in the log as is, next to the message it answers.
+    # The reply arrives live (no page.reload()), readable in the log as is,
+    # next to the message it answers.
     expect(log.get_by_text(REPLY)).to_be_visible()
+    # P3-14: the live update kept what the reader had open and typed.
+    expect(detail.composer()).to_have_value(DRAFT)
+    expect(log.get_by_text(RAW_MARKER)).to_be_visible()
     expect(log.get_by_text(MESSAGE)).to_be_visible()
     # Read by a Run: no longer queued.
     expect(detail.queued().get_by_text(MESSAGE)).not_to_be_visible()

@@ -89,6 +89,8 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/intake/version-changes"): "write: OpsPilot release observation intake",
     ("POST", "/incidents/{incident_id}/control"): "write: OpsPilot incident control",
     ("GET", "/incidents/{incident_id}/events"): "read: progress stream",
+    # Workbench P3-14: the incident page's regions, same login and data.
+    ("GET", "/incidents/{incident_id}/live"): "read: incident page live view",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
     # F11 PR-5a (pre-review D1), registered by the independent test author.
     ("GET", "/version-changes"): "read: release observation list",
