@@ -141,7 +141,7 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| E1 | 存哪 | | 两张新表：会话（谁开的、挂在哪个事故或不挂）和发言（序号、用户或助手、正文、状态 pending/answered/failed、转发出去的输入编号）。迁移 0025。web 能读能插；worker 能读、能改状态和正文。只给新表授权，旧表授权不动。 | P7。已知会失败的钉值：`tests/acceptance/test_347_release_reframe_input.py::test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen` 钉了迁移头和全部授权，P7 要更新它。 | |
+| E1 | 存哪 | | 两张新表：会话（谁开的、挂在哪个事故或不挂）和发言（序号、用户或助手、正文、状态 pending/answered/failed、转发出去的输入编号）。迁移 0026（r9：0025 已被 A11 的 `0025_web_session_rebind.py` 占用）。web 能读能插；worker 能读、能改状态和正文。只给新表授权，旧表授权不动。 | P7。已知会失败的钉值：`tests/acceptance/test_347_release_reframe_input.py::test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen` 钉了迁移头和全部授权，P7 要更新它。 | |
 | E2 | 模型调用放哪个进程 | 模型密钥只在 worker 的密钥文件里（`deploy/compose/compose.yaml:130-153、230-231`；`install.sh:33、162`）。① worker 领取待回答的发言、调用模型、写回答案。② 把密钥也给 web。②是凭据位置变更，属用户门。 | **①**。 | P7：worker 多一个轮询步骤。 | |
 | E3 | 能读什么 | | 只读当前事故的记录：已发布报告、步骤的可见内容和工具调用参数、工具结果的脱敏视图（不是原始结果）、证据视图、人的消息（经 `project_input_content` 脱敏，`context.py:1262-1284`）、控制审计、观察会话摘要。**永远不读步骤里的 `reasoning_content`**（PRODUCT-CONSTRAINTS 第 50 行：私有协议字段只回到同一个供应商的同一个 Run）。超过单次请求大小上限时，保留报告和最近若干步并注明已截断。不在事故页时（列表页）只回答「打开一个事故再问」，不做跨事故查询。「只读记录」是我们自己收窄，不是 AWS 行为。 | P7。 | |
 | E4 | 一句话花多少 | | 每句一次模型调用，不带工具，不启动也不触碰调查。每个用户每 10 分钟 20 句的上限（技术保护，数字可调）。v1 不把 Chat 调用导出到 LangSmith（不新增导出面）。 | P7。 | |
@@ -179,7 +179,7 @@ AWS 原文本次重新抓取了两页（2026-11-17）：
 
 **总量上限（整个重设计 P1–P7 合计，不是每个 PR）**
 
-- 场景测试：最多 **8 个测试函数**，全部在 `tests/acceptance/test_workbench_conversation.py`。真实 Postgres + 脚本化模型客户端 + HTTP，只断言看得见的结果。
+- 场景测试：最多 **11 个测试函数**（r9：原定 8 个，P1/P2 落地后已有 10 个；P3 不新增，P7 加 1 个），全部在 `tests/acceptance/test_workbench_conversation.py`。真实 Postgres + 脚本化模型客户端 + HTTP，只断言看得见的结果。
 - 浏览器路径：**3 条**，在 `tests/browser/test_workbench_paths.py`。
 - 共用一个驱动：`tests/workbench_driver.py`。不再新增别的支持文件。
 - 每个触碰调查循环的 PR（P1、P2）另附一次有界真实 Run 的 trace 链接和 `summary.json`（ADR-0006），不算在上限内。
@@ -211,6 +211,35 @@ D6、D7b、D9 的拒绝和 D8 的「只记不查」各是场景 5 里的一两�
 **规则**：钉旧行为的测试直接删，不移植、不改写成新行为的镜像；按文件列在 PR 正文里。删除后某条验收步骤没有测试支撑的，由上表的新场景顶上；顶不上的把 `passes` 翻成 false 并写明。
 
 **T5 · passes 影响**：F12 第 1 步（追问、补充事实、得到更新的调查）由场景 1、2、7 支撑；F12 第 2 步（纠正被保留）由场景 1、7 加日志里可见的消息历史支撑；F7 第 5 步由 O4 的改动加现有审计测试支撑。
+
+### P3 日志投影与实时更新（r9，2026-11-18 预审，lead 裁决全部按推荐）
+
+| 编号 | 裁决要点 |
+|---|---|
+| P3-1 | 一条日志覆盖事故的全部 Run：新增一次快照读（全部 Run 及其非 `late_result` 步骤），取代原「Earlier investigation」摘要行；早期 Run 的步骤、调用、回复、结束行与当前 Run 同样画；内存替身无此读时只画当前 Run |
+| P3-2 | 每个 Run 一行起点：首个 Run「Investigation started from alert X」；`conversation.mode` 为 `report_optional`/`reply_only` →「Investigation resumed after a message」；对应 `new_run` 审计行 →「Re-investigated by {actor}」；P2 之前的旧续开 Run →「Investigation continued」；Run 编号只在悬停时显示 |
+| P3-3 | Run 按首步 `observed_at` 排序，其次 `run_resumed` 事件或 `new_run` 审计时间，没有时间的排最后；不迁移 |
+| P3-4 | 没有时间的条目取同一 Run 内上一条的时间（修正原代码把它排到最前） |
+| P3-5 | 全事故统一步骤计数；「read at step N」= 第一个 `context.input_watermark` ≥ 消息序号的已提交步骤 |
+| P3-6 | 原始结果只在当前 Run 与报告所在 Run 内联；其余早期 Run 只显示元数据，原始结果走证据页链接 |
+| P3-7 | 首份发布「Report published」，续接 Run 再发布「Report updated」，`report_rejected_reason` →「Report update rejected」，D7a →「Report written · incomplete」；P3 不做 diff |
+| P3-8 | B3 旧 `follow_up`/`correct` 继续取自决定日志，不读对应输入行，不排队、不 Retry、不算 not answered |
+| P3-9 | 未读定义不变（最大水位）；每次刷新重算 Queued 与每条消息状态：Queued → Read at step N → Answered / Not answered |
+| P3-10 | not answered 读取时按 Run 计算：floor < seq ≤ 该 Run 水位、该 Run 不在排队/运行/暂停、该 Run 的非迟到步骤里没有对它的合法回复；不存储，不用 `prior_replies` |
+| P3-11 | Retry 只出现在 not answered 消息上、且输入框可用时：发 `action=message` + `retry_of=<seq>`，服务端复制存储原文，幂等键 `retry:{seq}`，署点击者；输入框拒收时只写 Not answered 加「Re-investigate 后再发」提示 |
+| P3-12 | `RESPONSE_INVALID` 交接显示「Agent couldn't respond」，有结论时加「the report is unchanged」；页头仍按 A8 ⑧ |
+| P3-13 | D12 规则与措辞不变，随 `run_completed`/`run_handoff` 刷新 |
+| P3-14 | SSE 只作「有变化」信号；页面收到任何事件就拉 `GET /incidents/{id}/live`（同一登录、同一 `page_view`），就地替换页头、结果区、日志、Queued、输入框状态与恢复观察，保留展开状态、筛选、Expand all、滚动位置和草稿；取代完成后整页刷新与「New activity」；放弃设计 §4 的富 SSE 载荷 |
+| P3-15 | 服务端参数不变；客户端同时只有一个请求，500 ms 内的事件合并一次；`reload` 改为片段刷新；拉取失败保持原样，下个事件再试 |
+| P3-16 | 新条目追加在日志末尾；读者在末尾时跟随，否则显示「N new ↓」 |
+| P3-17 | 消息提交后 web 追加 `message_received {input_sequence}`（不含正文）；页面对所有事件同样处理；不改授权，worker 载荷不变 |
+| P3-18 | 输入框保留 PRG 表单提交 |
+| P3-19 | 片段与页面用同一快照；原逐页扫描事件改为按 Run 读取，保留 `verified` 哈希比对 |
+| P3-20 | （lead）场景函数上限改为 11（见第五节）；P3 不加函数，只在场景 3b 与 P2 空闲接力里加断言，浏览器路径 (b) 去掉 `page.reload()` |
+| P3-21 | （lead）E1 迁移号改为 0026 |
+| P3-22 | 无钉旧行为的测试要删；关注 `test_m1_incident_control_postgres.py:417` 与 `tests/m1_web_support.py` 替身 |
+
+修订：r9 = P3 预审表、E1 迁移号 0026、场景函数上限 11（lead 2026-11-18）。
 
 ### 将被删除的旧测试（按 PR 分组）
 

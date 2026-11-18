@@ -262,21 +262,10 @@
 - 页面也算新的接收方，所以要显示必须由用户决定（见 D19）。
 - 替代做法：可见 `content` 加时长。
 
-**SSE 改动**
-- `step_committed` 加字段：
-  - `note`：可见 content，截断到 500 字。
-  - `tools`：`[{name, args_summary≤200}]`
-  - `input_watermark`
-  - `duration_ms`
-- `tool_committed` 加字段：`query_summary`、`error_code`、`duration_ms`。
-- 新事件类型：
-  - `input_appended`：seq、author、text，或者只发 seq，正文从页面拉取。
-  - `inputs_read`：watermark、step_id。
-  - `agent_reply`：to_seq、text、evidence_ids。
-  - `report_updated` / `report_rejected`
-  - `run_resumed`
-  - `observation_progress`：每 N 个样本一次。
-- 所有文本在写入事件前都要走现有的脱敏（redaction）路径。工具参数是模型写的查询，直接显示。
+**SSE 改动**（P3 预审 P3-14 取代原方案）
+- SSE 只作「有变化」信号：worker 事件载荷不变；web 在收下消息后追加一种事件 `message_received {input_sequence}`（不含正文）。
+- 页面收到任何事件后拉取 `GET /incidents/{id}/live`：同一登录、同一投影，服务端渲染页头、结果区、日志、Queued、输入框状态和恢复观察，就地替换。
+- 不再给 `step_committed` 等加富字段（note、tools、duration_ms、agent_reply 等）：那会在 JS 里重复一遍投影。
 
 ---
 
@@ -325,7 +314,7 @@
 |---|---|---|---|
 | P1 `feat: response contract` | `m0-response-v1`：replies + 可空 report；新执行结果 `answered`（migration 加枚举值）；续接 Run 的降级规则；提示词要求可见 note。旧的 follow_up 路径也能直接受益 | M | reports.py 中「唯一输出为 ReportV2」的约定；ADR-0005 第 1 条补充：`answered` 不发布新结论 |
 | P2 `feat: message input` | `message` 动作改走 append_input，不推进代际、不栅栏；调度器的未读接力规则；去掉消息路径上的 REOPEN_REQUIRED；resolved/closed 强制只回复；观察不撤销；follow_up/correct 作为别名 | L | C3 §10「结论发布后追问开新 Run…撤销观察…REOPEN_REQUIRED（F12 U1、r2）」；§4 中「追问」「纠正」两类输入改为一类；controls.py docstring 中的对应规则；#184 判定中「人工处理」的定义（见 D20） |
-| P3 `feat: timeline projection + SSE` | timeline 读模型、SSE 新字段和新事件、步骤与工具耗时 | M | progress.py 的事件载荷（只增不删） |
+| P3 `feat: timeline projection + SSE` | timeline 读模型（全部 Run 一条日志）、`/live` 片段就地更新、`message_received` 事件 | M | 无：worker 事件载荷不变 |
 | P4 `feat: incident pages` | 列表页和详情页重写（Summary、Timeline、Chat、Queued），视觉 tokens，400px 适配 | L | web-ux-spec-2026-11-16 全部交互；黑白灰基线；§4.8 的页面钉死测试 |
 | P5 `feat: investigation feedback` | 反馈表、页面、导出给 eval 和复盘 | S-M | 无（新增） |
 | P6 `feat: linked incidents display` | 关联关系与理由的只读展示 | S | 无 |

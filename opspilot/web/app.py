@@ -66,7 +66,7 @@ from opspilot.web.auth import (
 )
 from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_list import parse_query
-from opspilot.web.incident_view import handoff_view, page_view
+from opspilot.web.incident_view import LIVE_KINDS, handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.service import (
     MESSAGE_ACTIONS,
@@ -603,6 +603,29 @@ def create_app(
             return RedirectResponse("/controls", status_code=303)
         return JSONResponse(result)
 
+    async def incident_context(
+        principal: Principal, subject: UUID, snapshot: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        postmortem = None
+        if review is not None:
+            postmortem = await reviewed(review.incident_view, subject)
+        release_links = await in_thread(workbench.release_links_for, subject)
+        actions = available_actions(snapshot)
+        return {
+            "principal": principal,
+            "snapshot": snapshot,
+            "release_links": release_links,
+            "postmortem": postmortem,
+            "postmortem_kinds": EVENT_KINDS,
+            "live_kinds": LIVE_KINDS,
+            "actions": actions,
+            # #572: display-only derivations from the same snapshot.
+            "view": page_view(snapshot, postmortem, actions, message_available=True),
+            # One fresh key per rendered form: two operators on the same page
+            # state must not share an idempotency key.
+            "form_nonce": uuid4().hex,
+        }
+
     @app.get("/incidents/{incident_id}", response_class=HTMLResponse)
     async def incident_page(request: Request, incident_id: str) -> Response:
         principal = await ui(request)
@@ -615,25 +638,27 @@ def create_app(
                 snapshot=snapshot,
                 view=handoff_view(snapshot),
             )
-        postmortem = None
-        if review is not None:
-            postmortem = await reviewed(review.incident_view, subject)
-        release_links = await in_thread(workbench.release_links_for, subject)
-        actions = available_actions(snapshot)
         return render(
-            "incident.html",
-            principal=principal,
-            snapshot=snapshot,
-            release_links=release_links,
-            postmortem=postmortem,
-            postmortem_kinds=EVENT_KINDS,
-            actions=actions,
-            # #572: display-only derivations from the same snapshot.
-            view=page_view(snapshot, postmortem, actions, message_available=True),
-            # One fresh key per rendered form: two operators on the same page
-            # state must not share an idempotency key.
-            form_nonce=uuid4().hex,
+            "incident.html", **await incident_context(principal, subject, snapshot)
         )
+
+    @app.get("/incidents/{incident_id}/live", response_class=HTMLResponse)
+    async def incident_live(request: Request, incident_id: str) -> Response:
+        """The incident page's changing regions alone (workbench P3-14): the
+        same login, snapshot and projection as the page, which swaps them
+        in place on every event instead of reloading."""
+        principal = await ui(request)
+        subject = incident_of(incident_id)
+        snapshot = await in_thread(workbench.snapshot, subject)
+        if snapshot.get("handoff_only"):
+            response = HTMLResponse('<div id="live" data-reload="1"></div>')
+        else:
+            response = render(
+                "incident_live.html",
+                **await incident_context(principal, subject, snapshot),
+            )
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     # -- postmortem review (M1-03 step 3) ----------------------------------
 
@@ -1025,6 +1050,9 @@ def create_app(
         revision = fields.get("revision")
         to_target = fields.get("to_target")
         into_incident_id = fields.get("into_incident_id")
+        raw_retry = fields.get("retry_of")
+        if raw_retry is not None and not raw_retry.isdigit():
+            raise _Refusal(400, "INVALID_INPUT")
         result = await in_thread(
             workbench.control,
             subject,
@@ -1036,6 +1064,7 @@ def create_app(
             revision=revision if revision else None,
             to_target=to_target if to_target else None,
             into_incident_id=into_incident_id if into_incident_id else None,
+            retry_of=None if raw_retry is None else int(raw_retry),
         )
         if wants_html(request):
             return RedirectResponse(f"/incidents/{subject}", status_code=303)
