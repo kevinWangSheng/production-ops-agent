@@ -6,8 +6,10 @@ expand things by their visible names, read what is shown. Assertions are on
 what the user can see, never on markup, CSS classes or element counts.
 
 Path (a) (P4): open the detail page -> expand one log step and one query ->
-see the raw result the tool returned. Paths (b) and (c) are added by P4 (with
-P2) and P7.
+see the raw result the tool returned.
+Path (b) (P4, with P2): send a message to the investigation -> it is shown as
+queued -> the agent's reply appears in the Investigation log. Path (c) is
+added by P7.
 """
 
 from __future__ import annotations
@@ -18,12 +20,14 @@ import secrets
 import socket
 import threading
 import time
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
 from opspilot.tools import fixture
 from opspilot.web import AuthConfig, Authenticator, create_app, hash_password
+from tests.m1_investigation_support import reply
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
     UI_PASSWORD,
     UI_USER,
@@ -45,7 +49,7 @@ RAW_BODY = json.dumps(
 ).encode()
 
 
-# contract P4 path (a) locator
+# contract P4 path (a) locator (also path (b))
 # The contract fixes the flow, not the accessible names. These are the only
 # names the test depends on; wire the page to them (or change them here),
 # never the assertions below.
@@ -72,6 +76,26 @@ class Detail:
     def query(self):
         # The query inside that step, named by its query expression.
         return self._toggle(self.log(), re.compile(re.escape(fixture.FIXTURE_EXPR)))
+
+    # path (b)
+    def composer(self):
+        # The investigation input below the log (not the P7 Chat panel's box):
+        # a text box whose accessible name says it messages the investigation.
+        return self.page.get_by_role(
+            "textbox", name=re.compile(r"message.*investigation", re.I)
+        )
+
+    def send(self):
+        # The composer's submit control, as the user sees it.
+        return (
+            self.composer()
+            .locator("xpath=ancestor::form[1]")
+            .get_by_role("button", name=re.compile(r"^\s*send\b", re.I))
+        )
+
+    def queued(self):
+        # The "Queued requests" area: a landmark region named by its heading.
+        return self.page.get_by_role("region", name=re.compile(r"queued", re.I))
 
 
 def _free_port() -> int:
@@ -146,17 +170,20 @@ def browser_page_fixture(incident):
             browser.close()
 
 
-def test_path_a_detail_step_query_raw_result(incident, served, browser_page):
-    incident_id = incident
-    page = browser_page
-
-    # Sign in through the login form and land on the incident page.
+def _sign_in(page, served, incident_id):
+    """Sign in through the login form and land on the incident page."""
     response = page.goto(f"{served}/incidents/{incident_id}")
     assert response is not None and response.ok
     page.get_by_label("User name").fill(UI_USER)
     page.get_by_label("Password").fill(UI_PASSWORD)
     page.get_by_role("button", name="Sign in").click()
     page.wait_for_url(re.compile(rf"/incidents/{incident_id}$"))
+
+
+def test_path_a_detail_step_query_raw_result(incident, served, browser_page):
+    incident_id = incident
+    page = browser_page
+    _sign_in(page, served, incident_id)
 
     detail = Detail(page)
     log = detail.log()
@@ -176,3 +203,67 @@ def test_path_a_detail_step_query_raw_result(incident, served, browser_page):
     command = re.compile(r"^\s*(apply|run)\b", re.I)
     expect(page.get_by_role("button", name=command)).to_have_count(0)
     expect(page.get_by_role("link", name=command)).to_have_count(0)
+
+
+MESSAGE = "workbench-path-b: which deploy changed the checkout error rate?"
+REPLY = "workbench-path-b: the scripted agent answers the queued message."
+
+
+def test_path_b_message_queued_then_reply_in_log(
+    workbench, incident, served, browser_page
+):
+    """D3/B7/C6: an idle incident with a published conclusion takes a message
+    from the investigation composer; it is queued until a Run reads it, and
+    the reply then shows in the Investigation log without expanding a step
+    (U3). The published conclusion stays on the page."""
+    incident_id = incident
+    page = browser_page
+    published = workbench.terminal(incident_id)["report_content"]
+    conclusion = json.loads(published)["summary"]
+    _sign_in(page, served, incident_id)
+    detail = Detail(page)
+    expect(page.get_by_text(conclusion).first).to_be_visible()
+
+    # The user writes to the investigation and sends it.
+    composer = detail.composer()
+    expect(composer).to_be_enabled()
+    composer.fill(MESSAGE)
+    detail.send().click()
+
+    # Back on the page, the message waits under Queued.
+    page.wait_for_url(re.compile(rf"/incidents/{incident_id}(\?.*)?(#.*)?$"))
+    expect(detail.queued().get_by_text(MESSAGE)).to_be_visible()
+    expect(page.get_by_text(conclusion).first).to_be_visible()
+
+    # The product picks it up: the request already opened the continuation
+    # Run (R2); the product runner runs it with a scripted model that answers
+    # the message's input sequence in the m0-response-v1 envelope (C6).
+    (message,) = workbench.unread(incident_id)
+    assert message["content"]["text"] == MESSAGE
+    answer = reply(
+        content=json.dumps(
+            {
+                "schema_version": "m0-response-v1",
+                "replies": [
+                    {
+                        "to_input_seq": message["sequence"],
+                        "text": REPLY,
+                        "evidence_ids": [],
+                    }
+                ],
+                "report": None,
+            }
+        )
+    )
+    workbench.run(SimpleNamespace(subject_id=str(incident_id)), [answer])
+
+    page.reload()
+    log = detail.log()
+    expect(log).to_be_visible()
+    # The reply is readable in the log as is, next to the message it answers.
+    expect(log.get_by_text(REPLY)).to_be_visible()
+    expect(log.get_by_text(MESSAGE)).to_be_visible()
+    # Read by a Run: no longer queued.
+    expect(detail.queued().get_by_text(MESSAGE)).not_to_be_visible()
+    # A reply-only Run leaves the published conclusion in place.
+    expect(page.get_by_text(conclusion).first).to_be_visible()
