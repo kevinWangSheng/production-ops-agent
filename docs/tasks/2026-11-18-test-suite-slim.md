@@ -1,6 +1,6 @@
 # 测试套件精简
 
-- 状态：进行中（PR1）
+- 状态：进行中（PR1 #709 待合并；PR2 已在本地完成，等 PR1 合并后开）
 - 更新日期：2026-11-18
 - 依据：AGENTS.md「验证与汇报」（外部 `IncidentScenario -> IncidentOutcome`）、[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)、用户方向 2026-11-17「测试少而有用」与 2026-11-18 裁决（见合同 r1）
 - 工作区：`/Users/shenghuikevin/dev/AI/poa-test-slim`，分支 `chore/test-suite-slim`（起点 `origin/main` e4020302）
@@ -60,8 +60,43 @@
   - M16 存活的原因是 publish 的人工控制栅栏有多层，单删一层会被其余层兜住；已把该条改成同时去掉 publish 判定与 `_lease_revoked` 两层。
 - **产品问题候选**（不修）：带转义引号的 JSON 文本（日志里再次序列化的 `\"token\": \"v\"`）不被脱敏；`redact_credentials` 只处理键名本身用转义拼写的情况。
 
+### PR2
+
+- **删除量**（相对 PR1 的树）：
+
+  | | 删前 | 删后 |
+  |---|---|---|
+  | `tests/` 下的 .py 文件 | 598 个 | 96 个（其中测试模块 55 个） |
+  | 行数 | 250,806 行 | 37,156 行 |
+  | 测试函数 | 7,033 个 | 485 个 |
+  | 收集用例 | 约 15,700 个 | 1,052 个（其中 PG 363 个） |
+
+  另删 17 个只服务已删测试的 `*_AMBIGUITIES.md`。
+- **留下什么**：
+  - 安全套件（`tests/safety/`，加上报告校验表与 Observer 独立性）。
+  - 工作台：`test_workbench_conversation`、`test_workbench_p3_late_results`、浏览器路径、`test_m1_incident_control_postgres`。
+  - 各功能验收步骤文件：F2、F6、F7、F11、F12、F13，F3 的 PG 验收。
+  - F8/F9/F14 的确定性合同文件：386 日志、413 健康、428 outbox、429 降级、392/394/395 部署与文档、385 上游映射。
+  - 迁移：`test_schema_migrations_postgres` 与几个小的 schema 结构守卫。
+  - 报告校验：`test_m1_report_contract_citations`、`test_686_report_json_contract`。
+  - 其他结构与凭据守卫：`test_architecture`、`test_knowledge_store_callers`、`test_m1_prometheus_credentials`、`test_sql_column_order_independence`。
+- **helper 搬家**：
+  - 被保留测试 import 的 18 个测试模块，去掉测试函数后改名为 `*_support.py`（以数字开头的加 `issue` 前缀），所有 import 改到新名。
+  - `tests/test_m1_otel_demo_contract.py` 原地去掉测试、保留文件名，因为 `scripts/f7_hostile_live.py` 从这个路径 import（`scripts/` 不动）。
+  - 被 ruff 当作未用而删掉的转出口名字，已按原文件的 import 补回。
+- **去掉墙钟等待**（只改测试，不改产品）：
+  - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
+  - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
+- **变异清单 24 条**（新增 M19–M23 报告校验、M24 Observer 独立性）：删后对 `tests/safety` 跑，24/24 killed（含 PG 3 条），见 PR 正文。
+  - M19–M23 在删前的两份报告测试文件上只能抓到 M19、M22，所以新加了报告校验表。
+  - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
+- **passes 证据**：
+  - 各功能步骤原本作为证据的确定性文件全部保留、原名不变，旧→新映射表在 PR 正文。
+  - 删掉的是子 PR 级的独立验收和实现者测试（例如 F11 PR-2b 至 PR-5b、F2 B1 的 PG 文件、`test_f2_query_deadline_acceptance`）。这些行为由保留的步骤文件和 `tests/safety` 覆盖。
+  - 历史任务记录里对已删文件的路径引用保持原样，属于历史记录。`docs/development.md` 里仍描述现行把守的引用已改为新文件。
+
 ## 下一步与交接
 
 - PR1：Draft，等 CI 与独立审查。
-- PR2：按审计分类删除，删前删后各跑一次 `make mutation MUTATION_ARGS='--suite tests'`。
+- PR2：PR1 合并后把 main 合进分支 `chore/test-suite-slim-2`，开 Draft PR，用 CI 测删后耗时。
 - 运行中资源：scratchpad 临时 PG 17（端口 55471，数据目录 `scratchpad/pgdata`），PR2 完成后停止。
