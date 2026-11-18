@@ -452,7 +452,7 @@
 {% if feedback.correct_next_steps %}<p class="small">What the next steps should have been</p><p class="pfbt">{{ feedback.correct_next_steps }}</p>{% endif %}
 {% if feedback.notes %}<p class="small">Notes</p><p class="pfbt">{{ feedback.notes }}</p>{% endif %}
 <p class="small" id="feedback-meta">by {{ feedback.updated_by }} · {{ (feedback.updated_at or "")[:16] | replace("T", " ") }} UTC</p>
-<p class="small">Shown to you only: the model that drafted this postmortem did not read it. If it disagrees with the draft, return or reject the version.</p>
+<p class="small">Shown to reviewers; not sent to the drafting model. If it disagrees with the draft, return or reject the version.</p>
 {% else %}
 <p class="small" id="feedback-none">No one has rated the investigation's root cause. Feedback is added on the <a href="/incidents/{{ page.incident_id }}#feedback">incident page</a>.</p>
 {% endif %}

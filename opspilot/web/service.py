@@ -1732,7 +1732,13 @@ class Workbench:
             store = self._feedback()
         except WorkbenchError:
             return None
-        row = store.get(incident_id)
+        try:
+            row = store.get(incident_id)
+        except PersistenceError as exc:
+            # The card is optional: a failed read hides it rather than
+            # failing the incident page, /live or the review page.
+            _log.warning("feedback read failed incident=%s code=%s", incident_id, exc)
+            return None
         if row is None:
             return None
         ref = None
