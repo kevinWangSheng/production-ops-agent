@@ -831,16 +831,24 @@ class _ControlOps(_StoreBase):
                 False,
             )
 
-    def relay_candidates(self, *, limit: int = 20) -> tuple[UUID, ...]:
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]:
         """Incidents that may need a continuation Run (workbench contract
         R1/R2): automatic, not cancelled/paused/merged, with a ``message``
-        no Run has read and no active current Run. A hint for the relay
-        pass; ``relay_continuation`` re-checks everything under the lock."""
+        no Run has read and no active current Run. Rows carry
+        ``incident_id``, ``intake_key``, ``current_run_id`` and
+        ``max_unread`` (the highest unread message sequence), so the caller
+        can drop an incident whose current Run is already the relay Run of
+        that very message (it ended before reading it, D12). A hint for the
+        relay pass; ``relay_continuation`` re-checks everything under the
+        lock."""
         if type(limit) is not int or limit < 1:
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+                "SELECT i.incident_id,i.intake_key,i.current_run_id,"
+                "(SELECT max(u.sequence) FROM opspilot_inputs u WHERE u.incident_id=i.incident_id AND u.kind='message' "
+                "AND u.sequence>(SELECT COALESCE(max(y.input_watermark),0) FROM opspilot_runs y WHERE y.incident_id=i.incident_id)) AS max_unread "
+                "FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
                 "JOIN opspilot_scope_controls sc ON sc.scope_id=1 "
                 "LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id "
                 "WHERE i.mode='automatic' AND i.state NOT IN ('cancelled','paused') AND i.merged_into_incident_id IS NULL "
@@ -851,7 +859,7 @@ class _ControlOps(_StoreBase):
                 "ORDER BY i.priority,i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
-        return tuple(row["incident_id"] for row in rows)
+        return tuple(dict(row) for row in rows)
 
     def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None:
         """What a continuation Run of ``incident_id`` would start from now

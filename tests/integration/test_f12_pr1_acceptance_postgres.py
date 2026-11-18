@@ -396,6 +396,21 @@ def test_relay_pass_reaches_an_eligible_incident_past_blocked_ones():
         assert sent.json().get("run_id"), sent.text
         _ok(_act(env, "cancel", 0), 1)
         blocked.append(env.subject)
+    # Bot finding on #702: a relay continuation that ended before reading its
+    # message (parked as the deadline sweep parks it) keeps the message
+    # unread; relaying it again is a no-op and must not crowd the pass.
+    parked = []
+    for n in range(limit + 1):
+        env = published(f"parked-{n}")
+        sent = _act(env, "message", 0, "Anything new?")
+        assert sent.json().get("run_id"), sent.text
+        with store.transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_runs SET state='waiting_human',owner=NULL,"
+                "lease_until=NULL WHERE run_id=%s",
+                (UUID(sent.json()["run_id"]),),
+            )
+        parked.append(env.subject)
     eligible = published("eligible")
     # The in-request relay is skipped (as when it fails, P2-2): the message
     # is admitted at the store and only the background pass can relay it.
@@ -409,7 +424,7 @@ def test_relay_pass_reaches_an_eligible_incident_past_blocked_ones():
         # Rank every blocked incident ahead of the eligible one.
         conn.execute(
             "UPDATE opspilot_incidents SET priority=0 WHERE incident_id=ANY(%s)",
-            (blocked,),
+            (blocked + parked,),
         )
         conn.execute(
             "UPDATE opspilot_incidents SET priority=2 WHERE incident_id=%s",
@@ -424,3 +439,5 @@ def test_relay_pass_reaches_an_eligible_incident_past_blocked_ones():
     assert current["run_id"] in opened
     for subject in blocked:
         assert store.rebuild(subject)["run"]["state"] == "cancelled"
+    for subject in parked:
+        assert store.rebuild(subject)["run"]["state"] == "waiting_human"

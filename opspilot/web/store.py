@@ -260,7 +260,7 @@ class IncidentStore(Protocol):
         ``(sequence, replayed)``."""
         ...
 
-    def relay_candidates(self, *, limit: int = 20) -> tuple[UUID, ...]: ...
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]: ...
 
     def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None: ...
 
@@ -681,7 +681,7 @@ class DurableIncidentStore:
     ) -> tuple[int, bool]:
         return self._store.append_message(incident_id, input_id, content, actor=actor)
 
-    def relay_candidates(self, *, limit: int = 20) -> tuple[UUID, ...]:
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]:
         return self._store.relay_candidates(limit=limit)
 
     def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None:

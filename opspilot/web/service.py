@@ -262,6 +262,16 @@ CHART_CATEGORIES = (
 _LOC_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 
 
+#: Candidates the relay pass reads before dropping no-op rows (R2); the
+#: pass then relays at most its ``limit`` of the rest.
+RELAY_SCAN = 1000
+
+
+def _relay_run_id(intake_key: str, max_unread: int) -> UUID:
+    """Contract R3: the continuation Run a message relays to."""
+    return uuid5(_INTAKE_NAMESPACE, f"{intake_key}:relay:{max_unread}")
+
+
 def _failure_code(exc: Exception) -> str:
     """What a log line may say about a failure (F8L-Q2 source discipline):
     a fixed code when the exception carries one, else only its type name; a
@@ -1288,10 +1298,7 @@ class Workbench:
             summary = self.incidents.find_incident(incident_id)
             if summary is None:
                 return None
-            run_id = uuid5(
-                _INTAKE_NAMESPACE,
-                f"{summary.intake_key}:relay:{basis['max_unread']}",
-            )
+            run_id = _relay_run_id(summary.intake_key, basis["max_unread"])
             if str(run_id) == basis["current_run_id"]:
                 # This very message already opened the current Run (R3): a
                 # repeat opens nothing, even when that Run was left paused.
@@ -1336,7 +1343,18 @@ class Workbench:
         """The background relay step (R2): one :meth:`relay` per candidate;
         a failure on one incident is logged and the others still run."""
         opened: list[UUID] = []
-        for incident_id in self.incidents.relay_candidates(limit=limit):
+        candidates = [
+            row
+            for row in self.incidents.relay_candidates(limit=RELAY_SCAN)
+            # The current Run is already the relay Run of this very message
+            # (it ended before reading it, D12): relay() would open nothing,
+            # and such rows must not crowd out relayable incidents.
+            if row["max_unread"] is None
+            or _relay_run_id(str(row["intake_key"]), int(row["max_unread"]))
+            != row["current_run_id"]
+        ][:limit]
+        for row in candidates:
+            incident_id = row["incident_id"]
             try:
                 run_id = self.relay(incident_id)
             except (PersistenceError, ContextError) as exc:
