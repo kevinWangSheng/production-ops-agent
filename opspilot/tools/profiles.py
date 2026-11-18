@@ -25,7 +25,13 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   three Elasticsearch/OpenSearch tools join it (B1-U2): both processes read
   that address to pick the face and versions, and only the worker reads the
   ``es-ro`` credential (``OPSPILOT_ES_API_KEY``, or ``OPSPILOT_ES_USERNAME``
-  and ``OPSPILOT_ES_PASSWORD``; ``OPSPILOT_ES_CA_FILE`` for HTTPS).
+  and ``OPSPILOT_ES_PASSWORD``; ``OPSPILOT_ES_CA_FILE`` for HTTPS). With
+  ``OPSPILOT_LOKI_URL`` set, ``grafana_loki_query`` joins it the same way
+  (C5-14): both processes read the address, only the worker reads the
+  ``loki-ro`` credential (``OPSPILOT_LOKI_USERNAME`` and
+  ``OPSPILOT_LOKI_PASSWORD``, or ``OPSPILOT_LOKI_BEARER_TOKEN``;
+  ``OPSPILOT_LOKI_CA_FILE`` for HTTPS) and the tenant
+  ``OPSPILOT_LOKI_TENANT_ID``.
 
 ``otel-demo-ext`` also reads ``OPSPILOT_CLUSTER_NAME`` (#722, r10 H-U1), the
 operator's name for the cluster its Kubernetes access reads: when set, the
@@ -36,8 +42,9 @@ value outside ``discipline.CLUSTER_NAME_PATTERN`` refuses to start
 (``CLUSTER_NAME_INVALID``). ``fixture`` and ``otel-demo`` never read it.
 
 Both processes must be started with the same value (and, for
-``otel-demo-ext``, with ``OPSPILOT_ES_URL`` set in both or in neither, and
-the same ``OPSPILOT_CLUSTER_NAME`` or none in both).
+``otel-demo-ext``, with ``OPSPILOT_ES_URL`` and ``OPSPILOT_LOKI_URL`` each set
+in both or in neither, and the same ``OPSPILOT_CLUSTER_NAME`` or none in
+both).
 """
 
 from __future__ import annotations
@@ -60,6 +67,7 @@ from opspilot.tools.fixture import (
     fixture_versions,
 )
 from opspilot.tools.kubernetes_core import KubernetesConfig
+from opspilot.tools.loki_logs import LokiConfig, loki_enabled
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
     otel_demo_executor_factory,
@@ -125,6 +133,8 @@ _STARTUP_CODES = frozenset(
         "PYTHON_NOT_FOUND",
         "ES_CONFIG_MISSING",
         "ES_CONFIG_INVALID",
+        "LOKI_CONFIG_MISSING",
+        "LOKI_CONFIG_INVALID",
     }
 )
 
@@ -148,6 +158,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # B1-U2: the Elasticsearch address alone decides the face and versions;
     # the web never reads an ``OPSPILOT_ES_*`` credential.
     elasticsearch = elasticsearch_enabled(env)
+    # C5-14: likewise the Loki address; never an ``OPSPILOT_LOKI_*``
+    # credential or tenant in the web.
+    loki = loki_enabled(env)
     # #722 CN-10: both processes read the name; the web records it in the
     # Run input, and whether it is set enters both processes' versions.
     cluster_name = _cluster_name(env)
@@ -159,7 +172,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # worker: their fixed codes end the process like any other
         # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
         # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters;
-        # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4).
+        # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4;
+        # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` for C5-4).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -168,6 +182,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 config=config,
                 kubernetes=KubernetesConfig.from_env(env),
                 elasticsearch=ElasticsearchConfig.from_env(env),
+                loki=LokiConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -178,10 +193,10 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     return ToolProfile(
         name="otel-demo-ext",
         face=lambda clock: otel_demo_ext_face(
-            clock, elasticsearch=elasticsearch, cluster_name=cluster_name
+            clock, elasticsearch=elasticsearch, loki=loki, cluster_name=cluster_name
         ),
         versions=lambda: otel_demo_ext_versions(
-            elasticsearch=elasticsearch, cluster_name=cluster_name
+            elasticsearch=elasticsearch, loki=loki, cluster_name=cluster_name
         ),
         executor_factory=executor_factory,
     )

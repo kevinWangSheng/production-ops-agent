@@ -34,6 +34,16 @@ what it was before B1. The web passes only whether the address is set; the
 worker also passes the ``es-ro`` connection, routed by tool name to its own
 ``ElasticsearchTransport`` (address in the selector
 ``elasticsearch_endpoint``).
+
+Configured-backend set (C5-14, #569): the same rule for Loki -- the
+``grafana_loki_query`` tool of :mod:`opspilot.tools.loki_logs` joins only when
+``OPSPILOT_LOKI_URL`` is set, listed under ``loki`` in
+``data_sources.available``. The tools array, source list and registry are
+computed from the set of configured backends in a fixed order
+(Elasticsearch, then Loki): the empty set gives ``TOOL_SCHEMA_REVISION`` and
+the Elasticsearch-only set ``ES_TOOL_SCHEMA_REVISION``, byte for byte what
+they were before C5. The worker routes the tool to its own ``LokiTransport``
+(``loki-ro`` slot, address in the selector ``loki_endpoint``).
 """
 
 from __future__ import annotations
@@ -55,6 +65,7 @@ from opspilot.tools import (
     kubernetes_core,
     kubernetes_logs,
     kubernetes_tabular,
+    loki_logs,
     otel_demo,
     prometheus_ext,
 )
@@ -86,6 +97,8 @@ __all__ = [
     "ES_TOOL_NAMES",
     "ES_TOOL_SCHEMAS",
     "ES_TOOL_SCHEMA_REVISION",
+    "LOKI_TOOL_NAMES",
+    "LOKI_TOOL_SCHEMA_REVISION",
     "PROFILE_NAME",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
@@ -94,6 +107,7 @@ __all__ = [
     "otel_demo_ext_face",
     "otel_demo_ext_registrations",
     "otel_demo_ext_versions",
+    "tool_schema_revision",
 ]
 
 PROFILE_NAME = "otel-demo-ext"
@@ -124,6 +138,18 @@ ES_TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *elasticsearch_logs.TOOL_SCHEMAS,
 )
 
+
+def _tool_schemas(
+    elasticsearch: bool = False, loki: bool = False
+) -> tuple[Mapping[str, Any], ...]:
+    """C5-14: the base array, then each configured backend's tools in the
+    fixed order Elasticsearch, Loki."""
+    schemas = ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS
+    if loki:
+        schemas = (*schemas, *loki_logs.TOOL_SCHEMAS)
+    return schemas
+
+
 #: What this profile can and cannot query (#311 U5); ``kubernetes_state``
 #: moves from not integrated to available (A2-2), and ``pod_logs`` with it
 #: (A3-11).
@@ -134,7 +160,7 @@ _NOT_INTEGRATED: tuple[str, ...] = tuple(
 )
 
 
-def _data_sources(elasticsearch: bool = False) -> dict[str, Any]:
+def _data_sources(elasticsearch: bool = False, loki: bool = False) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
             otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
@@ -148,6 +174,8 @@ def _data_sources(elasticsearch: bool = False) -> dict[str, Any]:
     }
     if elasticsearch:
         available["elasticsearch"] = sorted(elasticsearch_logs.TOOL_NAMES)
+    if loki:
+        available["loki"] = sorted(loki_logs.TOOL_NAMES)
     return {
         "available": available,
         "not_integrated": list(_NOT_INTEGRATED),
@@ -155,7 +183,9 @@ def _data_sources(elasticsearch: bool = False) -> dict[str, Any]:
     }
 
 
-def _registrations(elasticsearch: bool = False) -> tuple[ToolRegistration, ...]:
+def _registrations(
+    elasticsearch: bool = False, loki: bool = False
+) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
         *jaeger_query.jaeger_registrations(
@@ -172,44 +202,54 @@ def _registrations(elasticsearch: bool = False) -> tuple[ToolRegistration, ...]:
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
     )
-    if not elasticsearch:
-        return base
-    return (
-        *base,
-        *elasticsearch_logs.elasticsearch_registrations(
-            max_window_seconds=otel_demo.OBSERVATION_SECONDS
-        ),
-    )
+    if elasticsearch:
+        base = (
+            *base,
+            *elasticsearch_logs.elasticsearch_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
+    if loki:
+        base = (
+            *base,
+            *loki_logs.loki_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
+    return base
 
 
-def _tool_schema_revision(elasticsearch: bool = False) -> str:
+def tool_schema_revision(*, elasticsearch: bool = False, loki: bool = False) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
-    static resource table (A2-5: a new resource is a new version). With
-    Elasticsearch configured (B1-U2) the tools, registry and source list
-    differ, so the hash does; the inputs without it are unchanged."""
+    static resource table (A2-5: a new resource is a new version). With a
+    backend configured (B1-U2, C5-14) the tools, registry and source list
+    differ, so the hash does; the inputs of the empty and the
+    Elasticsearch-only set are unchanged."""
     digest = canonical_hash(
         {
             "profile": PROFILE_NAME,
-            "tool_schemas": [
-                dict(item)
-                for item in (ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS)
-            ],
-            "registry": ToolRegistry(_registrations(elasticsearch)).revision,
+            "tool_schemas": [dict(item) for item in _tool_schemas(elasticsearch, loki)],
+            "registry": ToolRegistry(_registrations(elasticsearch, loki)).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
-            "data_sources": _data_sources(elasticsearch),
+            "data_sources": _data_sources(elasticsearch, loki),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
     )
     return f"{PROFILE_NAME}-{digest[:12]}"
 
 
-TOOL_SCHEMA_REVISION = _tool_schema_revision()
+TOOL_SCHEMA_REVISION = tool_schema_revision()
 TOOL_NAMES: tuple[str, ...] = tuple(item.name for item in _registrations())
 #: B1-U2: the same with ``OPSPILOT_ES_URL`` set.
-ES_TOOL_SCHEMA_REVISION = _tool_schema_revision(elasticsearch=True)
+ES_TOOL_SCHEMA_REVISION = tool_schema_revision(elasticsearch=True)
 ES_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(elasticsearch=True)
+)
+#: C5-14: the same with only ``OPSPILOT_LOKI_URL`` set.
+LOKI_TOOL_SCHEMA_REVISION = tool_schema_revision(loki=True)
+LOKI_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(loki=True)
 )
 
 
@@ -218,37 +258,43 @@ def _variant(cluster_name: str | None) -> str:
 
 
 def otel_demo_ext_versions(
-    *, elasticsearch: bool = False, cluster_name: str | None = None
+    *, elasticsearch: bool = False, loki: bool = False, cluster_name: str | None = None
 ) -> dict[str, str]:
-    """``elasticsearch``: whether ``OPSPILOT_ES_URL`` is set (B1-U2);
-    ``cluster_name``: the operator's local cluster name (#722), of which only
-    whether it is set matters here."""
+    """``elasticsearch`` / ``loki``: whether ``OPSPILOT_ES_URL`` /
+    ``OPSPILOT_LOKI_URL`` is set (B1-U2, C5-14); ``cluster_name``: the
+    operator's local cluster name (#722), of which only whether it is set
+    matters here."""
     return {
         **investigation_versions(_variant(cluster_name)),
-        "tool_schema_revision": (
-            ES_TOOL_SCHEMA_REVISION if elasticsearch else TOOL_SCHEMA_REVISION
+        "tool_schema_revision": tool_schema_revision(
+            elasticsearch=elasticsearch, loki=loki
         ),
     }
 
 
 def otel_demo_ext_face(
-    clock: Clock, *, elasticsearch: bool = False, cluster_name: str | None = None
+    clock: Clock,
+    *,
+    elasticsearch: bool = False,
+    loki: bool = False,
+    cluster_name: str | None = None,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
-    window is fixed at submission the same way. ``elasticsearch``: whether
-    ``OPSPILOT_ES_URL`` is set (B1-U2). ``cluster_name`` (#722): the local
-    cluster name every fresh Run records and the multi-cluster paragraph
-    names; ``None`` (or empty) leaves the face as it was."""
+    window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
+    whether ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` is set (B1-U2,
+    C5-14). ``cluster_name`` (#722): the local cluster name every fresh Run
+    records and the multi-cluster paragraph names; ``None`` (or empty) leaves
+    the face as it was."""
 
     def evidence_context(run_id: str) -> Mapping[str, Any]:
         end = clock.now().astimezone(timezone.utc).replace(microsecond=0)
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
-        context["data_sources"] = _data_sources(elasticsearch)
+        context["data_sources"] = _data_sources(elasticsearch, loki)
         return context
 
     return ToolFace(
-        tool_schemas=ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS,
+        tool_schemas=_tool_schemas(elasticsearch, loki),
         variant_id=_variant(cluster_name),
         evidence_context=evidence_context,
         cluster_name=cluster_name or None,
@@ -259,6 +305,7 @@ def _target(
     config: otel_demo.OtelDemoConfig,
     kubernetes: kubernetes_core.KubernetesConfig,
     elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
+    loki: loki_logs.LokiConfig | None = None,
 ) -> RegisteredTarget:
     base = otel_demo._target(config)
     selector = {
@@ -268,6 +315,8 @@ def _target(
     }
     if elasticsearch is not None:
         selector[elasticsearch_logs.ENDPOINT_SELECTOR] = elasticsearch.url
+    if loki is not None:
+        selector[loki_logs.ENDPOINT_SELECTOR] = loki.url
     return RegisteredTarget(
         target_id=base.target_id,
         source=base.source,
@@ -290,11 +339,12 @@ def otel_demo_ext_registrations(
     config: otel_demo.OtelDemoConfig,
     kubernetes: kubernetes_core.KubernetesConfig,
     elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
+    loki: loki_logs.LokiConfig | None = None,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
-        tools=_registrations(elasticsearch is not None),
-        targets=(_target(config, kubernetes, elasticsearch),),
+        tools=_registrations(elasticsearch is not None, loki is not None),
+        targets=(_target(config, kubernetes, elasticsearch, loki),),
     )
 
 
@@ -315,6 +365,8 @@ def _overflow_summary(
         return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     if tool in elasticsearch_logs.TOOL_NAMES:
         return elasticsearch_logs.overflow_summary(tool, rows, query)
+    if tool in loki_logs.TOOL_NAMES:
+        return loki_logs.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -326,6 +378,7 @@ def otel_demo_ext_executor_factory(
     config: otel_demo.OtelDemoConfig | None = None,
     kubernetes: kubernetes_core.KubernetesConfig,
     elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
+    loki: loki_logs.LokiConfig | None = None,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -339,12 +392,15 @@ def otel_demo_ext_executor_factory(
     ``elasticsearch`` (B1-U2): the ``es-ro`` connection when
     ``OPSPILOT_ES_URL`` is set; the three tools are registered and routed
     only then.
+
+    ``loki`` (C5-14): the ``loki-ro`` connection when ``OPSPILOT_LOKI_URL``
+    is set; ``grafana_loki_query`` is registered and routed only then.
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
-    registrations = otel_demo_ext_registrations(config, kubernetes, elasticsearch)
+    registrations = otel_demo_ext_registrations(config, kubernetes, elasticsearch, loki)
     tools = ToolRegistry(registrations.tools)
     targets = TargetRegistry(list(registrations.targets))
     pair = config.prometheus_basic_auth
@@ -385,6 +441,14 @@ def otel_demo_ext_executor_factory(
             ca_file=elasticsearch.ca_file,
         )
         routes.update(dict.fromkeys(elasticsearch_logs.TOOL_NAMES, search))
+    if loki is not None:
+        # C5-4: its own slot and configured tenant, never another backend's.
+        logs = loki_logs.LokiTransport(
+            credentials={loki_logs.CREDENTIAL_REF: loki.authorization},
+            tenant_id=loki.tenant_id,
+            ca_file=loki.ca_file,
+        )
+        routes.update(dict.fromkeys(loki_logs.TOOL_NAMES, logs))
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
