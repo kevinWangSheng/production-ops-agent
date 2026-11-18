@@ -94,7 +94,7 @@
   - F11：新增 `Env.expire_deadline()`。在超级用户、`replica` 模式下把发布与其 session 的 `deadline_at` 移到当前时刻之前，`released_at` 同步平移以满足 CHECK；用它替换 5 处 `wait_past`。F11 四个步骤文件本机耗时从约 120 s 降到 25 s。
   - F2 第 3 步：工具超时在测试里改为 2 s（替换 otel-demo 注册项，Run 接受前替换，版本一致），30 s 降到 2.5 s。
 - **CI**：PR1 为 7 例自起 initdb 集群的用例加的「安装 PG 17 服务端」步骤，在 PR2 中随这三个文件（#392 roles、#429 downgrade impl、F11 U2 register）一起删掉；保留的测试都不调用 initdb。
-- **变异清单 34 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性、M26 trace 端点白名单，以及 #714 审查后加的 M27–M34）：对 `tests/mutation/run.py` 默认选集（`tests/safety`、`test_tracing`、`test_f7_observer_redaction`、`test_f7_step4_suspension_postgres`）跑，34/34 killed（含 PG 9 条），见 PR 正文。
+- **变异清单 35 条**（PR1 的 19 条，加 M20–M24 报告校验、M25 Observer 独立性、M26 trace 端点白名单，以及 #714 审查后加的 M27–M34）：对 `tests/mutation/run.py` 默认选集（`tests/safety`、`test_tracing`、`test_f7_observer_redaction`、`test_f7_step4_suspension_postgres`）跑，34/34 killed（含 PG 9 条）；merge #711 后新增的 M35 单独跑也 killed，见 PR 正文。
   - M20–M24 在删前的两份报告测试文件上只能抓到 M20、M23，所以新加了报告校验表。
   - 删前对旧的全量套件跑变异超出本机内存限制，未执行。
 - **passes 证据**：
@@ -111,6 +111,12 @@
   - N2：恢复 `tests/test_schema_subprocess_credentials.py`（pg_dump 不在命令行带 owner 密码）。
   - N3：只去掉 `_lease_revoked` 里挂起代际条件的变异会存活。原因是全局与目标挂起都会把在途 Run 置为 `paused` 并清空 `owner`/`lease_until`（`opspilot/persistence/controls.py:86,184`），这一层先拦下了，代际条件在产品路径上触发不到，所以属于纵深防御。M33 改为两层一起去掉，被 `test_f7_step4_suspension_postgres` 抓到。另加 `test_a_suspend_and_resume_during_a_run_revokes_its_lease`。
   - N4：`docs/testing/` 下 f2、f3、f6、f12、f13、f14 与 m0 文档里指向已删文件的引用已改指保留的测试或冻结证据，F12 第 1–4 步、F2 第 1 步里 #702 时就已不存在的用例名已更正。F13 R12 的 AST 导入检查移进 `tests/safety/test_safety_report_validation.py`，变异 M34。
+
+- **merge main（#711 P7 Chat、#713 P6 关联事故）**：
+  - 冲突的 13 个文件都是 main 修改、本分支已删除的测试，按精简标准保持删除：`acceptance/test_244_pr1_retention_schema_roles`、`test_347_release_reframe_input`、`test_427_pool_compose`；`integration/test_343_alert_after_release_incident_postgres`、`test_350_claim_order_postgres`、`test_f11_release_observation_postgres`、`test_f11_release_store_postgres`、`test_f2_b1_capacity_priority_postgres`、`test_pg_runtime_roles_contract`；`test_393_compose_static_impl`、`test_427_outbox_impl`、`test_429_schema_downgrade_postgres_impl`、`test_f2_b1_impl`。
+  - main 在已删文件里的改动只有一处要搬：迁移 head 常量（0026），已搬进 `f11_release_observation_postgres_support.py`。
+  - main 没有新增测试文件和工具。
+  - Chat 面板是新的模型输入通道，其凭据脱敏原先没有用例守。已在 `test_safety_model_inputs_postgres.py` 加一例（Chat 提问与它读到的记录，其中模型报告摘要里放了凭据），变异 M35。
 
 ### 已交接 Run 跟进的三处证据现状（F12 第 1–2 步、F2 第 1 步）
 

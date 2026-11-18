@@ -19,7 +19,7 @@ import psycopg
 import pytest
 
 from opspilot.acceptance import IncidentScenario
-from tests.m1_investigation_support import report_from_transcript
+from tests.m1_investigation_support import reply, report_from_transcript
 from tests.target_support import AnyTargetRegistry
 from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
     TARGET,
@@ -188,3 +188,29 @@ def test_the_evidence_page_never_shows_a_stored_credential(
     assert MARKER in response.text
     for secret in (*SECRETS, stale):
         assert secret not in response.text, secret
+
+
+def test_a_chat_question_and_the_record_reach_the_model_without_credentials(
+    workbench,
+):
+    """Workbench P7: the Chat panel answers from the incident record with its
+    own model call; the question and the record it is given are redacted."""
+    scenario = workbench.from_alert("safety-chat")
+    incident = UUID(scenario.subject_id)
+    workbench.message(incident, TEXT)  # the human input carries the shapes
+
+    def report_quoting_the_secret(call):
+        # the model's own report text carries them too (model output is not
+        # trusted to be clean; the Chat context redacts what it shows)
+        result = report_from_transcript(call)
+        body = json.loads(result.content)
+        body["summary"] = TEXT
+        return reply(content=json.dumps(body))
+
+    workbench.run(scenario, [tool_round(), report_quoting_the_secret])
+    asked = workbench.chat_ask(incident, TEXT)
+    assert 200 <= asked.status < 300, asked.text
+    model = workbench.chat_answer(
+        [reply(content=json.dumps({"answer": "ok", "steer": False, "refs": []}))]
+    )
+    _assert_clean(model)

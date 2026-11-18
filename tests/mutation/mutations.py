@@ -312,4 +312,12 @@ MUTATIONS: tuple[Mutation, ...] = (
         "from __future__ import annotations\n",
         "from __future__ import annotations\n\nimport opspilot.tracing  # noqa: F401\n",
     ),
+    Mutation(
+        "M35",
+        "credentials: the Chat panel's model input is redacted (workbench P7)",
+        "opspilot/chat/context.py",
+        "    text = redact_credentials(str(value))\n",
+        "    text = str(value)\n",
+        pg=True,
+    ),
 )
