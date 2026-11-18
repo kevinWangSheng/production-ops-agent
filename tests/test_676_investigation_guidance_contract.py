@@ -23,6 +23,7 @@ from opspilot.investigation.loop import investigation_versions
 from opspilot.investigation.reports import REPORT_CONTRACT, REPORT_SCHEMA_VERSION
 from opspilot.tools import kubernetes_core, kubernetes_tabular
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
+from tests.test_695_investigation_guidance_contract import remove_rule_sentences
 
 # Values on origin/main before the #676 release.  The contract requires
 # inequality for the changed prompt/tool faces and equality for the frozen
@@ -36,6 +37,29 @@ CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
 # its leading space. D13 moves the background rule exclusively to ext.
 MAIN_INVESTIGATION_METHOD_SHA256 = (
     "222e5fa74a8acd694fa369ef98e9b9e083c4e1f13036ed21952591ba26e1fcf3"
+)
+# #695/#690 D16 preserves the old bytes outside the five new sentences.
+# KUBERNETES_GUIDANCE read from this worktree's unchanged main text, UTF-8,
+# including its leading space; no implementation branch was consulted.
+MAIN_KUBERNETES_GUIDANCE_SHA256 = (
+    "1ff52ac3c223e1c249998fb32845492da18ee84262c4764c7e41e9c26b728768"
+)
+ORIGINAL_CONFIGURATION_CAUSE_SENTENCE = (
+    "Name such a setting as the root cause only when the fault it declares "
+    "matches the failure path you observed; otherwise keep it as a hypothesis."
+)
+# Superseded by #695: this is now forbidden, rather than a required rule.
+FORBIDDEN_CONFIGURATION_CAUSE_PATTERNS = (
+    r"\b(?:settings?|configurations?|configmaps?|switch(?:es)?|toggles?)\b",
+    r"\broot[_ -]cause\b",
+    r"\b(?:only|solely)\b",
+    r"\b(?:declar\w*|specified|configured|stated)\b",
+    r"\b(?:faults?|failures?|errors?|delays?)\b",
+    r"\b(?:observed|measured|visible)\b",
+    r"\bpaths?\b",
+    r"\b(?:match\w*|align\w*|correspond\w*|consistent|agree\w*)\b",
+    r"\b(?:otherwise|else|if\s+not)\b",
+    r"\bhypothes(?:is|es)\b",
 )
 
 # D6-D9 as revised by D12-D14: each tuple describes ONE prose sentence,
@@ -67,21 +91,6 @@ SEMANTIC_RULES = {
             r"\bobject\b",
             r"\bhypothes(?:is|es)\b",
             r"\b(?:not\s+(?:enough|sufficient)|insufficient|does\s+not\s+suffice)\b",
-        ),
-    ),
-    "configuration_cause_requires_matching_failure_path": (
-        "kubernetes_guidance",
-        (
-            r"\b(?:settings?|configurations?|configmaps?|switch(?:es)?|toggles?)\b",
-            r"\broot[_ -]cause\b",
-            r"\b(?:only|solely)\b",
-            r"\b(?:declar\w*|specified|configured|stated)\b",
-            r"\b(?:faults?|failures?|errors?|delays?)\b",
-            r"\b(?:observed|measured|visible)\b",
-            r"\bpaths?\b",
-            r"\b(?:match\w*|align\w*|correspond\w*|consistent|agree\w*)\b",
-            r"\b(?:otherwise|else|if\s+not)\b",
-            r"\bhypothes(?:is|es)\b",
         ),
     ),
     "event_only_partial_requires_completed_investigation": (
@@ -151,10 +160,6 @@ SEMANTIC_EXAMPLES = {
         "Supported requires a fact claim that names that object as the cause; "
         "a hypothesis alone is not enough."
     ),
-    "configuration_cause_requires_matching_failure_path": (
-        "Treat a setting as root cause only when its declared fault matches "
-        "the observed failure path; otherwise keep it as a hypothesis."
-    ),
     "event_only_partial_requires_completed_investigation": (
         "For a completed investigation with only event evidence supporting "
         "the cause, use conclusion partial."
@@ -183,9 +188,6 @@ SEMANTIC_WEAKENED_EXAMPLES = {
     "supported_cause_requires_fact_not_hypothesis_alone": (
         "Supported requires a claim naming that object as the cause; "
         "a hypothesis alone is enough."
-    ),
-    "configuration_cause_requires_matching_failure_path": (
-        "Treat a setting as root cause; otherwise keep it as a hypothesis."
     ),
     "event_only_partial_requires_completed_investigation": (
         "For an investigation with only event evidence supporting "
@@ -511,15 +513,65 @@ def test_kubernetes_guidance_names_the_required_network_resources():
         )
 
 
-def test_d13_base_investigation_method_is_byte_identical_to_main_83b3b968():
+def test_d16_base_method_preserves_main_83b3b968_except_the_two_new_rules():
     method = _segments("replay-candidate")["investigation_method"].text
     rendered = d.render(
         "replay-candidate", model_requests=5, report_contract=REPORT_CONTRACT
     )
     assert method in rendered
-    assert hashlib.sha256(method.encode("utf-8")).hexdigest() == (
+    restored = remove_rule_sentences(method, ("M1", "M2"))
+    assert hashlib.sha256(restored.encode("utf-8")).hexdigest() == (
         MAIN_INVESTIGATION_METHOD_SHA256
     )
+
+
+def test_d16_kubernetes_guidance_preserves_main_except_the_three_new_rules():
+    guidance = _rendered_section("kubernetes_guidance")
+    restored = remove_rule_sentences(guidance, ("K1", "K2", "K3"))
+    # Restore the old sentence at its ORIGINAL anchor, independently of where
+    # K1/K2/K3 were placed. D19 does not pin the positions of the new rules.
+    start, _ = _require_semantic_sentence(
+        restored, "event_only_partial_requires_completed_investigation"
+    )
+    restored = (
+        restored[:start]
+        + ORIGINAL_CONFIGURATION_CAUSE_SENTENCE
+        + " "
+        + restored[start:]
+    )
+    assert hashlib.sha256(restored.encode("utf-8")).hexdigest() == (
+        MAIN_KUBERNETES_GUIDANCE_SHA256
+    )
+
+
+def test_d16_old_configuration_matching_failure_path_rule_is_forbidden():
+    _forbid_sentence(
+        _rendered_section("kubernetes_guidance"),
+        FORBIDDEN_CONFIGURATION_CAUSE_PATTERNS,
+    )
+
+
+@pytest.mark.parametrize(
+    "old_rule",
+    [
+        ORIGINAL_CONFIGURATION_CAUSE_SENTENCE,
+        "Treat a setting as root cause only when its declared fault matches "
+        "the observed failure path; otherwise keep it as a hypothesis.",
+    ],
+)
+def test_d16_old_configuration_rule_is_rejected_and_removal_clears_it(old_rule: str):
+    rendered = d.render(
+        "replay-candidate",
+        model_requests=5,
+        report_contract=" ".join(SEMANTIC_EXAMPLES.values()),
+    )
+    patterns = FORBIDDEN_CONFIGURATION_CAUSE_PATTERNS
+    _forbid_sentence(rendered, patterns)
+    mutated = rendered + " " + old_rule
+    with pytest.raises(AssertionError, match="forbidden prose sentence"):
+        _forbid_sentence(mutated, patterns)
+    start, end = _require_sentence(mutated, patterns)
+    _forbid_sentence(mutated[:start] + mutated[end:], patterns)
 
 
 def test_d13_base_render_omits_the_ext_background_guidance():

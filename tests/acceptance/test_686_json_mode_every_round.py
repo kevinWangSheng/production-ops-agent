@@ -137,24 +137,24 @@ def test_forced_final_retry_also_serializes_json_mode():
 
 @pytest.mark.parametrize("mode", [None, "report_optional", "reply_only"])
 def test_recorded_revision_sets_remain_the_main_baseline(mode):
-    """R3/D8: freeze main aa86233d values, rather than comparing to current constants."""
+    """R3/D8: freeze main values after #695 (PR-G), rather than comparing to current constants."""
     script = [_wrapped()] if mode else [_tool(), report_from_transcript]
     loop, request, _, _, _, _ = _assemble(script, mode=mode)
     result = loop.run(request)
     assert result.execution == ("answered" if mode else "completed")
-    assert result.prompt_revision == "prompt-replay-candidate-8688f6e52275"
+    assert result.prompt_revision == "prompt-replay-candidate-860b743085d1"
     assert fixture_versions() == {
-        "prompt_revision": "prompt-replay-candidate-8688f6e52275",
+        "prompt_revision": "prompt-replay-candidate-860b743085d1",
         "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
         "tool_schema_revision": "fixture-5",
     }
     assert otel_demo_versions() == {
-        "prompt_revision": "prompt-replay-candidate-8688f6e52275",
+        "prompt_revision": "prompt-replay-candidate-860b743085d1",
         "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
         "tool_schema_revision": "otel-demo-a3a95a0f888e",
     }
     assert otel_demo_ext_versions() == {
-        "prompt_revision": "prompt-replay-candidate-k8s-0b066c7cd6d1",
+        "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
         "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
         "tool_schema_revision": "otel-demo-ext-c63f058afb18",
     }

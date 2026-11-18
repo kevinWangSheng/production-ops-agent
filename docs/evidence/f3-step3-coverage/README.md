@@ -98,3 +98,15 @@ F3 PR-2 预审 D9-a：PR-3b 开工时 `prompt_revision` 已由 `prompt-replay-ca
 - 覆盖节：jaeger `failed`（非 ok 3 次）；prometheus `all_ok`（ok 12、no_data 3）；其余三源 `not_integrated`。
 - U6-a 判定：**通过**（报告非 supported，jaeger 行 `gap=true`）。
 - 费用：`known_cost_cny_upper` 0.602 CNY（上界）；prompt 203,025、completion 17,925。
+
+## D9 重跑：场景 A（r3，2026-11-17）
+
+r3（#690 两句加进 INVESTIGATION_METHOD）使基础档位 `prompt_revision` 变为 `prompt-replay-candidate-860b743085d1`（[r3 任务记录](../../tasks/2026-11-17-r3-prompt-release.md) D21），所以再重跑场景 A 一次。上面各节的冻结 summary 都没有改。
+
+- 做法同上：租机主机，代码 `b0652dbd`（PR-G `ea2bc41b` + PR-R `719919e7`，代码树与 PR-G 最终 HEAD `d065c41e` 相同），替身 `m1_otel_stub.py`（29417，延迟 1.0 s）加真实 DeepSeek，一次性 PG 17（56157，`0024_trace_outbox`），Jaeger 指向无监听的 29418，`--model-requests 100 --lab-round f3-r3-d9-missing-source --f3-coverage --f3-answer evals/f3/missing-source/answer.json`，输出目录 `missing-source-rerun-860b743085d1`（summary 本身不含 revision 字符串，按目录后缀与运行代码对应）。
+- Run `8a29d3e9-b837-4376-bf58-4b93fa6773d4`（20:21:37–20:23:07Z），13 次 HTTP；报告 `m0-report-v3`，`completed / partial`，`root_cause: null`。
+- [summary](missing-source-rerun-860b743085d1/8a29d3e9-b837-4376-bf58-4b93fa6773d4/summary.json) · [LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/fb80b48d-691e-4ff1-a5f5-8665b28969db/r/00000000-0000-0000-d1e5-f9aa5ec31903?poll=true)（回读 `found`，`longlived`）
+- 覆盖节：jaeger `failed`（非 ok 5 次：`SOURCE_UNAVAILABLE ×4`、`INVALID_PARAMS ×1`）；prometheus `all_ok`（ok 16、no_data 2）；其余三源 `not_integrated`。
+- U6-a 判定：**通过**（报告非 supported，jaeger 行 `gap=true`）。
+- 同机同时段另有 PR 测试在跑（约 20:20–20:27Z，见 [f3-acceptance-live/run.md](../f3-acceptance-live/run.md)「r3」偏离一节），未观察到影响。
+- 费用：`known_cost_cny_upper` 0.557 CNY（上界）；prompt 200,002、completion 13,622。
