@@ -136,14 +136,13 @@ MAX_VALUE_CHARS = 2000
 MAX_INDEX_CHARS = 1000
 MAX_TIME_FIELD_CHARS = 200
 DEFAULT_TIME_FIELD = "@timestamp"
-#: B1-6: refused anywhere in the model's JSON, compared case-folded. Any key
-#: containing ``script`` is refused as well (``FORBIDDEN_KEY_PART``), so
-#: Painless cannot arrive under a name this list does not spell out
-#: (``minimum_should_match_script``, ``bucket_script``, ``map_script``,
-#: ``_script`` ...). ``significant_terms``/``significant_text`` take their
-#: background counts from the whole index, outside the window, and
-#: ``children``/``parent`` join other documents; ``indexed_shape`` reads a
-#: shape from another document (independent review, PR #705).
+#: B1-6: refused anywhere in the model's JSON, compared case-folded. A key
+#: with ``script`` as one of its ``_``-separated tokens is refused as well
+#: (``SCRIPT_TOKEN``), so Painless cannot arrive under a name this list does
+#: not spell out (``minimum_should_match_script``, ``bucket_script``,
+#: ``map_script``, ``_script``), while field names that merely contain the
+#: letters (``description``, ``transcript_id``) are sent. ``indexed_shape``
+#: reads a shape from another document (independent review, PR #705).
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
     {
         "script",
@@ -156,14 +155,17 @@ FORBIDDEN_KEYS: frozenset[str] = frozenset(
         "pit",
         "scroll",
         "stored_scripts",
-        "significant_terms",
-        "significant_text",
-        "children",
-        "parent",
         "indexed_shape",
     }
 )
-FORBIDDEN_KEY_PART = "script"
+SCRIPT_TOKEN = "script"
+#: Refused inside ``aggregations`` only, where they are aggregation types:
+#: ``significant_terms``/``significant_text`` take their background counts
+#: from the whole index, outside the window, and ``children``/``parent`` join
+#: other documents. In ``query`` or ``sort`` such a key is a field name.
+FORBIDDEN_AGGREGATIONS: frozenset[str] = frozenset(
+    {"significant_terms", "significant_text", "children", "parent"}
+)
 #: B1-7: the two hidden aggregations that report the source time.
 _TIME_MIN_AGG = "opspilot_source_time_min"
 _TIME_MAX_AGG = "opspilot_source_time_max"
@@ -550,8 +552,15 @@ def _references_document(key: str, inner: object) -> bool:
     return False
 
 
-def _check_forbidden(value: object) -> None:
-    """Raise ``_Forbidden`` for the first forbidden construct at any depth."""
+def _forbidden_name(name: str, *, aggregations: bool) -> bool:
+    if name in FORBIDDEN_KEYS or SCRIPT_TOKEN in name.split("_"):
+        return True
+    return aggregations and name in FORBIDDEN_AGGREGATIONS
+
+
+def _check_forbidden(value: object, *, aggregations: bool = False) -> None:
+    """Raise ``_Forbidden`` for the first forbidden construct at any depth;
+    ``aggregations`` adds the aggregation-only types."""
     stack = [value]
     while stack:
         item = stack.pop()
@@ -559,7 +568,7 @@ def _check_forbidden(value: object) -> None:
             for key, inner in item.items():
                 if isinstance(key, str):
                     name = key.lower()
-                    if name in FORBIDDEN_KEYS or FORBIDDEN_KEY_PART in name:
+                    if _forbidden_name(name, aggregations=aggregations):
                         raise _Forbidden(name)
                     if _references_document(name, inner):
                         raise _Forbidden(f"{name} by document reference")
@@ -602,14 +611,15 @@ def _dsl_params(
                 + ".",
             )
         try:
-            _check_forbidden(value)
+            _check_forbidden(value, aggregations=name == "aggregations")
         except _Forbidden as found:
             return {}, _refused(
                 "QUERY_CONSTRUCT_NOT_ALLOWED",
                 f"{name} contains {found.key}, which this tool refuses before "
-                "sending: no key containing script, no runtime_mappings, wrapper, "
-                "global, significant_terms, significant_text, children or parent "
-                "aggregations, pit, scroll or indexed_shape, and no terms lookup, "
+                "sending: no key with script as a _-separated part, no "
+                "runtime_mappings, wrapper, global, pit, scroll or indexed_shape, "
+                "no significant_terms, significant_text, children or parent "
+                "aggregation, and no terms lookup, "
                 "more_like_this document with _index or percolate of a stored "
                 "document, at any depth.",
             )
@@ -1493,7 +1503,8 @@ _SEARCH_DESCRIPTION = (
     "_truncated_fields. "
     "incomplete is true when more documents matched than are shown, the "
     "search timed out or shards failed. "
-    "Any key containing script, runtime_mappings, wrapper, pit, scroll, "
+    "Any key with script as a _-separated part (script, bucket_script, "
+    "_script ...), runtime_mappings, wrapper, pit, scroll, "
     "indexed_shape, the global, significant_terms, significant_text, children "
     "and parent aggregations, terms lookups, more_like_this documents with "
     "_index and percolate of a stored document are refused before sending "
