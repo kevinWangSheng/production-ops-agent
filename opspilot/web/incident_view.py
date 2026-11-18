@@ -44,6 +44,7 @@ DONE = {
     "resume": "resumed",
     "cancel": "canceled the Run",
     "new_run": "started a new investigation",
+    "reinvestigate": "started a new investigation",
     "register_remediation": "marked it remediated",
     "merge_into": "merged it into another incident",
     "rebind_target": "changed the target",
@@ -54,6 +55,8 @@ DONE = {
 #: ``correct`` are the replaced control actions; their rows are shown as
 #: messages and never count as unread (contract B3).
 MESSAGE_ACTIONS = ("follow_up", "correct")
+#: Actions the message box posts, never drawn as header buttons.
+COMPOSER_ACTIONS = ("message", *MESSAGE_ACTIONS)
 
 #: Button text per control; the posted ``action`` value is unchanged.
 BUTTON = {
@@ -64,6 +67,7 @@ BUTTON = {
     "resume": "Resume",
     "cancel": "Cancel Run",
     "new_run": "Re-investigate",
+    "reinvestigate": "Re-investigate",
     "register_remediation": "Mark remediated",
     "merge_into": "Merge",
     "rebind_target": "Change target",
@@ -79,11 +83,11 @@ LAYOUT: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "paused": (("resume", "takeover"), ("cancel", "close")),
     "needs_attention": (
-        ("new_run", "takeover"),
+        ("reinvestigate", "new_run", "takeover"),
         ("register_remediation", "cancel", "close", "rebind_target", "merge_into"),
     ),
     "canceled": (
-        ("new_run", "takeover"),
+        ("new_run", "reinvestigate", "takeover"),
         ("register_remediation", "close", "rebind_target", "merge_into"),
     ),
     "root_cause": (
@@ -100,7 +104,7 @@ LAYOUT: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 #: The one primary-styled button per status, when offered.
 LEAD = {
     "paused": "resume",
-    "needs_attention": "new_run",
+    "needs_attention": "reinvestigate",
     "canceled": "new_run",
     "root_cause": "register_remediation",
     "human_owned": "register_remediation",
@@ -115,6 +119,7 @@ HINT = {
     "resume": "Put the Run back in the queue; it continues from its committed steps.",
     "cancel": "Stop this Run for good without a conclusion. Re-investigate then starts a new one.",
     "new_run": "Start a fresh investigation for this incident; earlier Runs stay in the log.",
+    "reinvestigate": "Cancel this investigation and start a new Run that reads every message so far.",
     "takeover": "Make the incident human-owned: the Agent stops and does not start again.",
     "close": "Close the incident. Unfinished Runs are canceled and a recovery watch is withdrawn.",
     "reopen": "Set the incident back to open. Nothing restarts by itself.",
@@ -434,7 +439,8 @@ def _could_not_see(snapshot: Mapping[str, Any]) -> list[dict[str, str]]:
     for name in snapshot.get("not_integrated") or []:
         rows.append({"name": str(name), "words": "not integrated"})
         seen.add(str(name))
-    coverage = snapshot.get("coverage") or {}
+    # A9: what the shown report's Run could see, when that is an earlier Run.
+    coverage = snapshot.get("report_coverage") or snapshot.get("coverage") or {}
     for row in coverage.get("sources") or []:
         name, state = str(row.get("name")), row.get("state")
         if name in seen or state not in _COVERAGE_WORDS:
@@ -620,13 +626,31 @@ def _log(
         None,
     )
     begun = started_at or first_step_at
+    # Contract A1/B4: a continuation Run carries a conversation mode other
+    # than the first Run's report_required.
+    conversation = run.get("conversation")
+    if not isinstance(conversation, Mapping) or conversation.get("mode") in (
+        None,
+        "report_required",
+    ):
+        conversation = None
     add(
         begun or snapshot["incident"].created_at,
         {
             "kind": "run",
             "time": clock(begun or snapshot["incident"].created_at, day),
-            "title": "Investigation started" if begun else "Investigation queued",
-            "detail": _run_trigger(snapshot)
+            "title": (
+                "Investigation resumed" if conversation else "Investigation started"
+            )
+            if begun
+            else ("Investigation resuming" if conversation else "Investigation queued"),
+            "detail": (
+                "after a message · reply only, no new queries"
+                if (conversation or {}).get("mode") == "reply_only"
+                else "after a message · same investigation, earlier report kept"
+                if conversation
+                else _run_trigger(snapshot)
+            )
             + (
                 f" · up to {run.get('budget_limit')} model requests"
                 if run.get("budget_limit")
@@ -634,6 +658,35 @@ def _log(
             ),
         },
     )
+    messages = {m["sequence"]: m for m in snapshot.get("messages") or []}
+    shown_replies: set[tuple[Any, str]] = set()
+
+    def reply_entry(
+        reply: Mapping[str, Any], at: Any, step: int | None, final: bool
+    ) -> None:
+        to = reply.get("to_input_seq")
+        text = reply.get("text") or ""
+        shown_replies.add((to, text))
+        asked = messages.get(to) if isinstance(to, int) else None
+        add(
+            at,
+            {
+                "kind": "reply",
+                "time": clock(at, day),
+                "step": step,
+                "final": final,
+                "text": text,
+                "to": to,
+                "to_author": None if asked is None else asked.get("author"),
+                "evidence_ids": reply.get("evidence_ids") or [],
+                "unsupported": reply.get("unsupported"),
+            },
+        )
+
+    def add_replies(step: Mapping[str, Any], at_step: int, *, final: bool) -> None:
+        for reply in step.get("replies") or []:
+            reply_entry(reply, step.get("observed_at"), at_step or None, final)
+
     number = 0
     steps = snapshot.get("steps") or []
     for step in steps:
@@ -671,18 +724,32 @@ def _log(
                         "anchor": "#conclusion" if shown else None,
                     },
                 )
+            elif c.get("execution") == "answered":
+                # Contract A3/A4: replied only; the report stays as it was.
+                add(
+                    step.get("observed_at"),
+                    {
+                        "kind": "end",
+                        "problem": False,
+                        "time": clock(step.get("observed_at"), day),
+                        "title": "Replied",
+                        "detail": "the report is unchanged",
+                        "codes": [],
+                    },
+                )
             else:
                 add(
                     step.get("observed_at"),
                     {
                         "kind": "end",
-                        "problem": c.get("execution") not in ("completed", "answered"),
+                        "problem": c.get("execution") != "completed",
                         "time": clock(step.get("observed_at"), day),
                         "title": "Run ended",
                         "detail": str(c.get("execution") or ""),
                         "codes": c.get("reasons") or [],
                     },
                 )
+            add_replies(step, number, final=True)
             continue
         number += 1
         calls = []
@@ -716,19 +783,7 @@ def _log(
                 "planned": step.get("planned_tools") or 0,
             },
         )
-        for reply in step.get("replies") or []:
-            add(
-                step.get("observed_at"),
-                {
-                    "kind": "reply",
-                    "time": clock(step.get("observed_at"), day),
-                    "step": number,
-                    "text": reply.get("text") or "",
-                    "to": reply.get("to_input_seq"),
-                    "evidence_ids": reply.get("evidence_ids") or [],
-                    "unsupported": reply.get("unsupported"),
-                },
-            )
+        add_replies(step, number, final=False)
     for row in snapshot.get("decision_log") or []:
         action = row.get("action")
         if action == "auto_authorize_observation":
@@ -755,6 +810,37 @@ def _log(
                 "detail": row.get("text") or None,
             },
         )
+    answered = {
+        r.get("to_input_seq") for r in snapshot.get("conversation_replies") or []
+    }
+    for message in messages.values():
+        if message["unread"]:
+            words = "Queued · read before the Agent's next step"
+        elif message["sequence"] in answered:
+            words = "Read and answered"
+        else:
+            words = "Read"
+        add(
+            message.get("received_at"),
+            {
+                "kind": "human",
+                "time": clock(message.get("received_at"), day),
+                "author": message.get("author"),
+                "text": message.get("text") or "",
+                "label": "from Chat"
+                if message.get("channel") == "chat_forward"
+                else None,
+                "status": words,
+            },
+        )
+        # Replies a Run other than the current one gave (contract B8) sit
+        # right after the message they answer.
+        for reply in snapshot.get("conversation_replies") or []:
+            if reply.get("to_input_seq") != message["sequence"]:
+                continue
+            if (reply.get("to_input_seq"), reply.get("text") or "") in shown_replies:
+                continue
+            reply_entry(reply, message.get("received_at"), None, False)
     for session in snapshot.get("observation_sessions") or []:
         automatic = session.get("authorization_source") == "automatic"
         add(
@@ -963,7 +1049,7 @@ def _status_facts(
 def _actions(
     status: IncidentStatus, offered: Sequence[str], snapshot: Mapping[str, Any]
 ) -> dict[str, Any]:
-    allowed = [a for a in offered if a not in MESSAGE_ACTIONS]
+    allowed = [a for a in offered if a not in COMPOSER_ACTIONS]
     primary_keys, more_keys = LAYOUT.get(status.key, ((), ()))
     primary = [a for a in primary_keys if a in allowed][:2]
     more = [a for a in more_keys if a in allowed and a not in primary]
@@ -975,7 +1061,7 @@ def _actions(
             "action": action,
             "button": BUTTON.get(action, action),
             "hint": HINT.get(action, ""),
-            "lead": action == lead,
+            "lead": action == lead or (lead == "reinvestigate" and action == "new_run"),
             "input": action in ("register_remediation", "rebind_target", "merge_into"),
         }
 
@@ -987,10 +1073,14 @@ def _composer(
     snapshot: Mapping[str, Any],
     report_kind: str | None,
     message_available: bool,
+    offered: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Contract D1-D10: whether the investigation takes a message in this
     state and what the box says. ``message_available`` is whether the
-    server has the ``message`` action (P2); without it nothing is sent."""
+    server has the ``message`` action (P2). With it, the server's own
+    admission rule (``available_actions`` offering ``message``) decides;
+    the per-state wording stays. A refused state offers Re-investigate when
+    the server does (D11)."""
     incident = snapshot["incident"]
     concluded = bool(incident.concluded)
     key = status.key
@@ -1016,6 +1106,9 @@ def _composer(
             hint = (
                 "Reply only: the Agent answers from the record and runs no new queries."
             )
+            placeholder = (
+                "A question about what was found, e.g. “summarise the root cause”"
+            )
         else:
             accepts, refusal = (
                 False,
@@ -1032,6 +1125,20 @@ def _composer(
             False,
             "This investigation ended without an answer. Re-investigate to start a new one.",
         )
+    if message_available:
+        offered_message = "message" in offered
+        if offered_message and not accepts:
+            accepts, refusal = True, None
+        elif not offered_message and accepts:
+            accepts = False
+            refusal = "This investigation is not taking messages now." + (
+                " Re-investigate to start a new one."
+                if "reinvestigate" in offered
+                else ""
+            )
+    reinvestigate = next(
+        (a for a in ("reinvestigate", "new_run") if a in offered), None
+    )
     return {
         "label": label,
         "hint": hint,
@@ -1040,6 +1147,7 @@ def _composer(
         "refusal": refusal,
         "enabled": accepts and message_available,
         "unavailable": accepts and not message_available,
+        "reinvestigate": None if accepts else reinvestigate,
     }
 
 
@@ -1093,6 +1201,10 @@ def page_view(
     )
     steps = snapshot.get("steps") or []
     calls = _calls_by_eid(steps, day)
+    # A9: the shown report's evidence may be an earlier Run's steps.
+    for eid, call in _calls_by_eid(snapshot.get("report_steps") or [], day).items():
+        call["step"] = None
+        calls.setdefault(eid, call)
     shown, kind = _shown_report(snapshot)
     report = None
     unparsed = None
@@ -1131,8 +1243,17 @@ def page_view(
         else None,
         "could_not_see": _could_not_see(snapshot),
         "log": log,
-        "queued": list(snapshot.get("queued_requests") or []),
-        "composer": _composer(status, snapshot, kind, message_available),
+        # Contract B7: messages above every Run's read watermark.
+        "queued": [
+            {
+                "author": m.get("author"),
+                "time": clock(m.get("received_at"), day),
+                "text": m.get("text") or "",
+            }
+            for m in snapshot.get("messages") or []
+            if m.get("unread")
+        ],
+        "composer": _composer(status, snapshot, kind, message_available, actions),
         "recovery": recovery,
         "charts": _charts_by_eid(snapshot.get("charts")),
         "clock": lambda value: clock(value, day),

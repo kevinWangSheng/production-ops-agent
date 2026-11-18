@@ -56,7 +56,7 @@
 {%- for item in items %}
 {%- set first = item.refs[0] if item.refs else none %}
 {%- if first and first.call %}
-<details class="crow" id="claim-{{ item.id }}"><summary><span class="n">{{ item.id }}</span><span>{{ item.text }}</span><span class="chev" aria-hidden="true">›</span><span class="ref">{% for r in item.refs %}{% if r.call %}{{ r.call.tool }} · step {{ r.call.step }}{% else %}earlier Run{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span></summary>
+<details class="crow" id="claim-{{ item.id }}"><summary><span class="n">{{ item.id }}</span><span>{{ item.text }}</span><span class="chev" aria-hidden="true">›</span><span class="ref">{% for r in item.refs %}{% if r.call %}{{ r.call.tool }} · {% if r.call.step %}step {{ r.call.step }}{% else %}earlier Run{% endif %}{% else %}earlier Run{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span></summary>
   {%- for r in item.refs %}{% if r.call %}{{ detail(r.call, view.report.cited.get(r.eid)) }}{% else %}<p class="small detail-note">Evidence <a class="mono" href="/incidents/{{ snapshot.incident.incident_id }}/evidence/{{ r.eid }}">{{ r.eid }}</a> comes from an earlier Run.</p>{% endif %}{% endfor %}
 </details>
 {%- else %}
@@ -255,9 +255,9 @@
         </div>
       </details>
       {%- elif e.kind == "reply" %}
-      <div class="ev reply-row" data-k="msg"><span class="t">{{ e.time or "" }}</span><div class="evb"><span><b>Agent</b> <span class="muted">replied at <a href="#step-{{ e.step }}" data-open-step="step-{{ e.step }}">step {{ e.step }}</a></span>{% if e.unsupported %} <span class="chip">unsupported evidence reference</span>{% endif %}</span><div class="reply">{{ e.text }}</div></div></div>
+      <div class="ev reply-row" data-k="msg"><span class="t">{{ e.time or "" }}</span><div class="evb"><span><b>Agent</b> <span class="muted">replied{% if e.to_author %} to {{ e.to_author }}{% endif %}{% if e.step %} at <a href="#step-{{ e.step }}" data-open-step="step-{{ e.step }}">step {{ e.step }}</a>{% if e.final %} (final answer){% endif %}{% endif %}</span>{% if e.unsupported %} <span class="chip">unsupported evidence reference</span>{% endif %}</span><div class="reply">{{ e.text }}</div></div></div>
       {%- elif e.kind == "human" %}
-      <div class="ev human-row" data-k="msg"><span class="t">{{ e.time or "" }}</span><div class="evb"><span><b>{{ e.author }}</b>{% if e.label %} <span class="chip h">{{ e.label }}</span>{% endif %}</span><div class="bubble">{{ e.text }}</div></div></div>
+      <div class="ev human-row" data-k="msg"><span class="t">{{ e.time or "" }}</span><div class="evb"><span><b>{{ e.author }}</b>{% if e.label %} <span class="chip h">{{ e.label }}</span>{% endif %}</span><div class="bubble">{{ e.text }}</div>{% if e.status %}<span class="small">{{ e.status }}</span>{% endif %}</div></div>
       {%- elif e.kind == "live" %}
       <div class="ev live" data-k="event"><span class="t"><span class="dot pulse" aria-hidden="true"></span></span><span>{{ e.title }}{% if e.since %} · <span data-since="{{ e.since }}"></span>{% endif %}</span></div>
       {%- else %}
@@ -275,14 +275,25 @@
     {%- endif %}
 
     {%- set cp = view.composer %}
-    <form class="composer" id="composer" onsubmit="return false">
+    <form class="composer" id="composer" method="post" action="/incidents/{{ inc.incident_id }}/control"{% if not cp.enabled %} onsubmit="return false"{% endif %}>
+      <input type="hidden" name="action" value="message">
+      <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
+      <input type="hidden" name="idempotency_key" value="message-{{ inc.control_generation }}-{{ form_nonce }}">
       <label for="invIn"><b>{{ cp.label }}</b> <span class="small">{{ cp.hint if cp.accepts else "" }}</span></label>
-      <textarea id="invIn" rows="2" placeholder="{{ cp.placeholder }}"{% if not cp.enabled %} disabled{% endif %}></textarea>
+      <textarea id="invIn" name="text" rows="2" maxlength="8192" required placeholder="{{ cp.placeholder }}"{% if not cp.enabled %} disabled{% endif %}></textarea>
       <div class="bar">
-        <span>{% if not cp.accepts %}{{ cp.refusal }}{% elif cp.unavailable %}Sending messages is not available yet; nothing typed here is sent.{% else %}Send as <b>{{ principal.actor_id }}</b>{% endif %}</span>
-        <button class="primary" type="submit" disabled>Send</button>
+        <span>{% if not cp.accepts %}{{ cp.refusal }}{% elif cp.unavailable %}Sending messages is not available yet; nothing typed here is sent.{% else %}Send as <b>{{ principal.actor_id }}</b> · Enter to send, Shift+Enter for a new line{% endif %}</span>
+        <button class="primary" type="submit"{% if not cp.enabled %} disabled{% endif %}>Send</button>
       </div>
     </form>
+    {%- if cp.reinvestigate %}
+    <form class="act reinv" method="post" action="/incidents/{{ inc.incident_id }}/control">
+      <input type="hidden" name="action" value="{{ cp.reinvestigate }}">
+      <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
+      <input type="hidden" name="idempotency_key" value="{{ cp.reinvestigate }}-{{ inc.control_generation }}-composer-{{ form_nonce }}">
+      <button type="submit" class="btn primary">Re-investigate</button> <span class="small">starts a new investigation that reads every message so far</span>
+    </form>
+    {%- endif %}
   </section>
 
   {#- ---------------- recovery ---------------- #}
@@ -560,6 +571,17 @@
   });
   /* close the More menu on outside click or Escape */
   document.addEventListener("click", function (e) { $$("details.more[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; }); });
+
+  /* message box: Enter sends, Shift+Enter adds a line */
+  var box = $("#invIn");
+  if (box && !box.disabled) {
+    box.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (box.value.trim()) { box.form.requestSubmit ? box.form.requestSubmit() : box.form.submit(); }
+      }
+    });
+  }
 
   /* elapsed time */
   function tick() {

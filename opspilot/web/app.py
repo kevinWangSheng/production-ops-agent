@@ -629,7 +629,7 @@ def create_app(
             postmortem_kinds=EVENT_KINDS,
             actions=actions,
             # #572: display-only derivations from the same snapshot.
-            view=page_view(snapshot, postmortem, actions),
+            view=page_view(snapshot, postmortem, actions, message_available=True),
             # One fresh key per rendered form: two operators on the same page
             # state must not share an idempotency key.
             form_nonce=uuid4().hex,

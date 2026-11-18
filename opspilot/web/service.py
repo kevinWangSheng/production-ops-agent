@@ -2793,6 +2793,19 @@ class Workbench:
         if report is None and outcome is not None and outcome.kind == "run_handoff":
             shown_conclusion = _last_live_response(rebuilt["steps"])
             handoff_report = _report_view(shown_conclusion)
+        # Redesign A9: after a continuation Run became current, the shown
+        # report and its evidence are an earlier Run's.
+        report_steps: list[dict[str, Any]] = []
+        report_coverage = None
+        reader_run = getattr(self.incidents, "report_run", None)
+        if report is not None and reader_run is not None:
+            found_run = reader_run(incident_id)
+            if found_run is not None:
+                report_steps = [_step_view(step) for step in found_run["steps"]]
+                earlier = run_coverage(
+                    found_run["run_id"], found_run["input"], found_run["steps"]
+                )
+                report_coverage = _coverage_view(earlier)
         # Redesign A8/D7a: with no published report, the newest validated
         # report any Run of this incident marked incomplete, looked up across
         # Runs (a later continuation Run may end with none of its own).
@@ -2827,8 +2840,14 @@ class Workbench:
                 "budget_spent": int(run["budget_spent"]),
                 "budget_unknown": int(run["budget_unknown"]),
                 "deadline": run["deadline"],
+                # Contract B4: a continuation Run's conversation mode.
+                "conversation": (input_snapshot.get("scope_facts") or {}).get(
+                    "conversation"
+                ),
             },
             "steps": steps,
+            "report_steps": report_steps,
+            "report_coverage": report_coverage,
             "not_integrated": not_integrated,
             "coverage": _coverage_view(coverage)
             if rebuilt["steps"] or coverage.sources_recorded
@@ -2839,6 +2858,11 @@ class Workbench:
             "knowledge": knowledge_view,
             "handoff_report": handoff_report,
             "incomplete_report": incomplete_report,
+            # Redesign B7/U3 (P4 page): people's messages, the read
+            # watermark that says which are still queued, and every validated
+            # reply any Run of the incident gave. Empty for a store without
+            # these reads (the in-memory test double).
+            **self._conversation(incident_id),
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": controls,
@@ -2885,6 +2909,37 @@ class Workbench:
             "rebinds": self._rebinds(incident_id),
             "rebind_targets": [
                 uid for uid in self._registry_keys() if uid != self._target_uid(summary)
+            ],
+        }
+
+    def _conversation(self, incident_id: UUID) -> dict[str, Any]:
+        reader = getattr(self.incidents, "message_inputs", None)
+        rows = [] if reader is None else reader(incident_id)
+        floor_of = getattr(self.incidents, "conversation_floor", None)
+        floor = 0 if floor_of is None else int(floor_of(incident_id))
+        replies_of = getattr(self.incidents, "prior_replies", None)
+        replies = [] if replies_of is None or not rows else replies_of(incident_id)
+        messages = []
+        for row in rows:
+            content = row["content"] if isinstance(row["content"], Mapping) else {}
+            text = content.get("text")
+            messages.append(
+                {
+                    "sequence": int(row["sequence"]),
+                    "author": row["actor"],
+                    "text": redact_credentials(text) if isinstance(text, str) else "",
+                    "channel": content.get("channel"),
+                    "received_at": None
+                    if row["received_at"] is None
+                    else _utc(row["received_at"]).isoformat(),
+                    "unread": int(row["sequence"]) > floor,
+                }
+            )
+        return {
+            "messages": messages,
+            "read_floor": floor,
+            "conversation_replies": [
+                _reply_view(r) for r in replies if isinstance(r, Mapping)
             ],
         }
 
@@ -3810,6 +3865,9 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         if len(note) > _NOTE_CHARS:
             note = note[: _NOTE_CHARS - 1].rstrip() + "…"
     replies = response.get("replies")
+    if conclusion is not None:
+        # Contract C6/C7: the final output's replies sit on the conclusion.
+        replies = response["conclusion"].get("replies")
     return {
         "step_id": str(step["step_id"]),
         "sequence": int(step.get("sequence", 0)),

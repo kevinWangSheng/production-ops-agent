@@ -717,6 +717,48 @@ class DurableIncidentStore:
     def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]:
         return self._store.prior_replies(incident_id)
 
+    def report_run(self, incident_id: UUID) -> dict[str, Any] | None:
+        """The Run whose conclusion step is the incident's published
+        conclusion, with its input and committed steps; ``None`` when there
+        is no conclusion or it is the current Run's (contract A1/A9: a
+        continuation Run becomes current while the report stays an earlier
+        Run's)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.run_id,r.input FROM opspilot_incidents i"
+                " JOIN opspilot_runs r ON r.incident_id=i.incident_id"
+                " JOIN opspilot_steps s ON s.run_id=r.run_id"
+                " WHERE i.incident_id=%s AND i.conclusion IS NOT NULL"
+                " AND r.run_id IS DISTINCT FROM i.current_run_id"
+                " AND s.status<>'late_result' AND s.response=i.conclusion"
+                " ORDER BY s.observed_at DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            steps = conn.execute(
+                "SELECT * FROM opspilot_steps WHERE run_id=%s"
+                " ORDER BY sequence,observed_at,step_id",
+                (row["run_id"],),
+            ).fetchall()
+        return {
+            "run_id": row["run_id"],
+            "input": row["input"] or {},
+            "steps": list(steps),
+        }
+
+    def message_inputs(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The people's messages to the investigation (input kind
+        ``message``, contract B1), oldest first, for the incident page."""
+        with self._store.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT sequence,actor,content,received_at FROM opspilot_inputs"
+                    " WHERE incident_id=%s AND kind='message' ORDER BY sequence",
+                    (incident_id,),
+                ).fetchall()
+            )
+
     def new_run(
         self,
         incident_id: UUID,
