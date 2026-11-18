@@ -1026,7 +1026,7 @@ def _log(
         add(
             linked.get("merged_at"),
             {
-                "kind": "link",
+                "kind": "event",
                 "key": f"merged-{linked['incident_id']}",
                 "title": f"Incident {linked['incident_id'][:8]} merged into this",
                 "detail": detail,
@@ -1037,7 +1037,7 @@ def _log(
         add(
             refire.get("received_at"),
             {
-                "kind": "link",
+                "kind": "event",
                 "key": f"refire-{refire['delivery_key']}",
                 "title": "Alert re-fired",
                 "detail": "attached to this incident"
@@ -1055,7 +1055,7 @@ def _log(
         add(
             link.get("consumed_at"),
             {
-                "kind": "link",
+                "kind": "event",
                 "key": f"release-{observation}",
                 "title": f"Version change {observation[:8]} joined",
                 "detail": "attached to this incident",
@@ -1578,11 +1578,14 @@ def page_view(
         [] if report is not None else [c for c in calls.values() if c.get("inline")]
     )
     outcome = snapshot.get("outcome") or {}
+    links = _links(snapshot, day)
     return {
         "day": day,
         "status": status,
         "header": _title(snapshot),
-        "links": _links(snapshot, day),
+        "links": links,
+        # Workbench P6 L1/L2: the merged-in incidents (also ``links.linked``).
+        "linked_incidents": links["linked"],
         "facts": _status_facts(status, snapshot, log, recovery, day),
         "actions": _actions(status, actions, snapshot),
         "report": report,
