@@ -32,6 +32,10 @@ from tests.m1_web_support import (
     post_form,
     same_origin,
 )
+from tests.workbench_driver import (  # noqa: F401 -- shared pytest fixtures
+    workbench_database_fixture,
+    workbench_fixture,
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
@@ -424,3 +428,46 @@ def test_an_earlier_incomplete_report_stays_shown_after_a_later_run_without_one(
     assert view["status"].key == "paused"
     assert view["composer"]["label"] == "Add a note"
     assert "not investigating" in view["composer"]["hint"]
+
+
+def test_a_reply_citing_evidence_links_to_it(workbench):
+    """Provenance on a reply (PR #703 review): a reply that cites evidence of
+    the Run that wrote the shown report links to that evidence record."""
+    import re
+
+    from tests.workbench_driver import basic as driver_basic
+    from tests.workbench_driver import call as driver_call
+
+    scenario = workbench.published("p4-reply-evidence-link")
+    conversation = workbench.continuation(scenario, "Which sample supports this?")
+    old = workbench.workbench.snapshot(conversation.incident_id)["report"]
+    cited = old["facts"][0]["evidence_ids"][0]
+    workbench.run(
+        scenario,
+        [
+            reply(
+                content=json.dumps(
+                    {
+                        "schema_version": "m0-response-v1",
+                        "replies": [
+                            {
+                                "to_input_seq": conversation.input_seq,
+                                "text": "The authorized metrics sample.",
+                                "evidence_ids": [cited],
+                            }
+                        ],
+                        "report": None,
+                    }
+                )
+            )
+        ],
+    )
+    page = driver_call(
+        workbench.app,
+        "GET",
+        f"/incidents/{conversation.incident_id}",
+        headers=driver_basic(),
+    )
+    assert page.status == 200
+    (row,) = re.findall(r'<div class="ev reply-row".*?</div></div>', page.text, re.S)
+    assert f'href="/incidents/{conversation.incident_id}/evidence/{cited}"' in row

@@ -691,6 +691,15 @@ def _log(
                 "to": to,
                 "to_author": None if asked is None else asked.get("author"),
                 "evidence_ids": reply.get("evidence_ids") or [],
+                # Provenance: each cited id, linked when this page knows the
+                # observation (this Run's or the shown report's Run's steps).
+                "evidence": [
+                    {
+                        "eid": str(eid),
+                        "call": calls_by_eid.get(str(eid)),
+                    }
+                    for eid in reply.get("evidence_ids") or []
+                ],
                 "unsupported": reply.get("unsupported"),
             },
         )
