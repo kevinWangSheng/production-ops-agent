@@ -1,6 +1,6 @@
 # 工具面拓展 B/C 批次与第三方评测
 
-- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；各工具待开工前合同预审，首项 B1
+- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；各工具待开工前合同预审；B1 已合并（#705），下一项 C5
 - 更新日期：2026-11-16
 - 依据：[阶段 A 任务记录](2026-11-12-tool-expansion.md)与决定表 r1–r7（Q1–Q8、D1–D3、N4 继续有效，r8 改 Q6、Q7/N4 两处）；SPEC 2026-11-16 段；C3 第 8 节；HolmesGPT `a0009195`；预审材料在仓库外（HolmesGPT 评测集题单、第三方基准调研与 SREGym/ITBench-AA 核查，2026-11-16）
 - 工作区：本记录分支 `chore/tool-expansion-r8`；各工具开工时另开 worktree 写入下表
@@ -71,7 +71,7 @@
 
 | 序 | 项 | issue | 验收题来源 | 分支 / worktree |
 |---|---|---|---|---|
-| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 实施中（[B1 记录](2026-11-16-tool-expansion-b1.md)），`../poa-560-es`，`feature/560-es-logs`，草稿 PR #705 |
+| 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 代码已合并（PR #705，`4052ab4f`，[B1 记录](2026-11-16-tool-expansion-b1.md)）；真实 Run 归 #671 |
 | 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | |
 | 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | |
 | 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
