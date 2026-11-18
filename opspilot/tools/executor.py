@@ -468,6 +468,11 @@ class TransportResponse:
     (#311 U1: Prometheus 400/422); the executor validates, redacts and bounds
     them (R1/R2). All three stay ``None`` for any other response.
 
+    On a response with ``source_status``, ``view_fields`` is read for one key
+    only: a ``notes`` list of the adapter's fixed text (tool expansion B1-6:
+    the refusal code and what to change), carried redacted and bounded onto
+    the refusal view; every other key is ignored there.
+
     ``incomplete`` is the adapter's own finding that the source may hold more
     rows than it returned (tool expansion A5-4: a discovery answer of exactly
     the fixed limit), for a signal the exact source bytes cannot carry in the
@@ -1424,10 +1429,16 @@ class ReadOnlyToolExecutor:
             # The one source-named denial (#308 R3, ``EVIDENCE_NOT_READABLE``)
             # is reported as one; every other mapped reason is an error.
             source_error = _source_error(response)
+            detail: dict[str, object] = {}
+            if source_error is not None:
+                detail["source_error"] = source_error
+            notes = _refusal_notes(response)
+            if notes is not None:
+                detail["notes"] = notes
             return _problem(
                 "denied" if source_reason in DENIED_REASONS else "error",
                 source_reason,
-                None if source_error is None else {"source_error": source_error},
+                detail or None,
             )
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
@@ -2055,6 +2066,39 @@ def _source_error(response: TransportResponse) -> dict[str, object] | None:
         "error": text,
         "error_truncated": truncated,
     }
+
+
+#: Tool expansion B1-6: at most this many adapter notes on a refusal view.
+MAX_REFUSAL_NOTES = 4
+
+
+def _refusal_notes(response: TransportResponse) -> list[str] | None:
+    """The adapter's own ``notes`` on a fixed-code refusal (B1-6: the fixed
+    code and what to change), or ``None``.
+
+    Opt-in: only a source-status response whose ``view_fields`` hold a
+    ``notes`` list of strings gets them; anything else -- every transport
+    before B1 -- keeps its refusal view unchanged. The notes are the
+    adapter's fixed text, not source bytes; each is credential-redacted and
+    bounded like ``source_error`` text, and an ill-formed list is dropped
+    whole.
+    """
+    fields = response.view_fields
+    if not isinstance(fields, Mapping):
+        return None
+    notes = fields.get("notes")
+    if not isinstance(notes, list) or not notes:
+        return None
+    kept: list[str] = []
+    for note in notes[:MAX_REFUSAL_NOTES]:
+        if not isinstance(note, str):
+            return None
+        try:
+            note.encode("utf-8")
+        except UnicodeEncodeError:
+            return None
+        kept.append(redact_credentials(note)[:MAX_SOURCE_ERROR_CHARS])
+    return kept
 
 
 def _status_for(problem: str) -> ToolStatus:
