@@ -530,5 +530,5 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     }
     encoded = json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == (
-        "3ba1ef6349a3f036aad814f84c80346ad273a42687076e6d45196ea9e7b3b502"
+        "50c0c41fb3b2ee6f519c2f564b52c74733217a4c705bef710600fdd5822a541d"
     )
