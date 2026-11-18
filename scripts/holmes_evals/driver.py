@@ -506,6 +506,32 @@ def disclosures(qid: str, question: Question, shift: ShiftRecord) -> list[str]:
     return codes
 
 
+JUDGE_FIELDS = (
+    "receiver",
+    "model",
+    "mode",
+    "prompt_sha256",
+    "choice",
+    "passed",
+    "error_code",
+    "attempts",
+    "request_bytes",
+)
+
+
+def unjudged_block(question: Question) -> dict[str, Any]:
+    """The summary's ``judge`` block before judging: every key present, the
+    judge's identity filled, the outcome fields null."""
+    block: dict[str, Any] = dict.fromkeys(JUDGE_FIELDS)
+    block.update(
+        receiver="zai",
+        model=judge_mod.JUDGE_MODEL,
+        mode=judge_mode(question),
+        prompt_sha256=judge_mod.HOLMES_EVAL_PROMPT_SHA256,
+    )
+    return block
+
+
 def report_object(run_block: Mapping[str, Any]) -> tuple[Any, str | None]:
     """The ReportV2 the judge text comes from, or ``(None, reason)``.
 
@@ -596,7 +622,7 @@ class Attempt:
         except ShiftError as error:
             purged = [f"error:{error.code}"]
         self.block["setup"][slot] = asdict(result)
-        self.block["setup"][f"purged_{slot.split('_')[1]}"] = purged
+        self.block["setup"].setdefault("purged", {})[slot.split("_")[1]] = purged
 
     def run(self) -> AttemptResult:
         try:
@@ -775,7 +801,7 @@ class Attempt:
         self._clean("cleanup_after")
         self._cleaned_after = True
         self.block["history"] = list(self.history)
-        self.block["judge"] = None
+        self.block["judge"] = unjudged_block(q)
         self.block["category"] = "ok" if converted.text is not None else "no_report"
         trace = b.trace_roots(cfg.project_name, run_id, cfg.secrets)
         summary = {
