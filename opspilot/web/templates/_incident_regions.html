@@ -4,6 +4,7 @@
 {%- set inc = snapshot.incident %}
 {%- set run = snapshot.run %}
 {%- set st = view.status %}
+{%- set hd = view.header %}
 {%- set rep = view.report %}
 {%- set rec = view.recovery %}
 {%- set log = view.log %}
@@ -96,6 +97,25 @@
   <button type="submit" class="btn{% if a.lead %} primary{% endif %}" title="{{ a.hint }}">{{ a.button }}</button>{% if in_menu %}<span class="small">{{ a.hint }}</span>{% endif %}
 </form>
 {%- endif %}
+{%- endmacro %}
+
+{#- The incident's identity under the title: target, rebinds, merges (live, P3-14). -#}
+{% macro identity() -%}
+        <div class="meta">
+          {%- if hd.origin == "alert" %}Alertmanager{% if hd.alertname %} · <span class="mono">{{ hd.alertname }}</span>{% endif %}{% elif hd.origin == "question" %}Asked by a person{% endif %}
+          {%- if snapshot.current_target %} · target <span class="mono" id="current-target">{{ snapshot.current_target }}</span>{% endif %}
+          {%- if hd.service %} · service <span class="mono">{{ hd.service }}</span>{% endif %}
+          {%- if inc.created_at %} · opened <time datetime="{{ view.iso(inc.created_at) }}">{{ view.clock(inc.created_at) }} UTC</time>{% endif %}
+        </div>
+        {%- if inc.related_incident_id or release_links or inc.merged_into_incident_id or snapshot.merged_from or snapshot.rebinds %}
+        <div class="meta links-line">
+          {%- if inc.merged_into_incident_id %}<span>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}" class="mono">{{ (inc.merged_into_incident_id|string)[:8] }}</a></span>{% endif %}
+          {%- if snapshot.merged_from %}<span>Merged from{% for source in snapshot.merged_from %} <a class="merged-from mono" href="/incidents/{{ source }}">{{ source[:8] }}</a>{% endfor %}</span>{% endif %}
+          {%- if inc.related_incident_id %}<span>Opened after closed incident <a id="related-incident" class="mono" href="/incidents/{{ inc.related_incident_id }}">{{ (inc.related_incident_id|string)[:8] }}</a></span>{% endif %}
+          {%- for link in release_links or [] %}<span class="release-link">From version change <a class="mono" href="/version-changes/{{ link.observation_id }}">{{ (link.observation_id|string)[:8] }}</a> ({{ link.disposition }})</span>{% endfor %}
+          {%- for rebind in snapshot.rebinds or [] %}<span class="rebind">Target changed from <span class="mono">{{ rebind.from_target }}</span> to <span class="mono">{{ rebind.to_target }}</span> by {{ rebind.actor }}</span>{% endfor %}
+        </div>
+        {%- endif %}
 {%- endmacro %}
 
 {% macro actions() -%}
@@ -211,10 +231,10 @@
 {% macro log_entries() -%}
       {%- for e in log.entries %}
       {%- if e.kind == "step" %}
-      <details class="step" id="{{ e.id }}" data-key="{{ e.key }}" data-k="step" data-p="{{ 1 if e.problem else 0 }}"><summary><span class="t">{{ e.time or "" }}</span><span><b>Step {{ e.number }}</b>{% if e.note %} · {{ e.note }}{% endif %}{% if e.history_only %} <span class="chip">late result, history only</span>{% endif %}</span><span class="small nowrap">{% if e.calls %}{{ e.calls | length }} quer{{ "y" if e.calls | length == 1 else "ies" }}{% else %}no queries{% endif %} <span aria-hidden="true">›</span></span>
+      <details class="step" id="{{ e.id }}" data-key="{{ e.key }}" data-k="step" data-p="{{ 1 if e.problem else 0 }}"><summary><span class="t">{{ e.time or "" }}</span><span><b>{% if e.number %}Step {{ e.number }}{% else %}Late result{% endif %}</b>{% if e.note %} · {{ e.note }}{% endif %}{% if e.history_only %} <span class="chip">late result, history only</span>{% endif %}</span><span class="small nowrap">{% if e.calls %}{{ e.calls | length }} quer{{ "y" if e.calls | length == 1 else "ies" }}{% else %}no queries{% endif %} <span aria-hidden="true">›</span></span>
         {%- if e.calls %}<span class="sumtools">{% for c in e.calls %}<span><span class="mono">{{ c.tool }}</span> <span class="{{ 'st-ok' if c.ok else 'st-err' }}">{% if c.ok %}<span aria-hidden="true">✓</span><span class="vh">ok</span>{% else %}<span aria-hidden="true">✗</span> {{ c.reason or c.status }}{% endif %}</span></span>{% endfor %}</span>{% endif %}</summary>
         <div class="calls">
-          {%- for c in e.calls %}{{ call_row(c, "call-" ~ e.number ~ "-" ~ loop.index) }}{% endfor %}
+          {%- for c in e.calls %}{{ call_row(c, "call-" ~ e.id ~ "-" ~ loop.index) }}{% endfor %}
           {%- if not e.calls %}<p class="small">This step made no tool calls.</p>{% endif %}
         </div>
       </details>

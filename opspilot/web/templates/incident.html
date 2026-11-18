@@ -27,21 +27,7 @@
     <div class="head">
       <div class="ttl">
         <h1>{{ hd.title }}</h1>
-        <div class="meta">
-          {%- if hd.origin == "alert" %}Alertmanager{% if hd.alertname %} · <span class="mono">{{ hd.alertname }}</span>{% endif %}{% elif hd.origin == "question" %}Asked by a person{% endif %}
-          {%- if snapshot.current_target %} · target <span class="mono" id="current-target">{{ snapshot.current_target }}</span>{% endif %}
-          {%- if hd.service %} · service <span class="mono">{{ hd.service }}</span>{% endif %}
-          {%- if inc.created_at %} · opened <time datetime="{{ view.iso(inc.created_at) }}">{{ view.clock(inc.created_at) }} UTC</time>{% endif %}
-        </div>
-        {%- if inc.related_incident_id or release_links or inc.merged_into_incident_id or snapshot.merged_from or snapshot.rebinds %}
-        <div class="meta links-line">
-          {%- if inc.merged_into_incident_id %}<span>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}" class="mono">{{ (inc.merged_into_incident_id|string)[:8] }}</a></span>{% endif %}
-          {%- if snapshot.merged_from %}<span>Merged from{% for source in snapshot.merged_from %} <a class="merged-from mono" href="/incidents/{{ source }}">{{ source[:8] }}</a>{% endfor %}</span>{% endif %}
-          {%- if inc.related_incident_id %}<span>Opened after closed incident <a id="related-incident" class="mono" href="/incidents/{{ inc.related_incident_id }}">{{ (inc.related_incident_id|string)[:8] }}</a></span>{% endif %}
-          {%- for link in release_links or [] %}<span class="release-link">From version change <a class="mono" href="/version-changes/{{ link.observation_id }}">{{ (link.observation_id|string)[:8] }}</a> ({{ link.disposition }})</span>{% endfor %}
-          {%- for rebind in snapshot.rebinds or [] %}<span class="rebind">Target changed from <span class="mono">{{ rebind.from_target }}</span> to <span class="mono">{{ rebind.to_target }}</span> by {{ rebind.actor }}</span>{% endfor %}
-        </div>
-        {%- endif %}
+        <div id="identity">{{ r.identity() }}</div>
       </div>
       <div class="actions" id="actions">
         {{ r.actions() }}
@@ -471,6 +457,8 @@
   var kinds = {{ live_kinds | list | tojson }};
   var postmortemKinds = {{ postmortem_kinds | list | tojson }};
   var source = null, timer = null, busy = false, again = false, reopenStream = false;
+  /* a failing /live backs off: 2 s doubling to 60 s, reset by a success */
+  var failures = 0, notBefore = 0;
   function applyLive(html) {
     var doc = new DOMParser().parseFromString(html, "text/html");
     var live = doc.getElementById("live");
@@ -478,6 +466,7 @@
     if (live.getAttribute("data-reload")) { reload(); return; }
     var seq = parseInt(live.getAttribute("data-sequence"), 10);
     if (!isNaN(seq) && seq > cursor) cursor = seq;
+    swap("identity", doc);
     swap("status", doc);
     var actions = $("#actions");
     if (!actions.contains(document.activeElement) && !$$("details[open]", actions).length) swap("actions", doc);
@@ -492,18 +481,31 @@
   function refresh() {
     if (busy) { again = true; return; }
     busy = true;
+    var ok = false;
     fetch("/incidents/" + incident + "/live", { credentials: "same-origin", headers: { "Accept": "text/html" }, cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
-      .then(applyLive)
-      .catch(function () { /* keep the page; the next event tries again */ })
+      .then(function (html) { applyLive(html); ok = true; })
+      .catch(function () { /* keep the page as it is */ })
       .then(function () {
         busy = false;
-        if (reopenStream) { reopenStream = false; listen(); }
+        if (ok) {
+          failures = 0; notBefore = 0;
+          if (reopenStream) { reopenStream = false; listen(); }
+        } else {
+          failures += 1;
+          notBefore = Date.now() + Math.min(2000 * Math.pow(2, failures - 1), 60000);
+          /* a closed stream (after reload) is only reopened by a refresh that worked */
+          if (reopenStream) again = true;
+        }
         if (again) { again = false; schedule(); }
       });
   }
-  /* events within 500 ms make one fetch */
-  function schedule() { if (timer) return; timer = setTimeout(function () { timer = null; refresh(); }, 500); }
+  /* events within 500 ms make one fetch; never sooner than the backoff allows */
+  function schedule() {
+    if (timer) return;
+    var wait = Math.max(500, notBefore - Date.now());
+    timer = setTimeout(function () { timer = null; refresh(); }, wait);
+  }
   function listen() {
     if (!window.EventSource) return;
     source = new EventSource("/incidents/" + incident + "/events?cursor=" + cursor);

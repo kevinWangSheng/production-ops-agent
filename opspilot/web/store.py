@@ -1122,7 +1122,9 @@ class DurableIncidentStore:
                 (incident_id,),
             ).fetchall()
             steps = conn.execute(
-                "SELECT s.step_id,s.run_id,s.sequence,s.logical_key,s.status,s.response,"
+                # E3/P7: the web never loads the model's private reasoning.
+                "SELECT s.step_id,s.run_id,s.sequence,s.logical_key,s.status,"
+                "s.response #- '{assistant,reasoning_content}' AS response,"
                 "(SELECT COALESCE(jsonb_agg(t #- '{result,content}' ORDER BY n),'[]'::jsonb)"
                 " FROM jsonb_array_elements(COALESCE(s.tool_results,'[]'::jsonb))"
                 " WITH ORDINALITY AS a(t,n)) AS tool_results,"

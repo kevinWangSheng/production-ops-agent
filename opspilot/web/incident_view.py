@@ -643,12 +643,14 @@ def _numbered(
     runs: Sequence[Mapping[str, Any]],
 ) -> list[tuple[Mapping[str, Any], Mapping[str, Any], int | None]]:
     """Each Run's steps with one step count across the incident (P3-5):
-    ``(run, step, number)``, ``number`` ``None`` for a conclusion step."""
+    ``(run, step, number)``, ``number`` ``None`` for a conclusion step and
+    for a late result (history only), so the count never depends on whether
+    a Run's late rows are read (P3-1: earlier Runs carry none)."""
     out: list[tuple[Mapping[str, Any], Mapping[str, Any], int | None]] = []
     number = 0
     for run in runs:
         for step in run.get("steps") or []:
-            if step.get("conclusion") is not None:
+            if step.get("conclusion") is not None or step.get("history_only"):
                 out.append((run, step, None))
                 continue
             number += 1
@@ -666,6 +668,7 @@ def _message_status(
     none of the Run's steps answered once the Run is no longer active).
     Computed on read, never stored."""
     answered: set[int] = set()
+    numbered = [item for item in numbered if not item[1].get("history_only")]
     for _, step, _ in numbered:
         for reply in step.get("replies") or []:
             to = reply.get("to_input_seq")
@@ -737,7 +740,9 @@ def _log(
         step
         for _, step, number in numbered
         if number is None
-        and (step["conclusion"] or {}).get("execution") == "completed"
+        and step.get("conclusion") is not None
+        and not step.get("history_only")
+        and step["conclusion"].get("execution") == "completed"
         and not step["conclusion"].get("handoff")
     ]
     shown_step = (
@@ -836,7 +841,8 @@ def _log(
         for step, number in steps:
             at = step.get("observed_at")
             sid = step.get("step_id") or f"{rid}-{len(run_entries)}"
-            c = step.get("conclusion")
+            late = bool(step.get("history_only"))
+            c = None if late else step.get("conclusion")
             if c is not None:
                 reasons = c.get("reasons") or []
                 end: dict[str, Any]
@@ -938,6 +944,7 @@ def _log(
                 if (
                     eid
                     and eid in calls_by_eid
+                    and number is not None
                     and calls_by_eid[eid].get("step") == number
                 ):
                     call = calls_by_eid[eid]
@@ -951,14 +958,15 @@ def _log(
             note = step.get("note")
             if note is None and step.get("final_round"):
                 note = "Wrote the final answer"
+            anchor = f"late-{sid}" if late else f"step-{number}"
             run_entries.append(
                 (
                     at,
                     {
                         "kind": "step",
-                        "key": f"step-{number}",
+                        "key": anchor,
                         "number": number,
-                        "id": f"step-{number}",
+                        "id": anchor,
                         "note": note,
                         "calls": calls,
                         "problem": problems > 0,
@@ -969,7 +977,8 @@ def _log(
                     },
                 )
             )
-            for index, reply in enumerate(step.get("replies") or []):
+            # A late result's replies were fenced off: never an answer.
+            for index, reply in enumerate([] if late else step.get("replies") or []):
                 reply_entry(
                     run_entries, reply, at, number, False, f"reply-{sid}-{index}"
                 )
@@ -1103,11 +1112,12 @@ def _log(
             }
         )
     step_entries = [e for e in ordered if e["kind"] == "step"]
+    numbered_entries = [e for e in step_entries if e["number"] is not None]
     total_calls = sum(len(e["calls"]) for e in step_entries)
     bad = sum(e["problems"] for e in step_entries)
     return {
         "entries": ordered,
-        "steps": len(step_entries),
+        "steps": len(numbered_entries),
         "calls": total_calls,
         "problems": bad,
         "started_at": iso(started_at),
@@ -1452,7 +1462,9 @@ def page_view(
         )
     log = _log(snapshot, calls, report, day, unread_words, composer)
     recovery = _recovery(snapshot, day)
-    step_entries = [e for e in log["entries"] if e["kind"] == "step"]
+    step_entries = [
+        e for e in log["entries"] if e["kind"] == "step" and e["number"] is not None
+    ]
     latest = step_entries[-1] if step_entries else None
     # U1: without a report, what the Run has gathered so far.
     collected = (
