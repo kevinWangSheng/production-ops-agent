@@ -120,6 +120,10 @@ MUTATION_WORDS = (
 #: Human control actions: decisions on OpsPilot's own incident record only.
 EXPECTED_CONTROL_ACTIONS = frozenset(
     {
+        # Workbench contract B1/O2/D11: a message (follow_up/correct are its
+        # aliases) and Re-investigate.
+        "message",
+        "reinvestigate",
         "follow_up",
         "correct",
         "cancel",

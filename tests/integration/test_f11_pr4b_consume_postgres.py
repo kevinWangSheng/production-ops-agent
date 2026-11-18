@@ -1442,38 +1442,6 @@ def test_a_new_run_after_cancel_keeps_the_v6_release_fact(
     assert _fact(successor) == _fact(original)
 
 
-def test_a_follow_up_after_timeout_keeps_the_v6_release_fact(
-    owner: DurableStore,
-    web: ReleaseStore,
-    observer: ObservationStore,
-    catalog: Catalog,
-    bench: Callable[..., Workbench],
-) -> None:
-    case, workbench, incident, original = _created_case(
-        owner, web, observer, catalog, bench
-    )
-    with owner.transaction() as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' "
-            "WHERE run_id=%s",
-            (case.run_id,),
-        )
-    owner.sweep_expired_runs(incident_id=incident["incident_id"])
-
-    workbench.control(
-        incident["incident_id"],
-        actor_id="operator:test",
-        action="follow_up",
-        expected_generation=_generation(incident["incident_id"]),
-        idempotency_key=f"follow-{uuid4()}",
-        text="Did the new version cause it?",
-    )
-
-    successor = _successor_input(incident["incident_id"], case.run_id)
-    assert successor["version"] == INPUT_VERSION_RELEASE
-    assert _fact(successor) == _fact(original)
-
-
 def test_r6_a_fresh_rebuild_restores_the_release_fact_and_anchor_from_the_link(
     owner: DurableStore,
     web: ReleaseStore,

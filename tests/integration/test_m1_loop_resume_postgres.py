@@ -341,10 +341,11 @@ def test_an_exhausted_budget_after_restart_is_a_handoff_not_a_completion():
     parked = h.runner([]).resume(h.incident)
     assert parked.status == "handed_off" and parked.reason == "AWAITING_HUMAN"
     assert h.rows()["run"]["state"] == "waiting_human"
-    # Human control stays open: follow_up and correct re-queue the Run.
-    assert h.store.control(h.incident, 0, "follow_up", "operator", {"q": "x"}) == 1
+    # Human control stays open: resume re-queues the Run (a note is a message
+    # since workbench P2, contract B1).
+    assert h.store.control(h.incident, 0, "resume", "operator") == 1
     assert h.rows()["run"]["state"] == "queued"
-    assert h.store.control(h.incident, 1, "correct", "operator", {"q": "y"}) == 2
+    assert h.store.control(h.incident, 1, "resume", "operator") == 2
     assert h.rows()["run"]["state"] == "queued"
 
 
@@ -443,7 +444,7 @@ def test_a_follow_up_drops_the_orphaned_plan_and_the_run_continues():
     with pytest.raises(Crash):
         h.runner([*_tool_rounds(1)]).resume(h.incident)
     h.wait_lease()
-    generation = h.store.control(h.incident, 0, "follow_up", "operator")
+    generation = h.store.control(h.incident, 0, "resume", "operator")
     assert generation == 1 and h.rows()["pending_tools"] == []
     outcome = h.runner([*_tool_rounds(1, start=2), report_from_transcript]).resume(
         h.incident
@@ -685,7 +686,7 @@ def test_a_follow_up_after_an_unpublished_conclusion_lets_the_run_continue():
     assert first.execution == "failed" and first.final_step_id is not None
     assert first.model_requests_used == 2
     h.store.abandon(session.lease)
-    h.store.control(h.incident, 0, "follow_up", "operator")
+    h.store.control(h.incident, 0, "resume", "operator")
     outcome = h.runner([*_tool_rounds(1, start=2), report_from_transcript]).resume(
         h.incident
     )
@@ -742,72 +743,6 @@ def test_a_run_replaced_between_rebuild_and_claim_runs_with_its_own_input():
     rows = h.rows()
     assert str(rows["run"]["run_id"]) == str(replacement)
     assert all(str(s["run_id"]) == str(replacement) for s in rows["steps"])
-
-
-def test_a_follow_up_between_rounds_then_a_restart_resumes_and_publishes():
-    """Independent review (PR #31, P1) on real rows: a human follow_up lands
-    after round 1 committed (it fences the running attempt), the next attempt
-    sends it as the round's trailing message and dies, and the attempt after
-    that must rebuild the exact bytes round 2 sent -- inputs included -- and
-    finish. Also exercises the stale-boundary re-freeze: attempt 1 had already
-    frozen ``ctx0:round-1`` under the old generation with no input. Four
-    physical requests in total, the frozen ceiling."""
-    h = Harness()
-
-    def follow_up_then_die(call):
-        # Round 1's request is in flight (its boundary is frozen at watermark
-        # 0 under generation 0); the operator asks a follow-up question.
-        assert (
-            h.store.control(
-                h.incident, 0, "follow_up", "operator", {"question": "and payments?"}
-            )
-            == 1
-        )
-        raise Crash("in flight while the follow-up landed")
-
-    with pytest.raises(Crash):
-        h.runner([follow_up_then_die]).resume(h.incident)
-    assert h.live_keys() == []
-    rows = h.rows()
-    assert [x["sequence"] for x in rows["pending_inputs"]] == [1]
-    assert [
-        (x["logical_key"], x["control_generation"], x["input_watermark"])
-        for x in rows["input_rounds"]
-    ] == [("ctx0:round-1", 0, 0)]
-    # The follow_up released the lease (owner cleared): no wait needed.
-    sent: list = []
-
-    def record_then_tool_round(call):
-        sent.append(list(call.messages))
-        return _tool_rounds(1)[0]
-
-    with pytest.raises(Crash):
-        h.runner([record_then_tool_round, Crash("again")]).resume(h.incident)
-    assert h.live_keys() == ["ctx0:round-1"]
-    trailing = sent[0][-1]
-    assert trailing["role"] == "user"
-    assert '"question":"and payments?"' in trailing["content"]
-    rows = h.rows()
-    round_one = next(s for s in rows["steps"] if s["logical_key"] == "ctx0:round-1")
-    assert round_one["control_generation"] == 1
-    assert round_one["response"]["context"]["input_watermark"] == 1
-    assert rows["run"]["input_watermark"] == 1 and rows["pending_inputs"] == []
-    assert [
-        (
-            x["logical_key"],
-            x["control_generation"],
-            x["input_watermark"],
-            x["committed"],
-        )
-        for x in rows["input_rounds"]
-    ] == [("ctx0:round-1", 1, 1, True), ("ctx0:round-2", 1, 1, False)]
-    h.wait_lease()
-    outcome = h.runner([report_from_transcript]).resume(h.incident)
-    assert outcome.status == "published", outcome
-    assert outcome.loop.execution == "completed"
-    assert h.rows()["run"]["state"] == "completed"
-    assert len(outcome.loop.evidence_ids) == 1
-    assert h.transport_requests == 1  # round 1's query ran once, never replayed
 
 
 # -- workbench live progress through the real driver (ADR-0005 / ROADMAP item 1)

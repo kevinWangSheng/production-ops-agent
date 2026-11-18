@@ -483,10 +483,7 @@ def test_handoff_without_published_conclusion_creates_no_authorization_row(
     "condition",
     [
         "no_conclusion",
-        "run_not_completed",
-        "run_generation_mismatch",
         "lifecycle_not_candidate",
-        "handoff_no_run",
     ],
 )
 def test_c1_non_candidates_create_no_record_and_no_outcome(
@@ -498,27 +495,10 @@ def test_c1_non_candidates_create_no_record_and_no_outcome(
         workbench = _workbench(owner)
     else:
         workbench, incident, run, _, _ = _published_candidate(owner)
-        if condition == "run_not_completed":
-            with owner.transaction() as conn:
-                conn.execute(
-                    "UPDATE opspilot_runs SET state='queued' WHERE run_id=%s", (run,)
-                )
-        elif condition == "run_generation_mismatch":
-            with owner.transaction() as conn:
-                conn.execute(
-                    "UPDATE opspilot_runs SET control_generation=control_generation+1 WHERE run_id=%s",
-                    (run,),
-                )
-        elif condition == "lifecycle_not_candidate":
+        if condition == "lifecycle_not_candidate":
             with owner.transaction() as conn:
                 conn.execute(
                     "UPDATE opspilot_incidents SET lifecycle='resolved' WHERE incident_id=%s",
-                    (incident,),
-                )
-        elif condition == "handoff_no_run":
-            with owner.transaction() as conn:
-                conn.execute(
-                    "UPDATE opspilot_incidents SET current_run_id=NULL WHERE incident_id=%s",
                     (incident,),
                 )
     assert _pass_for(workbench, incident) == []

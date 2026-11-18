@@ -556,59 +556,6 @@ def test_backlog_pass_uses_its_observed_queue_for_concurrent_arrival(
     )
 
 
-def test_follow_up_requeues_a_parked_run_once_and_overdue_follow_up_renews(
-    web_dsn, worker_dsn, owner, stub, workers
-):
-    """§5 item 11 / U-B2-2: human control is an escape from the park."""
-    app = _app(web_dsn)
-    first_tag, second_tag = new_tag(), new_tag()
-    stub.plan(second_tag, Act("reject"))
-    first, second = (
-        _firing(app, first_tag, "warning")[0],
-        _firing(app, second_tag, "warning")[0],
-    )
-    _set_deadlines(owner, [first, second], [100, 200])
-    store = DurableStore(worker_dsn)
-    _park(store, DurableEventLog(store), max_queued=1)
-    assert run_rows(owner, [second])[second]["state"] == "waiting_human"
-
-    _control(app, second, "follow_up", 0, text="Please retry after the human check.")
-    assert run_rows(owner, [second])[second]["state"] == "queued"
-    _park(store, DurableEventLog(store), max_queued=1)
-    assert run_rows(owner, [second])[second]["state"] == "queued"
-    assert len(events_of(owner, [second], "run_handoff")) == 1
-
-    # The existing Run is the one re-queued by follow_up; the model tag is
-    # planned above so the worker actually claims it and hands it off.
-    worker = workers(OPSPILOT_WORKER_CAPACITY="1", OPSPILOT_BACKLOG_MAX="1")
-    assert wait_until(
-        lambda: bool(events_of(owner, [second], "run_claimed")), timeout=START + SETTLE
-    ), worker.log()
-    assert wait_until(
-        lambda: run_rows(owner, [second])[second]["state"] == "waiting_human",
-        timeout=SETTLE,
-    ), worker.log()
-    worker.stop()
-
-    overdue, _ = _firing(_app(web_dsn, 1), new_tag(), "warning")
-    assert wait_until(
-        lambda: bool(
-            owner.execute(
-                "SELECT deadline<=clock_timestamp() FROM opspilot_runs "
-                "WHERE run_id=(SELECT current_run_id FROM opspilot_incidents WHERE incident_id=%s)",
-                (overdue,),
-            ).fetchone()[0]
-        ),
-        timeout=15,
-    )
-    owner.commit()
-    DurableStore(DSN).sweep_expired_runs(incident_id=overdue)
-    old_run = run_rows(owner, [overdue])[overdue]["run_id"]
-    _control(_app(web_dsn), overdue, "follow_up", 0, text="Renew after timeout.")
-    renewed = run_rows(owner, [overdue])[overdue]
-    assert renewed["run_id"] != old_run and renewed["state"] == "queued"
-
-
 def test_two_independent_passes_park_exactly_the_excess_rows(
     owner, web_dsn, worker_dsn
 ):

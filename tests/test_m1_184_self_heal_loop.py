@@ -68,3 +68,37 @@ def test_an_invalid_interval_refuses_to_start(
     monkeypatch.setenv("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS", raw)
     with pytest.raises(SystemExit):
         web_main._self_heal_interval()
+
+
+def test_the_message_relay_runs_on_its_own_loop_and_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workbench contract R2: the relay pass has its own thread and
+    interval, so turning automatic observation off keeps message relay."""
+
+    class _Relaying:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.reached = threading.Event()
+
+        def relay_pass(self) -> list[object]:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("database down")
+            self.reached.set()
+            return []
+
+    monkeypatch.setenv("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS", "0")
+    monkeypatch.delenv("OPSPILOT_RELAY_INTERVAL_SECONDS", raising=False)
+    assert web_main._self_heal_interval() == 0.0
+    assert web_main._relay_interval() == 30.0
+    workbench = _Relaying()
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=web_main.relay_loop, args=(workbench, 0.01, stop), daemon=True
+    )
+    thread.start()
+    assert workbench.reached.wait(5)
+    stop.set()
+    thread.join(5)
+    assert not thread.is_alive()

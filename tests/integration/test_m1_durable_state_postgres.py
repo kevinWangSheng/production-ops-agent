@@ -72,7 +72,7 @@ def test_rebuild_ignores_late_result_payload_shape():
         versions={"state": "v1"},
     )
     stale = store.claim(incident, run, uuid4(), {"state": "v1"})
-    store.control(incident, 0, "follow_up", "operator")
+    store.control(incident, 0, "resume", "operator")
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_step(stale, "late-shape", {"tool_calls": 0})
     rebuilt = store.rebuild(incident)
@@ -304,7 +304,7 @@ def test_correction_rejects_late_publish_and_keeps_history_only():
     )
     stale = store.claim(incident, run, uuid4(), {"state": "v1"})
     step = store.commit_step(stale, "old-final", {"result": "old"})
-    assert store.control(incident, 0, "correct", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     assert store.publish(stale, {"result": "old"}, step_id=step) is False
     assert store.publish(stale, {"result": "old-retry"}, step_id=step) is False
     with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
@@ -330,7 +330,7 @@ def test_late_step_and_tool_results_are_recorded_as_history():
     )
     stale = store.claim(incident, run, uuid4(), {"state": "v1"})
     step = store.commit_step(stale, "round", {"tool_calls": [{"id": "x"}]})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_step(stale, "late-round", {"result": "late"})
@@ -370,10 +370,10 @@ def test_each_fenced_attempts_late_response_is_kept_under_its_own_key():
         versions={"state": "v1"},
     )
     first = store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     second = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert second.epoch != first.epoch
-    assert store.control(incident, 1, "follow_up", "operator") == 2
+    assert store.control(incident, 1, "resume", "operator") == 2
     for lease, payload in (
         (first, {"response_id": "resp-a"}),
         (second, {"response_id": "resp-b"}),
@@ -459,7 +459,7 @@ def test_live_steps_cannot_use_the_late_result_key_namespace():
     )
     stale = store.claim(incident, run, uuid4(), {"state": "v1"})
     colliding = store.commit_step(stale, "late-step:foo", {"result": "live"})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
         store.commit_step(stale, "foo", {"result": "late"})
     with pytest.raises(PersistenceError, match="INVALID_INPUT"):
@@ -497,7 +497,7 @@ def test_new_run_is_refused_until_the_incident_is_cancelled():
             versions={"state": "v1"},
             actor="operator",
         )
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
         store.new_run(
             incident,
@@ -647,7 +647,7 @@ def test_concurrent_follow_up_and_cancel_have_one_winner_generation():
             return (exc.args[0], None)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = sorted(pool.map(apply, ("follow_up", "cancel")))
+        results = sorted(pool.map(apply, ("resume", "cancel")))
     assert [result[0] for result in results].count("ok") == 1
     assert [result[0] for result in results].count("CONTROL_CONFLICT") == 1
     assert store.rebuild(incident)["control_generation"] == 1
@@ -700,24 +700,6 @@ def test_expired_lease_cannot_publish_or_reserve():
         store.reserve_budget(lease, uuid4(), 1)
     with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         store.publish(lease, {"result": "expired"}, step_id=uuid4())
-
-
-def test_follow_up_and_correction_advance_generation_and_fence_old_lease():
-    store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-human-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
-    with pytest.raises(PersistenceError, match="CONTROL_DENIED"):
-        store.commit_step(lease, "old", {"result": "stale"})
-    assert store.control(incident, 1, "correct", "operator") == 2
 
 
 def test_paused_incident_cannot_be_claimed_or_published():
@@ -796,32 +778,6 @@ def test_paused_run_reaches_terminal_state_on_cancel():
     assert rebuilt["run"]["state"] == "cancelled"
 
 
-def test_follow_up_and_correct_cannot_silently_lift_a_pause():
-    """追问与纠正不解除人工暂停；恢复必须由显式 resume 完成。"""
-    store = DurableStore(DSN)
-    incident, run = uuid4(), uuid4()
-    store.accept(
-        incident,
-        run,
-        f"m1-paused-followup-{incident}",
-        deadline=datetime.now(timezone.utc) + timedelta(minutes=2),
-        budget_limit=10,
-        versions={"state": "v1"},
-    )
-    store.claim(incident, run, uuid4(), {"state": "v1"})
-    assert store.control(incident, 0, "pause", "operator") == 1
-
-    for action in ("follow_up", "correct", "pause"):
-        with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
-            store.control(incident, 1, action, "operator")
-
-    rebuilt = store.rebuild(incident)
-    assert rebuilt["state"] == "paused"
-    assert rebuilt["control_generation"] == 1
-
-    assert store.control(incident, 1, "resume", "operator") == 2
-
-
 def test_waiting_human_run_is_paused_and_cancelled_consistently():
     store = DurableStore(DSN)
     incident, run = uuid4(), uuid4()
@@ -843,7 +799,7 @@ def test_waiting_human_run_is_paused_and_cancelled_consistently():
     assert store.rebuild(incident)["run"]["state"] == "queued"
     with store.transaction() as conn:
         conn.execute("UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s", (run,))
-    for action in ("pause", "resume", "follow_up", "correct"):
+    for action in ("pause", "resume"):
         with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
             store.control(incident, 2, action, "operator")
     assert store.control(incident, 2, "cancel", "operator") == 3
@@ -861,7 +817,7 @@ def test_queued_follow_up_rebinds_generation_before_claim():
         budget_limit=10,
         versions={"state": "v1"},
     )
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     lease = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert lease.control_generation == 1
 
@@ -879,7 +835,7 @@ def test_old_generation_step_and_tool_writes_are_fenced():
     )
     lease = store.claim(incident, run, uuid4(), {"state": "v1"})
     step = store.commit_step(lease, "final", {"result": "old"})
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     with pytest.raises(PersistenceError, match="UNKNOWN_IDENTITY"):
         store.commit_tool(lease, step, 0, {"ok": True})
@@ -909,7 +865,7 @@ def test_fresh_lease_cannot_commit_tools_into_pre_follow_up_step():
     assert stale.control_generation == 0
     step = store.commit_step(stale, "round-0", {"tool_calls": [{"id": "a"}]})
 
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     fresh = store.claim(incident, run, uuid4(), {"state": "v1"})
     assert fresh.control_generation == 1
 
@@ -1273,7 +1229,7 @@ def test_rebuild_drops_pending_tools_from_a_superseded_generation():
     assert "operation_id" not in pending[0]
     assert pending[0]["tool_call"] == {"id": "b"}
 
-    assert store.control(incident, 0, "follow_up", "operator") == 1
+    assert store.control(incident, 0, "resume", "operator") == 1
     rebuilt = store.rebuild(incident)
     assert rebuilt["pending_tools"] == []
     assert [step["step_id"] for step in rebuilt["steps"]] == [old_step]
@@ -1418,7 +1374,7 @@ def test_non_cancel_control_is_refused_from_every_unlisted_run_state():
             conn.execute(
                 "UPDATE opspilot_runs SET state=%s WHERE run_id=%s", (run_state, run)
             )
-        for action in ("pause", "resume", "follow_up", "correct"):
+        for action in ("pause", "resume"):
             with pytest.raises(PersistenceError, match="^ILLEGAL_TRANSITION$"):
                 store.control(incident, 0, action, "operator")
         assert store.rebuild(incident)["control_generation"] == 0
@@ -1564,7 +1520,7 @@ def test_control_refuses_a_current_run_pointer_into_another_incident():
         )
 
     # blocked 的 run 本就不接受非 cancel 动作；外来的 running run 不得代它放行。
-    for action in ("pause", "resume", "follow_up", "correct", "cancel"):
+    for action in ("pause", "resume", "cancel"):
         with pytest.raises(PersistenceError, match="^INCONSISTENT_STATE$"):
             store.control(victim, 0, action, "operator")
 

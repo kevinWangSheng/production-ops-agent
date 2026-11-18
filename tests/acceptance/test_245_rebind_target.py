@@ -365,7 +365,7 @@ def test_pr1_observing_recovery_rebind_returns_open_and_revokes_session(app, dat
     assert sessions and all(row["state"] == "revoked" for row in sessions)
 
 
-@pytest.mark.parametrize("action", ["follow_up", "new_run"])
+@pytest.mark.parametrize("action", ["new_run"])
 def test_pr1_rebind_successors_use_fresh_new_target_input(app, database, action):
     """PR-1 AC3: follow_up/new_run after rebind use fresh target-bound input."""
     first = _submit(app)
@@ -606,14 +606,14 @@ def test_pr1_head_is_0022_and_clean_downgrade_upgrade_round_trips(isolated_datab
     """PR-1 AC8: 0022 sits in the chain (head 0024 since #427) and a clean downgrade/upgrade is reversible."""
     pg_dump = os.environ["OPSPILOT_PG_DUMP"]
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0024_trace_outbox"
+        assert schema.current_revision(conn) == "0025_web_session_rebind"
     before = schema.schema_dump(isolated_database, pg_dump=pg_dump)
     command.downgrade(schema._config(isolated_database), "0021_release_incident_links")
     with psycopg.connect(isolated_database) as conn:
         assert schema.current_revision(conn) == "0021_release_incident_links"
     schema.upgrade_head(isolated_database)
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0024_trace_outbox"
+        assert schema.current_revision(conn) == "0025_web_session_rebind"
     assert schema.schema_dump(isolated_database, pg_dump=pg_dump) == before
 
 
@@ -622,7 +622,7 @@ def test_pr1_downgrade_refuses_nonnull_merge_pointer(isolated_database):
     first_id = uuid4()
     second_id = uuid4()
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0024_trace_outbox"
+        assert schema.current_revision(conn) == "0025_web_session_rebind"
         conn.execute(
             "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,"
             "control_generation,observation_generation) "

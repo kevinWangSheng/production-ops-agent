@@ -859,6 +859,7 @@ def record(
             "resume",
             "follow_up",
             "correct",
+            "message",
         }:
             raise StorageError("SCHEMA_INVALID")
         if "IDENTITY_MISMATCH" in hooks.reasons:

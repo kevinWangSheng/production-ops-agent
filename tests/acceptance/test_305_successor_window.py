@@ -406,23 +406,6 @@ def test_item1_without_attachment_new_run_keeps_the_first_frame(env):
     assert successor["versions"] == first["versions"]
 
 
-@pg
-def test_item1_without_attachment_timeout_renewal_keeps_the_first_frame(env):
-    _, incident = _first_firing(env)
-    (first,) = _runs(env, incident)
-    with psycopg.connect(env.dsn) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' "
-            "WHERE run_id=%s",
-            (first["run_id"],),
-        )
-    time.sleep(1.1)
-    _control(env, incident, "follow_up", "continue from the alert evidence")
-    runs = _runs(env, incident)
-    assert len(runs) == 2
-    assert _time_contract(runs[1]["input"]) == _time_contract(runs[0]["input"])
-
-
 # ===========================================================================
 # item 2: firing -> attached -> cancel + new_run re-frames
 # ===========================================================================
@@ -458,38 +441,9 @@ def test_item2_r1_the_latest_received_attached_episode_is_the_anchor(env):
 # ===========================================================================
 
 
-@pg
-def test_item3_follow_up_after_conclusion_reframes(env):
-    fingerprint, incident = _first_firing(env)
-    _publish(env, incident)
-    (first,) = _runs(env, incident)
-    assert first["state"] == "completed"
-    starts = _refire(env, fingerprint, incident)
-    _control(
-        env, incident, "follow_up", "the alert fired again; look at the new episode"
-    )
-    runs = _runs(env, incident)
-    assert len(runs) == 2
-    _assert_reframed(runs[1], runs[0], starts)
-
-
 # ===========================================================================
 # item 5: the same Run re-queued keeps its input byte for byte (W2-A)
 # ===========================================================================
-
-
-@pg
-def test_item5_follow_up_on_waiting_human_run_keeps_same_run_and_input(env):
-    fingerprint, incident = _first_firing(env)
-    _hand_off(env, incident)
-    (before,) = _runs(env, incident)
-    assert before["state"] == "waiting_human"
-    _refire(env, fingerprint, incident)
-    _control(env, incident, "follow_up", "the alert fired again")
-    (after,) = _runs(env, incident)
-    assert after["run_id"] == before["run_id"]
-    assert after["state"] == "queued"
-    assert after["raw"] == before["raw"]
 
 
 @pg
@@ -552,40 +506,6 @@ def test_item6_attachment_before_previous_frame_end_does_not_reframe_again(env):
 # ===========================================================================
 # item 7: the fresh fallback takes the same anchor (R5)
 # ===========================================================================
-
-
-@pg
-def test_item7_fresh_fallback_with_attachment_takes_the_attached_anchor(env):
-    fingerprint, incident = _first_firing(env)
-    (first,) = _runs(env, incident)
-    starts = _refire(env, fingerprint, incident)
-    with psycopg.connect(env.dsn) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET input=NULL, deadline=clock_timestamp() "
-            "- interval '1 second' WHERE run_id=%s",
-            (first["run_id"],),
-        )
-    _control(env, incident, "follow_up", "rebuild the alert run")
-    runs = _runs(env, incident)
-    assert len(runs) == 2 and runs[0]["input"] is None
-    _assert_reframed(runs[1], first, starts)
-
-
-@pg
-def test_item7_fresh_fallback_without_attachment_keeps_j5(env):
-    _, incident = _first_firing(env)
-    (first,) = _runs(env, incident)
-    time.sleep(1.1)
-    with psycopg.connect(env.dsn) as conn:
-        conn.execute(
-            "UPDATE opspilot_runs SET input=NULL, deadline=clock_timestamp() "
-            "- interval '1 second' WHERE run_id=%s",
-            (first["run_id"],),
-        )
-    _control(env, incident, "follow_up", "rebuild the alert run")
-    runs = _runs(env, incident)
-    assert len(runs) == 2
-    assert _time_contract(runs[1]["input"]) == _time_contract(first["input"])
 
 
 # ===========================================================================

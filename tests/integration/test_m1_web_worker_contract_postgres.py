@@ -255,49 +255,6 @@ class _Died(BaseException):
 # -- 1. snapshots on every path, on the durable store -------------------------
 
 
-def test_every_workbench_run_records_its_input_snapshot_on_postgres():
-    """Clause 1: intake, cancel + new_run and the #47 renewal each record a rebuildable input."""
-    stack = _Stack()
-    incident, first = stack.submit("snapshots")
-    run = stack.current_run(incident)
-    assert UUID(str(run["run_id"])) == first
-    _assert_snapshot(run["input"], run_id=first)
-
-    assert (
-        stack.control(
-            incident,
-            {"action": "cancel", "expected_generation": "0", "idempotency_key": "c"},
-        ).status
-        == 200
-    )
-    renewed = stack.control(
-        incident,
-        {"action": "new_run", "expected_generation": "1", "idempotency_key": "n"},
-    )
-    assert renewed.status == 200, renewed.text
-    run = stack.current_run(incident)
-    assert UUID(str(run["run_id"])) != first
-    _assert_snapshot(run["input"], run_id=UUID(str(run["run_id"])))
-
-    other, stuck = stack.submit("snapshots-renewal")
-    stack.store.claim(other, stuck, uuid4(), fixture_versions(), lease_seconds=300)
-    _expire(stack.store, stuck)
-    assert stack.store.sweep_expired_runs(incident_id=other) == ((other, stuck),)
-    noted = stack.control(
-        other,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Also check the dependency.",
-        },
-    )
-    assert noted.status == 200, noted.text
-    run = stack.current_run(other)
-    assert UUID(str(run["run_id"])) != stuck
-    _assert_snapshot(run["input"], run_id=UUID(str(run["run_id"])))
-
-
 # -- 2. worker loop end to end --------------------------------------------------
 
 
@@ -466,51 +423,6 @@ def test_the_resident_loop_investigates_until_stopped():
 
 
 # -- 3. resume on an overdue Run --------------------------------------------------
-
-
-def test_resume_on_an_overdue_run_is_refused_and_a_note_starts_a_run_the_worker_completes():
-    """Clause 3: resume -> 409 ILLEGAL_TRANSITION, row untouched; follow_up renews (#47) and runs."""
-    stack = _Stack()
-    incident, old = stack.submit("overdue-resume")
-    stack.store.claim(incident, old, uuid4(), fixture_versions(), lease_seconds=300)
-    _expire(stack.store, old)
-    idle, _ = stack.runner([])
-    stack.loop(idle, incident).poll_once()
-    before = _run_row(stack.store, old)
-    assert before["state"] == "waiting_human"
-
-    refused = stack.control(
-        incident,
-        {"action": "resume", "expected_generation": "0", "idempotency_key": "r"},
-    )
-    assert refused.status == 409
-    assert refused.json() == {"code": "ILLEGAL_TRANSITION"}
-    assert _run_row(stack.store, old) == before
-    rebuilt = stack.store.rebuild(incident)
-    assert rebuilt["control_generation"] == 0
-    assert UUID(str(rebuilt["run"]["run_id"])) == old
-    stack.loop(idle, incident).poll_once()
-    assert "run_claim_refused" not in stack.kinds(incident)
-
-    noted = stack.control(
-        incident,
-        {
-            "action": "follow_up",
-            "expected_generation": "0",
-            "idempotency_key": "f",
-            "text": "Also check the dependency.",
-        },
-    )
-    assert noted.status == 200, noted.text
-    fresh = UUID(str(stack.current_run(incident)["run_id"]))
-    assert fresh != old
-    _assert_snapshot(stack.current_run(incident)["input"], run_id=fresh)
-
-    runner, _ = stack.runner([_tool_round(), report_from_transcript])
-    results = stack.loop(runner, incident).poll_once()
-    assert [(i, o.status) for i, o in results] == [(incident, "published")]
-    assert stack.store.run_usage(fresh)["tool_operations_used"] == 1
-    assert _run_row(stack.store, old)["state"] != "running"
 
 
 def test_resume_on_a_paused_run_within_its_deadline_requeues_it_for_the_worker():

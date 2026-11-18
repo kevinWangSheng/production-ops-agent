@@ -38,6 +38,7 @@ DONE = {
     "new_run": "New Run started",
     "follow_up": "Follow-up asked",
     "correct": "Correction added",
+    "reinvestigate": "Re-investigation started",
     "register_remediation": "Remediation registered",
     "merge_into": "Merged into another incident",
     "rebind_target": "Retargeted",
@@ -53,8 +54,8 @@ BUTTON = {
     "resume": "Resume",
     "cancel": "Cancel",
     "new_run": "Start a new Run",
-    "follow_up": "Ask",
-    "correct": "Add a correction",
+    "message": "Send",
+    "reinvestigate": "Re-investigate",
     "register_remediation": "Register",
     "merge_into": "Merge",
     "rebind_target": "Retarget",
@@ -63,8 +64,8 @@ BUTTON = {
 #: Control order in the rail: the usual next step first.
 ORDER = (
     "resume",
-    "follow_up",
-    "correct",
+    "message",
+    "reinvestigate",
     "pause",
     "cancel",
     "new_run",
@@ -533,28 +534,29 @@ def _copy(action: str, snapshot: Mapping[str, Any]) -> str:
     concluded = bool(incident.concluded)
     profile = snapshot.get("health_profile_revision")
     human_owned = incident.mode == "human_owned"
-    if action in ("follow_up", "correct"):
-        noun = "question" if action == "follow_up" else "correction"
+    if action == "message":
+        # Workbench contract D1-D8: a message is an input, never a control.
         if human_owned:
             return (
-                f"Your {noun} is recorded on the incident only: it is human-owned, "
-                "so no Run is queued or started and the Agent does not answer it."
+                "Add a note — the agent is not investigating: it is recorded on "
+                "the incident only."
             )
         if paused:
+            return "Paused — the Agent reads your message after resume."
+        if incident.lifecycle in ("resolved", "closed") and concluded:
             return (
-                f"Your {noun} is recorded as input; the incident stays paused and "
-                "the Agent reads it once the Run is resumed."
-            )
-        if concluded:
-            return (
-                f"The Run has concluded, so your {noun} starts a new Run with it as "
-                "input: the published conclusion is cleared and any Recovery "
-                "watch is withdrawn."
+                "Reply only: the Agent answers from the earlier report and "
+                "evidence, without new queries; the lifecycle stays as it is."
             )
         return (
-            f"Your {noun} is recorded as input and the Run is queued again; the "
-            "Agent reads it at its next round. Once the Run's deadline has "
-            "passed, a new Run is started with your text instead."
+            "Your message goes to the investigation: a running Run reads it at "
+            "its next step; after a conclusion the investigation continues to "
+            "answer it, keeping the conclusion and any Recovery watch."
+        )
+    if action == "reinvestigate":
+        return (
+            "Cancel this investigation and start a new Run that reads every "
+            "message so far."
         )
     if human_owned and action == "pause":
         return (

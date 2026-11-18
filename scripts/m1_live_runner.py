@@ -4,9 +4,8 @@ Unlike ``m1_live_flash_loop.py`` (in-memory loop only), this drives
 ``InvestigationRunner`` against the lab PostgreSQL with the workbench event
 log and evidence store attached, so one real Run proves ADR-0005 end to end:
 a qualified report is published; anything else parks the Run
-(``waiting_human``), the incident stays open, ``control()`` still accepts a
-follow_up, and the page's event stream ends in ``run_completed`` or
-``run_handoff``.
+(``waiting_human``), the incident stays open, and the page's event stream
+ends in ``run_completed`` or ``run_handoff``.
 
 Reads DEEPSEEK_API_KEY from ``M0_ENV_FILE`` (never printed). Evidence follows
 ADR-0006 decision 3: the repository gets one frozen ``summary.json`` per Run
@@ -28,11 +27,9 @@ lab (``verify_server`` is then skipped: it checks the lab's own pid file).
 
     .venv/bin/python -m scripts.m0.postgres_lab start
     M0_ENV_FILE=/abs/.env .venv/bin/python scripts/m1_live_runner.py \\
-        [--model-requests N] [--follow-up] [--lab-round NAME]
+        [--model-requests N] [--lab-round NAME]
 
 ``--model-requests 1`` forces a budget handoff after the first (tool) round.
-``--follow-up`` then applies one follow_up control and resumes once more, so
-the parked -> queued -> claimed -> parked cycle is recorded as well.
 ``--deadline-seconds N --sweep`` gives the Run a tiny deadline, lets the real
 attempt run into it (its writes are fenced), waits for the deadline to pass
 and polls once more: that poll is where the runner sweeps the overdue Run
@@ -44,27 +41,24 @@ coverage and ``collection_truncated`` for the Run, and which of
 ``#coverage-gaps`` / ``#collection-truncated`` the workbench page rendered
 for the incident. ``--f3-answer evals/f3/missing-source/answer.json`` also
 computes that scenario's deterministic U6-a verdict.
-``--question TEXT`` replaces the otel-demo question, and
+``--question TEXT`` replaces the question (either profile), and
 ``--first-request-out PATH`` writes the exact bytes of the Run's first model
 request (``loop.serialized_request``) to an ignored path, and the Run's
 model-visible versions next to it (``<path>.versions.json``): F14 step 3
 (#385, S7/L5) freezes its sha256, ``data_sources`` projection and versions
 from them. Both are opt-in; without them nothing changes.
-``--message TEXT`` (workbench redesign P1 evidence): after a first Run that
-published, or ended with a valid but incomplete report (contract D7a), seed
-the continuation state P2's relay will create -- the parked Run cancelled
-(A10), one
-``message`` input, a queued current Run at the same control generation whose
-input is the C3 continuation plus ``scope_facts["conversation"]`` (floor =
-the highest watermark earlier Runs read, ``--message-mode``) -- and resume
-once more, so the real model answers the message (contract A3-A6, C1-C6).
-The summary's ``conversation`` block records the continuation Run's ending,
-its replies and whether the published conclusion stayed byte-identical.
-``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
-Run: control() records the note and starts a fresh Run (user decision
-2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
-context, and a final poll investigates it for real (renewed wall
-``--renew-seconds``). Ledgers go under docs/evidence/m1-01-timeout-followup/.
+``--message TEXT`` (workbench redesign P2 evidence, contract B1/R1-R5):
+the incident enters through the workbench's own HTTP intake
+(``/intake/events``) and, after a first Run that published or ended with a
+valid but incomplete report (D7a), the message is posted through the
+product route (``POST /incidents/{id}/control`` ``action=message``): the
+workbench records the ``message`` input and its relay opens the
+continuation Run in that request; the runner then claims it, so the real
+model answers (contract A3-A6, C1-C6). ``--reply-only-message TEXT`` then
+closes the incident through the same route and posts a second message,
+which the relay answers in ``reply_only`` mode (A6, D5). Each ``conversation``
+block records the continuation Run's ending, its replies and whether the
+published conclusion, lifecycle and generation stayed as they were.
 """
 
 from __future__ import annotations
@@ -81,7 +75,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 
@@ -94,7 +88,6 @@ from opspilot.investigation.context import (
     parse_step_key,
     rebuild_transcript,
 )
-from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
 from opspilot.investigation.loop import (
     DISCIPLINE_VARIANT,
@@ -146,7 +139,6 @@ from tests.m1_web_support import call
 ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "docs/evidence/m1-01-handoff-runner/live-runs"
 SWEEP_OUT_ROOT = ROOT / "docs/evidence/m1-01-deadline-sweep/live-runs"
-FOLLOWUP_OUT_ROOT = ROOT / "docs/evidence/m1-01-timeout-followup/live-runs"
 # The product fixture profile's tool and sole target: the input recorded
 # here is built by the same ``ToolFace`` the workbench records on intake.
 LIVE_TOOL = FIXTURE_TOOL
@@ -170,25 +162,11 @@ class SystemClock:
         return time.monotonic()
 
 
-def resolve_out_dir(
-    run_id: str, *, sweep: bool = False, follow_up_after_timeout: bool = False
-) -> Path:
+def resolve_out_dir(run_id: str, *, sweep: bool = False) -> Path:
     explicit = os.environ.get("M1_ACCEPTANCE_OUT")
     if explicit:
         return Path(explicit).expanduser() / run_id
-    if follow_up_after_timeout:
-        return FOLLOWUP_OUT_ROOT / run_id
     return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
-
-
-def successor_input(store, incident, run_id, deadline, target_id=LIVE_TOOL_TARGET):
-    """The renewed Run's input: the C3 continuation of the timed-out context."""
-    return continuation_input(
-        store.rebuild(incident),
-        new_run_id=str(run_id),
-        deadline=deadline,
-        authorized_targets=frozenset({target_id}),
-    )
 
 
 def _db_now(store):
@@ -235,7 +213,7 @@ USAGE_KEYS = ("run_usage", "current_run_id", "current_run_usage")
 def run_usages(store, incident, first_run_id) -> dict:
     """Per-Run usage for the evidence: the first Run (``run_usage``) and the
     Run the report and trace belong to (``current_run_*``; the same Run unless
-    ``--timeout-follow-up`` renewed it). The raw ledger is not kept, so the
+    a message opened a continuation). The raw ledger is not kept, so the
     frozen summary carries both to stay reconcilable (#116)."""
     current = store.rebuild(incident)["run"]["run_id"]
     return {
@@ -336,97 +314,148 @@ class FirstRequestTap:
         return self.inner.complete(call)
 
 
-def seed_continuation(store, incident, text, mode, target_id, deadline):
-    """P1 evidence setup only: the A1/R4/B4 state P2's relay will write.
+MESSAGE_USER = "live-runner-operator"
+MESSAGE_EVENT_TOKEN = "live-runner-event-token"
 
-    One transaction under the scope and incident locks: append a
-    ``message`` input, insert a queued Run at the incident's generation
-    with the continuation input plus the conversation fact, point the
-    incident at it. Conclusion, lifecycle and generation are untouched.
-    """
-    from psycopg.types.json import Jsonb
 
-    snapshot = store.rebuild(incident)
-    run_id = uuid4()
-    run_input = successor_input(store, incident, run_id, deadline, target_id)
-    with store.transaction() as conn:
-        conn.execute(
-            "SELECT 1 FROM opspilot_scope_controls WHERE scope_id=1 FOR UPDATE"
+def message_app(store, log, evidence, face, versions, budget, run_seconds) -> dict:
+    """A workbench and its HTTP app over the run's store (P2 evidence): the
+    intake, the message and the close go through the product routes. A
+    throwaway UI password and event token are generated in process; neither
+    is printed or stored."""
+    import base64
+
+    from opspilot.web import token_digest
+
+    ledger = DurableWebLedger(store)
+    ledger.install()
+    workbench = Workbench(
+        incidents=DurableIncidentStore(store),
+        events=log,
+        evidence=evidence,
+        ledger=ledger,
+        run_versions=dict(versions),
+        budget_limit=budget,
+        run_seconds=run_seconds,
+        tool_face=face,
+    )
+    password = secrets.token_urlsafe(24)
+    event_token = secrets.token_urlsafe(24)
+    origin = "https://live-runner.invalid"
+    auth = Authenticator(
+        AuthConfig(
+            ui_users={MESSAGE_USER: hash_password(password)},
+            event_tokens={token_digest(event_token): "live-runner"},
+            auth_revision="workbench-p2-live",
+            allowed_origins=frozenset({origin}),
         )
-        row = conn.execute(
+    )
+    token = base64.b64encode(f"{MESSAGE_USER}:{password}".encode()).decode()
+    return {
+        "workbench": workbench,
+        "app": create_app(workbench, auth, DurableClock(store)),
+        "ui": {"authorization": f"Basic {token}", "origin": origin},
+        "events": {"authorization": f"Bearer {event_token}"},
+    }
+
+
+def _post_json(app, path, payload, headers):
+    return call(
+        app,
+        "POST",
+        path,
+        headers={"content-type": "application/json", **headers},
+        body=json.dumps(payload).encode(),
+    )
+
+
+def _post_form(app, path, fields, headers):
+    from urllib.parse import urlencode
+
+    return call(
+        app,
+        "POST",
+        path,
+        headers={"content-type": "application/x-www-form-urlencoded", **headers},
+        body=urlencode(fields).encode(),
+    )
+
+
+def intake_through_app(web, question, target_id):
+    response = _post_json(
+        web["app"],
+        "/intake/events",
+        {
+            "source": "alertmanager",
+            "external_event_id": f"live-runner-{uuid4()}",
+            "target_id": target_id,
+            "question": question,
+        },
+        web["events"],
+    )
+    if response.status != 201:
+        raise SystemExit(f"intake refused: {response.status}")
+    body = response.json()
+    return UUID(body["incident_id"]), UUID(body["run_id"])
+
+
+def _incident_row(store, incident):
+    with store.transaction(snapshot=True) as conn:
+        return conn.execute(
             "SELECT control_generation,conclusion::text AS conclusion_bytes,lifecycle "
-            "FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            "FROM opspilot_incidents WHERE incident_id=%s",
             (incident,),
         ).fetchone()
-        # A10: a parked earlier Run is cancelled before the new one is queued.
-        conn.execute(
-            "UPDATE opspilot_runs SET state='cancelled' "
-            "WHERE incident_id=%s AND state IN ('waiting_human','blocked')",
-            (incident,),
-        )
-        floor = conn.execute(
-            "SELECT COALESCE(max(input_watermark),0) AS n FROM opspilot_runs "
-            "WHERE incident_id=%s",
-            (incident,),
-        ).fetchone()["n"]
-        seq = conn.execute(
-            "SELECT COALESCE(max(sequence),0)+1 AS n FROM opspilot_inputs "
-            "WHERE incident_id=%s",
-            (incident,),
-        ).fetchone()["n"]
-        facts = {
-            **run_input.scope_facts,
-            "conversation": {"floor": int(floor), "mode": mode},
-        }
-        conn.execute(
-            "INSERT INTO opspilot_inputs "
-            "(input_id,incident_id,sequence,kind,content,actor,control_generation) "
-            "VALUES (%s,%s,%s,'message',%s,%s,%s)",
-            (
-                uuid4(),
-                incident,
-                seq,
-                Jsonb(
-                    {
-                        "text": text,
-                        "channel": "investigation",
-                        "idempotency_key": f"live-runner-message-{run_id}",
-                    }
-                ),
-                "live-runner-operator",
-                row["control_generation"],
-            ),
-        )
-        conn.execute(
-            "INSERT INTO opspilot_runs "
-            "(run_id,incident_id,state,control_generation,budget_limit,deadline,versions,input) "
-            "VALUES (%s,%s,'queued',%s,%s,%s,%s,%s)",
-            (
-                run_id,
-                incident,
-                row["control_generation"],
-                snapshot["run"]["budget_limit"],
-                deadline,
-                Jsonb(snapshot["run"]["versions"]),
-                Jsonb(replace(run_input, scope_facts=facts).as_json()),
-            ),
-        )
-        conn.execute(
-            "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",
-            (run_id, incident),
-        )
+
+
+def post_message(store, web, incident, text) -> dict:
+    """Post one message through the product route; the relay opens the
+    continuation Run in the same request (contract R2)."""
+    row = _incident_row(store, incident)
+    response = _post_form(
+        web["app"],
+        f"/incidents/{incident}/control",
+        {"action": "message", "text": text, "idempotency_key": f"msg-{uuid4()}"},
+        web["ui"],
+    )
+    if response.status != 200:
+        raise SystemExit(f"message refused: {response.status} {response.text}")
+    answer = response.json()
+    run = store.rebuild(incident)["run"]
+    conversation = ((run.get("input") or {}).get("scope_facts") or {}).get(
+        "conversation"
+    ) or {}
     return {
-        "run_id": str(run_id),
-        "mode": mode,
-        "floor": int(floor),
-        "input_seq": int(seq),
+        "run_id": str(run["run_id"]),
+        "relay_run_id": answer.get("run_id"),
+        "mode": conversation.get("mode"),
+        "floor": conversation.get("floor"),
+        "input_seq": answer.get("input_sequence"),
         "text": text,
+        "http": {k: v for k, v in answer.items() if k != "incident_id"},
         "before": {
             "control_generation": row["control_generation"],
             "lifecycle": row["lifecycle"],
             "conclusion_sha256": _sha_or_none(row["conclusion_bytes"]),
         },
     }
+
+
+def close_through_app(store, web, incident) -> dict:
+    generation = store.rebuild(incident)["control_generation"]
+    response = _post_form(
+        web["app"],
+        f"/incidents/{incident}/control",
+        {
+            "action": "close",
+            "expected_generation": str(generation),
+            "idempotency_key": f"close-{uuid4()}",
+        },
+        web["ui"],
+    )
+    if response.status != 200:
+        raise SystemExit(f"close refused: {response.status} {response.text}")
+    return {"action": "close", "status": response.status, **response.json()}
 
 
 def _sha_or_none(text: str | None) -> str | None:
@@ -499,11 +528,8 @@ def conversation_result(store, incident, seeded) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-requests", type=int, default=2)
-    parser.add_argument("--follow-up", action="store_true")
     parser.add_argument("--deadline-seconds", type=int, default=12 * 60)
     parser.add_argument("--sweep", action="store_true")
-    parser.add_argument("--timeout-follow-up", action="store_true")
-    parser.add_argument("--renew-seconds", type=int, default=12 * 60)
     parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
     # #309 evidence: tool calls of one turn in flight (1 = serial, the
     # earlier behaviour of this script), and a narrowed context window so a
@@ -521,12 +547,10 @@ def main() -> int:
     parser.add_argument("--question", default=None)
     parser.add_argument("--first-request-out", type=Path, default=None)
     parser.add_argument("--message", default=None)
-    parser.add_argument(
-        "--message-mode",
-        choices=("report_optional", "reply_only"),
-        default="report_optional",
-    )
+    parser.add_argument("--reply-only-message", default=None)
     args = parser.parse_args()
+    if args.reply_only_message is not None and args.message is None:
+        raise SystemExit("--reply-only-message requires --message")
     if args.f3_answer is not None and not args.f3_coverage:
         raise SystemExit("--f3-answer requires --f3-coverage")
     answer = None
@@ -548,8 +572,6 @@ def main() -> int:
         ):
             raise SystemExit("context-tokens outside (output_tokens, frozen ceiling]")
         limits = replace(M1_FROZEN_LIMITS, context_tokens=args.context_tokens)
-    if args.timeout_follow_up and not args.sweep:
-        raise SystemExit("--timeout-follow-up requires --sweep")
     if args.deadline_seconds < 1:
         raise SystemExit("deadline-seconds must be positive")
     if not 1 <= args.model_requests <= M1_FROZEN_LIMITS.model_requests:
@@ -586,25 +608,41 @@ def main() -> int:
         factory = profile.executor_factory(store, evidence, clock)
     else:
         versions = dict(VERSIONS)
-        face, target_id, question = fixture_face(), LIVE_TOOL_TARGET, QUESTION
+        face, target_id = fixture_face(), LIVE_TOOL_TARGET
+        question = args.question or QUESTION
         factory = executor_factory_for(evidence, clock, deadline)
-    input = face.input_for(
-        run_id=str(run_id),
-        question=question,
-        target_id=target_id,
-        deadline=deadline,
-        model_requests=args.model_requests,
-        limits=limits,
-    )
-    store.accept(
-        incident,
-        run_id,
-        f"m1-live-runner-{run_id}",
-        deadline=deadline,
-        budget_limit=args.model_requests,
-        versions=versions,
-        input=input.as_json(),
-    )
+    web = None
+    if args.message is not None:
+        # P2: the product intake, so the relay finds the intake record the
+        # successor input is built from.
+        web = message_app(
+            store,
+            log,
+            evidence,
+            face,
+            versions,
+            args.model_requests,
+            args.deadline_seconds,
+        )
+        incident, run_id = intake_through_app(web, question, target_id)
+    else:
+        input = face.input_for(
+            run_id=str(run_id),
+            question=question,
+            target_id=target_id,
+            deadline=deadline,
+            model_requests=args.model_requests,
+            limits=limits,
+        )
+        store.accept(
+            incident,
+            run_id,
+            f"m1-live-runner-{run_id}",
+            deadline=deadline,
+            budget_limit=args.model_requests,
+            versions=versions,
+            input=input.as_json(),
+        )
     recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     if args.first_request_out is not None:
         recorder = FirstRequestTap(recorder, args.first_request_out, versions)  # type: ignore[assignment]
@@ -624,88 +662,35 @@ def main() -> int:
     attempts = [{"label": "first", "outcome": _outcome(runner.resume(incident))}]
     attempts[-1]["rows_after"] = _rows(store, incident)
     control = None
-    if args.follow_up and attempts[-1]["outcome"]["status"] == "handed_off":
-        generation = store.rebuild(incident)["control_generation"]
-        applied = store.control(
-            incident,
-            generation,
-            "follow_up",
-            "live-runner-operator",
-            {"question": "Also compare against the previous hour."},
-        )
-        control = {
-            "action": "follow_up",
-            "expected_generation": generation,
-            "resulting_generation": applied,
-            "rows_after": _rows(store, incident),
-        }
-        attempts.append(
-            {"label": "after-follow-up", "outcome": _outcome(runner.resume(incident))}
-        )
-        attempts[-1]["rows_after"] = _rows(store, incident)
     conversation = None
+    conversations: list[dict] = []
     first_outcome = attempts[-1]["outcome"]
-    if args.message is not None and (
+    if web is not None and (
         first_outcome["status"] == "published"
         or (
             first_outcome["status"] == "handed_off"
             and first_outcome["reason"] == "INCOMPLETE_INVESTIGATION"
         )
     ):
-        seeded = seed_continuation(
-            store,
-            incident,
-            args.message,
-            args.message_mode,
-            target_id,
-            _db_now(store) + timedelta(seconds=args.renew_seconds),
-        )
-        attempts.append(
-            {"label": "after-message", "outcome": _outcome(runner.resume(incident))}
-        )
-        attempts[-1]["rows_after"] = _rows(store, incident)
-        conversation = conversation_result(store, incident, seeded)
+        messages = [("after-message", args.message, False)]
+        if args.reply_only_message is not None:
+            messages.append(("after-reply-only-message", args.reply_only_message, True))
+        for label, text, close_first in messages:
+            if close_first:
+                control = close_through_app(store, web, incident)
+            seeded = post_message(store, web, incident, text)
+            attempts.append(
+                {"label": label, "outcome": _outcome(runner.resume(incident))}
+            )
+            attempts[-1]["rows_after"] = _rows(store, incident)
+            conversations.append(conversation_result(store, incident, seeded))
+        conversation = conversations[0]
     if args.sweep:
         # Wait on the database clock, the one the sweep reads.
         while store.rebuild(incident)["run"]["deadline"] > _db_now(store):
             time.sleep(0.5)
         attempts.append(
             {"label": "sweep", "outcome": _outcome(runner.resume(incident))}
-        )
-        attempts[-1]["rows_after"] = _rows(store, incident)
-    if (
-        args.timeout_follow_up
-        and attempts[-1]["rows_after"]["run_state"] == "waiting_human"
-    ):
-        generation = store.rebuild(incident)["control_generation"]
-        renewed_run = uuid4()
-        renewed_deadline = clock.now() + timedelta(seconds=args.renew_seconds)
-        renewed_input = successor_input(
-            store, incident, renewed_run, renewed_deadline, target_id
-        )
-        applied = store.control(
-            incident,
-            generation,
-            "follow_up",
-            "live-runner-operator",
-            {"text": "Also compare against the previous hour.", "channel": "web"},
-            renew_run_id=renewed_run,
-            renew_deadline=renewed_deadline,
-            renew_input=renewed_input.as_json(),
-        )
-        control = {
-            "action": "follow_up",
-            "expected_generation": generation,
-            "resulting_generation": applied,
-            "renewed_run_id": str(renewed_run),
-            "renewed_deadline": renewed_deadline.isoformat(),
-            "rows_after": _rows(store, incident),
-        }
-        attempts.append(
-            {
-                "label": "after-timeout-follow-up",
-                "outcome": _outcome(runner.resume(incident)),
-            }
         )
         attempts[-1]["rows_after"] = _rows(store, incident)
     ended = clock.now()
@@ -722,11 +707,7 @@ def main() -> int:
         "dropped_spans": getattr(trace, "dropped_spans", 0),
     }
     usages = [a["usage"] for a in recorder.attempts if isinstance(a.get("usage"), dict)]
-    experiment = (
-        "m1-01-timeout-followup"
-        if args.timeout_follow_up
-        else ("m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner")
-    )
+    experiment = "m1-01-deadline-sweep" if args.sweep else "m1-01-handoff-runner"
     ledger = {
         "experiment": experiment,
         "deadline_seconds": args.deadline_seconds,
@@ -751,15 +732,14 @@ def main() -> int:
         "attempts": attempts,
         "control": control,
         "conversation": conversation,
+        "conversations": conversations,
         "events": _events(log, incident),
         "trace": trace_record,
     }
     # #242: the compaction rows as PostgreSQL holds them, and the product's
     # own rebuild of the next model call from those rows (what a resume reads).
     snapshot = store.rebuild(incident)
-    out = resolve_out_dir(
-        str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
-    )
+    out = resolve_out_dir(str(run_id), sweep=args.sweep)
     # The report is the last committed conclusion; its digest and evidence
     # ids come from the attempt that produced it, not from the first attempt
     # (Codex review, PR #110 B1).
@@ -824,6 +804,7 @@ def main() -> int:
             ),
             **({} if f3 is None else {"f3_coverage": f3}),
             **({} if conversation is None else {"conversation": conversation}),
+            **({} if len(conversations) < 2 else {"conversations": conversations}),
         },
     )
     summary = {

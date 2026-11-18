@@ -128,7 +128,7 @@ def test_a_run_that_is_not_yet_due_is_untouched():
     assert _run_row(store, run)["state"] == "running"
 
 
-@pytest.mark.parametrize("action", ["cancel", "pause", "follow_up"])
+@pytest.mark.parametrize("action", ["cancel", "pause"])
 def test_a_human_decision_that_landed_first_is_never_overwritten(action):
     store = _store()
     incident, run = _accepted(store, action)
@@ -204,37 +204,6 @@ def test_the_unscoped_sweep_parks_every_overdue_run_and_nothing_else():
     assert _run_row(store, fresh_run)["state"] == "running"
     for _, run in overdue:
         assert _run_row(store, run)["state"] == "waiting_human"
-
-
-def test_follow_up_cancel_and_new_run_work_after_a_timeout_handoff():
-    store = _store()
-    incident, run = _accepted(store, "control-after")
-    store.claim(incident, run, uuid4(), VERSIONS, lease_seconds=300)
-    _expire(store, run)
-    assert store.sweep_expired_runs(incident_id=incident) == ((incident, run),)
-    # A note on a timed-out Run needs a fresh Run (user decision 2026-09-25):
-    # without one to offer, control() refuses rather than re-queue a row no
-    # claim can ever take, and nothing moves.
-    with pytest.raises(PersistenceError, match="^ILLEGAL_TRANSITION$"):
-        store.control(incident, 0, "follow_up", "operator", {"question": "x"})
-    assert _run_row(store, run)["state"] == "waiting_human"
-    assert store.rebuild(incident)["control_generation"] == 0
-    assert store.control(incident, 0, "cancel", "operator") == 1
-    fresh = uuid4()
-    assert (
-        store.new_run(
-            incident,
-            fresh,
-            expected_generation=1,
-            deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
-            budget_limit=10,
-            versions=VERSIONS,
-            actor="operator",
-        )
-        == 2
-    )
-    lease = store.claim(incident, fresh, uuid4(), VERSIONS, lease_seconds=300)
-    assert lease.run_id == fresh and _run_row(store, fresh)["state"] == "running"
 
 
 def test_the_runner_sweeps_before_it_claims_and_announces_the_timeout_once():
