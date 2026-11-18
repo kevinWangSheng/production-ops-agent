@@ -742,11 +742,12 @@ class WorkbenchDriver:
         # client injected; one poll answers the pending turns. Returns the
         # scripted model so callers can count model requests.
         try:
-            from opspilot.chat import ChatWorker  # contract P7 interface
+            from opspilot.chat import ChatStore, ChatWorker  # contract P7 interface
         except ImportError:
             raise NotImplementedError("P7-6: ChatWorker is not wired") from None
         model = ScriptedModel(script)
-        worker = ChatWorker(store=self.store, model=model)
+        store = ChatStore(self.store.dsn, pool=self.store.pool_config)
+        worker = ChatWorker(store=store, model=model)
         worker.poll_once()
         return model
 
@@ -828,7 +829,7 @@ class WorkbenchDriver:
             {
                 "question": turn.get("question"),
                 "answer": turn.get("answer"),
-                "forward": str(turn.get("forward_label") or ""),
+                "forward": str((turn.get("forward") or {}).get("words") or ""),
             }
             for turn in shown.json()["turns"]
         ]
