@@ -176,8 +176,14 @@ def _push(
     *,
     tenant: str | None = None,
 ) -> None:
-    for start in range(0, len(values), 100):
-        chunk = values[start : start + 100]
+    """Push one stream oldest first. Loki (2.9 and 3.x) accepts an entry out
+    of order only within max_chunk_age/2 (1 h) of the stream's newest entry
+    so far, so an entry 3 h or 30 h old pushed after a recent one is
+    rejected ("entry too far behind"); in ascending order every entry is the
+    newest when it arrives and all are kept."""
+    ordered = sorted(values, key=lambda value: int(value[0]))
+    for start in range(0, len(ordered), 100):
+        chunk = ordered[start : start + 100]
         status, body = _http(
             "POST",
             f"{loki.direct}/loki/api/v1/push",
