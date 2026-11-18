@@ -33,7 +33,15 @@ _PG_SKIP_REASON = re.compile(
     r"M1_DURABLE_POSTGRES|M0_B_POSTGRES|OPSPILOT_TEST_DATABASE_URL"
     r"|explicit PG opt-in required|需要显式启用临时 PG 验收"
 )
+# Separate opt-ins that no CI job provides (M0 spike stores, throwaway
+# clusters a test starts itself): a skip in a module gated on one of these is
+# that module's own opt-in, not a hole in the ``pg`` selection.
+_OWN_GATE = re.compile(
+    r"M0_STEP_POSTGRES|M0_CONTROL_POSTGRES|M0_PG_OUTAGE|OPSPILOT_\d+_PG\b"
+    r"|EVAL_C_PG_PORT|OPSPILOT_LITE_PG"
+)
 _gate_cache: dict[object, bool] = {}
+_own_gate_cache: dict[object, bool] = {}
 
 
 def _reads_pg_gate(key, get_source) -> bool:
@@ -131,6 +139,10 @@ def _guard_pg_selection(item, report):
     longrepr = report.longrepr
     reason = longrepr[2] if isinstance(longrepr, tuple) else str(longrepr)
     if not _PG_SKIP_REASON.search(reason):
+        return
+    if item.path not in _own_gate_cache:
+        _own_gate_cache[item.path] = bool(_OWN_GATE.search(item.path.read_text()))
+    if _own_gate_cache[item.path]:
         return
     where = (
         "outside the pg selection (it runs in no CI job)"
