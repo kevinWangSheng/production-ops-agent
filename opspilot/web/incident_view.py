@@ -1039,7 +1039,7 @@ def _log(
             {
                 "kind": "event",
                 "key": f"refire-{refire['delivery_key']}",
-                "title": "Alert re-fired",
+                "title": "Alert fired",
                 "detail": "attached to this incident"
                 + (
                     f" · startsAt {refire['starts_at']}"
