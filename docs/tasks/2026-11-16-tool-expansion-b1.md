@@ -1,9 +1,9 @@
 # 工具面拓展 B1：Elasticsearch/OpenSearch 日志检索
 
-- 状态：实现完成、待合并（PR #705；真实 Run 证据归 #671）
+- 状态：代码已合并（PR #705，`4052ab4f`，2026-11-18）；真实 Run 证据归 #671
 - 更新日期：2026-11-18
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) r1–r8 与 r9（本项 B1-U1、B1-U2、B1-1 至 B1-22）、C3 第 8、12 节；上游 HolmesGPT `a0009195` 的 `elasticsearch/data`（`elasticsearch.py`）。issue #560。预审全文在仓库外（`~/.agent/handoffs/opspilot-b1-prereview-2026-11-16.md`），对照 `main` `2f7ec758`。
-- 工作区：worktree `../poa-560-es`，分支 `feature/560-es-logs`，起点 `origin/main` `09c1a68b`。
+- 工作区：worktree `../poa-560-es`，分支 `feature/560-es-logs`，起点 `origin/main` `09c1a68b`（合并后已删除）。
 
 ## 目标
 
