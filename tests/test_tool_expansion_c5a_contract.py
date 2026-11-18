@@ -37,6 +37,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -712,13 +713,9 @@ def _assert_metric_alignment(
     match = re.fullmatch(r"([0-9]+)s", sent.get("step", ""))
     assert match, sent
     n = int(match.group(1))
-    window = (end - start).total_seconds()
-    # ASSUMPTION (asked the lead, unanswered at commit): range is either the
-    # evaluation range (window minus lookback) or the whole query window.
-    assert n in {max(int(window - lookback) // 250, 1), max(int(window) // 250, 1)}, (
-        n,
-        sent,
-    )
+    # Lead answer (r10 addendum): the evaluation range, before rounding.
+    evaluation = (end - start).total_seconds() - lookback
+    assert n == max(math.floor(evaluation / 250), 1), (n, sent)
     step_ns = n * 10**9
     sent_start = _loki_time_ns(sent["start"])
     sent_end = _loki_time_ns(sent["end"])
@@ -791,9 +788,9 @@ def test_metric_queries_start_evaluation_after_the_longest_range(
     assert view["lookback_seconds"] == lookback
     rounded = _loki_time_ns(sent["start"])
     reported = _ns(_instant(view["lookback_start_at"]))
-    # ASSUMPTION (asked the lead): the earliest instant the first point
-    # reads (rounded start minus lookback) or the rounded start itself.
-    assert reported in {rounded - lookback * 10**9, rounded}, view
+    # Lead answer: the earliest instant any point reads, the rounded start
+    # minus the lookback.
+    assert reported == rounded - lookback * 10**9, view
     assert reported >= _ns(start)
     row = _rows(outcome)[0]
     assert set(row) >= {"metric", "values"}
@@ -801,8 +798,9 @@ def test_metric_queries_start_evaluation_after_the_longest_range(
 
 
 def test_a_metric_query_whose_rounded_start_passes_its_end_is_refused(loki):
-    # Window [T+0.3s, T+600.9s] with [10m]: the pushed start T+600.3s rounds
-    # up past the end rounded down, under either reading of the step rule.
+    # Window [T+0.3s, T+600.9s] with [10m]: evaluation range 0.6 s, so n = 1;
+    # the pushed start T+600.3s rounds up to T+601s, past the end rounded
+    # down to T+600s.
     base = NOW - timedelta(hours=2)
     start = base + timedelta(milliseconds=300)
     end = base + timedelta(seconds=600, milliseconds=900)
@@ -818,16 +816,15 @@ def test_a_metric_query_whose_rounded_start_passes_its_end_is_refused(loki):
     assert loki.requests == []
 
 
-def test_a_range_equal_to_the_window_is_one_aligned_point_or_refused(loki):
+def test_a_range_equal_to_the_window_is_one_aligned_point(loki):
+    # Evaluation range 0 s gives n = 1; NOW is a whole second, so the pushed
+    # start and the end are the same aligned instant.
     loki.matrix = [{"metric": {"app": "checkout"}, "values": []}]
     outcome = _run(loki, {"query": 'count_over_time({app="checkout"}[1h])'})
-    if not loki.requests:
-        _refused_with(outcome, "QUERY_OUT_OF_WINDOW")
-        return
+    assert outcome.status in ("ok", "no_data"), _view(outcome)
     sent = loki.sent()
-    n = _assert_metric_alignment(sent, DEFAULT_START, NOW, 3600)
-    assert _loki_time_ns(sent["start"]) == _loki_time_ns(sent["end"])
-    assert n >= 1
+    assert _assert_metric_alignment(sent, DEFAULT_START, NOW, 3600) == 1
+    assert _loki_time_ns(sent["start"]) == _loki_time_ns(sent["end"]) == _ns(NOW)
 
 
 @pytest.mark.parametrize(
