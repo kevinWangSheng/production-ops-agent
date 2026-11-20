@@ -68,8 +68,11 @@ ENV = "OPSPILOT_KNOWLEDGE_TOOL"
 INVALID_CODE = "KNOWLEDGE_TOOL_INVALID"
 
 REQUEST_TIMEOUT_SECONDS = 5.0
-#: A 32 KiB runbook plus its projection fields, with room for JSON escaping.
-MAX_RESULT_BYTES = 192 * 1024
+#: A 32 KiB runbook plus its projection fields (interface: 64 KiB). Only a
+#: runbook that is mostly characters JSON must escape (quotes, newlines,
+#: control characters) can exceed it; that call is RESULT_TOO_LARGE, never
+#: truncated.
+MAX_RESULT_BYTES = 64 * 1024
 SKILL_ID_MAX_CHARS = 200
 #: How many available names a refusal lists (upstream "Available: ...").
 AVAILABLE_SHOWN = 50

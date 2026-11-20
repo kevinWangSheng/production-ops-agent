@@ -126,7 +126,7 @@ C2a 已合并（#737，`8c68d9f1`）。与上文第 5–7 节一致，这里只�
 
 10. （C2b）`ToolRegistration` 加 `citable_as_fact: bool = True`，执行器的 ok 视图再与它取与；只在为 `False` 时进注册表指纹，现有所有 registry revision 不变：报告合同只看视图上的 `citable_as_fact`，而视图字段由执行器生成、适配器不能覆盖（`_GENERIC_VIEW_KEYS`），所以 C2-8 只能在注册上声明。
 11. （C2b）`fetch_skill` 的注册 `source` 用档位的 lab 来源（`otel_demo.SOURCE`），不是 `knowledge`：执行器要求注册来源等于目标来源（`executor.py:781`）；视图另带 `kind`，结果行里的 `source` 写知识出处。
-12. （C2b）结果上限 192 KiB（接口草稿写 64 KiB）：32 KiB 正文在 JSON 里转义（引号、换行、控制字符）后可能超过 64 KiB，而接口要求「取到的总是全文、不截断」；视图仍受通用 25k token 上限。
+12. （C2b）结果上限按接口取 64 KiB（实现时一度改成 192 KiB，测试作者按接口断言 64 KiB，2026-11-20 改回）：只有大半是须转义字符（引号、换行、控制字符）的 32 KiB 正文才会超，超了整条 `RESULT_TOO_LARGE`，不截断。
 14. （C2b）输入版本 v7 归 C2b：未合并的 #722（PR #725，集群名）原也用 v7，C2b 先合并，#725 合并时改为 v8（lead 2026-11-20）。
 15. （C2b）`fetch_skill` 的拒绝把工具自己的码写进第一条 note（`KNOWLEDGE_NOT_FOUND: ...`，B1-6 先例）：执行器的拒绝视图只给分类（`INVALID_PARAMS`/`SOURCE_ERROR`），不带适配器的码；可取名字最多分进三条 note（每条 1024 字符上限）。
 16. （C2b）v7 事实校验另查 `age_seconds` 等于批准到读取之间的整秒数：改过年龄或时间戳的快照被拒（测试作者的篡改用例）。
