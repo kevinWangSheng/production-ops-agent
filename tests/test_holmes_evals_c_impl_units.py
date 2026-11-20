@@ -72,8 +72,13 @@ def _http(
 def test_question_lists_and_resolution() -> None:
     assert len(questions.C5_LOKI_QUESTIONS) == 7
     assert len(questions.C5_VICTORIALOGS_QUESTIONS) == 2
-    assert questions.ALL_QUESTIONS == questions.B1_QUESTIONS + questions.C5_QUESTIONS
-    assert set(log_backends.LOG_QUESTIONS) == set(questions.C5_QUESTIONS)
+    # PR-D appends the C2 questions after C5.
+    assert questions.ALL_QUESTIONS == (
+        questions.B1_QUESTIONS + questions.C5_QUESTIONS + questions.C2_QUESTIONS
+    )
+    assert set(log_backends.LOG_QUESTIONS) == set(questions.C5_QUESTIONS) | set(
+        questions.C2_QUESTIONS
+    )
     assert driver.resolve_questions("c5") == questions.C5_QUESTIONS
     assert driver.resolve_questions(None) == questions.B1_QUESTIONS
     assert driver.resolve_questions("102a,257") == (

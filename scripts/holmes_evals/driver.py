@@ -61,6 +61,7 @@ from typing import Any, Literal
 
 from scripts import lab_evidence, run_freeze
 from scripts.holmes_evals import judge as judge_mod
+from scripts.holmes_evals import knowledge as knowledge_mod
 from scripts.holmes_evals import scoring
 from scripts.holmes_evals.intake import (
     TARGET_ID,
@@ -73,6 +74,7 @@ from scripts.holmes_evals.intake import (
 )
 from scripts.holmes_evals.judge_run import JUDGE_KEYS, judge_env
 from scripts.holmes_evals.log_backends import (
+    KNOWLEDGE_QUESTIONS,
     LOG_QUESTIONS,
     VICTORIALOGS_IMAGE,
     LogQuestionSpec,
@@ -271,6 +273,8 @@ class Config:
     product_victorialogs: dict[str, str] = field(default_factory=dict, repr=False)
     k8s: K8sTarget | None = None
     account: UiAccount | None = None
+    #: PR-D: the round's runbook import account (C2 questions only).
+    import_account: UiAccount | None = None
     project: dict[str, Any] | None = None
 
     @property
@@ -302,6 +306,8 @@ class Config:
             return self.loki_mode
         if backend == "victorialogs":
             return self.victorialogs_mode
+        if backend == "kubernetes":
+            return "none"
         return self.es_mode
 
     def gateway_state(self, backend: str) -> Path:
@@ -369,10 +375,14 @@ def product_log_url(cfg: Config, backend: str) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def tool_env(cfg: Config, backend: str = "elasticsearch") -> dict[str, str]:
+def tool_env(
+    cfg: Config, backend: str = "elasticsearch", *, knowledge: bool = False
+) -> dict[str, str]:
     """The tool profile's addresses, the same for web and worker. Only the
     question's own log backend is configured (as upstream's per-question
-    ``toolsets.yaml``); B1's default is unchanged."""
+    ``toolsets.yaml``); B1's default is unchanged. PR-D: a ``kubernetes``
+    question has no log backend; ``knowledge`` sets
+    ``OPSPILOT_KNOWLEDGE_TOOL=1`` (web and worker both, C2b)."""
     env = {
         "OPSPILOT_TOOL_PROFILE": "otel-demo-ext",
         "OPSPILOT_OTEL_PROMETHEUS_URL": f"http://127.0.0.1:{cfg.ports.prometheus}",
@@ -386,6 +396,10 @@ def tool_env(cfg: Config, backend: str = "elasticsearch") -> dict[str, str]:
     elif backend == "victorialogs":
         del env["OPSPILOT_ES_URL"]
         env["OPSPILOT_VICTORIALOGS_URL"] = product_log_url(cfg, backend)
+    elif backend == "kubernetes":
+        del env["OPSPILOT_ES_URL"]
+    if knowledge:
+        env["OPSPILOT_KNOWLEDGE_TOOL"] = "1"
     return env
 
 
@@ -396,14 +410,20 @@ def web_env(
     account: UiAccount,
     *,
     backend: str = "elasticsearch",
+    knowledge: bool = False,
+    import_account: UiAccount | None = None,
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
+    users = account.users_env()
+    if import_account is not None:
+        # PR-D: the runbook import account, apart from the asking one.
+        users += "," + import_account.users_env()
     return _strs(
         services.base_env()
-        | tool_env(cfg, backend)
+        | tool_env(cfg, backend, knowledge=knowledge)
         | {
             "OPSPILOT_WEB_DSN": pg.web_dsn,
-            "OPSPILOT_UI_USERS": account.users_env(),
+            "OPSPILOT_UI_USERS": users,
             "OPSPILOT_ALLOWED_ORIGINS": origin,
             "OPSPILOT_AUTH_REVISION": "holmes-evals",
             "OPSPILOT_BIND": f"127.0.0.1:{cfg.ports.web}",
@@ -423,8 +443,12 @@ def worker_env(
     *,
     backend: str = "elasticsearch",
     log_env: Mapping[str, str] | None = None,
+    knowledge: bool = False,
 ) -> dict[str, str]:
-    if backend == "elasticsearch":
+    data_plane: dict[str, str]
+    if backend == "kubernetes":
+        data_plane = {}
+    elif backend == "elasticsearch":
         data_plane = {
             k: v for k, v in product_es.items() if k.startswith("OPSPILOT_ES_")
         } | {"OPSPILOT_ES_URL": cfg.es_url}
@@ -437,7 +461,7 @@ def worker_env(
         }
     env = (
         services.base_env()
-        | tool_env(cfg, backend)
+        | tool_env(cfg, backend, knowledge=knowledge)
         | data_plane
         | {
             "OPSPILOT_WORKER_DSN": pg.runtime_dsn,
@@ -636,6 +660,13 @@ class Backends:
     start_port_forward: Callable[..., Started] = start_port_forward
     loki_admin: Callable[[str], LokiAdmin] = LokiAdmin
     namespace_gone: Callable[[str, Mapping[str, str]], bool] = namespace_gone
+    # PR-D (C2 knowledge fixtures).
+    import_runbooks: Callable[..., tuple[list[dict[str, Any]], list[str]]] = (
+        knowledge_mod.import_runbooks
+    )
+    revoke_runbooks: Callable[..., list[str]] = knowledge_mod.revoke_runbooks
+    active_runbooks: Callable[[str, str], list[str]] = knowledge_mod.active_runbooks
+    run_catalog: Callable[[str, str], dict[str, Any] | None] = knowledge_mod.run_catalog
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     sleep: Callable[[float], None] = time.sleep
 
@@ -685,7 +716,16 @@ def disclosures(
         and spec.namespace != k8s_namespace
     ):
         codes.append("K8S_SCOPE_DIFFERS")
+    if qid in KNOWLEDGE_QUESTIONS:
+        codes.append("RUNBOOKS_IMPORTED_REVIEWED")
+        if qid in GLOBAL_INSTRUCTIONS_QUESTIONS:
+            codes.append("GLOBAL_INSTRUCTIONS_NOT_IMPORTED")
     return codes
+
+
+#: PR-D: C2 questions whose directory holds ``global_instructions.json``,
+#: which is not imported (no OpsPilot channel for global instructions).
+GLOBAL_INSTRUCTIONS_QUESTIONS = frozenset({"162_get_skills"})
 
 
 JUDGE_FIELDS = (
@@ -769,6 +809,11 @@ class Attempt:
         self.spec: LogQuestionSpec | None = LOG_QUESTIONS.get(qid)
         self.mode = cfg.log_mode(self.backend)
         self.log_env: dict[str, str] = {}
+        # PR-D: this attempt's knowledge fixtures (C2 questions only).
+        self.knowledge = qid in KNOWLEDGE_QUESTIONS
+        self._imported: list[dict[str, Any]] = []
+        self._owner_dsn: str | None = None
+        self._revoked = False
         self.block: dict[str, Any] = {
             "schema": SUMMARY_SCHEMA,
             "track": scoring.TRACK,
@@ -876,10 +921,94 @@ class Attempt:
             raise RoundAbort("CLEANUP_FAILED", f"purge:{error.code}") from None
         self.block["setup"].setdefault("purged", {})[phase] = purged
 
+    # -- PR-D: knowledge fixtures --------------------------------------------------------
+
+    def _knowledge_block(self) -> dict[str, Any]:
+        block: dict[str, Any] = self.block.setdefault("knowledge", {})
+        return block
+
+    def _import_knowledge(self, owner_dsn: str) -> None:
+        """Import and approve the question's fixtures through the workbench,
+        failing closed on residue, refusals and a mismatched result."""
+        cfg, b = self.cfg, self.b
+        assert cfg.import_account is not None
+        block = self._knowledge_block()
+        directory = question_dir(cfg.upstream, self.qid)
+        fixtures = knowledge_mod.fixture_rows(directory)
+        block["fixtures"] = fixtures
+        block["import_account_prefix"] = knowledge_mod.IMPORT_ACCOUNT_PREFIX
+        block["catalog_retries"] = sum(
+            1 for h in self.history if h.get("code") == "RUNBOOK_CATALOG_MISMATCH"
+        )
+        if not fixtures:
+            raise DeterministicError("RUNBOOK_FIXTURES_MISSING")
+        before = b.active_runbooks(owner_dsn, TARGET_ID)
+        block["active_before_import"] = before
+        if before:
+            raise RoundAbort("RUNBOOK_RESIDUE", ",".join(before))
+        rows, refusals = b.import_runbooks(
+            f"http://127.0.0.1:{cfg.ports.web}",
+            cfg.import_account,
+            directory,
+            TARGET_ID,
+        )
+        self._imported = list(rows)
+        block["imported"] = [
+            {k: row.get(k) for k in ("name", "entry_id", "revision")} for row in rows
+        ]
+        if refusals:
+            raise InfraFailure("RUNBOOK_IMPORT_FAILED", refusals[0])
+        after = b.active_runbooks(owner_dsn, TARGET_ID)
+        block["active_after_import"] = after
+        if sorted(after) != sorted(f["name"] for f in fixtures):
+            raise InfraFailure("RUNBOOK_IMPORT_MISMATCH", ",".join(after))
+
+    def _check_run_catalog(self, owner_dsn: str, run_id: str) -> None:
+        catalog = self.b.run_catalog(owner_dsn, run_id)
+        self._knowledge_block()["run_catalog"] = catalog
+        names = [str(row.get("name")) for row in self._imported]
+        if not knowledge_mod.catalog_matches(catalog, names):
+            # The model was not shown the intended list: not a scorable
+            # attempt (revoked below by the ``run`` fallback).
+            raise InfraFailure("RUNBOOK_CATALOG_MISMATCH", json.dumps(catalog))
+
+    def _revoke_knowledge(self, *, after_run: bool) -> None:
+        """Revoke what this attempt imported and check nothing stays active.
+        After a Run either failure aborts the round; on the fallback path
+        (the attempt failed earlier) it is recorded only -- the attempt's PG
+        is discarded and the next attempt checks for residue first."""
+        if self._revoked or not self._imported or self._owner_dsn is None:
+            return
+        self._revoked = True
+        cfg, b = self.cfg, self.b
+        assert cfg.import_account is not None
+        block = self._knowledge_block()
+        try:
+            refusals = b.revoke_runbooks(
+                f"http://127.0.0.1:{cfg.ports.web}", cfg.import_account, self._imported
+            )
+            block["revoked"] = len(self._imported) - len(refusals)
+            left = b.active_runbooks(self._owner_dsn, TARGET_ID)
+        except Exception as error:  # noqa: BLE001 - classified below
+            block["revoke_error"] = type(error).__name__
+            if after_run:
+                raise RoundAbort("CLEANUP_FAILED", "runbook revoke") from None
+            return
+        block["active_after_revoke"] = left
+        if not after_run:
+            return
+        if refusals:
+            raise RoundAbort("CLEANUP_FAILED", "runbook revoke")
+        if left:
+            raise RoundAbort("CLEANUP_FAILED", "runbook residue")
+
     def run(self) -> AttemptResult:
         try:
             return self._run()
         finally:
+            if self.knowledge and not self._revoked:
+                # Before the web stops (``cleanup`` below).
+                self._revoke_knowledge(after_run=False)
             failures = self.forwards.close() + self.cleanup.close()
             if not self._cleaned_after and self._clean_armed:
                 self._cleaned_after = True
@@ -904,7 +1033,7 @@ class Attempt:
         """The attempt's own VictoriaLogs, or the stand-in backend; the
         product's log account (``self.log_env``)."""
         cfg, b = self.cfg, self.b
-        if self.spec is None:
+        if self.spec is None or self.backend == "kubernetes":
             return
         work = self.dir / "log-backend"
         try:
@@ -964,6 +1093,15 @@ class Attempt:
                 "backend": "elasticsearch",
                 "mode": cfg.es_mode,
                 "product_url": cfg.es_url,
+                "gateway_upstream": None,
+                "port_forwards": [],
+                "victorialogs_image": None,
+            }
+        if self.backend == "kubernetes":
+            return {
+                "backend": "kubernetes",
+                "mode": "none",
+                "product_url": None,
                 "gateway_upstream": None,
                 "port_forwards": [],
                 "victorialogs_image": None,
@@ -1092,19 +1230,31 @@ class Attempt:
         write_identities(identities)
         assert cfg.account is not None and cfg.k8s is not None
         addresses = self._backend_addresses() if self.spec is not None else []
-        wenv = web_env(cfg, pg, identities, cfg.account, backend=self.backend)
+        self._owner_dsn = pg.owner_dsn
+        wenv = web_env(
+            cfg, pg, identities, cfg.account, backend=self.backend,
+            knowledge=self.knowledge,
+            import_account=cfg.import_account if self.knowledge else None,
+        )  # fmt: skip
         check_env_isolation(
             wenv, cfg.engineer_key, role="web", backend_addresses=addresses
         )
         kenv = worker_env(
             cfg, pg, cfg.product_es, cfg.k8s, q.cluster_name, cfg.secrets,
-            backend=self.backend, log_env=self.log_env,
+            backend=self.backend, log_env=self.log_env, knowledge=self.knowledge,
         )  # fmt: skip
         check_env_isolation(
             kenv, cfg.engineer_key, role="worker", backend_addresses=addresses
         )
         try:
             self._started(b.start_web(wenv, cfg.ports.web, self.dir / "web.log"))
+        except services.ServiceError as error:
+            raise InfraFailure(error.code, str(error)) from None
+        if self.knowledge:
+            # The list is read by the web when the Run is created: import
+            # before the worker can pick anything up.
+            self._import_knowledge(pg.owner_dsn)
+        try:
             worker = self._started(
                 b.start_worker(
                     kenv,
@@ -1187,6 +1337,9 @@ class Attempt:
         worker.stop()
 
         run_block, ledger = b.collect(pg.owner_dsn, run_id)
+        if self.knowledge:
+            self._check_run_catalog(pg.owner_dsn, run_id)
+            self._revoke_knowledge(after_run=True)
         calls: list[ToolCall] | None = None
         trial_dir = self.cfg.trial_dir(self.qid, self.trial)
         conversion: dict[str, Any] = {"with_tool_calls": False, "tool_calls": None}
@@ -1593,6 +1746,11 @@ def prepare_round(cfg: Config, backends: Backends, round_: Round) -> None:
         else backends.unreachable_k8s(cfg.round_dir / "k8s-ca", cfg.ports.k8s)
     )
     cfg.account = new_account()
+    if any(q in KNOWLEDGE_QUESTIONS for q in cfg.questions):
+        cfg.import_account = UiAccount(
+            knowledge_mod.IMPORT_ACCOUNT_PREFIX + secrets.token_hex(4),
+            secrets.token_urlsafe(24),
+        )
 
 
 def _prepare_gateways(

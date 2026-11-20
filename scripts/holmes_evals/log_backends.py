@@ -25,11 +25,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from scripts.holmes_evals.questions import C5_LOKI_QUESTIONS, C5_VICTORIALOGS_QUESTIONS
+from scripts.holmes_evals.questions import (
+    C2_QUESTIONS,
+    C5_LOKI_QUESTIONS,
+    C5_VICTORIALOGS_QUESTIONS,
+)
 from scripts.itbench_lite import services
 from scripts.itbench_lite.services import ServiceError, Started
 
-Backend = Literal["elasticsearch", "loki", "victorialogs"]
+#: ``kubernetes`` (PR-D, C2): no log backend; the product's Kubernetes
+#: read-only tools and ``fetch_skill`` only.
+Backend = Literal["elasticsearch", "loki", "victorialogs", "kubernetes"]
 
 #: victoriametrics/victoria-logs:v1.54.0, the digest the CI job
 #: ``log-backends`` pins (read from Docker Hub on 2026-11-19).
@@ -46,7 +52,7 @@ READY_TIMEOUT_S = 60
 @dataclass(frozen=True)
 class LogQuestionSpec:
     qid: str
-    backend: Literal["loki", "victorialogs"]
+    backend: Literal["loki", "victorialogs", "kubernetes"]
     #: ``127.0.0.1:<port>`` of the question's own Loki (engineer reads and
     #: writes, the gateway's upstream); None for VictoriaLogs (the attempt's).
     address: str | None
@@ -88,9 +94,40 @@ LOG_QUESTIONS: dict[str, LogQuestionSpec] = {
             LogQuestionSpec(q, "victorialogs", None, None, (), False, True)
             for q in C5_VICTORIALOGS_QUESTIONS
         ),
-    )
+        # PR-D (C2): namespaces from each question's ``before_test``; 89 and
+        # 90 have no setup and need no cluster.
+        LogQuestionSpec(
+            "89_skill_missing_cloudwatch", "kubernetes", None, None, (), False, False
+        ),
+        LogQuestionSpec(
+            "90_skill_basic_selection", "kubernetes", None, None, (), False, False
+        ),
+        LogQuestionSpec(
+            "94_skill_transparency", "kubernetes", None, "app-94", (), True, False
+        ),
+        LogQuestionSpec(
+            "95_skill_memory_leak_detection",
+            "kubernetes",
+            None,
+            "app-95",
+            (),
+            True,
+            False,
+        ),
+        LogQuestionSpec(
+            "96_no_matching_skill", "kubernetes", None, "app-96", (), True, False
+        ),
+        LogQuestionSpec(
+            "162_get_skills", "kubernetes", None, "app-162", (), True, False
+        ),
+    )  # fmt: skip
 }
-assert set(LOG_QUESTIONS) == set(C5_LOKI_QUESTIONS) | set(C5_VICTORIALOGS_QUESTIONS)
+assert set(LOG_QUESTIONS) == (
+    set(C5_LOKI_QUESTIONS) | set(C5_VICTORIALOGS_QUESTIONS) | set(C2_QUESTIONS)
+)
+#: Questions whose attempts import their knowledge fixtures and run with
+#: ``OPSPILOT_KNOWLEDGE_TOOL=1`` (PR-D).
+KNOWLEDGE_QUESTIONS: frozenset[str] = frozenset(C2_QUESTIONS)
 
 
 def backend_of(qid: str) -> Backend:
