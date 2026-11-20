@@ -63,6 +63,26 @@ _SEPARATORS = re.compile(r"[\s_]+")
 _TARGET_LOCK = "opspilot_runbook_target:"
 _SUBMISSION_LOCK = "opspilot_runbook_submission:"
 
+# Explicit column lists: product SQL never reads ``*``
+# (``tests/test_sql_column_order_independence.py``).
+_SUBMISSION_COLUMNS = (
+    "submission_id, resource_uid, name, description, content, content_sha256, "
+    "source_label, source_ref, supersedes_entry_id, submitted_by, event_id, "
+    "submitted_at"
+)
+_REVISION_COLUMNS = (
+    "entry_id, revision, submission_id, resource_uid, name, description, content, "
+    "content_sha256, source_label, source_ref, supersedes_revision, approved_by, "
+    "event_id, approved_at"
+)
+_ENTRY_COLUMNS = (
+    "entry_id, resource_uid, generation, latest_revision, created_at, updated_at"
+)
+_AUDIT_COLUMNS = (
+    "event_id, idempotency_key, object_kind, object_id, action, revision, actor_id, "
+    "principal_kind, reason, expected_generation, resulting_generation, recorded_at"
+)
+
 ObjectKind = Literal["runbook_submission", "runbook_entry"]
 Action = Literal["submit", "approve", "reject", "revoke"]
 
@@ -576,7 +596,9 @@ class RunbookStore(_StoreBase):
         _require_uuid(submission_id)
         with self.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT s.*, d.decision, d.decided_by, d.decided_at, d.reason, "
+                "SELECT "
+                + _prefixed(_SUBMISSION_COLUMNS, "s")
+                + ", d.decision, d.decided_by, d.decided_at, d.reason, "
                 "r.entry_id AS approved_entry_id, r.revision AS approved_revision "
                 "FROM opspilot_runbook_submissions s "
                 "LEFT JOIN opspilot_runbook_decisions d USING (submission_id) "
@@ -605,12 +627,15 @@ class RunbookStore(_StoreBase):
         _require_uuid(entry_id)
         with self.transaction(snapshot=True) as conn:
             head = conn.execute(
-                "SELECT * FROM opspilot_runbook_entries WHERE entry_id=%s", (entry_id,)
+                f"SELECT {_ENTRY_COLUMNS} FROM opspilot_runbook_entries WHERE entry_id=%s",
+                (entry_id,),
             ).fetchone()
             if head is None:
                 raise PersistenceError("NOT_FOUND")
             revisions = conn.execute(
-                "SELECT r.*, s.state, x.reason AS revoked_reason, x.revoked_by, "
+                "SELECT "
+                + _prefixed(_REVISION_COLUMNS, "r")
+                + ", s.state, x.reason AS revoked_reason, x.revoked_by, "
                 "x.revoked_at FROM opspilot_runbook_revisions r "
                 "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
                 "LEFT JOIN opspilot_runbook_revocations x USING (entry_id, revision) "
@@ -635,7 +660,8 @@ class RunbookStore(_StoreBase):
     def _pending(self, conn: Connection, submission_id: UUID) -> dict[str, Any]:
         self._lock(conn, _SUBMISSION_LOCK, str(submission_id))
         row = conn.execute(
-            "SELECT * FROM opspilot_runbook_submissions WHERE submission_id=%s",
+            f"SELECT {_SUBMISSION_COLUMNS} FROM opspilot_runbook_submissions "
+            "WHERE submission_id=%s",
             (submission_id,),
         ).fetchone()
         if row is None:
@@ -729,7 +755,8 @@ class RunbookStore(_StoreBase):
         conn: Connection, object_kind: ObjectKind, object_id: UUID
     ) -> list[dict[str, Any]]:
         return conn.execute(
-            "SELECT * FROM opspilot_runbook_audit WHERE object_kind=%s AND object_id=%s "
+            f"SELECT {_AUDIT_COLUMNS} FROM opspilot_runbook_audit "
+            "WHERE object_kind=%s AND object_id=%s "
             "ORDER BY resulting_generation",
             (object_kind, object_id),
         ).fetchall()
@@ -773,3 +800,7 @@ class RunbookStore(_StoreBase):
 
 def _submission_state(decision: str | None) -> str:
     return "pending" if decision is None else decision
+
+
+def _prefixed(columns: str, alias: str) -> str:
+    return ", ".join(f"{alias}.{column.strip()}" for column in columns.split(","))
