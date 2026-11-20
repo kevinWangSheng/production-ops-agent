@@ -282,9 +282,10 @@ class _HandleGone(TransportUnavailable):
 
 
 class _Refusal(Exception):
-    def __init__(self, response: TransportResponse) -> None:
+    def __init__(self, response: TransportResponse, kafka_name: str = "") -> None:
         super().__init__()
         self.response = response
+        self.kafka_name = kafka_name
 
 
 def _error_name(error: object) -> tuple[str, str]:
@@ -326,7 +327,8 @@ def _classify(error: object, missing: str | None) -> BaseException:
                 body=canonical({"error": INVALID_CODE}).encode(),
                 source_status=INVALID_CODE,
                 view_fields={"notes": [f"{INVALID_CODE}: {name}: {_note_text(text)}"]},
-            )
+            ),
+            name,
         )
     label = name or type(error).__name__
     if not name:
@@ -336,7 +338,8 @@ def _classify(error: object, missing: str | None) -> BaseException:
             body=canonical({"error": ERROR_CODE}).encode(),
             source_status=ERROR_CODE,
             view_fields={"notes": [f"{ERROR_CODE}: {label}: {_note_text(text)}"]},
-        )
+        ),
+        name,
     )
 
 
@@ -417,6 +420,8 @@ class _Call:
     monotonic: Callable[[], float]
     #: Error names librdkafka reported through ``error_cb`` (not per request).
     seen: list[str] = field(default_factory=list)
+    #: Partition-level errors the call answered around (shown in notes).
+    partition_errors: dict[str, int] = field(default_factory=dict)
 
     def refused_login(self) -> bool:
         """Whether the client reported a failed login: librdkafka keeps
@@ -531,13 +536,33 @@ def _bounds(
     out: dict[tuple[str, int], int | None] = {}
     for tp, future in futures.items():
         key = (str(tp.topic), int(tp.partition))
-        try:
-            answer = call.result(future, missing="topic")
-        except _Missing:
+        answer, error = _partition_result(call, future)
+        if error is not None:
+            # One offline or deleted partition must not hide the others
+            # (review, PR #748): its offset is unknown, the rest stand.
             out[key] = None
+            call.partition_errors[error] = call.partition_errors.get(error, 0) + 1
             continue
         out[key] = _offset(getattr(answer, "offset", None))
     return out
+
+
+def _partition_result(call: _Call, future: Any) -> tuple[Any, str | None]:
+    """One partition's answer, or the Kafka error name it failed with.
+
+    Call-level failures still end the call: a timeout or unreachable cluster,
+    an authorization or login failure, and a retired broker handle (re-run
+    once by ``fetch``). Every other error belongs to this partition only
+    (``LEADER_NOT_AVAILABLE``, ``NOT_LEADER_FOR_PARTITION``,
+    ``UNKNOWN_TOPIC_OR_PART`` ...)."""
+    try:
+        return call.result(future, missing="topic"), None
+    except _Missing:
+        return None, "UNKNOWN_TOPIC_OR_PART"
+    except _Refusal as refusal:
+        if refusal.response.source_status == FORBIDDEN_CODE:
+            raise
+        return None, refusal.kafka_name or "UNKNOWN"
 
 
 def _lag_by_topic(rows: Iterable[Mapping[str, Any]]) -> dict[str, int]:
@@ -617,15 +642,27 @@ class KafkaTransport:
             with self._factory(conf) as client:
                 call = _Call(client, deadline, self._monotonic, seen)
                 try:
-                    answer = _HANDLERS[request.tool](call, request.params)
+                    try:
+                        answer = _HANDLERS[request.tool](call, request.params)
+                    except _HandleGone:
+                        # Once only, within the same deadline; read-only reads.
+                        call.partition_errors.clear()
+                        answer = _HANDLERS[request.tool](call, request.params)
                 except TransportTimeout:
                     client.poll(0)
                     if call.refused_login():
                         raise _forbidden("SASL_AUTHENTICATION_FAILED") from None
                     raise
-                except _HandleGone:
-                    # Once only, within the same deadline; read-only reads.
-                    answer = _HANDLERS[request.tool](call, request.params)
+                if call.partition_errors:
+                    answer.notes.append(
+                        "Offsets of some partitions could not be read ("
+                        + ", ".join(
+                            f"{name} x{count}"
+                            for name, count in sorted(call.partition_errors.items())
+                        )
+                        + "); their end or start offset is null and their lag "
+                        "unknown (end_offset_unavailable)."
+                    )
         except _Missing as missing:
             answer = _Answer(
                 rows=[],
@@ -1174,7 +1211,7 @@ _SCHEMA_TEXT: Mapping[str, str] = {
     "members (client_id, host, assignment) and, with include_offsets (default "
     "true), per-partition committed offset, end offset, log start offset, lag "
     "and flags (no_committed_offset, committed_ahead_of_end, "
-    "committed_below_log_start), plus lag_by_topic. " + _LAG,
+    "committed_below_log_start, end_offset_unavailable), plus lag_by_topic. " + _LAG,
     TOPICS_TOOL: "Lists all Kafka topics in the cluster with their partition "
     "count and whether they are internal; sorted by name, at most 1000.",
     TOPIC_TOOL: "Describes one Kafka topic: per partition the leader, replicas, "
@@ -1269,7 +1306,9 @@ _RETURNS: Mapping[str, str] = {
     "lag_by_topic. Lag is end_offset - committed_offset in messages; null "
     "without a committed offset (flag no_committed_offset); 0 when the commit "
     "is past the end (committed_ahead_of_end); committed_below_log_start when "
-    "retention already deleted messages the group had not read.",
+    "retention already deleted messages the group had not read; "
+    "end_offset_unavailable (lag null) when the partition's offsets could not "
+    "be read, e.g. it has no leader.",
     TOPICS_TOOL: "Rows under results, one per topic: topic, partitions (count), "
     "internal; sorted by name.",
     TOPIC_TOOL: "One row under results: topic, topic_id, internal, partitions "
@@ -1305,8 +1344,9 @@ _LIMITS = (
     "At most 1000 topics, 800 groups and 500 partition rows, sorted, the "
     "rest marked incomplete; find_consumer_groups_by_topic scans at most 200 "
     "groups. String values cut to 2000 characters. At most 2 MiB and 25,000 "
-    "tokens, refused whole above that (RESULT_TOO_LARGE). 30 s per call, no "
-    "retry. A missing topic or group is no_data (TOPIC_NOT_FOUND, "
+    "tokens, refused whole above that (RESULT_TOO_LARGE). 30 s per call; "
+    "no retry, except one re-run when the client retires a broker connection "
+    "(_DESTROY_BROKER). A missing topic or group is no_data (TOPIC_NOT_FOUND, "
     "GROUP_NOT_FOUND); an authorization failure SOURCE_FORBIDDEN; an "
     "unreachable cluster SOURCE_UNAVAILABLE."
 )

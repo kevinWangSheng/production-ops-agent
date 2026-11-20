@@ -146,3 +146,115 @@ def test_a_failed_login_reported_to_error_cb_is_forbidden_not_a_timeout():
     response = transport.fetch(_request(BROKERS_TOOL))
     assert response.source_status == "KAFKA_FORBIDDEN"
     assert "SASL_AUTHENTICATION_FAILED" in str(response.view_fields)
+
+
+class _GroupClient:
+    """One group (``g``) committed on four partitions of ``t``; partition 0
+    reads normally, the others fail with ``errors[p]`` in ``list_offsets``."""
+
+    def __init__(self, errors: dict[int, str]) -> None:
+        self.errors = errors
+
+    def __enter__(self) -> _GroupClient:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def poll(self, timeout: float) -> int:
+        return 0
+
+    def describe_consumer_groups(self, ids: list[str], **kwargs: Any) -> Any:
+        group = SimpleNamespace(
+            members=[],
+            state=ck.ConsumerGroupState.EMPTY,
+            type=ck.ConsumerGroupType.CLASSIC,
+            coordinator=SimpleNamespace(id=1),
+            partition_assignor="",
+        )
+        return {gid: _done(group) for gid in ids}
+
+    def list_consumer_group_offsets(self, requests: list[Any], **kwargs: Any) -> Any:
+        tps = [ck.TopicPartition("t", p, 10) for p in range(4)]
+        return {
+            r.group_id: _done(SimpleNamespace(topic_partitions=tps)) for r in requests
+        }
+
+    def list_consumer_groups(self, **kwargs: Any) -> Any:
+        group = SimpleNamespace(group_id="g")
+        return _done(SimpleNamespace(valid=[group], errors=[]))
+
+    def describe_topics(self, topics: Any, **kwargs: Any) -> Any:
+        parts = [SimpleNamespace(id=p) for p in range(4)]
+        return {"t": _done(SimpleNamespace(partitions=parts))}
+
+    def list_offsets(self, request: dict[Any, Any], **kwargs: Any) -> Any:
+        out = {}
+        for tp, spec in request.items():
+            name = self.errors.get(tp.partition)
+            offset = 0 if "earliest" in type(spec).__name__.lower() else 30
+            out[tp] = _failed(name) if name else _done(SimpleNamespace(offset=offset))
+        return out
+
+
+PARTITION_ERRORS = {
+    1: "LEADER_NOT_AVAILABLE",
+    2: "NOT_LEADER_FOR_PARTITION",
+    3: "UNKNOWN_TOPIC_OR_PART",
+}
+
+
+def _group_request(tool: str, params: dict[str, Any]) -> TransportRequest:
+    from dataclasses import replace
+
+    return replace(_request(tool), params=params)
+
+
+def test_partition_errors_leave_the_other_partitions_standing():
+    import json
+
+    transport = KafkaTransport(
+        KafkaConfig("localhost:9092"),
+        client_factory=lambda conf: _GroupClient(PARTITION_ERRORS),
+    )
+    response = transport.fetch(
+        _group_request("describe_consumer_group", {"group_id": "g"})
+    )
+    assert response.source_status is None, response.view_fields
+    (group,) = json.loads(response.body)["results"]
+    rows = {r["partition"]: r for r in group["partitions"]}
+    assert rows[0]["lag"] == 20 and rows[0]["flags"] == []
+    for p in PARTITION_ERRORS:
+        assert rows[p]["end_offset"] is None and rows[p]["lag"] is None
+        assert rows[p]["flags"] == ["end_offset_unavailable"]
+    assert group["lag_by_topic"] == {"t": 20}
+    notes = str(response.view_fields)
+    for name in PARTITION_ERRORS.values():
+        assert name in notes, notes
+
+
+def test_find_counts_only_the_readable_partitions():
+    import json
+
+    transport = KafkaTransport(
+        KafkaConfig("localhost:9092"),
+        client_factory=lambda conf: _GroupClient(PARTITION_ERRORS),
+    )
+    response = transport.fetch(
+        _group_request("find_consumer_groups_by_topic", {"topic_name": "t"})
+    )
+    assert response.source_status is None, response.view_fields
+    (row,) = json.loads(response.body)["results"]
+    assert row["total_lag"] == 20
+    assert "LEADER_NOT_AVAILABLE" in str(response.view_fields)
+
+
+def test_a_partition_authorization_failure_still_ends_the_call():
+    transport = KafkaTransport(
+        KafkaConfig("localhost:9092"),
+        client_factory=lambda conf: _GroupClient({1: "TOPIC_AUTHORIZATION_FAILED"}),
+    )
+    response = transport.fetch(
+        _group_request("describe_consumer_group", {"group_id": "g"})
+    )
+    assert response.source_status == "KAFKA_FORBIDDEN"

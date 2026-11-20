@@ -61,7 +61,7 @@
 
 ## 合同测试（C3-14，未参与实现的 Agent 按本记录写，替身工厂，本机跑）
 
-① AST 与 ruff 禁用项（见「只读保证」）；② 客户端配置含 `allow.auto.create.topics=false`，按名查主题走 `describe_topics`，`list_topics` 不带主题；③ 滞后口径：四种标记、`lag_by_topic`、`total_lag`、`metadata` 不出现；④ 参数校验在发请求前拒绝（替身零调用）；⑤ 上限与不完整标记（1000 行、1000 分区行、200 组、2000 字符、2 MiB、25k）；⑥ 敏感配置值不出工具；⑦ 错误码映射表；⑧ `kafka-ro` 不与其他槽回退，口令不进视图、notes、trace；⑨ 启动码与 web 不读凭据；⑩ `otel-demo` 字节不变，未设地址时扩展档位已有组合 revision 字节不变；⑪ lab 闸门（多个引导地址有一个不合规即拒）。
+① AST 与 ruff 禁用项（见「只读保证」）；② 客户端配置含 `allow.auto.create.topics=false`，按名查主题走 `describe_topics`，`list_topics` 不带主题；③ 滞后口径：四种标记、`lag_by_topic`、`total_lag`、`metadata` 不出现；④ 参数校验在发请求前拒绝（替身零调用）；⑤ 上限与不完整标记（1000/800 行、500 分区行、200 组、2000 字符、2 MiB、25k）；⑥ 敏感配置值不出工具；⑦ 错误码映射表；⑧ `kafka-ro` 不与其他槽回退，口令不进视图、notes、trace；⑨ 启动码与 web 不读凭据；⑩ `otel-demo` 字节不变，未设地址时扩展档位已有组合 revision 字节不变；⑪ lab 闸门（多个引导地址有一个不合规即拒）。
 
 ## 接真实 Kafka 的 CI 集成测试（R8-25，C3-15 至 C3-20）
 
@@ -102,7 +102,8 @@
 - `describe_topic` 保留上游的 `fetch_configuration`（默认 false），走 `describe_configs`。理由：照上游参数面。
 - `find_consumer_groups_by_topic` 先确认主题存在。理由：不存在时不扫组，直接给出 `TOPIC_NOT_FOUND` 这个事实。
 
-- `describe_consumer_group` 的分区行在 `list_offsets` 里某分区报错（如该主题已删）时，该行 `end_offset` 为空、`lag` 为空、标 `end_offset_unavailable`，不让整条调用失败。理由：组还提交着已删主题的位点是常见情形，整条失败会让这个组无法查看。
+- `list_offsets` 里任何分区级错误（`UNKNOWN_TOPIC_OR_PART`、`LEADER_NOT_AVAILABLE`、`NOT_LEADER_FOR_PARTITION` 等）只让该分区的起止位点为空：`describe_consumer_group` 该行 `lag` 为空、标 `end_offset_unavailable`，`find_consumer_groups_by_topic` 的 `total_lag` 不计该分区，notes 写错误名与次数；调用级错误（超时、不可达、授权或登录失败、`_DESTROY_BROKER`）仍让整次调用失败。理由：分区离线正是典型事故，整条失败会让整个组看不了（独立审查阻塞项，PR #748，原实现只放过了「主题不存在」一种）。
+- 已知限制（独立审查，不改）：消费组成员列表不设行数上限（靠 2 MiB/25k 整条拒绝兜底）；`find_consumer_groups_by_topic` 对扫描的每个组各发一次 `list_consumer_group_offsets`，最多 200 次串行往返，受 30 秒期限约束；扫描中任一组返回授权失败会让整次调用 `SOURCE_FORBIDDEN`。
 - `_DESTROY_BROKER`（「Broker handle destroyed without termination」）时，同一客户端、同一期限内把本次调用的只读请求重跑一次，再失败报 `SOURCE_UNAVAILABLE`。理由：CI 实测（PR #748 第 7 轮）新建客户端发出的第一个请求会撞上 librdkafka 用首份元数据替换 bootstrap 句柄，`describe_topic` 与 `find_consumer_groups_by_topic` 偶发失败；这是客户端内部句柄被回收，不是 broker 拒绝，重跑只读请求无副作用。C3-10 的「不重试」对其余错误照旧（合同测试断言单次请求的错误码都不重试）。
 - 登录失败（错口令）：librdkafka 不让请求失败，只经 `error_cb` 报 `_AUTHENTICATION` 并一直重试，请求最终超时（CI 实测）。客户端配置挂 `error_cb` 记下错误名；等待结果时每 0.5 秒 `poll(0)` 一次，看到登录失败即报 `SOURCE_FORBIDDEN`，不等到 30 秒超时；超时时也再查一次。理由：错口令是权限问题，报成超时会误导排查。
 - 不带 Kafka 错误名的异常（例如客户端库自身的类型错误）归 `SOURCE_ERROR`，notes 只写异常类型名；worker 日志只记类型名，不记异常文本。理由：异常文本可能带请求内容。
