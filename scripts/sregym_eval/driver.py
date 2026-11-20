@@ -52,7 +52,13 @@ from scripts.itbench_lite import services
 from scripts.itbench_lite.driver import DriverError, RoundAbort
 from scripts.itbench_lite.services import Started
 from scripts.sregym_eval import filter_proxy, identity
-from scripts.sregym_eval.agent_entry import LEDGER_FILE, QUESTION_FILE, RECORD, RUN_FILE
+from scripts.sregym_eval.agent_entry import (
+    KAFKA_SECURITY_PROTOCOL,
+    LEDGER_FILE,
+    QUESTION_FILE,
+    RECORD,
+    RUN_FILE,
+)
 from scripts.sregym_eval.agent_registry import AGENT_NAME, write_registry
 from scripts.sregym_eval.boundary import (
     can_i_verdict,
@@ -216,6 +222,10 @@ class Config:
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
     judge_key: str = field(default="", repr=False)
     loki_env_file: Path | None = None
+    #: C3 (#567): the broker's advertised names, which must map to 127.0.0.1
+    #: on this host (read only, never written).
+    hosts_file: Path = Path("/etc/hosts")
+    kafka_hosts: tuple[str, ...] = ("kafka",)
 
     @property
     def round_dir(self) -> Path:
@@ -344,6 +354,30 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def kafka_hosts_missing(hosts_text: str, names: Sequence[str]) -> list[str]:
+    """The ``names`` the host file does not map to 127.0.0.1, in ``names``
+    order (hosts syntax: ``#`` comments, address then names, any blanks;
+    names compare case-insensitively)."""
+    mapped: set[str] = set()
+    for line in hosts_text.splitlines():
+        fields = line.split("#", 1)[0].split()
+        if len(fields) >= 2 and fields[0] == "127.0.0.1":
+            mapped.update(name.lower() for name in fields[1:])
+    return [name for name in names if name.lower() not in mapped]
+
+
+def check_kafka_hosts(cfg: Config) -> None:
+    """``KAFKA_HOSTS_ENTRY_MISSING`` unless every advertised name maps to
+    127.0.0.1; an unreadable file counts as all missing."""
+    try:
+        text = cfg.hosts_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        text = ""
+    missing = kafka_hosts_missing(text, cfg.kafka_hosts)
+    if missing:
+        raise RoundAbort("KAFKA_HOSTS_ENTRY_MISSING", ",".join(missing))
+
+
 def prepare(cfg: Config, host: Host) -> None:
     """Once, after ``kind/setup_kind_cluster.sh`` and before the first
     ``main.py`` (S-4)."""
@@ -351,6 +385,7 @@ def prepare(cfg: Config, host: Host) -> None:
         verify_upstream(cfg.upstream)
         identity.check_context(host, cfg.kubeconfig)
         identity.check_baseline(cfg.baseline)
+        check_kafka_hosts(cfg)
         identity.apply_identity(host, cfg.kubeconfig)
     except UpstreamMismatch as error:
         raise RoundAbort(error.code) from None
@@ -401,6 +436,7 @@ def prepare_round(cfg: Config, host: Host) -> list[Started]:
     identity.private_write(
         secrets_file, "".join(f"{k}={v}\n" for k, v in sorted(cfg.secrets.items()))
     )
+    check_kafka_hosts(cfg)
     if host.port_in_use(cfg.ports.loki_gateway):
         raise RoundAbort("PORT_BUSY", "loki_gateway")
     cfg.loki_env_file = cfg.round_dir / "loki-readonly.env"
@@ -513,6 +549,9 @@ def run_trial(cfg: Config, host: Host, problem_id: str, trial: int) -> TrialOutc
 
 
 ENTRY_RECORD_MISSING = "ENTRY_RECORD_MISSING"
+#: C3-U1 = a: every trial reads the benchmark's unauthenticated Kafka; only
+#: the tool layer keeps it read-only.
+KAFKA_NO_AUTH_DISCLOSURE = "KAFKA_NO_AUTH_TOOL_LAYER_ONLY"
 
 
 def _submission(
@@ -612,10 +651,20 @@ def _freeze(
         data_plane={
             "loki_gateway_port": cfg.ports.loki_gateway,
             "loki_gateway_upstream": f"127.0.0.1:{cfg.ports.loki}",
+            "kafka_bootstrap": f"127.0.0.1:{cfg.ports.kafka}",
+            "kafka_security_protocol": KAFKA_SECURITY_PROTOCOL,
+            "kafka_auth": "none",
+            "kafka_advertised_hosts": list(cfg.kafka_hosts),
         },
     )
     block["disclosures"] = list(
-        dict.fromkeys([*block["disclosures"], *record.get("disclosures", [])])
+        dict.fromkeys(
+            [
+                *block["disclosures"],
+                *record.get("disclosures", []),
+                KAFKA_NO_AUTH_DISCLOSURE,
+            ]
+        )
     )
     if submission.error_code == ENTRY_RECORD_MISSING:
         block["disclosures"].append(ENTRY_RECORD_MISSING)
