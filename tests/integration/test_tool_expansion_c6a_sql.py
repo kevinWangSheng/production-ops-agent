@@ -169,12 +169,13 @@ def _admin_scalar(
 ) -> Any:
     if backend == "postgresql":
         with _pg(database) as conn:
-            row = conn.execute(sql, params).fetchone()
+            row = conn.execute(sql, params or None).fetchone()
             return row[0] if row else None
     conn = _my(backend, database=database)
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            # No params: no %-formatting, so a literal % stays literal.
+            cur.execute(sql, params or None)
             row = cur.fetchone()
             return row[0] if row else None
     finally:
@@ -454,7 +455,7 @@ def _my_setup(backend: str) -> None:
             )
             for user in users:
                 cur.execute(
-                    f"CREATE USER '{user}'@'%' IDENTIFIED BY %s", (RO_PASSWORD,)
+                    f"CREATE USER '{user}'@'%%' IDENTIFIED BY %s", (RO_PASSWORD,)
                 )
             # C6-21 read-only account.
             cur.execute(f"GRANT SELECT, SHOW VIEW ON {DB}.* TO '{RO}'@'%'")

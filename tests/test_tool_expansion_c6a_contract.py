@@ -1666,6 +1666,28 @@ def test_a_failing_account_check_never_runs_the_model_statement(monkeypatch):
     assert "model" not in tools.driver.kinds()
 
 
+CA_SENTINEL = "<minted-ca>"
+
+
+def _mint_ca(tmp_path: Path) -> str:
+    import shutil
+
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.skip("openssl is needed to mint the synthetic CA")
+    cert, key = tmp_path / "sql-ca.pem", tmp_path / "sql-ca-key.pem"
+    subprocess.run(
+        [
+            openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key), "-out", str(cert), "-days", "2",
+            "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
+        ],
+        check=True,
+        capture_output=True,
+    )  # fmt: skip
+    return str(cert)
+
+
 # == configuration and startup codes (C6-7, C6-9) ===================================
 
 
@@ -1745,22 +1767,31 @@ def test_worker_refuses_to_start_with_bad_sql_configuration(overrides, code):
     [
         {},
         {"OPSPILOT_SQL_TLS": "verify-full"},
-        {
-            "OPSPILOT_SQL_TLS": "verify-full",
-            "OPSPILOT_SQL_CA_FILE": "/run/secrets/ca.pem",
-        },
+        {"OPSPILOT_SQL_TLS": "verify-full", "OPSPILOT_SQL_CA_FILE": CA_SENTINEL},
         {"OPSPILOT_SQL_TLS": "require"},
         {"OPSPILOT_SQL_TLS": "disable"},
         {"OPSPILOT_SQL_URL": "postgres://db.c6t.svc:5432/app"},
         {"OPSPILOT_SQL_URL": "mariadb://127.0.0.1/app"},
     ],
 )
-def test_worker_starts_with_valid_sql_configuration(monkeypatch, overrides):
+def test_worker_starts_with_valid_sql_configuration(monkeypatch, tmp_path, overrides):
+    # Lead ruling (as Loki/VictoriaLogs): the CA file must exist and be
+    # readable; a freshly minted one stands in for /run/secrets.
+    if overrides.get("OPSPILOT_SQL_CA_FILE") == CA_SENTINEL:
+        overrides = {**overrides, "OPSPILOT_SQL_CA_FILE": _mint_ca(tmp_path)}
     driver = FakeSql("postgresql")
     install(monkeypatch, driver)
     executor, _ = worker(sql_env(PG_URL, **overrides))
     assert executor is not None
     assert driver.connections == []  # no connection at startup
+
+
+@pytest.mark.parametrize("tls", ["verify-full", "require"])
+def test_a_missing_ca_file_is_config_invalid(tmp_path, tls):
+    require_jq()
+    missing = str(tmp_path / "no-such-ca.pem")
+    with pytest.raises(SystemExit, match="SQL_CONFIG_INVALID"):
+        worker(sql_env(PG_URL, OPSPILOT_SQL_TLS=tls, OPSPILOT_SQL_CA_FILE=missing))
 
 
 @pytest.mark.parametrize(

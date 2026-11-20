@@ -141,6 +141,8 @@ class FakeConnection:
         self.driver = driver
         self.config = config
         self.timeout_seconds = timeout_seconds
+        # The model statement of the call that opened this connection.
+        self.model = driver.model
         self.sent: list[Sent] = []
         self.cancelled = threading.Event()
         self.cancel_calls = 0
@@ -158,7 +160,7 @@ class FakeConnection:
 
     def execute(self, statement: str, params: Sequence[Any] = ()) -> None:
         self._record("execute", statement, params, None)
-        self.driver.raise_for(kind(statement, self.driver.model), self)
+        self.driver.raise_for(kind(statement, self.model), self)
         if kind(statement) == "kill":
             for other in self.driver.connections:
                 if other is not self:
@@ -174,7 +176,7 @@ class FakeConnection:
         if max_rows is None:
             max_rows = extra.get("max_rows")
         self._record("query", statement, params, max_rows)
-        label = kind(statement, self.driver.model)
+        label = kind(statement, self.model)
         self.driver.raise_for(label, self)
         if label == "version":
             return (
@@ -270,8 +272,8 @@ class FakeSql:
         return [item for c in self.connections for item in c.sent]
 
     def kinds(self, connection: FakeConnection | None = None) -> list[str]:
-        items = connection.sent if connection is not None else self.sent
-        return [kind(item.statement, self.model) for item in items]
+        chosen = [connection] if connection is not None else list(self.connections)
+        return [kind(item.statement, c.model) for c in chosen for item in c.sent]
 
     def reset(self) -> None:
         self.connections.clear()
