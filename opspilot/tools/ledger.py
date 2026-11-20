@@ -37,27 +37,11 @@ class DurableToolLedger:
     persisting ``opspilot.domain.control.SuspensionState`` -- global and
     per-target generations plus resolved target identities -- which is the
     Controller's work, not this adapter's.
-
-    ``max_operations``/``max_tool_seconds`` stay required constructor
-    parameters purely to keep ``charge_tool``'s input-validation shape
-    unchanged for every existing caller (M1-01, 2026-09-28 user decision,
-    L2): the durable write path no longer refuses a charge on either value,
-    so any positive number works and neither is enforced as a ceiling any
-    more.
     """
 
-    def __init__(
-        self,
-        store: DurableStore,
-        lease: Lease,
-        *,
-        max_operations: int,
-        max_tool_seconds: float,
-    ) -> None:
+    def __init__(self, store: DurableStore, lease: Lease) -> None:
         self._store = store
         self._lease = lease
-        self._max_operations = max_operations
-        self._max_tool_seconds = max_tool_seconds
 
     def usage(self) -> ToolUsage:
         run = self._store.rebuild(self._lease.incident_id)["run"]
@@ -71,12 +55,7 @@ class DurableToolLedger:
     def charge(self, operation_id: str, seconds: float, *, dispatch_id: UUID) -> None:
         try:
             self._store.charge_tool(
-                self._lease,
-                operation_id,
-                seconds,
-                max_operations=self._max_operations,
-                max_tool_seconds=self._max_tool_seconds,
-                dispatch_id=dispatch_id,
+                self._lease, operation_id, seconds, dispatch_id=dispatch_id
             )
         except PersistenceError as exc:
             # M1-01 (2026-09-28 user decision, L2): ``charge_tool`` no longer

@@ -5,8 +5,6 @@ this package deliberately does not cross.
 """
 
 from .executor import (
-    MAX_OPERATIONS_PER_RUN,
-    MAX_TOOL_SECONDS_PER_RUN,
     ControlAuthority,
     ControlSnapshot,
     ControlUnavailable,
@@ -55,10 +53,8 @@ __all__ = [
     "DENIED_REASONS",
     "ERROR_REASONS",
     "FORBIDDEN_VERBS",
-    "MAX_OPERATIONS_PER_RUN",
     "MAX_REQUEST_TIMEOUT_SECONDS",
     "MAX_RESULT_BYTES",
-    "MAX_TOOL_SECONDS_PER_RUN",
     "PROJECTION_REVISION",
     "READ_ONLY_VERBS",
     "RESERVED_PARAMETERS",
