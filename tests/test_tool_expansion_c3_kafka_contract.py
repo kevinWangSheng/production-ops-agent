@@ -334,7 +334,8 @@ class Models:
 
     def tp(self, topic: str, partition: int, offset: int = -1001, metadata=None):
         if self.ck:
-            return self.ck.TopicPartition(topic, partition, offset, metadata)
+            # The real constructor wants a str; "" is "no metadata".
+            return self.ck.TopicPartition(topic, partition, offset, metadata or "")
         return SimpleNamespace(
             topic=topic, partition=partition, offset=offset, metadata=metadata,
             leader_epoch=None, error=None,
@@ -902,12 +903,13 @@ def _env(bootstrap: str | None = BOOTSTRAP, **overrides: str) -> dict[str, str]:
 
 
 def _sasl_env(**overrides: str) -> dict[str, str]:
-    return _env(
-        OPSPILOT_KAFKA_SECURITY_PROTOCOL="SASL_PLAINTEXT",
-        OPSPILOT_KAFKA_USERNAME=KAFKA_USERNAME,
-        OPSPILOT_KAFKA_PASSWORD=KAFKA_PASSWORD,
-        **overrides,
-    )
+    settings = {
+        "OPSPILOT_KAFKA_SECURITY_PROTOCOL": "SASL_PLAINTEXT",
+        "OPSPILOT_KAFKA_USERNAME": KAFKA_USERNAME,
+        "OPSPILOT_KAFKA_PASSWORD": KAFKA_PASSWORD,
+    }
+    settings.update(overrides)
+    return _env(**settings)
 
 
 def _require_jq() -> None:
@@ -1994,49 +1996,87 @@ def test_list_topics_keeps_the_first_1000_by_name_and_is_incomplete(kafka):
     assert _view(outcome)["incomplete"] is True
 
 
-def test_list_kafka_consumers_keeps_the_first_1000_by_name(kafka):
+# Lead revision of C3-8 (2026-11-20): per-tool caps so a full page fits the
+# 25k-token view -- list_kafka_consumers 800 rows, the partition rows of
+# describe_topic and describe_consumer_group 500, list_topics 1000, the
+# 200-group scan unchanged.
+CONSUMERS_CAP = 800
+PARTITION_ROWS_CAP = 500
+
+
+def test_list_kafka_consumers_keeps_the_first_800_by_name(kafka):
     for n in range(1100):
         kafka.group(f"g-{n:04d}")
     outcome = _run(kafka, CONSUMERS)
     _ok(outcome)
     rows = _rows(outcome)
-    assert len(rows) == 1000
-    assert [r["group_id"] for r in rows] == [f"g-{n:04d}" for n in range(1000)]
+    assert len(rows) == CONSUMERS_CAP
+    assert [r["group_id"] for r in rows] == [f"g-{n:04d}" for n in range(CONSUMERS_CAP)]
     assert _view(outcome)["incomplete"] is True
 
 
-def test_1000_groups_or_topics_exactly_are_complete(kafka):
+def test_exactly_800_groups_are_complete(kafka):
     kafka.groups.clear()
-    for n in range(1000):
+    for n in range(CONSUMERS_CAP):
         kafka.group(f"g-{n:04d}")
     outcome = _run(kafka, CONSUMERS)
+    _ok(outcome)
+    assert len(_rows(outcome)) == CONSUMERS_CAP
+    assert _view(outcome)["incomplete"] is False
+
+
+def test_exactly_1000_topics_are_complete(kafka):
+    kafka.topics.clear()
+    for n in range(1000):
+        kafka.topic(f"t-{n:04d}", 1)
+    outcome = _run(kafka, TOPICS)
     _ok(outcome)
     assert len(_rows(outcome)) == 1000
     assert _view(outcome)["incomplete"] is False
 
 
-def test_describe_topic_keeps_1000_partition_rows(kafka):
+def test_describe_topic_keeps_500_partition_rows(kafka):
     kafka.topic("wide", 1200)
     outcome = _run(kafka, TOPIC, {"topic_name": "wide"})
     _ok(outcome)
     parts = _one(outcome)["partitions"]
-    assert [p["partition"] for p in parts] == list(range(1000))
+    assert [p["partition"] for p in parts] == list(range(PARTITION_ROWS_CAP))
     assert _view(outcome)["incomplete"] is True
 
 
-def test_describe_consumer_group_keeps_1000_partition_rows(kafka):
-    kafka.topic("wide", 1200, ends={p: 10 for p in range(1200)})
+def test_describe_topic_with_exactly_500_partitions_is_complete(kafka):
+    kafka.topic("wide", PARTITION_ROWS_CAP)
+    outcome = _run(kafka, TOPIC, {"topic_name": "wide"})
+    _ok(outcome)
+    assert len(_one(outcome)["partitions"]) == PARTITION_ROWS_CAP
+    assert _view(outcome)["incomplete"] is False
+
+
+def _wide_group(kafka: FakeKafka, partitions: int) -> None:
+    kafka.topic("wide", partitions, ends={p: 10 for p in range(partitions)})
     kafka.group(
         "wide-group",
         state="EMPTY",
-        offsets={("wide", p): (4, None) for p in range(1200)},
+        offsets={("wide", p): (4, None) for p in range(partitions)},
     )
+
+
+def test_describe_consumer_group_keeps_500_partition_rows(kafka):
+    _wide_group(kafka, 1200)
     outcome = _run(kafka, GROUP, {"group_id": "wide-group"})
     _ok(outcome)
     rows = _one(outcome)["partitions"]
-    assert len(rows) == 1000
+    assert len(rows) == PARTITION_ROWS_CAP
     assert all(_keys(row) == LAG_ROW_KEYS for row in rows)
     assert _view(outcome)["incomplete"] is True
+
+
+def test_describe_consumer_group_with_exactly_500_partition_rows_is_complete(kafka):
+    _wide_group(kafka, PARTITION_ROWS_CAP)
+    outcome = _run(kafka, GROUP, {"group_id": "wide-group"})
+    _ok(outcome)
+    assert len(_one(outcome)["partitions"]) == PARTITION_ROWS_CAP
+    assert _view(outcome)["incomplete"] is False
 
 
 def test_find_scans_the_first_200_groups_by_name_and_says_how_many(kafka):

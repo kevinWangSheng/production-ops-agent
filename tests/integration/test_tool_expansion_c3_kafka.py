@@ -651,11 +651,13 @@ def test_configs_read_retention_and_never_show_sensitive_values(tools):
             assert secret.encode() not in (result.evidence.raw or b"")
 
 
-def test_a_1200_partition_topic_keeps_1000_rows(tools):
+def test_a_1200_partition_topic_keeps_500_rows(tools):
     outcome = _run(tools, TOPIC, {"topic_name": WIDE})
     _ok(outcome)
     (row,) = _rows(outcome)
-    assert [p["partition"] for p in row["partitions"]] == list(range(1000))
+    assert [p["partition"] for p in row["partitions"]] == list(
+        range(500)
+    )  # C3-8 revision: 500 rows
     assert _view(outcome)["incomplete"] is True
 
 
