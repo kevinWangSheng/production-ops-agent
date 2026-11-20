@@ -45,7 +45,7 @@ from tests.m1_web_support import ORIGIN, UI_PASSWORD, UI_USER, basic, call, post
 REVIEWER = "runbook-reviewer"
 REVIEWER_PASSWORD = "runbook-reviewer-test-password"
 
-#: Targets the workbench knows (``TARGET_UNKNOWN`` for anything else).
+#: Targets the workbench knows (``UNKNOWN_TARGET`` for anything else).
 TARGET_A = "checkout-prod"
 TARGET_B = "payments-prod"
 KNOWN_TARGETS = (TARGET_A, TARGET_B)
