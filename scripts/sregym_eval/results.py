@@ -49,7 +49,7 @@ COLUMNS: tuple[str, ...] = (
 )
 _SHORT_CODE = re.compile(r"^[a-z_]{1,64}$")
 _DIMENSION_ID = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
-_TS = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d{2}:?\d{2})?$")
+_TS_MAX = 64
 OTHER = "other"
 
 
@@ -131,19 +131,32 @@ def _code(cell: str | None) -> str | None:
 
 
 def _dimensions(cell: str | None) -> dict[str, float]:
+    """Dimension id -> score. Upstream (``llm_as_a_judge_oracle.py``) writes
+    ``{id: {"name": ..., "score": ...}}``; a list of ``{"id", "name",
+    "score"}`` is read the same way. Names are dropped."""
     if cell is None or not cell.strip():
         return {}
     try:
         parsed = ast.literal_eval(cell)
     except (ValueError, SyntaxError, MemoryError, RecursionError):
         return {}
-    if not isinstance(parsed, dict):
+    if isinstance(parsed, dict):
+        pairs = [
+            (key, item.get("score") if isinstance(item, dict) else None)
+            for key, item in parsed.items()
+        ]
+    elif isinstance(parsed, list):
+        pairs = [
+            (item.get("id"), item.get("score"))
+            for item in parsed
+            if isinstance(item, dict)
+        ]
+    else:
         return {}
     out: dict[str, float] = {}
-    for key, item in parsed.items():
+    for key, score in pairs:
         if not isinstance(key, str) or not _DIMENSION_ID.match(key):
             continue
-        score = item.get("score") if isinstance(item, dict) else None
         if isinstance(score, int | float) and not isinstance(score, bool):
             if math.isfinite(float(score)):
                 out[key] = float(score)
@@ -165,7 +178,7 @@ def _fault_injected_at(path: Path) -> str | None:
             continue
         if record.get("phase") == "inject_fault" and record.get("event") == "end":
             ts = record.get("ts")
-            if isinstance(ts, str) and _TS.match(ts):
+            if isinstance(ts, str) and 0 < len(ts) <= _TS_MAX:
                 found = ts
     return found
 
