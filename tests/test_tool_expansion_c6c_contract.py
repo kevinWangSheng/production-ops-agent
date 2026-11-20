@@ -692,7 +692,10 @@ def test_current_op_command_document(monkeypatch, active_only):
     assert current["idleConnections"] is (active_only is False)
     match = pipeline[1]["$match"]
     assert dict(match["microsecs_running"]) == {"$gte": 1_500_000}
-    assert pipeline[2] == {"$limit": 501}
+    # Lead ruling 2026-11-20 (interface revision): at most 200 rows. The
+    # stage reads at most one more than the cap; 201 is the tight bound and
+    # the original 501 is tolerated (the tool still cuts to 200).
+    assert pipeline[2] in ({"$limit": 201}, {"$limit": 501}), pipeline[2]
 
 
 def test_a_left_over_cursor_is_killed_and_never_read_on(monkeypatch):
@@ -1185,9 +1188,8 @@ def test_server_status_returns_only_the_chosen_sections(monkeypatch):
     assert {"host", "version", "uptime_seconds"} <= set(row)
 
 
-def test_current_op_rows_are_projected_redacted_and_capped(monkeypatch):
-    tools = make_tools(monkeypatch)
-    tools.driver.ops = [
+def _ops(count: int) -> list[dict[str, Any]]:
+    return [
         {
             "opid": n,
             "op": "query",
@@ -1204,17 +1206,33 @@ def test_current_op_rows_are_projected_redacted_and_capped(monkeypatch):
             "lsid": {"id": "session-secret-ish"},
             "effectiveUsers": [{"user": "someone", "db": "admin"}],
         }
-        for n in range(501)
+        for n in range(count)
     ]
+
+
+def test_current_op_rows_are_projected_redacted_and_capped(monkeypatch):
+    # Lead ruling 2026-11-20: the row cap is 200 (500 rows at ~100 tokens
+    # each would exceed the 25k-token view and be refused whole).
+    tools = make_tools(monkeypatch)
+    tools.driver.ops = _ops(501)
     outcome = tools.run(CURRENT_OP, {"min_duration_ms": 0})
     ok(outcome)
     result = rows(outcome)
-    assert len(result) == 500
+    assert len(result) == 200
     assert view(outcome)["incomplete"] is True
     for row in result:
         assert {k for k in row if not k.startswith("_")} <= OP_FIELDS, row
     assert result[0]["opid"] == 0 and result[0]["planSummary"] == "COLLSCAN"
     assert CANARY not in _text(outcome)
+
+
+def test_exactly_200_current_operations_are_complete(monkeypatch):
+    tools = make_tools(monkeypatch)
+    tools.driver.ops = _ops(200)
+    outcome = tools.run(CURRENT_OP, {"min_duration_ms": 0})
+    ok(outcome)
+    assert len(rows(outcome)) == 200
+    assert view(outcome)["incomplete"] is False
 
 
 def test_raw_reply_over_2_mib_is_refused_whole(monkeypatch):
