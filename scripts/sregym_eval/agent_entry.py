@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -425,10 +426,15 @@ class Entry:
             raise EntryFailure("ENTRY_FILES_UNREADABLE", EXIT_PRODUCT) from None
         try:
             pg = host.start_pg(self.dir / "pg", job.ports.pg)
-        except Exception as error:  # noqa: BLE001 - LabError codes
+        except (OSError, subprocess.SubprocessError) as error:
             raise EntryFailure(
-                getattr(error, "code", "PG_START_FAILED"), EXIT_PRODUCT
+                f"PG_START_FAILED:{type(error).__name__}", EXIT_PRODUCT
             ) from None
+        except Exception as error:
+            code = getattr(error, "code", None)
+            if not isinstance(code, str):
+                raise  # unexpected: ENTRY_CRASHED in run()
+            raise EntryFailure(code, EXIT_PRODUCT) from None
         self.cleanup.push("pg", lambda: host.stop_pg(pg))
         identities = self.dir / "target_identities.json"
         write_identities(identities, namespace)
