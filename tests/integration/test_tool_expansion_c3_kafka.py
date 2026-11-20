@@ -756,13 +756,23 @@ def test_listings_cover_the_seeded_topics_and_groups(tools):
 
 def test_an_account_without_acls_is_source_forbidden(k8s_ca):
     nobody = _executor(_env(k8s_ca, **_sasl(NOACL, NOACL_PASSWORD)))
+    for tool, params in (
+        (CONFIGS, {"resource_type": "topic", "resource_name": "orders"}),
+        (GROUP, {"group_id": "order-processor"}),
+    ):
+        outcome = _run(nobody, tool, params)
+        assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), (
+            tool,
+            _view(outcome),
+        )
+    # Lead ruling (CI, 2026-11-20): Kafka answers DescribeCluster/metadata to
+    # any authenticated principal, ACL or not -- broker behaviour, not a
+    # product widening. Recorded as a known behaviour.
     outcome = _run(nobody, BROKERS)
-    assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), _view(
-        outcome
-    )
-    outcome = _run(nobody, GROUP, {"group_id": "order-processor"})
-    assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), _view(
-        outcome
+    _ok(outcome)
+    _observe(
+        "known Kafka behaviour: an authenticated account with no ACL gets "
+        f"list_brokers ok ({len(_rows(outcome))} broker rows)"
     )
 
 
@@ -831,15 +841,25 @@ def test_looking_up_a_missing_topic_never_creates_it(anonymous, cluster):
 
 
 def _errors_of(futures: Mapping[Any, Any]) -> list[str]:
+    """One entry per future: the error name, or ``ACCEPTED``. A call whose
+    refusal lives on its returned partitions (``alter_consumer_group_offsets``
+    resolves normally and sets ``tp.error``) counts as refused when any
+    partition carries an error, named by that error."""
     from confluent_kafka import KafkaException
 
     names = []
     for future in futures.values():
         try:
-            future.result(timeout=30)
-            names.append("ACCEPTED")
+            result = future.result(timeout=30)
         except KafkaException as error:
             names.append(error.args[0].name())
+            continue
+        partition_errors = [
+            tp.error.name()
+            for tp in (getattr(result, "topic_partitions", None) or [])
+            if tp.error is not None
+        ]
+        names.append(partition_errors[0] if partition_errors else "ACCEPTED")
     return names
 
 
