@@ -12,13 +12,13 @@ an env mapping, call the tools through the worker's executor, and assert on
 the view, evidence, logs, spans and what a loopback HTTPS fake API server
 received. No container, no cluster, no model.
 
-Baseline note: B4 (Helm, #563, PR #752) is not on main yet. The interface puts
-the four tools after B4's three Helm tools and before ``fetch_skill`` /
-``TodoWrite``, and appends their names to B4's ``change_history`` key. So
-nothing here pins a revision or a tools-array hash: the switch-off surface is
-compared with the same profile built without the switch, and the switch-on
-surface with the switch-off one plus exactly the documented delta. Where Helm
-is on, its tools are whatever the switch-off surface already has.
+Baseline: B4 (Helm, #563) is on main (0b856a9d). The four tools sit
+immediately after B4's three Helm tools when Helm is on (after the live usage
+tools otherwise) and before ``fetch_skill`` / ``TodoWrite``; SQL and Kafka stay
+after those two, as on main. Their names join B4's ``change_history`` key,
+sorted together with ``helm_releases.TOOL_NAMES``. Revisions are still not
+pinned to hashes: the switch-off surface is compared with the same profile
+built without the switch, the switch-on one with it plus exactly this delta.
 
 Seams assumed beyond the interface (each also marked ``# ASSUMPTION:``):
 
@@ -1931,16 +1931,21 @@ def test_switch_on_adds_exactly_the_four_tools_and_the_change_history_names(comb
     off, on = _surface(off_env), _surface(on_env)
     off_names = [s["function"]["name"] for s in off["tool_schemas"]]
     on_names = [s["function"]["name"] for s in on["tool_schemas"]]
+    from opspilot.tools import helm_releases
+
     tail_set = _tail_tools()
     split = len(off_names)
     while split and off_names[split - 1] in tail_set:
         split -= 1
     head, tail = off_names[:split], off_names[split:]
     assert on_names == head + list(ARGO_TOOLS) + tail
-    helm_names = sorted(n for n in off_names if n.startswith("helm_"))
-    if helm_names:
-        # After B4's Helm tools.
-        assert on_names.index(LIST) > max(on_names.index(n) for n in helm_names)
+    helm_on = "helm" in combo
+    if helm_on:
+        # Immediately after B4's Helm tools, in their order.
+        helm = list(helm_releases.TOOL_NAMES)
+        assert head[-len(helm) :] == helm
+    else:
+        assert not {n for n in on_names if n.startswith("helm_")}
     # Every other tool schema is byte for byte the same.
     kept = [s for s in on["tool_schemas"] if s["function"]["name"] not in ARGO_TOOLS]
     assert canonical(kept) == canonical(off["tool_schemas"])
@@ -1958,13 +1963,15 @@ def test_switch_on_adds_exactly_the_four_tools_and_the_change_history_names(comb
     off_available = off_sources["available"]
     on_available = on_sources["available"]
     assert set(on_available) == set(off_available) | {"change_history"}
-    assert on_available["change_history"] == sorted(
-        [*off_available.get("change_history", []), *ARGO_TOOLS]
-    )
-    if helm_names:
-        assert set(helm_names) <= set(off_available.get("change_history", []))
+    if helm_on:
+        assert off_available["change_history"] == sorted(helm_releases.TOOL_NAMES)
+        assert "change_history" not in off_sources["not_integrated"]
+        expected = sorted([*helm_releases.TOOL_NAMES, *ARGO_TOOLS])
     else:
-        assert on_available["change_history"] == sorted(ARGO_TOOLS)
+        assert "change_history" not in off_available
+        assert "change_history" in off_sources["not_integrated"]
+        expected = sorted(ARGO_TOOLS)
+    assert on_available["change_history"] == expected
     for key in off_available:
         if key != "change_history":
             assert on_available[key] == off_available[key], key
@@ -1989,13 +1996,7 @@ def test_each_backend_set_has_its_own_argocd_revision():
                     "tool_schema_revision"
                 ]
             )
-    helm_merged = hasattr(otel_demo_ext, "HELM_TOOL_NAMES")
-    distinct_combos = (
-        len(COMBOS)
-        if helm_merged
-        else len({tuple(f for f in c if f != "helm") for c in COMBOS})
-    )
-    assert len(revisions) == 2 * distinct_combos
+    assert len(revisions) == 2 * len(COMBOS)
     on = select_profile({PROFILE_ENV: EXT_PROFILE, SWITCH: "1"}).versions()
     # ASSUMPTION: ``argocd`` is a keyword of tool_schema_revision.
     assert (
@@ -2008,6 +2009,15 @@ def test_each_backend_set_has_its_own_argocd_revision():
         == otel_demo_ext.TOOL_SCHEMA_REVISION
     )
     assert set(ARGO_TOOLS) <= set(otel_demo_ext.ARGOCD_TOOL_NAMES)
+    # ASSUMPTION: helm and argocd are independent keywords.
+    both = select_profile(
+        {PROFILE_ENV: EXT_PROFILE, SWITCH: "1", HELM_SWITCH: "1"}
+    ).versions()["tool_schema_revision"]
+    assert both == otel_demo_ext.tool_schema_revision(helm=True, argocd=True)
+    assert both not in {
+        otel_demo_ext.HELM_TOOL_SCHEMA_REVISION,
+        otel_demo_ext.ARGOCD_TOOL_SCHEMA_REVISION,
+    }
 
 
 @pytest.mark.parametrize("value", ["1", "garbage", "true"])
@@ -2105,7 +2115,7 @@ def test_entrypoint_passes_the_switch_to_the_worker(tmp_path):
 
 # -- identity layer and CI fixtures (C4-4, R8-25) ---------------------------------------
 
-#: Pinned on origin/main 23a034c6: the base manifest does not change (C4-4).
+#: Pinned on origin/main 0b856a9d: the base manifest does not change (C4-4).
 BASE_RBAC_SHA256 = "ddd4299d538ecfeb48ed272bd2f7d6306c54778f8c188ae09366a4b4370fdea0"
 
 
