@@ -276,9 +276,11 @@ class _Refusal(Exception):
         self.response = response
 
 
-def _error_name(error: BaseException) -> tuple[str, str]:
-    """The ``KafkaError`` name and description inside ``error``."""
-    inner: object = error.args[0] if error.args else None
+def _error_name(error: object) -> tuple[str, str]:
+    """The ``KafkaError`` name and description inside ``error`` (a
+    ``KafkaException``, or a bare ``KafkaError``)."""
+    args = getattr(error, "args", None)
+    inner: object = args[0] if isinstance(args, tuple) and args else error
     name_of = getattr(inner, "name", None)
     text_of = getattr(inner, "str", None)
     name = str(name_of()) if callable(name_of) else ""
@@ -291,7 +293,7 @@ def _note_text(text: str) -> str:
     return text[:MAX_NOTE_CHARS]
 
 
-def _classify(error: BaseException, missing: str | None) -> BaseException:
+def _classify(error: object, missing: str | None) -> BaseException:
     """What a Kafka failure becomes: a transport exception, a fixed-code
     response wrapped in ``_Refusal``, or ``_Missing``."""
     name, text = _error_name(error)
@@ -695,11 +697,27 @@ def _list_consumers(call: _Call, params: Mapping[str, object]) -> _Answer:
         }
         for item in listings
     ]
-    notes: list[str] = []
-    errors = getattr(result, "errors", None) or []
-    if errors:
-        notes.append(f"{len(errors)} brokers did not answer the group listing.")
-    return _capped(rows, "groups", notes)
+    notes, incomplete = _listing_errors(result, bool(rows))
+    answer = _capped(rows, "groups", notes)
+    answer.incomplete = answer.incomplete or incomplete
+    return answer
+
+
+def _listing_errors(result: object, any_valid: bool) -> tuple[list[str], bool]:
+    """``list_consumer_groups`` reports a broker it could not list in
+    ``errors`` beside the groups it did list. With no group listed at all the
+    first error is the answer (an empty list would claim "no groups");
+    otherwise the listing is incomplete and the notes say so."""
+    errors = list(getattr(result, "errors", None) or [])
+    if not errors:
+        return [], False
+    if not any_valid:
+        raise _classify(errors[0], None)
+    names = sorted({_error_name(error)[0] or "UNKNOWN" for error in errors})
+    return [
+        f"{len(errors)} brokers did not answer the group listing "
+        f"({', '.join(names)}); groups they coordinate are missing."
+    ], True
 
 
 def _capped(
@@ -888,6 +906,7 @@ def _find_groups(call: _Call, params: Mapping[str, object]) -> _Answer:
     names = sorted(
         {str(item.group_id) for item in getattr(listed, "valid", None) or []}
     )
+    listing_notes, listing_incomplete = _listing_errors(listed, bool(names))
     scanned = names[:MAX_SCANNED_GROUPS]
     rows: list[dict[str, Any]] = []
     ends: dict[tuple[str, int], int | None] | None = None
@@ -935,9 +954,9 @@ def _find_groups(call: _Call, params: Mapping[str, object]) -> _Answer:
                     "total_lag": total,
                 }
             )
-    incomplete = len(names) > len(scanned)
-    notes: list[str] = []
-    if incomplete:
+    incomplete = len(names) > len(scanned) or listing_incomplete
+    notes: list[str] = list(listing_notes)
+    if len(names) > len(scanned):
         notes.append(
             f"Scanned {len(scanned)} of {len(names)} consumer groups (the first "
             f"{MAX_SCANNED_GROUPS} by name); groups after them were not checked."
