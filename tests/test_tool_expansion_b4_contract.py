@@ -1133,7 +1133,7 @@ def test_other_secrets_are_never_read_even_when_present(api):
     outcome = _run(api, LIST)
     assert [r["name"] for r in _rows(outcome)] == ["shop"]
     assert "CANARY-B4-OPAQUE" not in _text(outcome)
-    assert all(r["query"]["fieldSelector"] == [HELM_TYPE] for r in api.requests)
+    assert all(r["query"]["fieldSelector"] == [FS[1]] for r in api.requests)
 
 
 INVALID_NAMESPACES = ["B4-A", "-b4", "b4-", "b4_a", "n" * 64, "b4/../kube-system",
@@ -1619,13 +1619,6 @@ MALFORMED: dict[str, dict[str, Any]] = {
     "status-missing": secret(_bad_body(_pop("info", "status"))),
     "time-unparseable": secret(_bad_body(_set("yesterday", "info", "last_deployed"))),
     "time-number": secret(_bad_body(_set(1763629200, "info", "first_deployed"))),
-    "owner-label-not-helm": secret(
-        _bad_body(lambda b: None),
-        labels={"name": "bad", "owner": "tiller", "version": "1", "status": "deployed"},
-    ),
-    "owner-label-missing": secret(
-        _bad_body(lambda b: None), labels={"name": "bad", "version": "1", "status": "deployed"}
-    ),
     "name-label-mismatch": secret(
         _bad_body(lambda b: None),
         labels={"name": "other", "owner": "helm", "version": "1", "status": "deployed"},
@@ -1664,6 +1657,31 @@ def test_a_bad_entry_is_dropped_counted_and_never_echoed(api, case, caplog):
         assert "CANARY-B4-BADENTRY" not in text
         if blob:
             assert blob not in text
+
+
+#: Records without ``owner=helm``: the request's ``labelSelector=owner=helm``
+#: keeps the API server from returning them at all (the real one filters the
+#: same way), so they are neither rows nor counted as malformed. The tool's
+#: own owner-label check is a second guard the public path cannot reach.
+NOT_HELM_OWNED = {
+    "owner-label-not-helm": {
+        "name": "bad",
+        "owner": "tiller",
+        "version": "1",
+        "status": "deployed",
+    },
+    "owner-label-missing": {"name": "bad", "version": "1", "status": "deployed"},
+}
+
+
+@pytest.mark.parametrize("case", sorted(NOT_HELM_OWNED))
+def test_records_not_owned_by_helm_are_never_returned_or_counted(api, case):
+    item = secret(release("bad", "b4-junk", 1), labels=NOT_HELM_OWNED[case])
+    api.secrets = [_good(), item]
+    outcome = _run(api, LIST, {"namespace": "b4-junk"})
+    assert [r["name"] for r in _rows(outcome)] == ["good"]
+    assert _view(outcome)["dropped"] == {"malformed": 0, "too_large": 0}
+    assert all(r["query"]["labelSelector"] == ["owner=helm"] for r in api.requests)
 
 
 def test_an_entry_that_inflates_past_8_mib_is_too_large_and_one_just_under_decodes(api):
@@ -2155,15 +2173,14 @@ def test_switch_on_adds_exactly_the_three_tools_and_the_change_history_source(co
             assert on["versions"][key] != value
         else:
             assert on["versions"][key] == value, key
-    # data_sources: change_history moves from not integrated to available,
-    # after the last backend key and before ``knowledge``.
+    # data_sources: change_history moves from not integrated to available.
+    # The surface is canonical JSON (keys sorted), so the source keys are
+    # compared as a set; their insertion order is not observable here.
     off_sources = off["evidence_context"]["data_sources"]
     on_sources = on["evidence_context"]["data_sources"]
     off_keys = list(off_sources["available"])
-    expected_keys = [k for k in off_keys if k != "knowledge"] + ["change_history"]
-    if "knowledge" in off_keys:
-        expected_keys.append("knowledge")
-    assert list(on_sources["available"]) == expected_keys
+    assert "change_history" not in off_keys
+    assert set(on_sources["available"]) == set(off_keys) | {"change_history"}
     assert on_sources["available"]["change_history"] == [HISTORY, LIST, STATUS]
     for key in off_keys:
         assert on_sources["available"][key] == off_sources["available"][key], key
