@@ -1299,6 +1299,11 @@ class Attempt:
     def _run(self) -> AttemptResult:
         cfg, b, q = self.cfg, self.b, self.q
         self.dir.mkdir(parents=True, exist_ok=True)
+        if self.backend in ("sql", "mongodb"):
+            # PR-F: re-read here, the table may differ from construction time.
+            self.db = db_mod.DB_QUESTIONS.get(self.qid)
+            if self.db is None:
+                raise DeterministicError("DB_QUESTION_UNKNOWN", self.qid)
         own = cfg.ports.log_ports(self.backend, self.mode)
         busy = [
             n for n, p in {**cfg.ports.per_attempt(), **own}.items() if b.port_in_use(p)

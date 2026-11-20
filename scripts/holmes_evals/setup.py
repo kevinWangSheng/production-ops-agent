@@ -62,7 +62,7 @@ def log_setup_env(
     backend port, engineer side) for VictoriaLogs questions, ``KUBECONFIG``
     when given. No Elasticsearch, product, model or judge variable."""
     env = base_env(environ)
-    if getattr(spec, "backend", None) != "kubernetes":
+    if getattr(spec, "backend", None) not in ("kubernetes", "sql", "mongodb"):
         # PR-D: the C2 questions are kind manifests with relative time only.
         env["TZ"] = "UTC"
     if getattr(spec, "backend", None) == "victorialogs" and victorialogs_url:
