@@ -210,7 +210,7 @@
 | `mongodb_list_collections` | 无 | `listCollections`（`nameOnly`、`authorizedCollections`） | `{name, type}`，按 `name` 排序，最多 500 | `collections` | `get` |
 | `mongodb_collection_schema` | **`collection`** | `find`（`{}`、`limit: 10`）、`listIndexes`、`count`（估计数） | 每个字段 `{field, types}`（抽样 10 条推出，嵌套用点号）；视图另带 `indexes`（`{name, keys, unique}`）、`estimated_document_count`、`sample_size` | `fields` | `get` |
 | `mongodb_server_status` | `sections`（逗号分隔；可选值 `connections`、`opcounters`、`mem`、`locks`、`globalLock`、`network`、`wiredTiger`、`metrics`、`opLatencies`、`tcmalloc`、`flowControl`、`repl`、`asserts`、`transactions`；缺省前六个，比上游少 `wiredTiger`，免得一次就超 25k token） | `serverStatus`（admin 库） | 一行：`host`、`version`、`uptime_seconds` 与所选各段 | `sections` | `get` |
-| `mongodb_current_op` | `min_duration_ms`（整数，≥0）、`active_only`（布尔，默认 true） | admin 库上的 `aggregate`：`$currentOp`（`allUsers: true`，`idleConnections` = 非 `active_only`）、`$match`（`microsecs_running ≥ min_duration_ms×1000`）、`$limit: 501` | 每个操作 `{opid, op, ns, active, secs_running, microsecs_running, desc, appName, client, waitingForLock, planSummary, command}`，最多 500 | `operations` | `get` |
+| `mongodb_current_op` | `min_duration_ms`（整数，≥0）、`active_only`（布尔，默认 true） | admin 库上的 `aggregate`：`$currentOp`（`allUsers: true`，`idleConnections` = 非 `active_only`）、`$match`（`microsecs_running ≥ min_duration_ms×1000`）、`$limit: 201` | 每个操作 `{opid, op, ns, active, secs_running, microsecs_running, desc, appName, client, waitingForLock, planSummary, command}`，最多 200（裁决 A，见下） | `operations` | `get` |
 
 - 去掉上游每个工具的 `database` 参数与 `mongodb_list_databases`：库只来自配置（C3 §8，C6-2）。`collection` 只接受 `[A-Za-z0-9_.-]`、1–120 字符、不以 `.` 开头，否则 `INVALID_IDENTIFIER`。
 - 时间（C3 §8 当前状态类）同 C6a：来源时间留空，notes 第一条写查询时刻，`cannot_prove` 写明是查询时刻的数据；`current_op` 里的操作文本可能含其他客户端的查询内容（按字段名脱敏）。
@@ -284,6 +284,7 @@
 - 每条工具命令都带 `maxTimeMS`，只有 `listIndexes` 与 `killCursors` 不带（`listCollections`、`serverStatus` 带）；`readPreference=secondaryPreferred` 设在客户端上。
 - 连不上的端口：`serverSelectionTimeoutMS`、`connectTimeoutMS` 取「剩余期限减 2 秒」与 10 秒的较小者，在期限前报 `SOURCE_UNAVAILABLE`。
 - admin 库 profiler 不可用时，测试跳过那一段并记录，可以接受。
+- 裁决 A（接口修订，同 C3 先例）：`mongodb_current_op` 行数上限 500 → **200**。理由：合同测试实测每行约 100 token（500 行约 5.05 万 token），200 行约 2 万 token，满上限仍放得进 25k 视图，返回 `ok` 加不完整标记，而不是整条 `RESULT_TOO_LARGE`。其他工具不下调：`list_collections` 每行约 10 token（500 行约 5k），`collection_schema` 的字段行同量级；`find`/`aggregate` 每条文档大小取决于数据，500 条超限时整条 `RESULT_TOO_LARGE` 并提示投影或调低 `limit`，与 C6a 相同。
 
 ### 交给 #669
 
