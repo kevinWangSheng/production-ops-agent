@@ -215,6 +215,13 @@ def preflight(cfg: Config) -> None:
         raise RoundAbort("JUDGE_KEY_MISSING")
     if needs_es:
         check_es_url(cfg.secrets["ELASTICSEARCH_URL"])
+    if cfg.kubeconfig is None and any(
+        backend_of(q) == "kubernetes" and LOG_QUESTIONS[q].needs_k8s
+        for q in cfg.questions
+    ):
+        # PR-D: 94/95/96/162 set up on a cluster; an unreachable one is the
+        # harness's env_broken, not checked here.
+        raise RoundAbort("KUBECONFIG_MISSING")
 
 
 def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
@@ -427,13 +434,6 @@ def run_attempt(cfg: Config, qid: str, chance_dir: Path) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - classified, never printed
         return {"category": "env_broken", "code": "PURGE_FAILED"}
     backend = backend_of(qid)
-    if (
-        backend == "kubernetes"
-        and LOG_QUESTIONS[qid].needs_k8s
-        and cfg.kubeconfig is None
-    ):
-        # No cluster to set the question up on: recorded, never faked.
-        return {"category": "env_broken", "code": "KUBECONFIG_MISSING"}
     day_wait = 0.0
     if backend == "loki":
         try:

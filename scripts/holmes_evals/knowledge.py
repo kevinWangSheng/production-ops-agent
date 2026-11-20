@@ -80,7 +80,8 @@ def active_runbooks(owner_dsn: str, target: str) -> list[str]:
 
 
 def run_catalog(owner_dsn: str, run_id: str) -> dict[str, Any] | None:
-    """The Run input's ``runbook_catalog`` fact (status, names, omitted)."""
+    """The Run input's ``runbook_catalog`` fact as stored (``status``,
+    ``omitted_for_size``, ``entries[].skill_id`` among its fields), or None."""
     with psycopg.connect(owner_dsn, row_factory=dict_row, autocommit=True) as conn:
         row = conn.execute(
             "SELECT input -> 'scope_facts' -> 'runbook_catalog' AS fact "
@@ -88,7 +89,12 @@ def run_catalog(owner_dsn: str, run_id: str) -> dict[str, Any] | None:
             (run_id,),
         ).fetchone()
     fact = None if row is None else row["fact"]
-    if not isinstance(fact, Mapping):
+    return dict(fact) if isinstance(fact, Mapping) else None
+
+
+def catalog_summary(fact: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """What the summary keeps of the fact: status, names, omitted count."""
+    if fact is None:
         return None
     entries = fact.get("entries")
     return {
@@ -102,10 +108,11 @@ def run_catalog(owner_dsn: str, run_id: str) -> dict[str, Any] | None:
     }
 
 
-def catalog_matches(catalog: Mapping[str, Any] | None, names: Sequence[str]) -> bool:
+def catalog_matches(fact: Mapping[str, Any] | None, names: Sequence[str]) -> bool:
+    summary = catalog_summary(fact)
     return (
-        catalog is not None
-        and catalog.get("status") == "ok"
-        and catalog.get("omitted_for_size") == 0
-        and list(catalog.get("skill_ids") or []) == sorted(names)
+        summary is not None
+        and summary["status"] == "ok"
+        and summary["omitted_for_size"] == 0
+        and summary["skill_ids"] == sorted(names)
     )

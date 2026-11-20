@@ -965,12 +965,15 @@ class Attempt:
 
     def _check_run_catalog(self, owner_dsn: str, run_id: str) -> None:
         catalog = self.b.run_catalog(owner_dsn, run_id)
-        self._knowledge_block()["run_catalog"] = catalog
+        self._knowledge_block()["run_catalog"] = knowledge_mod.catalog_summary(catalog)
         names = [str(row.get("name")) for row in self._imported]
         if not knowledge_mod.catalog_matches(catalog, names):
             # The model was not shown the intended list: not a scorable
             # attempt (revoked below by the ``run`` fallback).
-            raise InfraFailure("RUNBOOK_CATALOG_MISMATCH", json.dumps(catalog))
+            raise InfraFailure(
+                "RUNBOOK_CATALOG_MISMATCH",
+                json.dumps(knowledge_mod.catalog_summary(catalog)),
+            )
 
     def _revoke_knowledge(self, *, after_run: bool) -> None:
         """Revoke what this attempt imported and check nothing stays active.

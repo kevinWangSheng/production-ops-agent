@@ -108,11 +108,18 @@ def test_disclosures() -> None:
 
 
 def test_catalog_matches() -> None:
-    ok = {"status": "ok", "skill_ids": ["a", "b"], "omitted_for_size": 0}
+    ok = {
+        "status": "ok",
+        "omitted_for_size": 0,
+        "entries": [{"skill_id": "a"}, {"skill_id": "b"}],
+    }
     assert knowledge.catalog_matches(ok, ["b", "a"])
     assert not knowledge.catalog_matches(ok | {"status": "unavailable"}, ["a", "b"])
     assert not knowledge.catalog_matches(ok | {"omitted_for_size": 1}, ["a", "b"])
     assert not knowledge.catalog_matches(ok, ["a"])
+    assert knowledge.catalog_summary(ok) == {
+        "status": "ok", "skill_ids": ["a", "b"], "omitted_for_size": 0,
+    }  # fmt: skip
     assert not knowledge.catalog_matches(None, [])
 
 
@@ -236,7 +243,16 @@ def _backends(
     )
 
 
-_OK = {"status": "ok", "skill_ids": ["database-troubleshooting"], "omitted_for_size": 0}
+_OK = {
+    "status": "ok",
+    "omitted_for_size": 0,
+    "entries": [{"skill_id": "database-troubleshooting", "revision": 1}],
+}
+_OK_SUMMARY = {
+    "status": "ok",
+    "skill_ids": ["database-troubleshooting"],
+    "omitted_for_size": 0,
+}
 
 
 def test_a_c2_trial_imports_checks_and_revokes(
@@ -263,7 +279,11 @@ def test_a_c2_trial_imports_checks_and_revokes(
     k = block["knowledge"]
     assert k["active_before_import"] == [] and k["active_after_revoke"] == []
     assert k["active_after_import"] == ["database-troubleshooting"]
-    assert k["run_catalog"] == _OK and k["revoked"] == 1 and k["catalog_retries"] == 0
+    assert (
+        k["run_catalog"] == _OK_SUMMARY
+        and k["revoked"] == 1
+        and k["catalog_retries"] == 0
+    )
     assert k["fixtures"][0]["kind"] == "skill_md" and "content" not in k["fixtures"][0]
     assert block["data_plane"]["backend"] == "kubernetes"
     assert block["shift"]["reason"] == "RELATIVE_TIME"
@@ -290,7 +310,7 @@ def test_a_catalog_mismatch_is_retried_and_counted(
     _question(cfg.upstream, Q94)
     wb = _Workbench()
     seen: dict[str, Any] = {}
-    bad = {"status": "unavailable", "skill_ids": [], "omitted_for_size": 0}
+    bad = {"status": "unavailable", "omitted_for_size": 0, "entries": []}
     out = driver.run_question(cfg, _backends(seen, wb, bad), Q94, [1])
     assert out["trials"][1]["status"] == "missing"
     summary = json.loads(cfg.summary_path(Q94, 1).read_text())["holmes_eval"]
