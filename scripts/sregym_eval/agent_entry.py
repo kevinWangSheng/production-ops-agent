@@ -94,6 +94,11 @@ FORWARDS: tuple[tuple[str, str, int, str], ...] = (
     ("jaeger", "jaeger-out", 16686, "jaeger"),
     ("loki", "loki", 3100, "loki"),
 )
+#: C3 (#567): the app namespace's broker, forwarded for every problem alike
+#: (a Kafka-only tool surface would point at the problem).
+KAFKA_FORWARD: tuple[str, str, int, str] = ("kafka", "kafka", 9092, "kafka")
+#: C3-U1 = a: the benchmark's broker has no authentication.
+KAFKA_SECURITY_PROTOCOL = "PLAINTEXT"
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 LOKI_ACCOUNT_KEYS = (
@@ -254,6 +259,8 @@ def tool_env(job: Job) -> dict[str, str]:
         "OPSPILOT_OTEL_PROMETHEUS_URL": f"http://127.0.0.1:{p.prometheus}",
         "OPSPILOT_OTEL_JAEGER_URL": f"http://127.0.0.1:{p.jaeger}",
         "OPSPILOT_LOKI_URL": f"http://127.0.0.1:{p.loki_gateway}",
+        "OPSPILOT_KAFKA_BOOTSTRAP_SERVERS": f"127.0.0.1:{p.kafka}",
+        "OPSPILOT_KAFKA_SECURITY_PROTOCOL": KAFKA_SECURITY_PROTOCOL,
         "OPSPILOT_HEALTH_BIND": "",
     }
 
@@ -268,6 +275,8 @@ def missing_to_unreachable(
         env["OPSPILOT_OTEL_PROMETHEUS_URL"] = dead
     if "jaeger" in missing:
         env["OPSPILOT_OTEL_JAEGER_URL"] = dead
+    if "kafka" in missing:
+        env["OPSPILOT_KAFKA_BOOTSTRAP_SERVERS"] = f"127.0.0.1:{job.ports.unreachable}"
     return env
 
 
@@ -559,12 +568,15 @@ class Entry:
         text = self._product(app, question, key, deadline)
         self.submit(text)
 
-    def _forwards(self) -> set[str]:
+    def _forwards(self, namespace: str) -> set[str]:
+        """The three ``observe`` services, then the app namespace's Kafka."""
         env = services.base_env() | {"KUBECONFIG": self.job.engineer_kubeconfig}
         missing: set[str] = set()
-        for name, service, remote, port_field in FORWARDS:
+        plan = [(OBSERVE_NAMESPACE, *item) for item in FORWARDS]
+        plan.append((namespace, *KAFKA_FORWARD))
+        for forward_namespace, name, service, remote, port_field in plan:
             forward = {
-                "namespace": OBSERVE_NAMESPACE,
+                "namespace": forward_namespace,
                 "service": service,
                 "local_port": getattr(self.job.ports, port_field),
                 "remote_port": remote,
@@ -586,7 +598,7 @@ class Entry:
         namespace = app.namespaces[0] if app.namespaces else app.namespace
         if len(app.namespaces) > 1:
             self.record["disclosures"].append("K8S_NAMESPACE_FIRST_OF_MANY")
-        missing = self._forwards()
+        missing = self._forwards(namespace)
         try:
             target = read_target(Path(job.k8s_target_file))
         except Exception:  # noqa: BLE001 - IdentityError and file errors
