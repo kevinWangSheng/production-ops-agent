@@ -194,6 +194,7 @@ def _seed_mssql() -> None:
             f"ALTER ROLE db_datareader ADD MEMBER {RO}",
             f"GRANT SHOWPLAN TO {RO}",
             f"GRANT VIEW DATABASE STATE TO {RO}",
+            f"GRANT VIEW DEFINITION TO {RO}",
             "ALTER ROLE db_datareader ADD MEMBER c6b_impl_writer",
             "ALTER ROLE db_datawriter ADD MEMBER c6b_impl_writer",
             "ALTER ROLE db_datareader ADD MEMBER c6b_impl_colupd",
@@ -475,8 +476,12 @@ def test_timeout_cancels_the_statement(kind: str) -> None:
     config = sq.SqlConfig(url=_url(kind), username=RO, password=PASSWORD, tls="disable")
     transport = sq.SqlTransport(config, request_timeout_seconds=5.0)
     started = time.monotonic()
-    with pytest.raises(TransportTimeout):
-        transport.fetch(_request({"sql": sql}, 5.0))
+    try:
+        response = transport.fetch(_request({"sql": sql}, 5.0))
+    except TransportTimeout:
+        pass
+    else:
+        pytest.fail(f"no timeout: {response.source_status} {response.view_fields}")
     assert time.monotonic() - started < 12
     end = time.monotonic() + 10
     while time.monotonic() < end:

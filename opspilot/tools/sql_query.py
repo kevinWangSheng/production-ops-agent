@@ -1214,7 +1214,9 @@ def _classify(
     if _is_pytds_error(error):
         return _classify_mssql(error, connecting=connecting, cancelled=cancelled)
     if isinstance(error, TimeoutError):  # a driver socket timeout
-        return SqlDriverError("timeout")
+        return SqlDriverError(
+            "unavailable" if connecting and not cancelled else "timeout"
+        )
     sqlstate = getattr(error, "sqlstate", None)
     args: tuple[Any, ...] = tuple(getattr(error, "args", ()))
     errno = args[0] if args and type(args[0]) is int else None
@@ -1297,7 +1299,13 @@ def _classify_mssql(
     number = getattr(error, "number", 0) or getattr(error, "msg_no", 0) or 0
     number = int(number) if isinstance(number, int) else 0
     message = str(getattr(error, "message", "") or error)
-    if cancelled or isinstance(error, socket.timeout):
+    if cancelled:
+        return SqlDriverError("timeout", str(number or ""), "")
+    if connecting and number != 18456:
+        # python-tds retries a refused or silent server until login_timeout
+        # and then raises a timeout: the server was not reachable.
+        return SqlDriverError("unavailable", str(number or ""), "")
+    if isinstance(error, socket.timeout):
         return SqlDriverError("timeout", str(number or ""), "")
     if number == 18456 or (connecting and number in _MSSQL_FORBIDDEN):
         return SqlDriverError("forbidden", str(number), "")
