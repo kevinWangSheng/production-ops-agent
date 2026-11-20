@@ -8,26 +8,24 @@ which creates the cluster; skipped everywhere else. The tests compare what
 the tool read with what the cluster reports (``kubectl get --raw``); they
 never assert anything about a fault.
 
-What the job is assumed to provide (not pinned by the interface; each can be
-overridden by the environment variable named):
+What the job provides (the CI convention relayed by the lead):
 
-* ``kubectl`` on PATH, its current context the kind cluster's admin
-  (engineer side, used for fixtures, ``get --raw`` and the destructive
-  steps only).
-* API address and CA: ``B3_K8S_API_URL`` / ``B3_K8S_CA_FILE``, else taken
-  from ``kubectl config view --raw --minify``.
-* Read-only token: ``B3_READONLY_TOKEN``, else
-  ``kubectl create token opspilot-investigator -n opspilot-readonly`` (the
-  identity of ``scripts/kind_lab/opspilot-readonly-rbac.yaml``).
-* Synthetic load labelled ``b3-role``: in ``B3_NS_A`` (default ``ns-a``)
-  ``b3-role=cpu`` (CPU limit 200m, busy), ``b3-role=memory`` (holds about
-  64 MiB) and ``b3-role=multi`` (two containers); in ``B3_NS_B`` (default
-  ``ns-b``) ``b3-role=idle``.
-* metrics-server is the Deployment ``metrics-server`` in ``kube-system``,
-  served as ``APIService v1beta1.metrics.k8s.io``.
+* ``kubectl`` on PATH with the kind cluster ``b3``'s admin kubeconfig
+  (engineer side: ``get --raw``, the metrics-server steps only); one node,
+  ``b3-control-plane``; metrics-server v0.8.1.
+* ``B3_K8S_API_URL`` (https://127.0.0.1:PORT) and ``B3_K8S_CA_FILE``
+  (kubeconfig is the fallback); ``B3_K8S_TOKEN_FILE``: the read-only token of
+  ``opspilot-investigator`` (``scripts/kind_lab/opspilot-readonly-rbac.yaml``);
+  ``B3_K8S_NO_METRICS_TOKEN_FILE``: a service account with no role;
+  ``B3_METRICS_SERVER_MANIFEST``: the vendored manifest (restores it).
+* ``tests/fixtures/b3_live_metrics/workloads.yaml``: in ``ns-a``
+  ``cpu-burner`` (CPU limit 200m), ``mem-holder`` (64 MiB memory emptyDir),
+  ``two-containers`` (``app``, ``sidecar``); in ``ns-b`` ``idle``. The job
+  starts once ``kubectl top pods -n ns-a`` shows three rows.
 
-The last test scales metrics-server to zero and then deletes the
-APIService; it must stay last in this file (pytest runs in file order).
+This file runs with metrics-server healthy, before the implementer's
+``*_impl.py``. Its last test scales metrics-server to zero, deletes the
+APIService and then restores both from the manifest; it must stay last.
 """
 
 from __future__ import annotations
@@ -46,6 +44,7 @@ import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -64,10 +63,16 @@ pytestmark = pytest.mark.skipif(
 
 PODS = "kubectl_top_pods"
 NODES = "kubectl_top_nodes"
-NS_A = os.environ.get("B3_NS_A", "ns-a")
-NS_B = os.environ.get("B3_NS_B", "ns-b")
+NS_A = "ns-a"
+NS_B = "ns-b"
+ROLES = {
+    "cpu": (NS_A, "cpu-burner"),
+    "memory": (NS_A, "mem-holder"),
+    "multi": (NS_A, "two-containers"),
+    "idle": (NS_B, "idle"),
+}
+MULTI_CONTAINERS = ["app", "sidecar"]
 READONLY_SA = ("opspilot-readonly", "opspilot-investigator")
-NO_METRICS_SA = ("default", "b3-no-metrics")
 METRICS_DEPLOYMENT = ("kube-system", "metrics-server")
 APISERVICE = "v1beta1.metrics.k8s.io"
 WRONG_TOKEN = "b3-not-a-valid-token-aaaaaaaa"
@@ -104,6 +109,11 @@ def _token(namespace: str, account: str) -> str:
     ).stdout.strip()
 
 
+def _file_token(name: str) -> str | None:
+    path = os.environ.get(name)
+    return Path(path).read_text().strip() if path else None
+
+
 @pytest.fixture(scope="module")
 def cluster(tmp_path_factory) -> dict[str, str]:
     url = os.environ.get("B3_K8S_API_URL")
@@ -118,7 +128,7 @@ def cluster(tmp_path_factory) -> dict[str, str]:
             path = tmp_path_factory.mktemp("b3-ca") / "cluster-ca.pem"
             path.write_bytes(base64.b64decode(entry["certificate-authority-data"]))
             ca_file = str(path)
-    token = os.environ.get("B3_READONLY_TOKEN") or _token(*READONLY_SA)
+    token = _file_token("B3_K8S_TOKEN_FILE") or _token(*READONLY_SA)
     return {"url": url.rstrip("/"), "ca": ca_file, "token": token}
 
 
@@ -186,23 +196,11 @@ def _rows(outcome) -> list[Mapping[str, Any]]:
     return list(_view(outcome)["content"])
 
 
-def _roles() -> dict[str, tuple[str, str]]:
-    listing = json.loads(
-        kubectl("get", "pods", "-A", "-l", "b3-role", "-o", "json").stdout
-    )
-    return {
-        item["metadata"]["labels"]["b3-role"]: (
-            item["metadata"]["namespace"],
-            item["metadata"]["name"],
-        )
-        for item in listing["items"]
-    }
-
-
 @pytest.fixture(scope="module")
 def roles(cluster) -> dict[str, tuple[str, str]]:
-    found = _roles()
-    assert {"cpu", "memory", "multi", "idle"} <= set(found), found
+    found = dict(ROLES)
+    for namespace, name in found.values():
+        kubectl("get", "pod", name, "-n", namespace)  # the fixture is applied
     deadline = time.monotonic() + 240
     while True:  # metrics-server needs a scrape or two after the Pods start
         outcome = _run(cluster, PODS, {"namespace": NS_A})
@@ -327,10 +325,7 @@ def test_usage_magnitudes_and_the_pod_total_rule(cluster, roles):
     memory = by[roles["memory"][1]]
     assert memory["memory_bytes"] >= 64 * MIB, memory
     multi = by[roles["multi"][1]]
-    assert len(multi["containers"]) == 2, multi
-    assert [c["name"] for c in multi["containers"]] == sorted(
-        c["name"] for c in multi["containers"]
-    )
+    assert [c["name"] for c in multi["containers"]] == MULTI_CONTAINERS, multi
     summed = sum(c["cpu_millicores"] for c in multi["containers"])
     assert 0 <= summed - multi["cpu_millicores"] < len(multi["containers"])
     assert multi["memory_bytes"] == sum(c["memory_bytes"] for c in multi["containers"])
@@ -512,10 +507,8 @@ def test_a_wrong_token_is_source_forbidden(cluster, roles):
 
 
 def test_an_identity_without_metrics_rights_is_source_forbidden(cluster, roles):
-    namespace, account = NO_METRICS_SA
-    created = kubectl("create", "serviceaccount", account, "-n", namespace, check=False)
-    assert created.returncode == 0 or "AlreadyExists" in created.stderr, created.stderr
-    token = _token(namespace, account)
+    token = _file_token("B3_K8S_NO_METRICS_TOKEN_FILE")
+    assert token, "B3_K8S_NO_METRICS_TOKEN_FILE is set by the k8s-live-metrics job"
     for tool in (PODS, NODES):
         outcome = _run(cluster, tool, token=token)
         assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), _view(
@@ -523,32 +516,57 @@ def test_an_identity_without_metrics_rights_is_source_forbidden(cluster, roles):
         )
 
 
-def _until(cluster, reason: str, seconds: float = 120):
+def _until(cluster, reason: str | None, seconds: float = 120):
+    """Poll until the Pod tool fails with ``reason`` (``None``: succeeds)."""
     deadline = time.monotonic() + seconds
     while True:
         outcome = _run(cluster, PODS, {"namespace": NS_A})
-        if (outcome.status, outcome.reason) == ("error", reason):
+        wanted = ("ok", None) if reason is None else ("error", reason)
+        if (outcome.status, outcome.reason) == wanted:
             return outcome
         assert time.monotonic() < deadline, _view(outcome)
         time.sleep(3)
 
 
-def test_zz_metrics_server_down_then_api_removed(cluster, roles):
-    """Destructive, last: no replica (503), then no metrics.k8s.io (404)."""
+def _restore_metrics_server(cluster, manifest: str) -> None:
     namespace, name = METRICS_DEPLOYMENT
-    kubectl("scale", f"deployment/{name}", "-n", namespace, "--replicas=0")
+    kubectl("apply", "-f", manifest)
+    kubectl("scale", f"deployment/{name}", "-n", namespace, "--replicas=1")
     kubectl(
-        "wait", "--for=delete", "pod", "-n", namespace, "-l", "k8s-app=metrics-server",
-        "--timeout=120s", check=False,
-    )  # fmt: skip
-    _until(cluster, "SOURCE_UNAVAILABLE")
-    outcome = _run(cluster, NODES)
-    assert (outcome.status, outcome.reason) == ("error", "SOURCE_UNAVAILABLE"), _view(
-        outcome
+        "rollout", "status", f"deployment/{name}", "-n", namespace, "--timeout=180s"
     )
-    kubectl("delete", "apiservice", APISERVICE)
-    outcome = _until(cluster, "SOURCE_ERROR")
-    text = json.dumps(_view(outcome)).lower()
-    assert "metrics-server" in text or "metrics.k8s.io" in text, _view(outcome)
-    outcome = _run(cluster, NODES)
-    assert (outcome.status, outcome.reason) == ("error", "SOURCE_ERROR"), _view(outcome)
+    kubectl(
+        "wait", "--for=condition=Available", f"apiservice/{APISERVICE}",
+        "--timeout=180s",
+    )  # fmt: skip
+    _until(cluster, None, seconds=240)  # served again for the files after this
+
+
+def test_zz_metrics_server_down_then_api_removed(cluster, roles):
+    """Destructive, last: no replica (503), then no metrics.k8s.io (404);
+    restored from the vendored manifest whatever happens."""
+    manifest = os.environ.get("B3_METRICS_SERVER_MANIFEST")
+    assert manifest, "B3_METRICS_SERVER_MANIFEST is set by the k8s-live-metrics job"
+    namespace, name = METRICS_DEPLOYMENT
+    try:
+        kubectl("scale", f"deployment/{name}", "-n", namespace, "--replicas=0")
+        kubectl(
+            "wait", "--for=delete", "pod", "-n", namespace,
+            "-l", "k8s-app=metrics-server", "--timeout=120s", check=False,
+        )  # fmt: skip
+        _until(cluster, "SOURCE_UNAVAILABLE")
+        outcome = _run(cluster, NODES)
+        assert (outcome.status, outcome.reason) == (
+            "error",
+            "SOURCE_UNAVAILABLE",
+        ), _view(outcome)
+        kubectl("delete", "apiservice", APISERVICE)
+        outcome = _until(cluster, "SOURCE_ERROR")
+        text = json.dumps(_view(outcome)).lower()
+        assert "metrics-server" in text or "metrics.k8s.io" in text, _view(outcome)
+        outcome = _run(cluster, NODES)
+        assert (outcome.status, outcome.reason) == ("error", "SOURCE_ERROR"), _view(
+            outcome
+        )
+    finally:
+        _restore_metrics_server(cluster, manifest)
