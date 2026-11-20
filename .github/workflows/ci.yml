@@ -791,10 +791,7 @@ jobs:
           kubectl -n ns-b create token no-metrics --duration=1h \
             > "$RUNNER_TEMP/b3/no-metrics.token"
           chmod 0600 "$RUNNER_TEMP/b3/"*.token
-          echo "::add-mask::$(cat "$RUNNER_TEMP/b3/readonly.token")"
-          echo "::add-mask::$(cat "$RUNNER_TEMP/b3/no-metrics.token")"
           {
-            echo "B3_READONLY_TOKEN=$(cat "$RUNNER_TEMP/b3/readonly.token")"
             echo "B3_K8S_API_URL=$server"
             echo "B3_K8S_CA_FILE=$RUNNER_TEMP/b3/ca.crt"
             echo "B3_K8S_TOKEN_FILE=$RUNNER_TEMP/b3/readonly.token"
@@ -819,8 +816,8 @@ jobs:
           B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
         run: |
           .venv/bin/python -m pytest tests/integration/test_tool_expansion_b3_live_metrics.py -q -rs
-      # The independent file's last test removes metrics-server's replica
-      # and APIService without restoring them; put both back before the next.
+      # Both files end by removing metrics-server's replica and APIService and
+      # restore them themselves; this re-checks before the next file runs.
       - name: Restore metrics-server
         if: steps.scope.outputs.full != 'false' && !cancelled()
         run: |

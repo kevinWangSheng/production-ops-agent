@@ -2,8 +2,7 @@
 # busybox:1.37.0 multi-platform index, read from Docker Hub on 2026-11-19.
 # ns-a: a CPU burner capped at 200m, a Pod holding about 64 MiB in a memory
 # emptyDir (charged to its memory cgroup), and a two-container Pod; ns-b: one
-# idle Pod. Every Pod carries the label b3-role (cpu, memory, multi, idle)
-# the independent integration tests find them by. A ServiceAccount with no role at all gives the 403 token.
+# idle Pod. A ServiceAccount with no role at all gives the 403 token.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -18,8 +17,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: cpu-burner
-  labels:
-    b3-role: cpu
   namespace: ns-a
 spec:
   terminationGracePeriodSeconds: 0
@@ -35,8 +32,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: mem-holder
-  labels:
-    b3-role: memory
   namespace: ns-a
 spec:
   terminationGracePeriodSeconds: 0
@@ -57,8 +52,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: two-containers
-  labels:
-    b3-role: multi
   namespace: ns-a
 spec:
   terminationGracePeriodSeconds: 0
@@ -78,8 +71,6 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: idle
-  labels:
-    b3-role: idle
   namespace: ns-b
 spec:
   terminationGracePeriodSeconds: 0
