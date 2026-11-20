@@ -256,9 +256,14 @@ def _view(outcome) -> Mapping[str, Any]:
     return outcome.model_view
 
 
+def _why(outcome) -> str:
+    view = _view(outcome)
+    return f"{outcome.status}/{outcome.reason} notes={view.get('notes')}"
+
+
 def test_the_impl_group_lag_is_exact(admin, reader):
     outcome = _run(reader, "describe_consumer_group", {"group_id": GROUP})
-    assert outcome.status == "ok", _view(outcome)
+    assert outcome.status == "ok", _why(outcome)
     (group,) = _view(outcome)["content"]
     assert group["lag_by_topic"] == {TOPIC: 40}
     rows = {r["partition"]: r for r in group["partitions"]}
@@ -269,7 +274,7 @@ def test_the_impl_group_lag_is_exact(admin, reader):
     )
     assert rows[1]["lag"] == 0
     found = _run(reader, "find_consumer_groups_by_topic", {"topic_name": TOPIC})
-    assert found.status == "ok", _view(found)
+    assert found.status == "ok", _why(found)
     by = {r["group_id"]: r for r in _view(found)["content"]}
     assert by[GROUP]["total_lag"] == 40
 
@@ -285,7 +290,7 @@ def test_a_misspelt_name_creates_nothing_on_the_anonymous_listener(admin, anonym
     ]
     for tool, params in calls:
         outcome = _run(anonymous, tool, params)
-        assert outcome.status == "no_data", (tool, _view(outcome))
+        assert outcome.status == "no_data", (tool, _why(outcome))
         assert "TOPIC_NOT_FOUND" in json.dumps(_view(outcome).get("notes") or [])
     time.sleep(3)  # an auto-created topic would show within this
     after = _topics(admin)
@@ -310,7 +315,7 @@ def test_observe_reads_beyond_describe_and_client_cost(admin, reader):
         started = time.monotonic()
         outcome = _run(reader, tool, args)
         seconds.append(time.monotonic() - started)
-        results[tool] = f"{outcome.status}/{outcome.reason}"
+        results[tool] = _why(outcome)
     _observe(
         "with Describe-only ACLs: "
         + ", ".join(f"{tool}={status}" for tool, status in results.items())
