@@ -1047,6 +1047,8 @@ jobs:
           # and mcr.microsoft.com/mssql/server:2022-latest (amd64 only), read on
           # 2026-11-20.
           CLICKHOUSE_IMAGE: clickhouse/clickhouse-server@sha256:360a13d58afe559036b13ae5e21ba361d990081c93987d3fef0e5d7ea2dcd074
+          # C6c: mongo:7.0.17 multi-platform index, read on 2026-11-20.
+          MONGO_IMAGE: mongo@sha256:ac9e83c57e32bf767f875ac2b9a9d87800d2d91a7829180c3a4826e0599698e8
           MSSQL_IMAGE: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
           # SQL Server requires a complex password; CI only, never a real secret.
           C6_MSSQL_ADMIN_PASSWORD: Changeme570!
@@ -1068,6 +1070,9 @@ jobs:
           docker run -d --name c6-mssql --cpus=2 --memory=2560m \
             -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$C6_MSSQL_ADMIN_PASSWORD" \
             -p 127.0.0.1:53205:1433 "$MSSQL_IMAGE"
+          docker run -d --name c6-mongo --cpus=1 --memory=512m \
+            -e MONGO_INITDB_ROOT_USERNAME=root -e MONGO_INITDB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53206:27017 "$MONGO_IMAGE"
           docker run -d --name c6-mariadb --cpus=1 --memory=512m \
             -e MARIADB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53203:3306 "$MARIADB_IMAGE" --general-log=1 --log-output=TABLE
@@ -1111,6 +1116,16 @@ jobs:
             sleep 2
           done
           [ -n "$ready" ] || { docker logs c6-mssql >&2; exit 1; }
+          ready=
+          for _ in $(seq 1 60); do
+            if docker exec c6-mongo mongosh --quiet -u root -p "$C6_ADMIN_PASSWORD" \
+                --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' \
+                > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-mongo >&2; exit 1; }
           docker exec c6-postgres psql -U postgres -tAc 'SELECT version()'
           curl -fsS -H "X-ClickHouse-User: default" -H "X-ClickHouse-Key: $C6_ADMIN_PASSWORD" \
             'http://127.0.0.1:53204/?query=SELECT%20version()'
@@ -1151,13 +1166,18 @@ jobs:
           C6_MSSQL_ADMIN_PASSWORD: Changeme570!
           C6_CLICKHOUSE_CONTAINER: c6-clickhouse
           C6_MSSQL_CONTAINER: c6-mssql
+          C6_MONGO_PORT: "53206"
+          C6_MONGO_ADMIN_USER: root
+          C6_MONGO_CONTAINER: c6-mongo
         run: |
           jq --version
           files=""
           for name in tests/integration/test_tool_expansion_c6a_sql.py \
               tests/integration/test_tool_expansion_c6a_sql_impl.py \
               tests/integration/test_tool_expansion_c6b_sql.py \
-              tests/integration/test_tool_expansion_c6b_sql_impl.py; do
+              tests/integration/test_tool_expansion_c6b_sql_impl.py \
+              tests/integration/test_tool_expansion_c6c_mongo.py \
+              tests/integration/test_tool_expansion_c6c_mongo_impl.py; do
             [ -f "$name" ] && files="$files $name"
           done
           [ -n "$files" ] || { echo "no C6a integration test file" >&2; exit 1; }
@@ -1166,7 +1186,7 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: |
-          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql; do
+          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql c6-mongo; do
             echo "--- $name"
             docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
             docker logs --tail 200 "$name" 2>&1 || true
