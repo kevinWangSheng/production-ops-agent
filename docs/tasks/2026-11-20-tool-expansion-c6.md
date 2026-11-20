@@ -271,7 +271,7 @@
 
 - 扩展档位 revision：仅 MongoDB `otel-demo-ext-f3c82122dcd8`；不设地址时无后端 `c63f058afb18`、Kafka `b78a67921a9c`、各 SQL 方言等现有值不变（本分支实测）。
 - 工具在 `mongodb_query.py`，SQL 那边的 `_host_key`、`_dsn_endpoints`、`SqlDriverError` 复用（导入，不改 C6a/C6b 代码）。驱动原始异常由传输层分类：`OperationFailure` 按 `code`，`NetworkTimeout`/`ConnectionFailure`/`ServerSelectionTimeoutError` 未到期为不可用、到期为超时；到期后的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`。
-- `MongoClient` 另设 `maxPoolSize=1`、`connect=False`（第一条命令时才连），看门狗到期时关闭客户端。
+- `MongoClient` 另设 `maxPoolSize=1`、`connect=False`（第一条命令时才连），看门狗到期时关闭客户端；`serverSelectionTimeoutMS`、`connectTimeoutMS` 取「剩余期限减 2 秒」与 10 秒的较小者（至少 1 秒），这样连不上的服务器在期限前报 `SOURCE_UNAVAILABLE`（CI 实测：取整个剩余期限时报成了超时）；`socketTimeoutMS` 仍取剩余期限。
 - `mongodb_current_op` 返回其他会话的操作与查询文本，`may_contain_secrets=True`（六个工具都是），按字段名走现有脱敏；B/C 记录的新数据源登记写明。
 - relaxed 扩展 JSON 里的 `{"$code": …}` 会被解析成 JavaScript 代码值，内容检查按值类型同样拒绝。
 

@@ -535,6 +535,12 @@ class _PyMongoConnection:
         from pymongo.read_preferences import SecondaryPreferred
 
         ms = max(1000, int(timeout * 1000))
+        # pymongo keeps retrying server selection until this runs out; end it
+        # before the call's deadline so an unreachable server is reported as
+        # unavailable, not as a timeout
+        select_ms = max(
+            1000, min(10_000, int((timeout - _SERVER_TIMEOUT_MARGIN) * 1000))
+        )
         kwargs: dict[str, Any] = {
             "host": config.host,
             "port": config.port,
@@ -545,8 +551,8 @@ class _PyMongoConnection:
             "retryReads": False,
             "retryWrites": False,
             "appname": _APPLICATION_NAME,
-            "serverSelectionTimeoutMS": ms,
-            "connectTimeoutMS": ms,
+            "serverSelectionTimeoutMS": select_ms,
+            "connectTimeoutMS": select_ms,
             "socketTimeoutMS": ms,
             "maxPoolSize": 1,
             "connect": False,
