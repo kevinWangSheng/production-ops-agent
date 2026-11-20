@@ -830,6 +830,9 @@ REFUSED_ON_REAL = {
         "SELECT * FROM OPENROWSET(BULK '/etc/hostname', SINGLE_CLOB) AS x WHERE '{m}' = ''",
         r"SELECT 'a\' DELETE FROM dbo.c6t_orders --' + '{m}'",
         "SELECT [it's] FROM dbo.c6t_orders WAITFOR DELAY '00:00:03' --'{m}",
+        "SELECT '{m}' AS m WHILE 1 = 1 SELECT 2",
+        "SELECT '{m}' AS m FROM dbo.c6t_orders WITH (UPDLOCK, HOLDLOCK)",
+        "IF 1 = 1 SELECT '{m}' AS m",
     ],
 }
 
