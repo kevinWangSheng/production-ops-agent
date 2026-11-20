@@ -137,7 +137,9 @@ def test_283_log_question_spec() -> None:
     # The new field defaults to None: every earlier entry is unchanged.
     for qid in (*C5_ALL, *C2_ALL):
         assert lb.LOG_QUESTIONS[qid].namespace_prefix is None, qid
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL) | {Q283}
+    # PR-F (lead ruling): C6 entries may be present; without them, unchanged.
+    c6 = set(mod("questions").C6_QUESTIONS)
+    assert set(lb.LOG_QUESTIONS) - c6 == set(C5_ALL) | set(C2_ALL) | {Q283}
     fields = {f.name: f for f in dataclasses.fields(lb.LogQuestionSpec)}
     assert fields["namespace_prefix"].default is None
 

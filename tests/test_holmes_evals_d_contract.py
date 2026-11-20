@@ -234,7 +234,9 @@ def test_log_questions_kubernetes_specs() -> None:
     assert lb.backend_of(Q100A) == "loki"
     assert lb.backend_of(Q257) == "victorialogs"
     # PR-E (lead ruling): plus C1 (283).
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL) | {
+    # PR-F (lead ruling): C6 entries may be present; without them, unchanged.
+    c6 = set(mod("questions").C6_QUESTIONS)
+    assert set(lb.LOG_QUESTIONS) - c6 == set(C5_ALL) | set(C2_ALL) | {
         "283_todowrite_multistep_audit"
     }
 

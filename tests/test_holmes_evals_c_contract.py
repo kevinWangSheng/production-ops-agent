@@ -290,13 +290,18 @@ def test_log_questions_cover_exactly_c5() -> None:
     lb, q = mod("log_backends"), mod("questions")
     # PR-D (lead ruling): log backends are exactly C5; ``kubernetes`` is C2;
     # PR-E (lead ruling): and C1 (283).
-    logs = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend != "kubernetes"}
+    # PR-F (lead ruling): C6 entries may be present (backend sql/mongodb);
+    # without them the table is unchanged.
+    c6 = set(q.C6_QUESTIONS)
+    for qid in c6 & set(lb.LOG_QUESTIONS):
+        assert lb.LOG_QUESTIONS[qid].backend == lb.backend_of(qid)
+        assert lb.backend_of(qid) in ("sql", "mongodb")
+    table = {k: s for k, s in lb.LOG_QUESTIONS.items() if k not in c6}
+    logs = {k for k, s in table.items() if s.backend != "kubernetes"}
     assert logs == set(C5_ALL)
-    kube = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend == "kubernetes"}
+    kube = {k for k, s in table.items() if s.backend == "kubernetes"}
     assert kube == set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
-    assert set(lb.LOG_QUESTIONS) == (
-        set(C5_ALL) | set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
-    )
+    assert set(table) == (set(C5_ALL) | set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS))
 
 
 def test_backend_of() -> None:
