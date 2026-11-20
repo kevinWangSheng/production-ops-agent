@@ -232,6 +232,8 @@
 ### 账号自查（C6-U1，MongoDB）
 
 - 读 `connectionStatus` 的 `authInfo`：`authenticatedUsers` 为空（服务器没开认证或没登录上）不通过；`authenticatedUserRoles` 每一项的 `role` 必须 ∈ {`read`、`readAnyDatabase`、`clusterMonitor`}（任意 `db`；自定义角色一律不通过）；`authenticatedUserPrivileges` 里任何一个 action 落在写与管理动作表（`insert`、`update`、`remove`、`createCollection`、`createIndex`、`dropCollection`、`dropDatabase`、`dropIndex`、`renameCollectionSameDB`、`convertToCapped`、`collMod`、`compact`、`enableProfiler`、`createUser`、`dropUser`、`updateUser`、`grantRole`、`revokeRole`、`createRole`、`dropRole`、`updateRole`、`changePassword`、`changeOwnPassword`、`changeCustomData`、`setAuthenticationRestriction`、`killop`、`killAnySession`、`shutdown`、`fsync`、`setParameter`、`replSetConfigure`、`applicationMessage`、`bypassDocumentValidation`、`anyAction`、`internal`、`reIndex`、`dropAllRolesFromDatabase`、`dropAllUsersFromDatabase`、`planCacheWrite`、`splitVector`、`cleanupOrphaned`、`moveChunk`、`splitChunk`、`enableSharding`、`flushRouterConfig`、`logRotate`、`resync`）也不通过；角色白名单是主判据，动作表是兜底。命中报 `MONGODB_ACCOUNT_NOT_READ_ONLY`（新码，归 `SOURCE_FORBIDDEN`），notes 写命中的角色或动作名，工具命令一条不发。判定函数为模块级 `mongodb_query.account_problem(status) -> str | None`（集成测试用 monkeypatch 跳过它来验证命令面这一层）。
+- 应答形状不对一律不通过（#755，2026-11-20）：`authenticatedUsers` 须为非空列表，`authenticatedUserRoles` 须为非空列表且每项是带字符串 `role`、`db` 的对象，`authenticatedUserPrivileges` 须为列表且每项是带字符串 `actions` 列表的对象；缺字段或类型不对报 `MONGODB_ACCOUNT_NOT_READ_ONLY`，不当作「没找到坏角色」放行。MongoDB 7 总返回这些字段，这一条是兜底。
+- 残余风险（#755）：mongod 没开 `--auth` 而配置的账号存在时，登录成功、自查通过，但服务器不执行角色权限，挡写的只剩工具命令面与内容检查。评测题目经 `MONGO_INITDB_ROOT_*` 建 root，这会打开认证；自建部署须自己确认开了认证。
 
 ### 上限与投影
 

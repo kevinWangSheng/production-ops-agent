@@ -502,22 +502,45 @@ _WRITE_ACTIONS = frozenset(
 def account_problem(status: Mapping[str, Any]) -> str | None:
     """The refusal note of the post-connect account check (C6-U1) over a
     ``connectionStatus`` answer, or ``None`` when the account looks
-    read-only."""
+    read-only. Fails closed: a reply without the expected shape (roles a
+    non-empty list of ``{role, db}``, privileges a list of objects with an
+    ``actions`` list) is refused rather than read as "nothing bad found"."""
     info = status.get("authInfo") if isinstance(status, Mapping) else None
-    if not isinstance(info, Mapping) or not info.get("authenticatedUsers"):
+    users = info.get("authenticatedUsers") if isinstance(info, Mapping) else None
+    if not isinstance(users, list) or not users:
         return (
             "MONGODB_ACCOUNT_NOT_READ_ONLY: no authenticated user (the server "
             "may have authentication off); nothing was run."
         )
+    roles = info.get("authenticatedUserRoles")
+    privileges = info.get("authenticatedUserPrivileges")
+    if (
+        not isinstance(roles, list)
+        or not roles
+        or not all(
+            isinstance(role, Mapping)
+            and isinstance(role.get("role"), str)
+            and isinstance(role.get("db"), str)
+            for role in roles
+        )
+        or not isinstance(privileges, list)
+        or not all(
+            isinstance(privilege, Mapping)
+            and isinstance(privilege.get("actions"), list)
+            and all(isinstance(action, str) for action in privilege["actions"])
+            for privilege in privileges
+        )
+    ):
+        return (
+            "MONGODB_ACCOUNT_NOT_READ_ONLY: the connectionStatus reply does not "
+            "have the expected roles and privileges; nothing was run."
+        )
     problems: list[str] = []
-    for role in info.get("authenticatedUserRoles") or []:
-        name = role.get("role") if isinstance(role, Mapping) else None
-        if name not in _ALLOWED_ROLES:
-            db = role.get("db") if isinstance(role, Mapping) else None
-            problems.append(f"role {str(name)[:64]}@{str(db)[:64]}")
-    for privilege in info.get("authenticatedUserPrivileges") or []:
-        actions = privilege.get("actions") if isinstance(privilege, Mapping) else None
-        for action in actions or []:
+    for role in roles:
+        if role["role"] not in _ALLOWED_ROLES:
+            problems.append(f"role {role['role'][:64]}@{role['db'][:64]}")
+    for privilege in privileges:
+        for action in privilege["actions"]:
             if action in _WRITE_ACTIONS:
                 problems.append(f"action {action}")
     if problems:
