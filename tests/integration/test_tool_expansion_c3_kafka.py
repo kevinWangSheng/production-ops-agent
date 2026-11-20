@@ -7,33 +7,31 @@ Runs only in the CI job ``kafka-backend`` (``OPSPILOT_KAFKA_BACKEND=1``),
 which starts the broker; skipped everywhere else. ``confluent_kafka`` is
 imported only inside the gated fixtures and tests.
 
-The fixtures, not the product, write: the ``admin`` account creates the ACLs,
-topics, records, committed offsets and deleted records; a real consumer in a
-test thread keeps ``order-audit`` a live member. The product only ever holds
-the ``opspilot`` account (Describe-class ACLs, no Topic READ) on the SASL
-listener, or the anonymous listener for the tool-layer proof.
+CI convention (lead, 2026-11-20). The broker: ``SASL_PLAINTEXT`` on
+``localhost:19092`` and the anonymous super-user listener ``NOAUTH``
+(PLAINTEXT) on ``localhost:19094``, both advertised as such;
+``auto.create.topics.enable=true`` (on purpose), ``StandardAuthorizer``,
+super users ``admin`` and ``ANONYMOUS``,
+``allow.everyone.if.no.acl.found=false``, SASL PLAIN static users ``admin``,
+``opspilot`` and ``nobody``. Variables (defaults are the job's values):
+``KAFKA_IT_SASL_BOOTSTRAP``, ``KAFKA_IT_NOAUTH_BOOTSTRAP``,
+``KAFKA_IT_UNREACHABLE``, ``KAFKA_IT_{ADMIN,READONLY,NOACL}_{USER,PASSWORD}``;
+optional ``KAFKA_IT_PROBE_OUT`` collects the recorded observations as JSON
+lines (they are also warnings).
 
-What the CI job must provide (ASSUMPTIONS -- the interface names the
-listeners and users but not ports, variable names or passwords; defaults are
-these values, each overridable by the variable of the same name):
-
-* ``C3_KAFKA_SASL_BOOTSTRAP`` -- the ``SASL_PLAINTEXT`` listener, advertised
-  and host-mapped as ``localhost:9092`` (default ``localhost:9092``).
-* ``C3_KAFKA_NOAUTH_BOOTSTRAP`` -- the ``NOAUTH`` PLAINTEXT listener whose
-  anonymous principal is a super user, advertised and host-mapped as
-  ``localhost:9094`` (default ``localhost:9094``).
-* Node id ``1`` (``KAFKA_NODE_ID=1``), ``auto.create.topics.enable=true``,
-  ``StandardAuthorizer``, ``allow.everyone.if.no.acl.found=false``, super
-  users ``User:admin;User:ANONYMOUS``, SASL mechanism ``PLAIN`` with JAAS
-  static users ``admin``, ``opspilot`` and ``nobody``.
-* ``C3_KAFKA_ADMIN_PASSWORD`` / ``C3_KAFKA_OPSPILOT_PASSWORD`` /
-  ``C3_KAFKA_NOBODY_PASSWORD`` -- their passwords (defaults
-  ``admin-pw-567`` / ``opspilot-pw-567`` / ``nobody-pw-567``, low entropy,
-  for the gitleaks allow-list).
-* ``C3_KAFKA_PROBE_OUT`` (optional) -- a file the recorded observations are
-  appended to as JSON lines; they are also emitted as warnings.
-* The job grants nothing itself: this module creates every ACL, topic and
-  group (so a re-run on the same broker is not supported).
+This module's fixture writes everything with ``admin`` and is safe to run
+again on the same broker (existing topics, records, ACLs and offsets are
+kept or set to the same values): the ACLs of ``User:opspilot``, the topics
+``orders`` (1000/800/600 records), ``payments`` (500), ``audit-idle`` (0)
+and ``wide-1200`` (1200 partitions), the groups ``order-processor``
+(400/800/100, lag 1100, Empty), ``order-audit`` (a real consumer in a test
+thread, commits orders only), ``stale`` (payments 100, records deleted
+before 300) and ``zz-empty-000`` ... ``zz-empty-209``. Beyond the
+convention it adds ``stale-ahead`` (``audit-idle`` committed at 5, past its
+end 0) for the third flag, and one ``autocreate-probe-<uuid>`` topic per run
+for the auto-create positive control. The implementer's file uses
+``impl-`` names on the same broker in another step; every "nothing
+changed" assertion compares before and after within one test.
 """
 
 from __future__ import annotations
@@ -44,6 +42,7 @@ import os
 import shutil
 import threading
 import time
+import uuid
 import warnings
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
@@ -62,12 +61,17 @@ pytestmark = pytest.mark.skipif(
     reason="real Kafka runs only in the CI kafka-backend job",
 )
 
-SASL = os.environ.get("C3_KAFKA_SASL_BOOTSTRAP", "localhost:9092")
-NOAUTH = os.environ.get("C3_KAFKA_NOAUTH_BOOTSTRAP", "localhost:9094")
-ADMIN_PASSWORD = os.environ.get("C3_KAFKA_ADMIN_PASSWORD", "admin-pw-567")
-OPSPILOT_PASSWORD = os.environ.get("C3_KAFKA_OPSPILOT_PASSWORD", "opspilot-pw-567")
-NOBODY_PASSWORD = os.environ.get("C3_KAFKA_NOBODY_PASSWORD", "nobody-pw-567")
-PROBE_OUT = os.environ.get("C3_KAFKA_PROBE_OUT")
+SASL = os.environ.get("KAFKA_IT_SASL_BOOTSTRAP", "localhost:19092")
+NOAUTH = os.environ.get("KAFKA_IT_NOAUTH_BOOTSTRAP", "localhost:19094")
+UNREACHABLE = os.environ.get("KAFKA_IT_UNREACHABLE", "localhost:19099")
+ADMIN = os.environ.get("KAFKA_IT_ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("KAFKA_IT_ADMIN_PASSWORD", "admin-pass")
+READER = os.environ.get("KAFKA_IT_READONLY_USER", "opspilot")
+READER_PASSWORD = os.environ.get("KAFKA_IT_READONLY_PASSWORD", "opspilot-pass")
+NOACL = os.environ.get("KAFKA_IT_NOACL_USER", "nobody")
+NOACL_PASSWORD = os.environ.get("KAFKA_IT_NOACL_PASSWORD", "nobody-pass")
+WRONG_PASSWORD = "wrong-pass"
+PROBE_OUT = os.environ.get("KAFKA_IT_PROBE_OUT")
 
 CONSUMERS = "list_kafka_consumers"
 GROUP = "describe_consumer_group"
@@ -84,16 +88,16 @@ SENTINEL = "msg-body-sentinel-567"
 META_SENTINEL = "commit-meta-sentinel-567"
 ORDERS_ENDS = {0: 1000, 1: 800, 2: 600}
 PROCESSOR_OFFSETS = {0: 400, 1: 800, 2: 100}  # lag 600 / 0 / 500 = 1100
-PAYMENTS_RECORDS = 5
-LEDGER_RECORDS = 100
-LEDGER_COMMIT, LEDGER_DELETE_BEFORE = 10, 50  # committed below log start
-AHEAD_COMMIT = 999  # stale's payments commit, past the end
+PAYMENTS_RECORDS = 500
+STALE_COMMIT, STALE_DELETE_BEFORE = 100, 300  # committed below the log start
+AHEAD_COMMIT = 5  # stale-ahead on audit-idle, whose end is 0
 WIDE = "wide-1200"
 WIDE_PARTITIONS = 1200
-BULK = [f"zz-bulk-{n:03d}" for n in range(210)]
-RETENTION_MS = "86400123"
+BULK = [f"zz-empty-{n:03d}" for n in range(210)]
+RETENTION_MS = "86400000"
 MISSING = "does-not-exist-567"
-PROBE_TOPIC = "autocreate-probe-567"
+MY_GROUPS = ("order-processor", "order-audit", "stale", "stale-ahead")
+MY_TOPICS = {"orders": 3, "payments": 1, "audit-idle": 1}
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
 FRAME = Window(NOW - timedelta(hours=6), NOW)
@@ -120,7 +124,7 @@ def _conf(user: str, password: str, bootstrap: str = SASL) -> dict[str, Any]:
     }
 
 
-def _admin(user: str = "admin", password: str = ADMIN_PASSWORD):
+def _admin(user: str = ADMIN, password: str = ADMIN_PASSWORD):
     from confluent_kafka.admin import AdminClient
 
     return AdminClient(_conf(user, password))
@@ -147,12 +151,13 @@ def _committed(admin, group: str) -> dict[tuple[str, int], int]:
     }
 
 
-def _ends(admin, topics: Mapping[str, int]) -> dict[tuple[str, int], int]:
+def _offsets(admin, topics: Mapping[str, int], kind: str) -> dict[tuple[str, int], int]:
     from confluent_kafka import TopicPartition
     from confluent_kafka.admin import OffsetSpec
 
+    spec = OffsetSpec.latest() if kind == "latest" else OffsetSpec.earliest()
     request = {
-        TopicPartition(topic, p): OffsetSpec.latest()
+        TopicPartition(topic, p): spec
         for topic, count in topics.items()
         for p in range(count)
     }
@@ -172,6 +177,18 @@ def _set_offsets(admin, group: str, offsets: Mapping[tuple[str, int], int], meta
     _wait_all(admin.alter_consumer_group_offsets([request]))
 
 
+def _snapshot(admin) -> dict[str, Any]:
+    """What a read-only tool can never change: the topic list, these groups'
+    committed offsets and these partitions' start and end offsets."""
+    groups = [*MY_GROUPS, BULK[0], BULK[-1]]
+    return {
+        "topics": _topic_names(admin),
+        "committed": {g: _committed(admin, g) for g in groups},
+        "ends": _offsets(admin, MY_TOPICS, "latest"),
+        "starts": _offsets(admin, MY_TOPICS, "earliest"),
+    }
+
+
 def _acls():
     from confluent_kafka.admin import (
         AclBinding,
@@ -181,7 +198,6 @@ def _acls():
         ResourceType,
     )
 
-    principal = "User:opspilot"
     grants = [
         (ResourceType.TOPIC, "*", AclOperation.DESCRIBE),
         (ResourceType.TOPIC, "*", AclOperation.DESCRIBE_CONFIGS),
@@ -194,7 +210,7 @@ def _acls():
             kind,
             name,
             ResourcePatternType.LITERAL,
-            principal,
+            f"User:{READER}",
             "*",
             operation,
             AclPermissionType.ALLOW,
@@ -204,9 +220,10 @@ def _acls():
 
 
 class _AuditMember(threading.Thread):
-    """A real consumer that keeps ``order-audit`` Stable: it reads every
-    orders and payments record, commits orders only (so payments stays
-    ``no_committed_offset``), and keeps polling until stopped."""
+    """A real consumer that keeps ``order-audit`` Stable: subscribed to
+    orders and audit-idle, it reads to the end, commits the orders ends only
+    (audit-idle stays ``no_committed_offset``) and keeps polling until
+    stopped. Committing absolute ends makes a re-run converge."""
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
@@ -220,22 +237,26 @@ class _AuditMember(threading.Thread):
 
             consumer = Consumer(
                 {
-                    **_conf("admin", ADMIN_PASSWORD),
+                    **_conf(ADMIN, ADMIN_PASSWORD),
                     "group.id": "order-audit",
                     "client.id": "audit-client",
                     "auto.offset.reset": "earliest",
                     "enable.auto.commit": False,
                 }
             )
-            consumer.subscribe(["orders", "payments"])
-            seen = 0
-            want = sum(ORDERS_ENDS.values())
+            consumer.subscribe(["orders", "audit-idle"])
             deadline = time.monotonic() + 120
-            while seen < want and time.monotonic() < deadline:
-                message = consumer.poll(1.0)
-                if message is not None and message.error() is None:
-                    if message.topic() == "orders":
-                        seen += 1
+            wanted = {("orders", p) for p in ORDERS_ENDS} | {("audit-idle", 0)}
+            while time.monotonic() < deadline:
+                consumer.poll(0.5)
+                assigned = {(tp.topic, tp.partition) for tp in consumer.assignment()}
+                if not wanted <= assigned:
+                    continue
+                positions = consumer.position(
+                    [TopicPartition("orders", p) for p in ORDERS_ENDS]
+                )
+                if all(tp.offset >= ORDERS_ENDS[tp.partition] for tp in positions):
+                    break
             consumer.commit(
                 offsets=[
                     TopicPartition("orders", p, e) for p, e in ORDERS_ENDS.items()
@@ -253,7 +274,7 @@ class _AuditMember(threading.Thread):
 
 @pytest.fixture(scope="module", autouse=True)
 def cluster():
-    from confluent_kafka import Producer
+    from confluent_kafka import Producer, TopicPartition
     from confluent_kafka.admin import NewTopic
 
     admin = _admin()
@@ -266,23 +287,29 @@ def cluster():
             assert time.monotonic() < deadline, f"Kafka at {SASL} not ready"
             time.sleep(2)
 
-    _wait_all(admin.create_acls(_acls()))
-    _wait_all(
-        admin.create_topics(
-            [
-                NewTopic("orders", 3, 1, config={"retention.ms": RETENTION_MS}),
-                NewTopic("payments", 1, 1),
-                NewTopic("ledger", 1, 1),
-                NewTopic(WIDE, WIDE_PARTITIONS, 1),
-            ]
-        ),
-        timeout=120,
-    )
-    producer = Producer(_conf("admin", ADMIN_PASSWORD))
+    _wait_all(admin.create_acls(_acls()))  # idempotent
+    wanted = {
+        "orders": NewTopic("orders", 3, 1, config={"retention.ms": RETENTION_MS}),
+        "payments": NewTopic("payments", 1, 1),
+        "audit-idle": NewTopic("audit-idle", 1, 1),
+        WIDE: NewTopic(WIDE, WIDE_PARTITIONS, 1),
+    }
+    missing = [t for name, t in wanted.items() if name not in _topic_names(admin)]
+    if missing:
+        _wait_all(admin.create_topics(missing), timeout=120)
+    deadline = time.monotonic() + 60
+    while not set(wanted) <= _topic_names(admin):
+        assert time.monotonic() < deadline, "topics never appeared"
+        time.sleep(1)
+
+    ends = _offsets(admin, {"orders": 3, "payments": 1}, "latest")
+    producer = Producer(_conf(ADMIN, ADMIN_PASSWORD))
     plan = [("orders", p, n) for p, n in ORDERS_ENDS.items()]
-    plan += [("payments", 0, PAYMENTS_RECORDS), ("ledger", 0, LEDGER_RECORDS)]
+    plan.append(("payments", 0, PAYMENTS_RECORDS))
     for topic, partition, count in plan:
-        for n in range(count):
+        have = ends[(topic, partition)]
+        assert have in (0, count), (topic, partition, have)
+        for n in range(have, count):
             producer.produce(
                 topic,
                 value=f"{SENTINEL} {topic} record {n}".encode(),
@@ -300,14 +327,11 @@ def cluster():
         {("orders", p): o for p, o in PROCESSOR_OFFSETS.items()},
         META_SENTINEL,
     )
-    _set_offsets(
-        admin,
-        "stale",
-        {("ledger", 0): LEDGER_COMMIT, ("payments", 0): AHEAD_COMMIT},
+    _set_offsets(admin, "stale", {("payments", 0): STALE_COMMIT})
+    _wait_all(
+        admin.delete_records([TopicPartition("payments", 0, STALE_DELETE_BEFORE)])
     )
-    from confluent_kafka import TopicPartition
-
-    _wait_all(admin.delete_records([TopicPartition("ledger", 0, LEDGER_DELETE_BEFORE)]))
+    _set_offsets(admin, "stale-ahead", {("audit-idle", 0): AHEAD_COMMIT})
     for group in BULK:
         _set_offsets(admin, group, {("payments", 0): 0})
 
@@ -323,20 +347,8 @@ def cluster():
         assert time.monotonic() < deadline, desc.state
         time.sleep(1)
 
-    # The broker really auto-creates topics on this listener: a producer's
-    # metadata request for an unknown name creates it (positive control for
-    # the tool-layer proof below).
-    probe = Producer({"bootstrap.servers": NOAUTH})
-    probe.produce(PROBE_TOPIC, value=b"probe")
-    probe.flush(30)
-    deadline = time.monotonic() + 30
-    while PROBE_TOPIC not in _topic_names(admin):
-        assert time.monotonic() < deadline, "auto.create.topics.enable is not on"
-        time.sleep(1)
-    _observe(f"positive control: a producer on {NOAUTH} auto-created {PROBE_TOPIC}")
-
     # The opspilot ACLs are in force before any tool runs.
-    reader = _admin("opspilot", OPSPILOT_PASSWORD)
+    reader = _admin(READER, READER_PASSWORD)
     deadline = time.monotonic() + 60
     while True:
         try:
@@ -346,19 +358,9 @@ def cluster():
             assert time.monotonic() < deadline, "opspilot ACLs never applied"
             time.sleep(1)
 
-    snapshot = _snapshot(admin)
-    yield {"admin": admin, "snapshot": snapshot}
+    yield {"admin": admin}
     member.stop.set()
     member.join(30)
-
-
-def _snapshot(admin) -> dict[str, Any]:
-    groups = ["order-processor", "order-audit", "stale", BULK[0], BULK[-1]]
-    return {
-        "topics": _topic_names(admin),
-        "committed": {g: _committed(admin, g) for g in groups},
-        "ends": _ends(admin, {"orders": 3, "payments": 1, "ledger": 1}),
-    }
 
 
 # -- the product path ---------------------------------------------------------------
@@ -385,7 +387,7 @@ def _env(k8s_ca: str, bootstrap: str = SASL, **kafka: str) -> dict[str, str]:
     }
 
 
-def _sasl(user: str = "opspilot", password: str = OPSPILOT_PASSWORD) -> dict[str, str]:
+def _sasl(user: str = READER, password: str = READER_PASSWORD) -> dict[str, str]:
     return {
         "OPSPILOT_KAFKA_SECURITY_PROTOCOL": "SASL_PLAINTEXT",
         "OPSPILOT_KAFKA_SASL_MECHANISM": "PLAIN",
@@ -424,6 +426,7 @@ def tools(k8s_ca):
 
 @pytest.fixture(scope="module")
 def anonymous(k8s_ca):
+    # PLAINTEXT, no credential: the SREGym shape (C3-U1 = a).
     return _executor(_env(k8s_ca, NOAUTH))
 
 
@@ -474,7 +477,7 @@ def _name(value: object) -> str:
 
 
 def _size(value: object) -> int:
-    return len(value) if isinstance(value, (list, tuple)) else int(value)  # type: ignore[arg-type]
+    return len(value) if isinstance(value, (list, tuple)) else int(value)  # type: ignore[call-overload]
 
 
 def _lag_rows(outcome) -> dict[tuple[str, int], dict[str, Any]]:
@@ -497,7 +500,9 @@ PARAMS: dict[str, dict[str, object]] = {
 # -- the eight tools on the authenticated listener -----------------------------------
 
 
-def test_every_tool_answers_with_real_data_under_the_describe_only_account(tools):
+def test_every_tool_answers_with_real_data_and_writes_nothing(tools, cluster):
+    admin = cluster["admin"]
+    before = _snapshot(admin)
     served = []
     for tool in TOOLS:
         outcome = _run(tools, tool, PARAMS[tool])
@@ -506,6 +511,8 @@ def test_every_tool_answers_with_real_data_under_the_describe_only_account(tools
         served.append(tool)
     broker = _run(tools, CONFIGS, {"resource_type": "broker", "resource_name": "1"})
     _ok(broker)
+    time.sleep(2)
+    assert _snapshot(admin) == before
     _observe(
         "opspilot with Topic DESCRIBE/DESCRIBE_CONFIGS, Group DESCRIBE and Cluster "
         f"DESCRIBE/DESCRIBE_CONFIGS only (no READ) served: {', '.join(served)}, "
@@ -536,55 +543,59 @@ def test_the_live_group_has_members_assignment_zero_lag_and_an_uncommitted_parti
     _ok(outcome)
     (group,) = _rows(outcome)
     assert _name(group["state"]) == "STABLE"
-    assert len(group["members"]) == 1
     (member,) = group["members"]
     assert member["client_id"] == "audit-client"
     assert member["host"]
     assigned = sorted((a["topic"], a["partition"]) for a in member["assignment"])
-    assert assigned == [("orders", 0), ("orders", 1), ("orders", 2), ("payments", 0)]
+    assert assigned == [("audit-idle", 0), ("orders", 0), ("orders", 1), ("orders", 2)]
     rows = _lag_rows(outcome)
     assert [rows["orders", p]["lag"] for p in range(3)] == [0, 0, 0]
-    assert rows["payments", 0]["lag"] is None
-    assert rows["payments", 0]["flags"] == ["no_committed_offset"]
+    assert rows["audit-idle", 0]["lag"] is None
+    assert rows["audit-idle", 0]["flags"] == ["no_committed_offset"]
     assert group["lag_by_topic"]["orders"] == 0
     assert group["coordinator"] not in (None, "", {})
     assert group["partition_assignor"]
 
 
-def test_offsets_ahead_of_the_end_and_below_the_log_start_are_flagged(tools):
+def test_an_offset_below_the_log_start_is_flagged(tools):
     outcome = _run(tools, GROUP, {"group_id": "stale"})
     _ok(outcome)
-    rows = _lag_rows(outcome)
-    ledger = rows["ledger", 0]
-    assert ledger["committed_offset"] == LEDGER_COMMIT
-    assert ledger["log_start_offset"] == LEDGER_DELETE_BEFORE
-    assert ledger["end_offset"] == LEDGER_RECORDS
-    assert ledger["lag"] == LEDGER_RECORDS - LEDGER_COMMIT
-    assert ledger["flags"] == ["committed_below_log_start"]
-    payments = rows["payments", 0]
-    assert payments["committed_offset"] == AHEAD_COMMIT
-    assert payments["end_offset"] == PAYMENTS_RECORDS
-    assert payments["lag"] == 0
-    assert payments["flags"] == ["committed_ahead_of_end"]
+    row = _lag_rows(outcome)["payments", 0]
+    assert row["committed_offset"] == STALE_COMMIT
+    assert row["log_start_offset"] == STALE_DELETE_BEFORE
+    assert row["end_offset"] == PAYMENTS_RECORDS
+    assert row["lag"] == PAYMENTS_RECORDS - STALE_COMMIT
+    assert row["flags"] == ["committed_below_log_start"]
+
+
+def test_an_offset_past_the_end_is_flagged(tools):
+    outcome = _run(tools, GROUP, {"group_id": "stale-ahead"})
+    _ok(outcome)
+    row = _lag_rows(outcome)["audit-idle", 0]
+    assert (row["committed_offset"], row["end_offset"]) == (AHEAD_COMMIT, 0)
+    assert row["lag"] == 0
+    assert row["flags"] == ["committed_ahead_of_end"]
 
 
 def test_find_groups_by_topic_returns_each_group_with_its_total_lag(tools, cluster):
     outcome = _run(tools, FIND, {"topic_name": "orders"})
     _ok(outcome)
     rows = {r["group_id"]: r for r in _rows(outcome)}
-    assert sorted(rows) == ["order-audit", "order-processor"]
+    assert {"order-audit", "order-processor"} <= set(rows)
+    assert not {g for g in rows if g.startswith("zz-empty-")}
     assert rows["order-processor"]["total_lag"] == 1100
     assert rows["order-processor"]["member_count"] == 0
     assert _size(rows["order-processor"]["committed_partitions"]) == 3
     assert rows["order-audit"]["total_lag"] == 0
     assert rows["order-audit"]["member_count"] == 1
     assert _size(rows["order-audit"]["assigned_partitions"]) == 3
-    # 213 groups exist; the scan stops at the first 200 by name.
+    # At least 214 groups exist; the scan stops at the first 200 by name and
+    # says how many it scanned out of how many.
     view = _view(outcome)
     assert view["incomplete"] is True
     meta = json.dumps({k: v for k, v in view.items() if k != "content"}, default=str)
     groups = len(_wait_all({0: cluster["admin"].list_consumer_groups()})[0].valid)
-    assert groups >= 213
+    assert groups >= 214
     assert "200" in meta and str(groups) in meta, meta
 
 
@@ -593,7 +604,8 @@ def test_brokers_and_overview_describe_the_single_node(tools, cluster):
     _ok(brokers)
     (row,) = _rows(brokers)
     assert row["id"] == 1
-    assert (row["host"], row["port"]) == ("localhost", int(SASL.rsplit(":", 1)[1]))
+    host, port = SASL.rsplit(":", 1)
+    assert (row["host"], row["port"]) == (host, int(port))
     assert row["is_controller"] is True
     overview = _run(tools, OVERVIEW)
     _ok(overview)
@@ -610,7 +622,8 @@ def test_brokers_and_overview_describe_the_single_node(tools, cluster):
     user_parts = sum(
         len(t.partitions) for n, t in metadata.topics.items() if n not in internal
     )
-    # Whether internal topics count is not fixed by the interface.
+    # Whether internal topics count is not fixed by the interface; other
+    # steps may add topics, so this reads the same instant's metadata.
     assert summary["topic_count"] in (
         len(metadata.topics),
         len(metadata.topics) - len(internal),
@@ -631,11 +644,11 @@ def test_configs_read_retention_and_never_show_sensitive_values(tools):
     for row in _rows(broker):
         if row["is_sensitive"]:
             assert row["value"] is None, row
-    for outcome_ in (outcome, broker):
-        text = _text(outcome_)
-        for secret in (ADMIN_PASSWORD, OPSPILOT_PASSWORD, NOBODY_PASSWORD):
+    for result in (outcome, broker):
+        text = _text(result)
+        for secret in (ADMIN_PASSWORD, READER_PASSWORD, NOACL_PASSWORD):
             assert secret not in text
-            assert secret.encode() not in (outcome_.evidence.raw or b"")
+            assert secret.encode() not in (result.evidence.raw or b"")
 
 
 def test_a_1200_partition_topic_keeps_1000_rows(tools):
@@ -650,7 +663,7 @@ def test_listings_cover_the_seeded_topics_and_groups(tools):
     topics = _run(tools, TOPICS)
     _ok(topics)
     by = {r["topic"]: r for r in _rows(topics)}
-    assert {"orders", "payments", "ledger", WIDE} <= set(by)
+    assert {"orders", "payments", "audit-idle", WIDE} <= set(by)
     assert _size(by["orders"]["partitions"]) == 3
     assert by["orders"]["internal"] is False
     if "__consumer_offsets" in by:
@@ -666,7 +679,7 @@ def test_listings_cover_the_seeded_topics_and_groups(tools):
 
 
 def test_an_account_without_acls_is_source_forbidden(k8s_ca):
-    nobody = _executor(_env(k8s_ca, **_sasl("nobody", NOBODY_PASSWORD)))
+    nobody = _executor(_env(k8s_ca, **_sasl(NOACL, NOACL_PASSWORD)))
     outcome = _run(nobody, BROKERS)
     assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), _view(
         outcome
@@ -678,17 +691,17 @@ def test_an_account_without_acls_is_source_forbidden(k8s_ca):
 
 
 def test_a_wrong_password_is_source_forbidden(k8s_ca):
-    wrong = _executor(_env(k8s_ca, **_sasl("opspilot", "wrong-pw-567")))
+    wrong = _executor(_env(k8s_ca, **_sasl(READER, WRONG_PASSWORD)))
     outcome = _run(wrong, BROKERS)
     assert (outcome.status, outcome.reason) == ("error", "SOURCE_FORBIDDEN"), _view(
         outcome
     )
-    assert "wrong-pw-567" not in _text(outcome)
+    assert WRONG_PASSWORD not in _text(outcome)
 
 
 def test_an_unreachable_port_is_unavailable_or_a_timeout(k8s_ca):
     started = time.monotonic()
-    outcome = _run(_executor(_env(k8s_ca, "localhost:1")), BROKERS)
+    outcome = _run(_executor(_env(k8s_ca, UNREACHABLE)), BROKERS)
     assert outcome.status in ("error", "timeout"), _view(outcome)
     if outcome.status == "error":
         assert outcome.reason == "SOURCE_UNAVAILABLE", _view(outcome)
@@ -706,21 +719,35 @@ def test_unknown_topics_and_groups_are_no_data(tools):
 
 
 def test_looking_up_a_missing_topic_never_creates_it(anonymous, cluster):
+    from confluent_kafka import Producer
+
     admin = cluster["admin"]
-    before = _topic_names(admin)
-    assert MISSING not in before
+    # Positive control: on this listener a producer's metadata request for an
+    # unknown name does create it, so the broker really auto-creates.
+    probe_topic = f"autocreate-probe-{uuid.uuid4().hex[:8]}"
+    probe = Producer({"bootstrap.servers": NOAUTH})
+    probe.produce(probe_topic, value=b"probe")
+    probe.flush(30)
+    deadline = time.monotonic() + 30
+    while probe_topic not in _topic_names(admin):
+        assert time.monotonic() < deadline, "auto.create.topics.enable is not on"
+        time.sleep(1)
+    _observe(f"positive control: a producer on {NOAUTH} auto-created {probe_topic}")
+
+    before = _snapshot(admin)
+    assert MISSING not in before["topics"]
     _no_data_with(_run(anonymous, TOPIC, {"topic_name": MISSING}), "TOPIC_NOT_FOUND")
     outcome = _run(
         anonymous, CONFIGS, {"resource_type": "topic", "resource_name": MISSING}
     )
     assert outcome.status in ("no_data", "error"), _view(outcome)
     _no_data_with(_run(anonymous, FIND, {"topic_name": MISSING}), "TOPIC_NOT_FOUND")
-    # The rest of the tools on the same listener create nothing either.
+    # The rest of the tools on the same listener write nothing either.
     for tool in TOOLS:
-        _run(anonymous, tool, PARAMS[tool])
+        _ok(_run(anonymous, tool, PARAMS[tool]))
     time.sleep(3)
-    after = _topic_names(admin)
-    assert MISSING not in after
+    after = _snapshot(admin)
+    assert MISSING not in after["topics"]
     assert after == before
 
 
@@ -743,10 +770,10 @@ def _errors_of(futures: Mapping[Any, Any]) -> list[str]:
 def test_the_opspilot_identity_cannot_produce(cluster):
     from confluent_kafka import Producer
 
+    admin = cluster["admin"]
+    before = _snapshot(admin)
     errors: list[str] = []
-    producer = Producer(
-        {**_conf("opspilot", OPSPILOT_PASSWORD), "message.timeout.ms": 15000}
-    )
+    producer = Producer({**_conf(READER, READER_PASSWORD), "message.timeout.ms": 15000})
     producer.produce(
         "orders",
         value=b"must-not-land-567",
@@ -755,6 +782,7 @@ def test_the_opspilot_identity_cannot_produce(cluster):
     )
     producer.flush(30)
     assert errors == ["TOPIC_AUTHORIZATION_FAILED"], errors
+    assert _snapshot(admin) == before
 
 
 def test_the_opspilot_identity_cannot_read_messages(cluster):
@@ -768,7 +796,7 @@ def test_the_opspilot_identity_cannot_read_messages(cluster):
     ):
         consumer = Consumer(
             {
-                **_conf("opspilot", OPSPILOT_PASSWORD),
+                **_conf(READER, READER_PASSWORD),
                 "group.id": group,
                 "auto.offset.reset": "earliest",
                 "enable.auto.commit": False,
@@ -804,7 +832,9 @@ def test_the_opspilot_identity_cannot_change_topics_configs_or_groups(cluster):
         ResourceType,
     )
 
-    reader = _admin("opspilot", OPSPILOT_PASSWORD)
+    admin = cluster["admin"]
+    before = _snapshot(admin)
+    reader = _admin(READER, READER_PASSWORD)
     attempts = {
         "create_topics": reader.create_topics(
             [NewTopic("opspilot-made-567", 1, 1)], request_timeout=20
@@ -848,25 +878,20 @@ def test_the_opspilot_identity_cannot_change_topics_configs_or_groups(cluster):
             errors,
         )
     _observe(f"opspilot write attempts: {json.dumps(outcomes, sort_keys=True)}")
-    admin = cluster["admin"]
-    assert "opspilot-made-567" not in _topic_names(admin)
-    assert "orders" in _topic_names(admin)
+    after = _snapshot(admin)
+    assert "opspilot-made-567" not in after["topics"]
+    assert after == before
     (configs,) = _wait_all(
         admin.describe_configs([ConfigResource(ResourceType.TOPIC, "orders")])
     )
     assert configs["retention.ms"].value == RETENTION_MS
-    assert _committed(admin, "order-processor") == {
-        ("orders", p): o for p, o in PROCESSOR_OFFSETS.items()
-    }
 
 
-# -- last: nothing was written, and no message content ever came back ------------------
+# -- last: no message content ever came back ------------------------------------------
 
 
-def test_zz_no_tool_wrote_anything_or_returned_message_content(cluster):
-    admin = cluster["admin"]
-    assert _snapshot(admin) == cluster["snapshot"]
-    assert len(OUTCOMES) >= len(TOOLS)
+def test_zz_no_tool_returned_message_content():
+    assert len(OUTCOMES) >= 2 * len(TOOLS)
     for outcome in OUTCOMES:
         assert SENTINEL not in _text(outcome), outcome.operation.tool
         assert META_SENTINEL not in _text(outcome), outcome.operation.tool
