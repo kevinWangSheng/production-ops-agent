@@ -84,7 +84,9 @@ KEYS = {
     STREAMS: {"query", "start", "end", "limit"},
     FIELD_NAMES: {"query", "start", "end"},
     FIELD_VALUES: {"query", "field", "start", "end", "limit"},
-    HITS: {"query", "start", "end", "step"},
+    # Lead revision (PR #731): VictoriaLogs aligns start/end to the step
+    # before filtering, so hits also sends the window as extra_filters.
+    HITS: {"query", "start", "end", "step", "extra_filters"},
 }
 # The smallest valid call of each tool.
 MINIMAL: dict[str, dict[str, object]] = {
@@ -737,6 +739,21 @@ def test_each_tool_sends_one_get_of_its_fixed_path_with_its_fixed_keys(vl, tool)
         assert sent["field"] == "level"
     if tool == HITS:
         assert sent["step"] == "5m"
+        _assert_extra_filters_window(sent)
+
+
+_EXTRA_FILTERS = re.compile(r"_time:\[\s*(\S+?)\s*,\s*(\S+?)\s*\)")
+
+
+def _assert_extra_filters_window(sent: Mapping[str, str]) -> None:
+    """``extra_filters=_time:[<start>, <end>)`` in Z RFC3339, the same
+    instants as the ``start``/``end`` sent (lead revision, PR #731)."""
+    match = _EXTRA_FILTERS.fullmatch(sent.get("extra_filters", ""))
+    assert match, sent
+    low, high = match.groups()
+    assert _Z_RFC3339.fullmatch(low) and _Z_RFC3339.fullmatch(high), sent
+    assert _rfc3339_ns(low) == _rfc3339_ns(sent["start"]), sent
+    assert _rfc3339_ns(high) == _rfc3339_ns(sent["end"]), sent
 
 
 def test_hits_sends_field_only_when_given(vl):
@@ -751,6 +768,8 @@ def test_hits_sends_field_only_when_given(vl):
     assert set(second["query"]) == KEYS[HITS] | {"field"}
     assert second["query"]["field"] == ["level"]
     assert second["query"]["step"] == ["10m"]
+    for record in (first, second):
+        _assert_extra_filters_window({k: v[0] for k, v in record["query"].items()})
 
 
 def test_query_text_is_sent_as_given_and_cannot_inject_keys(vl):
@@ -824,6 +843,8 @@ def test_explicit_window_is_sent_in_z_form(vl, tool):
     assert _Z_RFC3339.fullmatch(sent["start"]) and _Z_RFC3339.fullmatch(sent["end"])
     assert _close(_rfc3339_ns(sent["start"]) or 0, _ns(start))
     assert _close(_rfc3339_ns(sent["end"]) or 0, _ns(end))
+    if tool == HITS:
+        _assert_extra_filters_window(sent)
 
 
 @pytest.mark.parametrize(
