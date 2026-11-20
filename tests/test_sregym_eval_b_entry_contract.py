@@ -592,7 +592,8 @@ def test_port_forwards_use_the_engineer_kubeconfig_in_observe(make) -> None:  # 
     s.harness.fake.advance("diagnosis")
     assert _run(s) == 0
     fw = s.harness.forwards
-    assert len(fw) == 3
+    # Kafka wiring interface: three observe forwards plus svc/kafka in the app namespace
+    assert len(fw) == 4
     for svc, mapping in (
         ("prometheus-server", "29590"),
         ("jaeger-out", "29586"),
@@ -600,8 +601,10 @@ def test_port_forwards_use_the_engineer_kubeconfig_in_observe(make) -> None:  # 
     ):
         hits = [f for f in fw if svc in f and mapping in f]
         assert len(hits) == 1, svc
-    for f in fw:
-        assert "observe" in f
+        assert "observe" in hits[0], svc
+    (kafka,) = [f for f in fw if "kafka" in f]
+    assert "observe" not in kafka
+    assert APP["namespaces"][0] in kafka and "9092" in kafka
     for raw in s.harness.forwards_raw:
         assert ADMIN_KUBECONFIG not in raw
         assert str(s.engineer_kubeconfig) in raw

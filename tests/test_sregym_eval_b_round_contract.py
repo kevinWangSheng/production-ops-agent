@@ -302,6 +302,10 @@ class Round:
         self.evidence = tmp / "evidence"
         self.tmp_root = tmp / "tmp"
         baseline = tmp / "cache_dir" / "cluster_baseline_state.json"
+        # Kafka wiring interface: prepare_round checks a hosts file; a temp one
+        # with the advertised name keeps these passes off the real /etc/hosts.
+        self.hosts_file = tmp / "hosts"
+        self.hosts_file.write_text("127.0.0.1 localhost\n127.0.0.1 kafka\n")
         fields: dict[str, Any] = {
             "round": "r1",
             "upstream": self.upstream,
@@ -311,6 +315,7 @@ class Round:
             "evidence_root": self.evidence,
             "baseline": baseline,
             "allow_dirty": True,
+            "hosts_file": self.hosts_file,
         }
         fields.update(cfg)
         self.cfg = d.Config(**fields)
