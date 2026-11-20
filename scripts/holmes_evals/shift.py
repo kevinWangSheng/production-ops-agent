@@ -88,6 +88,8 @@ URL_NAMES_CHARS = 3000
 BULK_DOCS = 5000
 BULK_BYTES = 5 * 1024 * 1024
 ES_TIMEOUT_S = 60
+#: ``_forcemerge`` over ``app-<id>-*`` can touch ~1600 indices in one request.
+FORCEMERGE_TIMEOUT_S = 600
 _DATE_TYPES = frozenset({"date", "date_nanos"})
 
 
@@ -412,7 +414,13 @@ class EsAdmin:
         return f"EsAdmin({self.url!r})"
 
     def _call(
-        self, method: str, path: str, body: Any = None, *, ndjson: bool = False
+        self,
+        method: str,
+        path: str,
+        body: Any = None,
+        *,
+        ndjson: bool = False,
+        timeout: float = ES_TIMEOUT_S,
     ) -> Any:
         if body is None:
             data = None
@@ -433,7 +441,7 @@ class EsAdmin:
             },
         )
         try:
-            with self._opener.open(request, timeout=ES_TIMEOUT_S) as response:
+            with self._opener.open(request, timeout=timeout) as response:
                 raw = response.read()
         except urllib.error.HTTPError as error:
             if error.code == 404:
@@ -508,7 +516,11 @@ class EsAdmin:
 
     def forcemerge(self, index: str) -> None:
         """``_forcemerge?max_num_segments=1`` (an index name or a pattern)."""
-        self._call("POST", f"/{self._quote(index)}/_forcemerge?max_num_segments=1")
+        self._call(
+            "POST",
+            f"/{self._quote(index)}/_forcemerge?max_num_segments=1",
+            timeout=FORCEMERGE_TIMEOUT_S,
+        )
 
     def refresh(self, pattern: str) -> None:
         self._call("POST", f"/{self._quote(pattern)}/_refresh")

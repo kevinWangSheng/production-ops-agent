@@ -426,6 +426,8 @@ def test_trial_end_to_end_with_fakes(
     _upstream(cfg.upstream)
     seen: dict[str, Any] = {}
     b = _backends(store, url, seen)
+    # One clock for the shift and the fixed report time in REPORT.summary.
+    b.now = lambda: datetime(2026, 11, 18, 19, 0, 50, tzinfo=UTC)
     report = driver.run_question(cfg, b, QID, [1])
     assert report["trials"][1]["judge"].get("choice") == "A", report
     summary = json.loads(cfg.summary_path(QID, 1).read_text())
@@ -550,11 +552,9 @@ class _Counting(shift.EsAdmin):
         super().__init__(*a, **k)
         self.calls: list[str] = []
 
-    def _call(
-        self, method: str, path: str, body: Any = None, *, ndjson: bool = False
-    ) -> Any:
+    def _call(self, method: str, path: str, body: Any = None, **kw: Any) -> Any:
         self.calls.append(f"{method} {path.split('?')[0].split('/')[-1]}")
-        return super()._call(method, path, body, ndjson=ndjson)
+        return super()._call(method, path, body, **kw)
 
 
 def test_apply_shift_is_batched_across_indices(
