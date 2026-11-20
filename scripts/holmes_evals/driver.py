@@ -1250,7 +1250,7 @@ class Attempt:
             kenv, cfg.engineer_key, role="worker", backend_addresses=addresses
         )
         try:
-            self._started(b.start_web(wenv, cfg.ports.web, self.dir / "web.log"))
+            web = self._started(b.start_web(wenv, cfg.ports.web, self.dir / "web.log"))
         except services.ServiceError as error:
             raise InfraFailure(error.code, str(error)) from None
         if self.knowledge:
@@ -1343,6 +1343,9 @@ class Attempt:
         if self.knowledge:
             self._check_run_catalog(pg.owner_dsn, run_id)
             self._revoke_knowledge(after_run=True)
+            # PR-D order: revoke, stop the web, then ``after_test`` (the
+            # stop is idempotent; the cleanup stack's stop is then a no-op).
+            web.stop()
         calls: list[ToolCall] | None = None
         trial_dir = self.cfg.trial_dir(self.qid, self.trial)
         conversion: dict[str, Any] = {"with_tool_calls": False, "tool_calls": None}
