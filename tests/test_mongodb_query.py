@@ -288,6 +288,57 @@ def test_account_check_allows_read_roles() -> None:
     assert mq.account_problem(READ_ONLY_STATUS) is None
 
 
+def _reshaped(**auth_info: Any) -> dict[str, Any]:
+    """READ_ONLY_STATUS with some authInfo fields replaced; ``None`` drops one."""
+    info = dict(READ_ONLY_STATUS["authInfo"])
+    for key, value in auth_info.items():
+        if value is None:
+            info.pop(key, None)
+        else:
+            info[key] = value
+    return {"authInfo": info, "ok": 1.0}
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        _reshaped(authenticatedUserRoles=None),
+        _reshaped(authenticatedUserRoles=[]),
+        _reshaped(authenticatedUserRoles={"role": "read", "db": "shop"}),
+        _reshaped(authenticatedUserRoles=["read"]),
+        _reshaped(authenticatedUserRoles=[{"db": "shop"}]),
+        _reshaped(authenticatedUserPrivileges=None),
+        _reshaped(authenticatedUserPrivileges={"actions": ["find"]}),
+        _reshaped(authenticatedUserPrivileges=["find"]),
+        _reshaped(authenticatedUserPrivileges=[{"resource": {}, "actions": "insert"}]),
+        _reshaped(authenticatedUserPrivileges=[{"resource": {}}]),
+        _reshaped(authenticatedUserPrivileges=[{"resource": {}, "actions": [["x"]]}]),
+        _reshaped(authenticatedUsers={"user": "ro", "db": "admin"}),
+        _reshaped(authenticatedUsers="ro"),
+    ],
+    ids=[
+        "roles-missing",
+        "roles-empty",
+        "roles-dict",
+        "role-not-object",
+        "role-without-name",
+        "privileges-missing",
+        "privileges-dict",
+        "privilege-not-object",
+        "actions-not-list",
+        "actions-missing",
+        "action-not-string",
+        "users-dict",
+        "users-string",
+    ],
+)
+def test_account_check_fails_closed_on_unexpected_shape(status) -> None:
+    # #755: a connectionStatus reply without the MongoDB 7 shape is refused,
+    # never read as "no bad role or action found"
+    problem = mq.account_problem(status)
+    assert problem is not None and problem.startswith("MONGODB_ACCOUNT_NOT_READ_ONLY")
+
+
 # -- sequences --------------------------------------------------------------------------
 
 
