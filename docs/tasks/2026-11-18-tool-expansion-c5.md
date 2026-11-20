@@ -1,7 +1,7 @@
 # 工具面拓展 C5：Loki / VictoriaLogs 日志检索
 
-- 状态：C5a Loki 已合并（PR #724，`2d13f48a`，2026-11-18）；C5b VictoriaLogs 待开工；真实 Run 证据归租机（#671/#669）
-- 更新日期：2026-11-18
+- 状态：C5a Loki 已合并（PR #724，`2d13f48a`，2026-11-18）；C5b VictoriaLogs 公开接口已定、实现中（分支 `feature/569-victorialogs`，worktree `../poa-569-vlogs`）；真实 Run 证据归租机（#671/#669）
+- 更新日期：2026-11-19
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、决定表 r8、r9（B1-U1、B1-U2 沿用）与 r10（C5-U1、R10-1、C5-0 至 C5-21）；C3 第 3、5、8、12 节；上游 HolmesGPT `a0009195` 的 `holmes/plugins/toolsets/grafana/`（Loki）与 `victorialogs/`。issue #569。预审全文在仓库外（`~/.agent/handoffs/opspilot-c5-prereview-2026-11-18.md`），细节以它和 r10 为准
 - 工作区：C5a 实现 `../poa-569-loki`，分支 `feature/569-loki-logs`；C5a 测试 `../poa-569-loki-tests`，分支 `test/569-loki-logs`
 
@@ -18,6 +18,28 @@
 - 凭据：凭据槽 `loki-ro`（`OPSPILOT_LOKI_URL`，Basic 用户名密码或 bearer token 二选一，`OPSPILOT_LOKI_CA_FILE`，租户 `OPSPILOT_LOKI_TENANT_ID` 设 `X-Scope-OrgID`），由运维配置，模型不选租户；不与其他后端互相回退；凭据不进视图、备注与 trace。lab 闸门加 `LOKI_NOT_LAB`。
 - 大小与截断沿用 B1：原始读取 2 MiB、视图 25k token 超限整条拒绝；单值截到 2000 字符；到 limit 标不完整、保留最新的。
 - 错误分类：参数或 LogQL 错误、无权限（含网关 403）、来源不可用、超时、无数据彼此区分（C5-11）。
+
+## 行为（公开接口，C5b，2026-11-19）
+
+- 五个工具，名字与参数照上游 `victorialogs.py`（C5-2）。`start`/`end` 全部同 Loki：带时区的 RFC3339，两个都给或都不给，都不给取默认查询窗（策略的 `default_query_window`，否则授权框末尾 1 小时），越出授权框报 `QUERY_OUT_OF_WINDOW` 且不发请求（C5-8）。
+
+| 工具 | 参数（必填加粗） | 请求（只有 GET，路径写死，查询键固定） | 返回 `results` 每行 | `row_unit` | verb |
+|---|---|---|---|---|---|
+| `victorialogs_query` | **`query`**、`start`、`end`、`limit`（默认 100，1–500） | `/select/logsql/query`：`query`、`start`、`end`、`limit=<limit+1>` | VictoriaLogs 返回的整条 JSON 对象（`_time`、`_stream`、`_msg` 与其余字段），按 `_time` 降序，没有 `_time` 的行（如 `stats` 结果）按原序排在后面 | `entries` | `query` |
+| `victorialogs_streams` | `query`（默认 `*`）、`start`、`end`、`limit`（默认 100，1–500） | `/select/logsql/streams`：`query`、`start`、`end`、`limit=<limit+1>` | `{stream, hits}`，按 `hits` 降序、再按 `stream` | `streams` | `get` |
+| `victorialogs_field_names` | `query`（默认 `*`）、`start`、`end` | `/select/logsql/field_names`：`query`、`start`、`end` | `{field, hits}`，同上排序 | `fields` | `get` |
+| `victorialogs_field_values` | **`field`**、`query`（默认 `*`）、`start`、`end`、`limit`（默认 100，1–500） | `/select/logsql/field_values`：`query`、`field`、`start`、`end`、`limit=<limit+1>` | `{value, hits}`，同上排序；视图带 `field` | `values` | `get` |
+| `victorialogs_hits` | **`query`**、`start`、`end`、`step`（默认 `5m`）、`field` | `/select/logsql/hits`：`query`、`start`、`end`、`step`，给了 `field` 再加 `field` | 每个序列 `{fields, timestamps, values, total}`；`total` 为 0 的序列去掉 | `series` | `get` |
+
+- 时间一律用带 `Z` 的 RFC3339 发出，模型去不掉（B1-U1）。来源时间：`victorialogs_query` 取返回行 `_time` 的最早与最晚（夹进查询窗；没有可解析的 `_time` 时取查询窗）；其余四个取查询窗本身（C5-9），`cannot_prove` 写明「只说明这个窗口里有这些流、字段、取值或计数，不能说明每一条日志的内容」。hits 的桶时间按 `step` 对齐，第一个桶的标记可能早于查询窗起点，但只计窗内的日志，视图 notes 写明。
+- 截断：带 `limit` 的三个工具多要一条；返回超过 `limit` 时保留前 `limit` 行（query 为最新的），标不完整，原因写「已到 limit，窗口里还有更多没有返回」。所有字符串值截到 2000 字符，行内 `_truncated_fields` 列出。原始读取 2 MiB、视图 25k token，超限整条 `RESULT_TOO_LARGE`。`result_path` 为 `results`，`may_contain_secrets=True`，`source="otel-demo"`，地址在 selector `victorialogs_endpoint`。
+- 发请求前的拒绝（码放 notes 开头，都归 `INVALID_PARAMS`）：`INVALID_QUERY`（必填的查询为空；超过 4000 字符；含换行、制表符或不可打印字符；引号未闭合）、`INVALID_LIMIT`、`INVALID_STEP`（`step` 不是 `<1–999999>(s|m|h)`，或查询窗按 `step` 分桶超过 1440 个）、`INVALID_FIELD`（`field` 不是 1–200 个 `[A-Za-z0-9_.:-]`）、`QUERY_OUT_OF_WINDOW`、`QUERY_CONSTRUCT_NOT_ALLOWED`（C5-7，见下）。
+- LogsQL 扫描（C5-7，fail-closed）：字符串字面量是 `"…"`（反斜杠转义）与 `` `…` ``（无转义）；字面量之外出现 `'` 拒绝（与 Loki 相同，免得工具与 VictoriaLogs 对引号的理解不一致）；`#` 不当注释剥掉，整串都扫。字面量之外、不分大小写的整词 `options`、`join`、`union`、`stream_context` 拒绝；`in`、`contains_any`、`contains_all` 后跟括号、且括号里（字面量之外）出现 `|` 或 `:` 按子查询拒绝。查询里写 `_time:` 放行（只与 start/end 取交集）；`delete`、`rename` 等管道放行。要搜这些词本身，写成带引号的短语。
+- 错误分类（C5-11）：400 报 `INVALID_PARAMS`，回显截短、脱敏的响应文本；401、403（含网关）报 `SOURCE_FORBIDDEN`，只带状态；404 报 `SOURCE_ERROR`；408、429、5xx 报 `SOURCE_UNAVAILABLE`；30 秒期限超时；连不上为来源不可用；成功但 0 行为 `no_data`。
+- 配置（C5-4，worker 读）：`OPSPILOT_VICTORIALOGS_URL`；`_USERNAME` 加 `_PASSWORD` 或 `_BEARER_TOKEN` 二选一（必填）；`_CA_FILE`（只配 https）；`_ACCOUNT_ID`、`_PROJECT_ID`（可选，十进制无符号 32 位，分别设 `AccountID`、`ProjectID` 头，模型无租户参数，C5-0）。凭据槽 `vlogs-ro`，存完整 `Authorization` 值，不与其他槽回退。启动码 `VICTORIALOGS_CONFIG_MISSING`（有地址无凭据）、`VICTORIALOGS_CONFIG_INVALID`（两种凭据都配或半对、地址带 userinfo/查询串/片段或非 http(s)、无地址却配了其余变量、http 配 CA、租户值不合法）；地址可带路径前缀。web 只看地址是否设置。lab 闸门：设了地址就须是 lab 主机，否则 `VICTORIALOGS_NOT_LAB`。入口脚本放行 `OPSPILOT_VICTORIALOGS_*`。
+- 扩展档位（C5-14）：后端固定顺序 Elasticsearch、Loki、VictoriaLogs；只有设了 `OPSPILOT_VICTORIALOGS_URL` 时五个工具加到工具数组末尾、`data_sources.available` 出现 `victorialogs`（五个名字排序）、revision 变化。`tool_schema_revision(elasticsearch=, loki=, victorialogs=)`；无后端 `c63f058afb18`、仅 ES `4f7faf728706`、仅 Loki `dd942a2f1292`、ES 加 Loki `f11fc2ce4d18` 四个现有值字节不变；含 VictoriaLogs 的四种组合的值实现后实测写进本记录。新常量 `VICTORIALOGS_TOOL_SCHEMA_REVISION`、`VICTORIALOGS_TOOL_NAMES`（仅 VictoriaLogs）。
+- 只读网关（C5-U1 第二层）：`scripts/loki_readonly_gateway.py` 加 `--backend victorialogs`（默认 `loki` 行为与字节不变），只放行上表五条路径的 GET，丢请求体与客户端 `Authorization`，透传 `AccountID`/`ProjectID`，其余 403、未登录 401；租机 `start` 写 `OPSPILOT_VICTORIALOGS_*`，容器名与默认端口和 Loki 网关分开。
+- CI（R8-25，C5-16 至 C5-20 的 VictoriaLogs 部分）：在现有 job `log-backends` 里加一个 `victoriametrics/victoria-logs` v1.x（镜像钉 digest）和网关的 VictoriaLogs 服务端口；新文件 `tests/integration/test_tool_expansion_c5b_victorialogs.py`，合成数据经 `/insert/jsonline` 直写后端（`_stream_fields`、`_msg_field`、`_time_field` 同 257 题），相对当前时间，含窗内、窗外、未来、5000 字符长行、`password=` 行、600 条截断用数据、两个租户。断言：五个工具都有真实返回；默认 1 小时窗与显式窗；窗外与未来的行不返回；框外与禁用构造的拒绝不发请求（网关访问日志核实）；到 limit 标不完整且保留最新；VictoriaLogs 的返回顺序与 `limit` 取舍（记录实测）；2 MiB 与视图超限；长值截断与脱敏；hits 的 `step`、分组与桶上限；400 语法错误、401 密码错、403 网关拒绝路径、后端不可达；租户隔离；两层只读：工具只发上述 GET，只读账号经网关 `POST /insert/jsonline`、`/insert/loki/api/v1/push`、`/internal/force_flush`、`/internal/force_merge` 与对允许路径的 POST 都 403，写入前后条数不变；子查询泄漏探针直连后端记录结果（C5-7 是否放开的证据，工具侧仍拒绝）。不调模型。
 
 ## 这个 PR（C5a）做什么
 
