@@ -205,12 +205,27 @@ def _delete_records_before(admin, topic: str, partition: int, offset: int) -> No
             time.sleep(1)
 
 
+def _wait_for_offsets_topic(admin) -> None:
+    """``__consumer_offsets`` is created lazily on the first coordinator
+    lookup; until it exists with leaders, offset commits fail. Nudge the
+    lookup (a group describe) and wait up to 180 s."""
+    deadline = time.monotonic() + 180
+    while "__consumer_offsets" not in _topic_names(admin):
+        try:
+            _wait_all(admin.describe_consumer_groups(["order-processor"]), timeout=15)
+        except Exception:
+            pass  # only the side effect matters here
+        assert time.monotonic() < deadline, "__consumer_offsets never appeared"
+        time.sleep(1)
+    _wait_for_leaders(admin, ["__consumer_offsets"])
+
+
 def _set_offsets(admin, group: str, offsets: Mapping[tuple[str, int], int], meta=None):
     from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
 
     # Partition-level failures do not raise: each returned TopicPartition
     # carries its own ``error``, so check them and retry for a while.
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 180
     while True:
         request = ConsumerGroupTopicPartitions(
             group,
@@ -397,6 +412,7 @@ def cluster():
                 producer.poll(0)
     assert producer.flush(60) == 0
 
+    _wait_for_offsets_topic(admin)
     _set_offsets(
         admin,
         "order-processor",
