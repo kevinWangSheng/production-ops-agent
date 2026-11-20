@@ -909,7 +909,9 @@ jobs:
           docker run -d --name c6-postgres --cpus=1 --memory=256m \
             -e POSTGRES_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53201:5432 "$PG_IMAGE" -c log_statement=all
-          docker run -d --name c6-mysql --cpus=1 --memory=512m \
+          # MySQL 8 with the general log table needs headroom past 512m: the
+          # second CI run of PR #746 lost mysqld mid-run at 512m.
+          docker run -d --name c6-mysql --cpus=1 --memory=1g \
             -e MYSQL_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53202:3306 "$MYSQL_IMAGE" --general-log=1 --log-output=TABLE
           docker run -d --name c6-mariadb --cpus=1 --memory=512m \
@@ -980,5 +982,6 @@ jobs:
         run: |
           for name in c6-postgres c6-mysql c6-mariadb; do
             echo "--- $name"
+            docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
             docker logs --tail 200 "$name" 2>&1 || true
           done
