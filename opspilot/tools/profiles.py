@@ -41,11 +41,17 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   (``K8S_LIVE_METRICS_INVALID``) in both processes.
   ``OPSPILOT_KNOWLEDGE_TOOL=1`` adds ``fetch_skill`` and, in the web, the
   approved-runbook list to new Runs (C2b); the same values rule
-  (``KNOWLEDGE_TOOL_INVALID``).
+  (``KNOWLEDGE_TOOL_INVALID``). ``OPSPILOT_SQL_URL`` adds the three
+  ``database_sql_*`` tools (C6a): both processes read the address's scheme
+  for the dialect, only the worker reads the ``sql-ro`` credential
+  (``OPSPILOT_SQL_USERNAME``, ``OPSPILOT_SQL_PASSWORD``; ``OPSPILOT_SQL_TLS``,
+  ``OPSPILOT_SQL_CA_FILE``) and refuses an address that is one of
+  OpsPilot's own ``OPSPILOT_*DSN`` databases (``SQL_TARGETS_OPSPILOT_DB``).
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
-``OPSPILOT_VICTORIALOGS_URL`` each set in both or in neither, and
+``OPSPILOT_VICTORIALOGS_URL`` and ``OPSPILOT_SQL_URL`` each set (to the same
+value) in both or in neither, and
 ``OPSPILOT_K8S_LIVE_METRICS`` and ``OPSPILOT_KNOWLEDGE_TOOL`` the same in
 both).
 """
@@ -85,6 +91,7 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_versions,
 )
 from opspilot.tools.registry import ToolContractError
+from opspilot.tools.sql_query import SqlConfig, sql_dialect
 from opspilot.tools.victorialogs_logs import (
     VictoriaLogsConfig,
     victorialogs_enabled,
@@ -142,6 +149,9 @@ _STARTUP_CODES = frozenset(
         "LOKI_CONFIG_INVALID",
         "VICTORIALOGS_CONFIG_MISSING",
         "VICTORIALOGS_CONFIG_INVALID",
+        "SQL_CONFIG_MISSING",
+        "SQL_CONFIG_INVALID",
+        "SQL_TARGETS_OPSPILOT_DB",
     }
 )
 
@@ -166,6 +176,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C1 (#565): the switch only; the loop answers ``TodoWrite`` from the Run
     # input's tools, so the worker reads it only to record the same versions.
     todo = todo_write_enabled(env)
+    # C6-13: the dialect from the address's scheme only; never an
+    # ``OPSPILOT_SQL_*`` credential in the web.
+    sql = sql_dialect(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -177,7 +190,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4;
         # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` and
         # ``VICTORIALOGS_CONFIG_MISSING`` / ``VICTORIALOGS_CONFIG_INVALID``
-        # for C5-4).
+        # for C5-4; ``SQL_CONFIG_*`` and ``SQL_TARGETS_OPSPILOT_DB`` for
+        # C6-7/C6-8).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -191,6 +205,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 live_metrics=live_metrics,
                 knowledge=knowledge,
                 todo=todo,
+                sql=SqlConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -208,6 +223,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             live_metrics=live_metrics,
             knowledge=knowledge,
             todo=todo,
+            sql=sql,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -216,6 +232,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             live_metrics=live_metrics,
             knowledge=knowledge,
             todo=todo,
+            sql=sql,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,

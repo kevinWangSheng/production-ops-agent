@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from scripts.holmes_evals.questions import (
+    C1_QUESTIONS,
     C2_QUESTIONS,
     C5_LOKI_QUESTIONS,
     C5_VICTORIALOGS_QUESTIONS,
@@ -64,6 +65,9 @@ class LogQuestionSpec:
     needs_k8s: bool
     #: Upstream's ``toolsets.yaml`` disables the Kubernetes toolsets (R8-15).
     upstream_k8s_disabled: bool
+    #: PR-E: namespaces whose names start with this must all be gone (283
+    #: creates several ``app-283-*``; its setup text is not read here).
+    namespace_prefix: str | None = None
 
 
 def _loki(qid: str, port: int, namespace: str | None, *, k8s: bool = True,
@@ -120,10 +124,24 @@ LOG_QUESTIONS: dict[str, LogQuestionSpec] = {
         LogQuestionSpec(
             "162_get_skills", "kubernetes", None, "app-162", (), True, False
         ),
+        # PR-E (C1): prefix from the C1 pre-review's check of ``before_test``.
+        LogQuestionSpec(
+            "283_todowrite_multistep_audit",
+            "kubernetes",
+            None,
+            None,
+            (),
+            True,
+            False,
+            namespace_prefix="app-283-",
+        ),
     )  # fmt: skip
 }
 assert set(LOG_QUESTIONS) == (
-    set(C5_LOKI_QUESTIONS) | set(C5_VICTORIALOGS_QUESTIONS) | set(C2_QUESTIONS)
+    set(C5_LOKI_QUESTIONS)
+    | set(C5_VICTORIALOGS_QUESTIONS)
+    | set(C2_QUESTIONS)
+    | set(C1_QUESTIONS)
 )
 #: Questions whose attempts import their knowledge fixtures and run with
 #: ``OPSPILOT_KNOWLEDGE_TOOL=1`` (PR-D).
@@ -216,6 +234,31 @@ def namespace_gone(namespace: str, env: Mapping[str, str]) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return done.returncode == 0 and not done.stdout.strip()
+
+
+def namespaces_with_prefix(prefix: str, env: Mapping[str, str]) -> list[str] | None:
+    """The namespaces whose names start with ``prefix``, or None when kubectl
+    did not answer (missing, timed out, unreachable, any error): the caller
+    treats None as not released, the same fail-closed rule as
+    :func:`namespace_gone`."""
+    try:
+        done = subprocess.run(
+            ["kubectl", "get", "namespace", "-o", "name"],
+            env=dict(env),
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    names = [
+        line.strip().removeprefix("namespace/") for line in done.stdout.splitlines()
+    ]
+    return sorted(n for n in names if n and n.startswith(prefix))
 
 
 def _gateway(argv: list[str]) -> None:

@@ -170,10 +170,12 @@ def test_c5_question_lists() -> None:
     assert tuple(q.C5_VICTORIALOGS_QUESTIONS) == C5_VL
     assert tuple(q.C5_QUESTIONS) == C5_ALL
     assert len(q.C5_QUESTIONS) == 9
-    # PR-D (lead ruling): ALL_QUESTIONS gains the six C2 questions after C5.
+    # PR-D (lead ruling): ALL_QUESTIONS gains the six C2 questions after C5;
+    # PR-E (lead ruling): then C1 (283).
     assert tuple(q.ALL_QUESTIONS) == (
         tuple(q.B1_QUESTIONS) + C5_ALL + tuple(q.C2_QUESTIONS)
-    )
+        + tuple(q.C1_QUESTIONS)
+    )  # fmt: skip
     assert len(q.B1_QUESTIONS) == 30
     assert not set(q.B1_QUESTIONS) & set(q.C5_QUESTIONS)
 
@@ -282,12 +284,15 @@ def test_log_question_specs(
 
 def test_log_questions_cover_exactly_c5() -> None:
     lb, q = mod("log_backends"), mod("questions")
-    # PR-D (lead ruling): log backends are exactly C5; ``kubernetes`` is C2.
+    # PR-D (lead ruling): log backends are exactly C5; ``kubernetes`` is C2;
+    # PR-E (lead ruling): and C1 (283).
     logs = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend != "kubernetes"}
     assert logs == set(C5_ALL)
     kube = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend == "kubernetes"}
-    assert kube == set(q.C2_QUESTIONS)
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(q.C2_QUESTIONS)
+    assert kube == set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
+    assert set(lb.LOG_QUESTIONS) == (
+        set(C5_ALL) | set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
+    )
 
 
 def test_backend_of() -> None:

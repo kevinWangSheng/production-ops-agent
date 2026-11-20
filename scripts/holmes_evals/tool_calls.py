@@ -9,7 +9,8 @@ Order is the Run's own: steps by ``(sequence, step_id)``, results by
 ``ordinal``. A call that produced evidence shows the stored, redacted view the
 evidence store keeps (what the model was given); its parameters are the
 view's normalised ``query``. A refused call (``error``, ``timeout``,
-``denied``) shows its status and reason.
+``denied``) shows its status and reason. An accepted ``TodoWrite`` (PR-E)
+shows its stored view as output.
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from opspilot.redaction import redact_payload
 from scripts.holmes_evals.text import ToolCall
 
 REFUSED = frozenset({"error", "timeout", "denied"})
+#: PR-E: the product's task list tool (#565), answered by the loop.
+TODO_TOOL = "TodoWrite"
 
 
 def _planned(response: Any, ordinal: Any) -> Mapping[str, Any] | None:
@@ -74,6 +77,19 @@ def tool_calls_from_rows(
                 "duplicate_of_evidence_id"
             )
             view = views.get(str(evidence_id)) if evidence_id else None
+            if tool == TODO_TOOL and not evidence_id and status == "ok":
+                # PR-E: an accepted task list (#565) is the loop's own
+                # result, not evidence; upstream lists it as a call with
+                # its output. Its stored view is already redacted.
+                stored = redact_payload(dict(result))
+                calls.append(
+                    ToolCall(
+                        tool=TODO_TOOL,
+                        params=dict(_planned_arguments(function)),
+                        output=dict(stored) if isinstance(stored, Mapping) else {},
+                    )
+                )
+                continue
             if status in REFUSED or view is None:
                 query = result.get("query")
                 params = (
