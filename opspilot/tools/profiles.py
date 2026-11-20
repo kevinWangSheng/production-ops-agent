@@ -35,11 +35,15 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   ``victorialogs_*`` tools likewise (C5b): only the worker reads the
   ``vlogs-ro`` credential (``OPSPILOT_VICTORIALOGS_USERNAME`` and
   ``_PASSWORD``, or ``_BEARER_TOKEN``; ``_CA_FILE``) and the tenant
-  (``_ACCOUNT_ID``, ``_PROJECT_ID``).
+  (``_ACCOUNT_ID``, ``_PROJECT_ID``). ``OPSPILOT_K8S_LIVE_METRICS=1`` adds
+  ``kubectl_top_pods`` and ``kubectl_top_nodes`` (B3-1) over the existing
+  cluster connection; any value but ``1``, ``0`` or empty is a startup error
+  (``K8S_LIVE_METRICS_INVALID``) in both processes.
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
-``OPSPILOT_VICTORIALOGS_URL`` each set in both or in neither).
+``OPSPILOT_VICTORIALOGS_URL`` each set in both or in neither, and
+``OPSPILOT_K8S_LIVE_METRICS`` the same in both).
 """
 
 from __future__ import annotations
@@ -61,6 +65,7 @@ from opspilot.tools.fixture import (
     fixture_versions,
 )
 from opspilot.tools.kubernetes_core import KubernetesConfig
+from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
 from opspilot.tools.loki_logs import LokiConfig, loki_enabled
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
@@ -144,6 +149,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # credential or tenant in the web.
     loki = loki_enabled(env)
     victorialogs = victorialogs_enabled(env)
+    # B3-1: the switch only; it adds no credential or address.
+    live_metrics = live_metrics_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -166,6 +173,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 elasticsearch=ElasticsearchConfig.from_env(env),
                 loki=LokiConfig.from_env(env),
                 victorialogs=VictoriaLogsConfig.from_env(env),
+                live_metrics=live_metrics,
             )
         except ToolContractError as error:
             code = str(error)
@@ -176,10 +184,17 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     return ToolProfile(
         name="otel-demo-ext",
         face=lambda clock: otel_demo_ext_face(
-            clock, elasticsearch=elasticsearch, loki=loki, victorialogs=victorialogs
+            clock,
+            elasticsearch=elasticsearch,
+            loki=loki,
+            victorialogs=victorialogs,
+            live_metrics=live_metrics,
         ),
         versions=lambda: otel_demo_ext_versions(
-            elasticsearch=elasticsearch, loki=loki, victorialogs=victorialogs
+            elasticsearch=elasticsearch,
+            loki=loki,
+            victorialogs=victorialogs,
+            live_metrics=live_metrics,
         ),
         executor_factory=executor_factory,
     )

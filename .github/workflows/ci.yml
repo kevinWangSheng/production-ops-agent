@@ -704,3 +704,133 @@ jobs:
           done
           tail -n 50 "$RUNNER_TEMP/c5-gateway-logs/access.log" 2>/dev/null || true
           tail -n 50 "$RUNNER_TEMP/c5b-gateway-logs/access.log" 2>/dev/null || true
+
+  # B3 (#562, R8-25): the live usage tools against a real API server and
+  # metrics-server -- a single-node kind cluster with the same vendored
+  # metrics-server manifest the lab applies, the A1 read-only identity and a
+  # token issued for it, and synthetic load. No model. The tests are gated
+  # by OPSPILOT_K8S_LIVE=1; the independent author's file runs first, the
+  # implementer's _impl file last (it scales metrics-server to 0 and deletes
+  # its APIService for the real 503/404, then restores them).
+  k8s-live-metrics:
+    name: k8s-live-metrics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start kind with metrics-server and the read-only identity
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # kind v0.31.0 (the version upstream HolmesGPT's eval CI uses) and
+          # its default node image, digests from the v0.31.0 release notes.
+          KIND_VERSION: v0.31.0
+          KIND_SHA256: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+          KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kind" \
+            "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/kind" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kind"
+          "$RUNNER_TEMP/kind" create cluster --name b3 --image "$KIND_NODE_IMAGE" --wait 120s
+          kubectl version
+          kubectl apply -f scripts/kind_lab/metrics-server-v0.8.1.yaml
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac.yaml
+          kubectl apply -f tests/fixtures/b3_live_metrics/workloads.yaml
+          kubectl -n kube-system wait --for=condition=Available deployment/metrics-server --timeout=180s
+          kubectl -n ns-a wait --for=condition=Ready pod --all --timeout=120s
+          kubectl -n ns-b wait --for=condition=Ready pod --all --timeout=120s
+          # The first scrape takes one or two metric-resolution periods.
+          for _ in $(seq 1 60); do
+            rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && break
+            sleep 3
+          done
+          kubectl top pods -n ns-a
+          kubectl top nodes
+          [ "$rows" = "3" ] || { echo "metrics never covered ns-a" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/b3"
+          kubectl config view --raw --minify \
+            -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+            | base64 -d > "$RUNNER_TEMP/b3/ca.crt"
+          server=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
+          # Tokens go to files, never to the log.
+          kubectl -n opspilot-readonly create token opspilot-investigator --duration=1h \
+            > "$RUNNER_TEMP/b3/readonly.token"
+          kubectl -n ns-b create token no-metrics --duration=1h \
+            > "$RUNNER_TEMP/b3/no-metrics.token"
+          chmod 0600 "$RUNNER_TEMP/b3/"*.token
+          {
+            echo "B3_K8S_API_URL=$server"
+            echo "B3_K8S_CA_FILE=$RUNNER_TEMP/b3/ca.crt"
+            echo "B3_K8S_TOKEN_FILE=$RUNNER_TEMP/b3/readonly.token"
+            echo "B3_K8S_NO_METRICS_TOKEN_FILE=$RUNNER_TEMP/b3/no-metrics.token"
+          } >> "$GITHUB_ENV"
+          kubectl -n kube-system get deployment metrics-server \
+            -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Live usage tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_K8S_LIVE: "1"
+          B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
+        run: |
+          shopt -s nullglob
+          files=()
+          for f in tests/integration/test_tool_expansion_b3*.py; do
+            case "$f" in *_impl.py) ;; *) files+=("$f") ;; esac
+          done
+          if [ ${#files[@]} -eq 0 ]; then echo "no independent B3 integration file yet"; exit 0; fi
+          .venv/bin/python -m pytest "${files[@]}" -q -rs
+      - name: Live usage tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_K8S_LIVE: "1"
+          B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b3_live_metrics_impl.py -q -rs
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide 2>&1 || true
+          kubectl get apiservice v1beta1.metrics.k8s.io -o yaml 2>&1 || true
+          kubectl -n kube-system logs deployment/metrics-server --tail=200 2>&1 || true

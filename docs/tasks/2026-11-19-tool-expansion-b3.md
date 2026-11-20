@@ -1,6 +1,6 @@
 # 工具面拓展 B3：Pod 与节点实时用量
 
-- 状态：进行中（公开接口已定，等独立测试作者；实现未开工）
+- 状态：进行中（公开接口已定；实现与本机单测完成，等测试作者提交与 CI）
 - 更新日期：2026-11-19
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) N4、R8-9、R8-15、R8-21、R8-25；用户裁决 B3-U1=a（2026-11-19）；C3 第 8 节「当前状态类观察」；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/kubernetes.yaml:660-681`（`kubernetes/live-metrics`）。issue #562。预审全文在仓库外（`~/.agent/handoffs/opspilot-b3-prereview-2026-11-19.md`），可逆默认 B3-1 至 B3-16 全部采纳，细节以它为准
 - 工作区：实现 `../poa-562-live`，分支 `feature/562-live-usage`（起点 `a9fe55df`）
@@ -48,10 +48,17 @@
 - 证据体只存投影、不存原始数量串：与 A2/A6 集群工具一致，原始串对读者没有额外信息，换算规则写在描述里。
 - `window` 保留原文不解析：避免为 Go duration 写解析器引入新的失败点，模型读 `15.022s` 没有障碍。
 - 节点百分比取整与 kubectl 一致（向下取整），不保留小数：方便与 `kubectl top nodes` 对照。
+- notes 里的「晚/早 N 秒」按最早一行的采样时刻算，取整到秒：给出至少晚了多少，偏保守。
+- 节点工具两个 GET 共用一次调用的 4 MiB 读取预算（第二个 GET 只拿剩余额度）：与接口「一次调用读取合计 4 MiB」一致。
+- metrics-server 用 v0.8.1（0.8.x 最新补丁，2026-01-29 发布；最新是 v0.9.1，但预审按 ITBench 真实集群选 0.8 线），镜像 digest `sha256:b2d2efaf…`（registry.k8s.io，2026-11-19 读取），清单 `scripts/kind_lab/metrics-server-v0.8.1.yaml` 文件头记原文件 sha256；lab 与 CI 用同一文件。
+- CI 用 kind v0.31.0 与 `kindest/node:v1.35.0`（digest 取自 kind 发布说明），同上游 HolmesGPT eval CI；负载镜像 `busybox:1.37.0` 钉 digest，占内存的 Pod 往内存型 emptyDir 写 64 MiB（计入该 Pod 的内存 cgroup），清单 `tests/fixtures/b3_live_metrics/workloads.yaml`。
+- CI job 先跑测试作者的 `tests/integration/test_tool_expansion_b3*.py`（不含 `_impl`），再跑实现者的 `_impl`：后者最后一个测试把 metrics-server 缩到 0、删 APIService 取真实 503/404，结束时恢复。
+- 直接取样脚本对照的期望值由原始数量按本记录规则算出（Pod 合计先精确相加再取整），不依赖 `kubectl top` 的显示取整；`kubectl top` 输出只存档。
 
 ## 证据
 
-（实现后填写：本机定向测试、CI `k8s-live-metrics` 运行链接、revision 实测值。）
+- revision（本分支实测）：开关关时 8 个现有值不变；开关开时：仅开关 `otel-demo-ext-4730c27997c9`，ES `f49f281c318a`，Loki `4994814c7688`，VictoriaLogs `3eec17c97bae`，ES+Loki `ebbaaaa09494`，ES+VictoriaLogs `884953bd455e`，Loki+VictoriaLogs `61aad69191fd`，三者都有 `263512312688`（均带 `otel-demo-ext-` 前缀）。
+- 本机：实现者单测 `tests/test_kubernetes_live_metrics.py` 59 passed（`http.server` 替身，经执行器）；`tests/safety`、B1/C5a/C5b 合同、`test_victorialogs_logs`、`test_architecture`、`test_tracing` 1208 passed；ruff、mypy 干净。集成测试本机跳过，交 CI `k8s-live-metrics`。
 
 ## 待决
 

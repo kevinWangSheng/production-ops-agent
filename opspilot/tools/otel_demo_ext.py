@@ -52,6 +52,13 @@ C5b (#569): the five ``victorialogs_*`` tools of
 VictoriaLogs is byte for byte what it was before C5b. The worker routes them
 to their own ``VictoriaLogsTransport`` (``vlogs-ro`` slot, address in the
 selector ``victorialogs_endpoint``).
+
+B3 (#562): ``kubectl_top_pods`` and ``kubectl_top_nodes`` of
+:mod:`opspilot.tools.kubernetes_live_metrics` join last in the fixed order
+when ``OPSPILOT_K8S_LIVE_METRICS=1`` (B3-1), listed under ``kubernetes`` in
+``data_sources.available``; every set without the switch is byte for byte
+what it was before B3. The worker routes them to the same
+``KubernetesTransport`` (``k8s-ro`` slot, ``kubernetes_endpoint``).
 """
 
 from __future__ import annotations
@@ -71,6 +78,7 @@ from opspilot.tools import (
     elasticsearch_logs,
     jaeger_query,
     kubernetes_core,
+    kubernetes_live_metrics,
     kubernetes_logs,
     kubernetes_tabular,
     loki_logs,
@@ -104,6 +112,8 @@ __all__ = [
     "ES_TOOL_NAMES",
     "ES_TOOL_SCHEMAS",
     "ES_TOOL_SCHEMA_REVISION",
+    "LIVE_METRICS_TOOL_NAMES",
+    "LIVE_METRICS_TOOL_SCHEMA_REVISION",
     "LOKI_TOOL_NAMES",
     "LOKI_TOOL_SCHEMA_REVISION",
     "PROFILE_NAME",
@@ -144,15 +154,20 @@ ES_TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
 
 
 def _tool_schemas(
-    elasticsearch: bool = False, loki: bool = False, victorialogs: bool = False
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
-    fixed order Elasticsearch, Loki, VictoriaLogs."""
+    fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1)."""
     schemas = ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS
     if loki:
         schemas = (*schemas, *loki_logs.TOOL_SCHEMAS)
     if victorialogs:
         schemas = (*schemas, *victorialogs_logs.TOOL_SCHEMAS)
+    if live_metrics:
+        schemas = (*schemas, *kubernetes_live_metrics.TOOL_SCHEMAS)
     return schemas
 
 
@@ -167,7 +182,10 @@ _NOT_INTEGRATED: tuple[str, ...] = tuple(
 
 
 def _data_sources(
-    elasticsearch: bool = False, loki: bool = False, victorialogs: bool = False
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
@@ -178,6 +196,7 @@ def _data_sources(
             kubernetes_core.K8S_TOOLS
             | set(kubernetes_logs.TOOL_NAMES)
             | set(kubernetes_tabular.TOOL_NAMES)
+            | (set(kubernetes_live_metrics.TOOL_NAMES) if live_metrics else set())
         ),
     }
     if elasticsearch:
@@ -194,7 +213,10 @@ def _data_sources(
 
 
 def _registrations(
-    elasticsearch: bool = False, loki: bool = False, victorialogs: bool = False
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -233,11 +255,22 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if live_metrics:
+        base = (
+            *base,
+            *kubernetes_live_metrics.live_metrics_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     return base
 
 
 def tool_schema_revision(
-    *, elasticsearch: bool = False, loki: bool = False, victorialogs: bool = False
+    *,
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -248,14 +281,19 @@ def tool_schema_revision(
         {
             "profile": PROFILE_NAME,
             "tool_schemas": [
-                dict(item) for item in _tool_schemas(elasticsearch, loki, victorialogs)
+                dict(item)
+                for item in _tool_schemas(
+                    elasticsearch, loki, victorialogs, live_metrics
+                )
             ],
             "registry": ToolRegistry(
-                _registrations(elasticsearch, loki, victorialogs)
+                _registrations(elasticsearch, loki, victorialogs, live_metrics)
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
-            "data_sources": _data_sources(elasticsearch, loki, victorialogs),
+            "data_sources": _data_sources(
+                elasticsearch, loki, victorialogs, live_metrics
+            ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
     )
@@ -279,18 +317,31 @@ VICTORIALOGS_TOOL_SCHEMA_REVISION = tool_schema_revision(victorialogs=True)
 VICTORIALOGS_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(victorialogs=True)
 )
+#: B3-1: the same with only ``OPSPILOT_K8S_LIVE_METRICS=1``.
+LIVE_METRICS_TOOL_SCHEMA_REVISION = tool_schema_revision(live_metrics=True)
+LIVE_METRICS_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(live_metrics=True)
+)
 
 
 def otel_demo_ext_versions(
-    *, elasticsearch: bool = False, loki: bool = False, victorialogs: bool = False
+    *,
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
-    ``OPSPILOT_VICTORIALOGS_URL`` is set (B1-U2, C5-14)."""
+    ``OPSPILOT_VICTORIALOGS_URL`` is set (B1-U2, C5-14); ``live_metrics``:
+    whether ``OPSPILOT_K8S_LIVE_METRICS=1`` (B3-1)."""
     return {
         **investigation_versions(DISCIPLINE_VARIANT),
         "tool_schema_revision": tool_schema_revision(
-            elasticsearch=elasticsearch, loki=loki, victorialogs=victorialogs
+            elasticsearch=elasticsearch,
+            loki=loki,
+            victorialogs=victorialogs,
+            live_metrics=live_metrics,
         ),
     }
 
@@ -301,6 +352,7 @@ def otel_demo_ext_face(
     elasticsearch: bool = False,
     loki: bool = False,
     victorialogs: bool = False,
+    live_metrics: bool = False,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -311,11 +363,13 @@ def otel_demo_ext_face(
         end = clock.now().astimezone(timezone.utc).replace(microsecond=0)
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
-        context["data_sources"] = _data_sources(elasticsearch, loki, victorialogs)
+        context["data_sources"] = _data_sources(
+            elasticsearch, loki, victorialogs, live_metrics
+        )
         return context
 
     return ToolFace(
-        tool_schemas=_tool_schemas(elasticsearch, loki, victorialogs),
+        tool_schemas=_tool_schemas(elasticsearch, loki, victorialogs, live_metrics),
         variant_id=DISCIPLINE_VARIANT,
         evidence_context=evidence_context,
     )
@@ -364,11 +418,15 @@ def otel_demo_ext_registrations(
     elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
     loki: loki_logs.LokiConfig | None = None,
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
+    live_metrics: bool = False,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
         tools=_registrations(
-            elasticsearch is not None, loki is not None, victorialogs is not None
+            elasticsearch is not None,
+            loki is not None,
+            victorialogs is not None,
+            live_metrics,
         ),
         targets=(_target(config, kubernetes, elasticsearch, loki, victorialogs),),
     )
@@ -395,6 +453,10 @@ def _overflow_summary(
         return loki_logs.overflow_summary(tool, rows, query)
     if tool in victorialogs_logs.TOOL_NAMES:
         return victorialogs_logs.overflow_summary(tool, rows, query)
+    if tool == kubernetes_live_metrics.PODS_TOOL:
+        return {"row_unit": "pods"}
+    if tool == kubernetes_live_metrics.NODES_TOOL:
+        return {"row_unit": "nodes"}
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -408,6 +470,7 @@ def otel_demo_ext_executor_factory(
     elasticsearch: elasticsearch_logs.ElasticsearchConfig | None = None,
     loki: loki_logs.LokiConfig | None = None,
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
+    live_metrics: bool = False,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -428,13 +491,16 @@ def otel_demo_ext_executor_factory(
     ``victorialogs`` (C5b): the ``vlogs-ro`` connection when
     ``OPSPILOT_VICTORIALOGS_URL`` is set; the five tools are registered and
     routed only then.
+
+    ``live_metrics`` (B3-1): ``OPSPILOT_K8S_LIVE_METRICS=1``; the two live
+    usage tools are registered and routed to the cluster transport only then.
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
     registrations = otel_demo_ext_registrations(
-        config, kubernetes, elasticsearch, loki, victorialogs
+        config, kubernetes, elasticsearch, loki, victorialogs, live_metrics
     )
     tools = ToolRegistry(registrations.tools)
     targets = TargetRegistry(list(registrations.targets))
@@ -466,6 +532,9 @@ def otel_demo_ext_executor_factory(
         # A6: likewise.
         **dict.fromkeys(kubernetes_tabular.TOOL_NAMES, cluster),
     }
+    if live_metrics:
+        # B3-9: the same cluster transport, ``k8s-ro`` slot.
+        routes.update(dict.fromkeys(kubernetes_live_metrics.TOOL_NAMES, cluster))
     if elasticsearch is not None:
         # B1-4: its own slot, never another backend's credential.
         search = elasticsearch_logs.ElasticsearchTransport(

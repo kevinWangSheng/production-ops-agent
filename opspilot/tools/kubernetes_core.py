@@ -120,6 +120,8 @@ K8S_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
 _POD_LOGS_TOOL = "fetch_pod_logs"
 #: A6's tool, served the same way (``kubernetes_tabular.TabularQueryTransport``).
 _TABULAR_TOOL = "kubernetes_tabular_query"
+#: B3 (#562): served by ``kubernetes_live_metrics.LiveMetricsTransport``.
+_LIVE_METRICS_TOOLS = frozenset({"kubectl_top_pods", "kubectl_top_nodes"})
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -1103,12 +1105,19 @@ class KubernetesTransport:
             application_namespace=application_namespace,
             monotonic=self._monotonic,
         )
+        from opspilot.tools.kubernetes_live_metrics import LiveMetricsTransport
+
+        self._live_metrics = LiveMetricsTransport(
+            client=self._client, monotonic=self._monotonic
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.tool == _POD_LOGS_TOOL:
             return self._logs.fetch(request)
         if request.tool == _TABULAR_TOOL:
             return self._tabular.fetch(request)
+        if request.tool in _LIVE_METRICS_TOOLS:
+            return self._live_metrics.fetch(request)
         if request.tool not in K8S_TOOLS:
             raise TransportError("TOOL_NOT_SUPPORTED")
         deadline = self._monotonic() + request.timeout_seconds
