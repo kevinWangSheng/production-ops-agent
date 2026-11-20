@@ -2,7 +2,7 @@
 
 - 状态：进行中（公开接口已定；实现与本机单测完成，等测试作者提交与 CI）
 - 更新日期：2026-11-19
-- 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) N4、R8-9、R8-15、R8-21、R8-25；用户裁决 B3-U1=a（2026-11-19）；C3 第 8 节「当前状态类观察」；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/kubernetes.yaml:660-681`（`kubernetes/live-metrics`）。issue #562。预审全文在仓库外（`~/.agent/handoffs/opspilot-b3-prereview-2026-11-19.md`），可逆默认 B3-1 至 B3-16 全部采纳，细节以它为准
+- 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) N4、R8-9、R8-15、R8-21、R8-25 与 r11 B3-U1（用户 2026-11-19 选 a）；C3 第 8 节「当前状态类观察」；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/kubernetes.yaml:660-681`（`kubernetes/live-metrics`）。issue #562。预审全文在仓库外（`~/.agent/handoffs/opspilot-b3-prereview-2026-11-19.md`），可逆默认 B3-1 至 B3-16 全部采纳，细节以它为准
 - 工作区：实现 `../poa-562-live`，分支 `feature/562-live-usage`（起点 `a9fe55df`）
 
 ## 目标

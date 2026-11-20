@@ -1,7 +1,7 @@
 # 工具面拓展 B/C 批次与第三方评测
 
-- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；B1 已合并（#705）；C5 与 #666 预审裁决完成（r10，2026-11-18），C5a、#666 PR-B、#722 开工
-- 更新日期：2026-11-18
+- 状态：对齐完成（用户 2026-11-16 裁决，[决定表 r8](2026-11-12-tool-expansion-contract.md#r82026-11-16bc-批次与评测)）；B1 已合并（#705）；C5a、C5b 已合并（#724、#731）；#666 PR-A/B/C 已合并（#721、#726、#733）；#668 准备已合并（#732）；#500 已合并（#730）；B3、C1、C2、C3、C4、C6、B4 与 #667 预审裁决完成（[r11](2026-11-12-tool-expansion-contract.md#r112026-11-19b3c1c2c3c4c6b4-与-667-预审裁决)，2026-11-19），B3、#667 PR-A 开工
+- 更新日期：2026-11-19
 - 依据：[阶段 A 任务记录](2026-11-12-tool-expansion.md)与决定表 r1–r7（Q1–Q8、D1–D3、N4 继续有效，r8 改 Q6、Q7/N4 两处）；SPEC 2026-11-16 段；C3 第 8 节；HolmesGPT `a0009195`；预审材料在仓库外（HolmesGPT 评测集题单、第三方基准调研与 SREGym/ITBench-AA 核查，2026-11-16）
 - 工作区：本记录分支 `chore/tool-expansion-r8`；各工具开工时另开 worktree 写入下表
 
@@ -40,9 +40,9 @@
 - **判分**：照抄上游 judge 提示词；judge 用仓库已有接收方，二值判分，注明 judge 与上游不同；每题 3 遍，结果摇摆的题补跑。
 - **B1**：正式评测用 Elasticsearch 8，工具只用两家共有的读接口；另在 OpenSearch 上冒烟 2 题。
 - **硬断言**：6 道带「必须推荐 skill」硬断言的题去掉这一条，只判主回答，并披露；Holmes 对照用同一口径。
-- **C2**：上游 runbook/skill 走现有审核流程入库，来源标「HolmesGPT 评测夹具」。
+- **C2**：上游 runbook/skill 作为新增知识来源「导入的 runbook」入库，有独立的提交、批准、驳回、撤销流程，来源标「HolmesGPT 评测夹具」；复盘知识不变（r11 C2-U1 修改 R8-14）。
 - **C6**：做；评测时给题目数据库加只读账号。
-- **B4 Helm**：在扩展档位、合成环境内读取 Helm 发布记录那一类 Secret（`helm.sh/release.v1`）。在工具内解码，只返回发布历史元数据，values 与 manifest 不出工具；其他 Secret 照旧不可读。
+- **B4 Helm**：在扩展档位、合成环境内（闸门 `HELM_NOT_LAB`）读取 Helm 发布记录那一类 Secret（`helm.sh/release.v1`）。在工具内解码，只返回发布历史元数据，values 与 manifest 不出工具；网关只放行带固定查询参数的 list，其他 Secret 请求不发出。残余风险：身份可读取合成环境内全部 Secret 的内容，只靠网关收窄到 Helm 记录，CI 用同一 token 直接 list secrets 证明（r11 修正 R8-18 措辞）。
 - **C4 ArgoCD**：扩展档位只读 ArgoCD 应用类自定义资源（`argoproj.io`），其他自定义资源照旧不授权。
 - **C3 Kafka**：只读主题、消费组与滞后、broker，不读消息内容；lab 自带的 Kafka 不可用时在租机上自装。
 - **权限**：题目环境由评测脚本用工程师凭据部署，产品只持有只读身份；SREGym 接入只用 OpsPilot 自己的只读工具。
@@ -72,15 +72,15 @@
 | 序 | 项 | issue | 验收题来源 | 分支 / worktree |
 |---|---|---|---|---|
 | 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 代码已合并（PR #705，`4052ab4f`，[B1 记录](2026-11-16-tool-expansion-b1.md)）；真实 Run 归 #671 |
-| 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | 预审与裁决完成（r10）；C5a Loki、C5b VictoriaLogs 两个 PR |
-| 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | 公开接口已定、实现中（[B3 记录](2026-11-19-tool-expansion-b3.md)，分支 `feature/562-live-usage`，worktree `../poa-562-live`） |
-| 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
-| 5 | C1 任务清单 | #565 | HolmesGPT 评测集 1 题，加开关对照 | |
-| 6 | C6 数据库只读查询 | #570 | HolmesGPT 评测集 7 题 | |
-| 7 | C3 Kafka 只读 | #567 | 自建，加 SREGym Kafka 题 | |
-| 8 | B4 Helm 变更历史 | #563 | 自建 | |
-| 9 | C4 ArgoCD 只读 | #568 | 自建 | |
-| — | HolmesGPT 评测集适配 / SREGym 适配 / Holmes 对照 | #666 / #667 / #668 | — | #666 PR-A 已合并（#721），PR-B 开工；[#666 记录](2026-11-18-holmes-evals-666.md) |
+| 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | C5a Loki、C5b VictoriaLogs 已合并（#724、#731） |
+| 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | 预审与裁决完成（r11），实现中（[B3 记录](2026-11-19-tool-expansion-b3.md)，分支 `feature/562-live-usage`，worktree `../poa-562-live`） |
+| 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | 预审与裁决完成（r11），按序待开工 |
+| 5 | C1 任务清单 | #565 | HolmesGPT 评测集 1 题，加开关对照 | 预审与裁决完成（r11），按序待开工 |
+| 6 | C6 数据库只读查询 | #570 | HolmesGPT 评测集 7 题 | 预审与裁决完成（r11），按序待开工 |
+| 7 | C3 Kafka 只读 | #567 | 自建，加 SREGym Kafka 题 | 预审与裁决完成（r11），按序待开工 |
+| 8 | B4 Helm 变更历史 | #563 | 自建 | 预审与裁决完成（r11），按序待开工 |
+| 9 | C4 ArgoCD 只读 | #568 | 自建 | 预审与裁决完成（r11），按序待开工 |
+| — | HolmesGPT 评测集适配 / SREGym 适配 / Holmes 对照 | #666 / #667 / #668 | — | #666 PR-A/B/C 已合并（#721、#726、#733），[#666 记录](2026-11-18-holmes-evals-666.md)；#667 预审与裁决完成（r11），PR-A 开工；#668 准备已合并（#732） |
 | — | 调查提示词注入本地集群名（r10 H-U1） | #722 | 10 道多集群题 | 预审后开工 |
 | — | 提前短租冒烟（B1 与 #666 合并后） | #671 | ES 2–3 题、SREGym 1–2 题 | |
 | — | 集中租机（先冒烟检查点再全量） | #669 | 全部 | |
