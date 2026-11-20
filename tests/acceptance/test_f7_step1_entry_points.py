@@ -109,6 +109,19 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/feedback/export"): "read: feedback export (JSON lines)",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
     # F11 PR-5a (pre-review D1), registered by the independent test author.
+    # #566 C2a imported runbooks, registered by the independent test author:
+    # OpsPilot's own knowledge records (submit, review, revoke), never a
+    # target action; the model and the worker reach none of them.
+    ("GET", "/runbooks"): "read: runbook list",
+    ("GET", "/runbooks/new"): "read: runbook submission form",
+    ("POST", "/runbooks"): "write: OpsPilot runbook submission",
+    ("GET", "/runbooks/submissions/{submission_id}"): "read: runbook submission",
+    (
+        "POST",
+        "/runbooks/submissions/{submission_id}/review",
+    ): "write: OpsPilot runbook review",
+    ("GET", "/runbooks/{entry_id}"): "read: runbook entry",
+    ("POST", "/runbooks/{entry_id}/revoke"): "write: OpsPilot runbook revocation",
     ("GET", "/version-changes"): "read: release observation list",
     ("GET", "/version-changes/{observation_id}"): "read: release observation page",
     (
@@ -261,6 +274,8 @@ def test_s1b_no_route_names_a_target_mutation_or_release_gate():
         ("PUT", "/incidents/00000000-0000-0000-0000-000000000001/control", 405),
         ("PATCH", "/controls/suspension", 405),
         ("DELETE", "/knowledge/00000000-0000-0000-0000-000000000001", 405),
+        ("DELETE", "/runbooks/00000000-0000-0000-0000-000000000001", 405),
+        ("PUT", "/runbooks/submissions/00000000-0000-0000-0000-000000000001", 405),
     ],
 )
 def test_s1b_target_mutation_and_release_gate_requests_have_no_route(
