@@ -890,7 +890,11 @@ def _probe_write(name: str, attempt) -> list[str]:
     return ``_errors_of`` for it; a ``_DESTROY_BROKER`` answer is retried on
     a new client, at most three tries in all."""
     for _ in range(3):
-        errors = _errors_of(attempt(_admin(READER, READER_PASSWORD)))
+        # Keep the client referenced until its futures resolve: a client
+        # collected mid-request never answers them.
+        client = _admin(READER, READER_PASSWORD)
+        errors = _errors_of(attempt(client))
+        del client
         if _HANDLE_SWAP not in errors:
             return errors
     raise AssertionError(f"{name}: still {_HANDLE_SWAP} after 3 clients: {errors}")
