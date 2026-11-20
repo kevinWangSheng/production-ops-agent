@@ -692,10 +692,10 @@ def test_current_op_command_document(monkeypatch, active_only):
     assert current["idleConnections"] is (active_only is False)
     match = pipeline[1]["$match"]
     assert dict(match["microsecs_running"]) == {"$gte": 1_500_000}
-    # Lead ruling 2026-11-20 (interface revision): at most 200 rows, read
-    # one more to detect truncation.
-    assert pipeline[2] == {"$limit": 201}
-    assert dict(command.doc["cursor"]) == {"batchSize": 201}
+    # Lead ruling A, revised 2026-11-20 after the rental measurement: at
+    # most 100 rows, read one more to detect truncation.
+    assert pipeline[2] == {"$limit": 101}
+    assert dict(command.doc["cursor"]) == {"batchSize": 101}
 
 
 def test_a_left_over_cursor_is_killed_and_never_read_on(monkeypatch):
@@ -1211,14 +1211,15 @@ def _ops(count: int) -> list[dict[str, Any]]:
 
 
 def test_current_op_rows_are_projected_redacted_and_capped(monkeypatch):
-    # Lead ruling 2026-11-20: the row cap is 200 (500 rows at ~100 tokens
-    # each would exceed the 25k-token view and be refused whole).
+    # Lead ruling A, revised 2026-11-20: the row cap is 100 (a real 200-row
+    # page on MongoDB 7.0.17 was 25,404 tokens, ~127 per row, over the 25k
+    # view, so the capped page itself was refused whole).
     tools = make_tools(monkeypatch)
     tools.driver.ops = _ops(501)
     outcome = tools.run(CURRENT_OP, {"min_duration_ms": 0})
     ok(outcome)
     result = rows(outcome)
-    assert len(result) == 200
+    assert len(result) == 100
     assert view(outcome)["incomplete"] is True
     for row in result:
         assert {k for k in row if not k.startswith("_")} <= OP_FIELDS, row
@@ -1226,13 +1227,65 @@ def test_current_op_rows_are_projected_redacted_and_capped(monkeypatch):
     assert CANARY not in _text(outcome)
 
 
-def test_exactly_200_current_operations_are_complete(monkeypatch):
+def test_exactly_100_current_operations_are_complete(monkeypatch):
     tools = make_tools(monkeypatch)
-    tools.driver.ops = _ops(200)
+    tools.driver.ops = _ops(100)
     outcome = tools.run(CURRENT_OP, {"min_duration_ms": 0})
     ok(outcome)
-    assert len(rows(outcome)) == 200
+    assert len(rows(outcome)) == 100
     assert view(outcome)["incomplete"] is False
+
+
+def _real_ops(count: int) -> list[dict[str, Any]]:
+    # The shape MongoDB 7.0.17 returned on the rental host (a ``$where``
+    # find, ~127 tokens per projected row), with a longer command, the way a
+    # real application's query carries more filter keys: about 240 tokens per
+    # row, close to the most a 100-row page holds (~24k tokens; a 200-row
+    # page of these is ~47.5k and refused whole).
+    return [
+        {
+            "opid": 19511 + n,
+            "op": "query",
+            "ns": "shopdb.slow",
+            "active": True,
+            "secs_running": 59,
+            "microsecs_running": 59_641_150 - n * 1_013,
+            "desc": f"conn{15 + n}",
+            "appName": "checkout-service-v2",
+            "client": f"10.42.{n % 250}.17:{43722 + n}",
+            "waitingForLock": False,
+            "planSummary": "IXSCAN { customer_id: 1, status: 1, created_at: -1 }",
+            "command": {
+                "find": "orders",
+                "filter": {
+                    "customer_id": {"$in": [f"cust-{n:05d}-{k}" for k in range(2)]},
+                    "status": {"$in": ["pending", "paid", "shipped"]},
+                    "created_at": {"$gte": "2026-11-19T21:45:25Z"},
+                    "$where": "sleep(15000); return true",
+                },
+                "sort": {"created_at": -1},
+                "limit": 50,
+                "comment": "lane-d-load",
+                "lsid": {"id": f"8b0f6a1e-3c2d-4f5a-9e7b-{n:012d}"},
+                "$db": "shopdb",
+            },
+        }
+        for n in range(count)
+    ]
+
+
+def test_a_full_current_op_page_of_long_real_rows_fits_the_view(monkeypatch):
+    # Revised ruling A: the cap page itself must fit the 25k view with room
+    # to spare for real rows, not just the short synthetic ones above.
+    from opspilot.tools.tokens import count_tokens
+
+    tools = make_tools(monkeypatch)
+    tools.driver.ops = _real_ops(201)
+    outcome = tools.run(CURRENT_OP, {"min_duration_ms": 0})
+    ok(outcome)
+    assert len(rows(outcome)) == 100
+    assert view(outcome)["incomplete"] is True
+    assert count_tokens(canonical(view(outcome))) <= 25_000
 
 
 def test_raw_reply_over_2_mib_is_refused_whole(monkeypatch):
