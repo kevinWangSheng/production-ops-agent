@@ -168,11 +168,20 @@
 
 ### 实现决定（C6b，实现者自定，可逆，2026-11-20）
 
-- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-a24b3b7f64ab`，仅 SQL Server `otel-demo-ext-3955b33beb0d`；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
+- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-cf33ddb933d1`，仅 SQL Server `otel-demo-ext-6c47f0807aff`（裁决补充后的描述）；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
 - ClickHouse 连接用标准库 `http.client`（不读代理环境变量、不跟重定向），到期由看门狗关掉套接字（`cancel()` 对正在读的连接 `shutdown`）；`clickhouse+https` 的 `require` 用不校验证书的 SSL 上下文。连接自己把 HTTP 状态与 `X-ClickHouse-Exception-Code`（没有时取正文里的 `Code: N`）分类成 `SqlDriverError`。
 - SQL Server 连接用 python-tds `autocommit=True`、`disable_connect_retry=True`；没有参数时传 `None`（不是 `()`），否则 python-tds 会对模型 SQL 里的 `%` 做格式化。驱动原始异常由传输层按消息号分类；裸的 `TimeoutError`（驱动查询超时）归 `TOOL_TIMEOUT`。读到 `limit+1` 行后调 `cursor.cancel()` 再 `ROLLBACK TRANSACTION`。
 - 到期后任何来源的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`（看门狗取消后连接报出的断开属于超时）。
 - 本仓库 C6a 合同测试 `test_web_refuses_an_unknown_prefix` 的 `clickhouse+http`、`mssql` 两例按 C6a 范围写，C6b 之后这两个前缀合法，由测试作者按 C6b 接口改（实现者不改断言）。
+
+### 裁决补充（lead 2026-11-20，测试作者提问后）
+
+- TLS 不设时按默认 `verify-full`，所以 `clickhouse+http` 与 `mssql` 不显式设 `OPSPILOT_SQL_TLS=disable` 就报 `SQL_CONFIG_INVALID`。
+- ClickHouse 错误先看异常码（`X-ClickHouse-Exception-Code`，没有时取正文 `Code: N`），再看 HTTP 状态。
+- ClickHouse 的 `system` 库必须写成反引号 `` `system` ``：未加引号的 `SYSTEM` 一律按整词拒绝（含 `FROM system.tables`），描述里告诉模型这样写；工具自己的目录查询也写 `` `system` ``。
+- SQL Server 另拒整词 `WHILE`、`IF`、`PRINT`，以及锁提示 `UPDLOCK`、`XLOCK`、`HOLDLOCK`、`TABLOCK`、`TABLOCKX`、`PAGLOCK`、`ROWLOCK`、`SERIALIZABLE`、`REPEATABLEREAD`、`READPAST`：在字符串与带引号标识符之外作为整词出现就拒，不论是否在 `WITH (…)` 里（覆盖老式 `FROM t (UPDLOCK)` 与裸用）；`NOLOCK`、`READUNCOMMITTED` 放行，`[updlock]`、`rowlock_id` 放行。
+- ClickHouse `getSetting('readonly')` 返回数字：`2` 通过；`1` 报 `SQL_ACCOUNT_UNSUPPORTED`；其他值（含 `0`，GET 下正常不会出现）报 `SQL_ACCOUNT_NOT_READ_ONLY`。账号 `readonly=1` 时，第一个自查 GET 就会因工具自己的设置被拒（164），工具把自查阶段的 164 也报成 `SQL_ACCOUNT_UNSUPPORTED`；所有 GET 都带固定的查询键（接口原样）。
+- 常量 `SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION`、`SQL_MSSQL_TOOL_SCHEMA_REVISION` 已加到 `otel_demo_ext`。SQL Server 连接中途断开（python-tds `ClosedConnectionError`，消息号 0）报 `SOURCE_UNAVAILABLE`。
 
 ### 交给 #669
 

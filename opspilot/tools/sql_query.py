@@ -445,7 +445,7 @@ _DIALECT_WORDS: Mapping[str, frozenset[str]] = {
         {
             "SETTINGS",
             "FORMAT",
-            "SYSTEM",  # except as the ``system.`` database qualifier
+            "SYSTEM",  # the ``system`` database must be written `system`
             "KILL",
             "OPTIMIZE",
             "ATTACH",
@@ -491,6 +491,22 @@ _DIALECT_WORDS: Mapping[str, frozenset[str]] = {
             "REVERT",
             "SETUSER",
             "OPENXML",
+            # control flow: T-SQL needs no ';' between statements
+            "WHILE",
+            "IF",
+            "PRINT",
+            # locking hints, inside WITH (...) or the old ``FROM t (HINT)``
+            # form, refused as whole words anywhere outside quotes
+            "UPDLOCK",
+            "XLOCK",
+            "HOLDLOCK",
+            "TABLOCK",
+            "TABLOCKX",
+            "PAGLOCK",
+            "ROWLOCK",
+            "SERIALIZABLE",
+            "REPEATABLEREAD",
+            "READPAST",
         }
     ),
 }
@@ -856,7 +872,7 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
         upper = word.upper()
         if upper in _FORBIDDEN_WORDS:
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
-        if upper in extra and not (upper == "SYSTEM" and _next_char(body, end) == "."):
+        if upper in extra:
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
         if (
             dialect == "mssql"
@@ -1310,14 +1326,17 @@ def _classify_mssql(
     if number == 18456 or (connecting and number in _MSSQL_FORBIDDEN):
         return SqlDriverError("forbidden", str(number), "")
     if number == 0:
-        return SqlDriverError("unavailable" if connecting else "error")
+        import pytds  # type: ignore[import-untyped]
+
+        lost = isinstance(error, pytds.tds_base.ClosedConnectionError)
+        return SqlDriverError("unavailable" if connecting or lost else "error")
     kind = _mssql_kind(number)
     return SqlDriverError(kind, str(number), message if kind == "invalid" else "")
 
 
 def _is_pytds_error(error: BaseException) -> bool:
     try:
-        import pytds  # type: ignore[import-untyped]
+        import pytds
     except ImportError:  # pragma: no cover - a locked dependency
         return False
     return isinstance(error, pytds.tds_base.Error)
@@ -1646,17 +1665,7 @@ class _ClickHouseConnection:
         left = self._deadline - time.monotonic()
         if left <= 0:
             raise SqlDriverError("timeout")
-        if statement.startswith(ACCOUNT_CHECK_MARKER):
-            # no settings at all: an account with readonly=1 refuses any, and
-            # the check must still read its grants and readonly value
-            keys = [
-                ("query", statement),
-                ("database", self._config.database),
-                ("default_format", "JSONCompactEachRowWithNames"),
-                ("query_id", f"opspilot-{uuid.uuid4()}"),
-            ]
-        else:
-            keys = [("query", statement), *self._settings()]
+        keys = [("query", statement), *self._settings()]
         keys += [
             (f"param_p{i}", "" if v is None else str(v)) for i, v in enumerate(params)
         ]
@@ -1999,6 +2008,13 @@ def _driver_failure(error: SqlDriverError, dialect: str) -> TransportResponse:
     return _answered(f"SQL_SOURCE_ERROR: the database failed the call ({label}).")
 
 
+_CLICKHOUSE_READONLY_1_NOTE = (
+    "SQL_ACCOUNT_UNSUPPORTED: the ClickHouse account has readonly=1, which "
+    "blocks the tool's own timeout setting; use readonly=2 (or leave it unset "
+    "with SELECT-only grants). Nothing was run."
+)
+
+
 def _server_timeout(remaining: float) -> float:
     return max(_SERVER_TIMEOUT_FLOOR, remaining - _SERVER_TIMEOUT_MARGIN)
 
@@ -2169,19 +2185,21 @@ class SqlTransport:
             elif dialect == "clickhouse":
                 # C6b: every GET is its own session; nothing to begin or roll
                 # back -- the server makes a GET read-only.
-                _, rows, _ = conn.query(_CLICKHOUSE_GRANTS_CHECK, max_rows=256)
+                try:
+                    _, rows, _ = conn.query(_CLICKHOUSE_GRANTS_CHECK, max_rows=256)
+                except SqlDriverError as error:
+                    if error.kind != "read_only":
+                        raise
+                    # 164 on a read: the account's readonly=1 refused the
+                    # tool's own settings (max_execution_time and the rest)
+                    return _answered(_CLICKHOUSE_READONLY_1_NOTE)
                 problem = session_problem(dialect, rows)
                 if problem is not None:
                     return _answered(problem)
                 _, setting_rows, _ = conn.query(_CLICKHOUSE_READONLY_CHECK, max_rows=1)
                 readonly = str(setting_rows[0][0]) if setting_rows else ""
                 if readonly == "1":
-                    return _answered(
-                        "SQL_ACCOUNT_UNSUPPORTED: the ClickHouse account has "
-                        "readonly=1, which blocks the tool's own timeout setting; "
-                        "use readonly=2 (or leave it unset with SELECT-only "
-                        "grants). Nothing was run."
-                    )
+                    return _answered(_CLICKHOUSE_READONLY_1_NOTE)
                 if readonly != "2":
                     return _answered(
                         "SQL_ACCOUNT_NOT_READ_ONLY: ClickHouse did not report a "
@@ -2324,7 +2342,7 @@ class SqlTransport:
             statement = (
                 CATALOG_MARKER + " SELECT database, name, multiIf(engine = 'View', "
                 "'VIEW', engine = 'MaterializedView', 'm', 'BASE TABLE') FROM "
-                f"system.tables WHERE {where}{views} ORDER BY database, name "
+                f"`system`.tables WHERE {where}{views} ORDER BY database, name "
                 f"LIMIT {MAX_LIST_ROWS + 1}"
             )
             params = (schema,) if schema else ()
@@ -2518,7 +2536,7 @@ class SqlTransport:
         )
         params: tuple[object, ...] = (table, schema) if schema else (table,)
         _, found, _ = conn.query(
-            CATALOG_MARKER + " SELECT database, name, sorting_key FROM system.tables "
+            CATALOG_MARKER + " SELECT database, name, sorting_key FROM `system`.tables "
             f"WHERE name = {{p0:String}} AND {where_db} LIMIT 1",
             params,
             max_rows=1,
@@ -2528,14 +2546,14 @@ class SqlTransport:
         nspname, relname, sorting_key = str(found[0][0]), str(found[0][1]), found[0][2]
         _, column_rows, _ = conn.query(
             CATALOG_MARKER + " SELECT name, type, default_expression, position, "
-            "is_in_primary_key FROM system.columns WHERE database = {p0:String} AND "
+            "is_in_primary_key FROM `system`.columns WHERE database = {p0:String} AND "
             "table = {p1:String} ORDER BY position",
             (nspname, relname),
             max_rows=5000,
         )
         _, index_rows, _ = conn.query(
             CATALOG_MARKER + " SELECT name, expr, type FROM "
-            "system.data_skipping_indices WHERE database = {p0:String} AND "
+            "`system`.data_skipping_indices WHERE database = {p0:String} AND "
             "table = {p1:String} ORDER BY name",
             (nspname, relname),
             max_rows=5000,
@@ -2910,8 +2928,9 @@ _CLICKHOUSE_REFUSALS_TEXT = (
     "the database: url, file, s3, gcs, azureBlobStorage, hdfs, remote, "
     "remoteSecure, cluster, mysql, postgresql, sqlite, mongodb, redis, odbc, "
     "jdbc, executable, input, iceberg, deltaLake and hudi, plus sleep. "
-    "Reading system tables (system.query_log, system.parts, system.processes) "
-    "is allowed. A column with one of those names must be quoted. The tool "
+    "Reading system tables is allowed, but write the database name with "
+    "backticks: `system`.query_log, `system`.parts, `system`.processes (an "
+    "unquoted SYSTEM is refused). A column with one of those names must be quoted. The tool "
     "sends HTTP GET only, which ClickHouse runs read-only, and first checks "
     "that the configured account only has read grants "
     "(SQL_ACCOUNT_NOT_READ_ONLY otherwise, nothing run). Write operations "
@@ -2923,7 +2942,10 @@ _MSSQL_REFUSALS_TEXT = (
     "sending (QUERY_CONSTRUCT_NOT_ALLOWED): write and DDL words (INSERT, "
     "UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, MERGE, SELECT ... INTO "
     "and more), EXEC/EXECUTE, DECLARE, WAITFOR, BEGIN, COMMIT, ROLLBACK, USE, "
-    "DBCC, KILL, BULK, BACKUP, RESTORE, SET, GO, NEXT VALUE FOR, and calls of "
+    "DBCC, KILL, BULK, BACKUP, RESTORE, SET, GO, WHILE, IF, PRINT, NEXT VALUE "
+    "FOR, the locking hints UPDLOCK, XLOCK, HOLDLOCK, TABLOCK, TABLOCKX, "
+    "PAGLOCK, ROWLOCK, SERIALIZABLE, REPEATABLEREAD and READPAST (NOLOCK is "
+    "allowed), and calls of "
     "xp_*, sp_*, OPENROWSET, OPENQUERY, OPENDATASOURCE and OPENXML. A column "
     "with one of those names must be quoted with [] . There is no EXPLAIN "
     "and SET SHOWPLAN is refused: read plans and query statistics from DMVs "

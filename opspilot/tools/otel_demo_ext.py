@@ -131,6 +131,8 @@ __all__ = [
     "PROFILE_NAME",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
+    "SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION",
+    "SQL_MSSQL_TOOL_SCHEMA_REVISION",
     "SQL_MYSQL_TOOL_SCHEMA_REVISION",
     "SQL_POSTGRESQL_TOOL_SCHEMA_REVISION",
     "SQL_TOOL_NAMES",
@@ -400,6 +402,8 @@ TODO_TOOL_SCHEMA_REVISION = tool_schema_revision(todo=True)
 #: C6-13: the same with only ``OPSPILOT_SQL_URL`` set, per dialect.
 SQL_POSTGRESQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="postgresql")
 SQL_MYSQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="mysql")
+SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="clickhouse")
+SQL_MSSQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="mssql")
 SQL_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(sql="postgresql")
 )

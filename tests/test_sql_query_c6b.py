@@ -208,7 +208,7 @@ def test_opspilot_dsn_on_the_same_address_is_refused() -> None:
     [
         (
             "clickhouse",
-            "SELECT * FROM system.query_log ORDER BY event_time DESC LIMIT 5",
+            "SELECT * FROM `system`.query_log ORDER BY event_time DESC LIMIT 5",
         ),
         ("clickhouse", "SELECT count() FROM shop.orders WHERE status = 'it\\'s'"),
         ("clickhouse", "EXPLAIN PIPELINE SELECT 1"),
@@ -220,6 +220,8 @@ def test_opspilot_dsn_on_the_same_address_is_refused() -> None:
         ("mssql", "SELECT * FROM sys.dm_exec_requests"),
         ("mssql", "WITH x AS (SELECT 1 AS n) SELECT n FROM x"),
         ("mssql", "SELECT [begin], [exec] FROM t"),
+        ("mssql", "SELECT * FROM t WITH (NOLOCK)"),
+        ("mssql", "SELECT [updlock], rowlock_id FROM t WHERE c = 'HOLDLOCK'"),
     ],
 )
 def test_new_dialects_allow(dialect: str, sql: str) -> None:
@@ -239,6 +241,12 @@ def test_new_dialects_allow(dialect: str, sql: str) -> None:
         ("clickhouse", "SELECT 1 SETTINGS max_execution_time = 999"),
         ("clickhouse", "SELECT 1 FORMAT CSV"),
         ("clickhouse", "SYSTEM FLUSH LOGS"),
+        ("clickhouse", "SELECT * FROM system.tables"),
+        ("mssql", "SELECT * FROM t WITH (UPDLOCK)"),
+        ("mssql", "SELECT * FROM t (XLOCK)"),
+        ("mssql", "SELECT 1 WHILE 1 = 1 SELECT 2"),
+        ("mssql", "SELECT 1 IF 1 = 1 SELECT 2"),
+        ("mssql", "SELECT 1 PRINT 'x'"),
         ("clickhouse", "SELECT 1 # comment"),
         ("clickhouse", "SELECT $$text$$"),
         ("clickhouse", "SELECT 1 /* a /* b */"),
