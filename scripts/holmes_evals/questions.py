@@ -106,10 +106,26 @@ C5_VICTORIALOGS_QUESTIONS: tuple[str, ...] = (
     "258_victorialogs_streams",
 )
 C5_QUESTIONS: tuple[str, ...] = C5_LOKI_QUESTIONS + C5_VICTORIALOGS_QUESTIONS
+#: C2 (#566, PR-D): runbook/skill questions; each brings its own knowledge
+#: fixtures (``*/SKILL.md`` or the DAL ``runbook_*.json``), imported through
+#: the workbench review flow for every attempt. Their ``memories_generated``
+#: is empty, so none is an R8-13 question.
+C2_QUESTIONS: tuple[str, ...] = (
+    "89_skill_missing_cloudwatch",
+    "90_skill_basic_selection",
+    "94_skill_transparency",
+    "95_skill_memory_leak_detection",
+    "96_no_matching_skill",
+    "162_get_skills",
+)
 #: Every question the drivers accept (B1 first, the order rounds run in).
-ALL_QUESTIONS: tuple[str, ...] = B1_QUESTIONS + C5_QUESTIONS
+ALL_QUESTIONS: tuple[str, ...] = B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS
 #: ``--questions`` group names.
-QUESTION_GROUPS: dict[str, tuple[str, ...]] = {"b1": B1_QUESTIONS, "c5": C5_QUESTIONS}
+QUESTION_GROUPS: dict[str, tuple[str, ...]] = {
+    "b1": B1_QUESTIONS,
+    "c5": C5_QUESTIONS,
+    "c2": C2_QUESTIONS,
+}
 
 
 class UpstreamMismatch(RuntimeError):
@@ -204,6 +220,16 @@ def question_dir(root: Path, qid: str) -> Path:
     if not qid or qid in {".", ".."} or "/" in qid or "\\" in qid or "\0" in qid:
         raise ValueError("QUESTION_ID_INVALID")
     return root / QUESTIONS_DIR / qid
+
+
+def run_mode(root: Path, qid: str) -> str | None:
+    """The question's own ``test_type`` (upstream's ``cli``/``server`` run
+    mode), and nothing else of the file. A run mode, not an answer; kept out
+    of :class:`Question` so the PR-A whitelist stays as pinned."""
+    doc = read_test_case(root, qid)
+    value = doc.get("test_type")
+    del doc
+    return value if isinstance(value, str) else None
 
 
 def read_test_case(root: Path, qid: str) -> Mapping[str, Any]:

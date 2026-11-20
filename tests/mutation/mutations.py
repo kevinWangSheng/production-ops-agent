@@ -339,4 +339,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         "str(",
         pg=True,
     ),
+    Mutation(
+        "M38",
+        "credentials: TodoWrite task content is redacted before it is stored or returned (#565 C1)",
+        "opspilot/investigation/todo.py",
+        '            "content": redact_credentials(item["content"]),\n',
+        '            "content": item["content"],\n',
+    ),
 )

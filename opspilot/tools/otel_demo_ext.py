@@ -76,6 +76,8 @@ from dataclasses import dataclass
 from datetime import timedelta, timezone
 from typing import Any, cast
 
+from opspilot.instructions.discipline import todo_variant
+from opspilot.investigation import todo as todo_write
 from opspilot.investigation.context import InvestigationInput, catalog_max_age
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import investigation_versions
@@ -149,6 +151,12 @@ PROFILE_NAME = "otel-demo-ext"
 #: ``replay-candidate``; the revision follows the content hash.
 DISCIPLINE_VARIANT = "replay-candidate-k8s"
 
+
+def _variant(todo: bool) -> str:
+    """C1: ``-todo`` suffix when the task list is on."""
+    return todo_variant(DISCIPLINE_VARIANT) if todo else DISCIPLINE_VARIANT
+
+
 #: ``otel-demo``'s tools array unchanged, then the new tools.
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *otel_demo.TOOL_SCHEMAS,
@@ -172,10 +180,12 @@ def _tool_schemas(
     victorialogs: bool = False,
     live_metrics: bool = False,
     knowledge: bool = False,
+    todo: bool = False,
     sql: str | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
-    fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1)."""
+    fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1), the
+    knowledge tool (C2b) and the task list (C1)."""
     schemas = ES_TOOL_SCHEMAS if elasticsearch else TOOL_SCHEMAS
     if loki:
         schemas = (*schemas, *loki_logs.TOOL_SCHEMAS)
@@ -186,8 +196,11 @@ def _tool_schemas(
     if knowledge:
         # C2b (#566): last in the fixed order
         schemas = (*schemas, *knowledge_fetch.TOOL_SCHEMAS)
+    if todo:
+        # C1 (#565): last; answered by the loop, never registered here.
+        schemas = (*schemas, todo_write.TODO_WRITE_SCHEMA)
     if sql is not None:
-        # C6-13 (#570): after every other backend; the dialect is in the
+        # C6-13 (#570): after every earlier item; the dialect is in the
         # query tool's description.
         schemas = (*schemas, *sql_query.tool_schemas(sql))
     return schemas
@@ -316,6 +329,7 @@ def tool_schema_revision(
     victorialogs: bool = False,
     live_metrics: bool = False,
     knowledge: bool = False,
+    todo: bool = False,
     sql: str | None = None,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
@@ -329,18 +343,24 @@ def tool_schema_revision(
             "tool_schemas": [
                 dict(item)
                 for item in _tool_schemas(
-                    elasticsearch, loki, victorialogs, live_metrics, knowledge, sql
+                    elasticsearch,
+                    loki,
+                    victorialogs,
+                    live_metrics,
+                    knowledge,
+                    todo,
+                    sql=sql,
                 )
             ],
             "registry": ToolRegistry(
                 _registrations(
-                    elasticsearch, loki, victorialogs, live_metrics, knowledge, sql
+                    elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
                 )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
             "data_sources": _data_sources(
-                elasticsearch, loki, victorialogs, live_metrics, knowledge, sql
+                elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
             ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
@@ -375,6 +395,8 @@ KNOWLEDGE_TOOL_SCHEMA_REVISION = tool_schema_revision(knowledge=True)
 KNOWLEDGE_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(knowledge=True)
 )
+#: C1: the same with only ``OPSPILOT_TODO_WRITE=1`` (no registration changes).
+TODO_TOOL_SCHEMA_REVISION = tool_schema_revision(todo=True)
 #: C6-13: the same with only ``OPSPILOT_SQL_URL`` set, per dialect.
 SQL_POSTGRESQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="postgresql")
 SQL_MYSQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="mysql")
@@ -390,6 +412,7 @@ def otel_demo_ext_versions(
     victorialogs: bool = False,
     live_metrics: bool = False,
     knowledge: bool = False,
+    todo: bool = False,
     sql: str | None = None,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
@@ -397,15 +420,18 @@ def otel_demo_ext_versions(
     ``OPSPILOT_VICTORIALOGS_URL`` is set (B1-U2, C5-14); ``live_metrics``:
     whether ``OPSPILOT_K8S_LIVE_METRICS=1`` (B3-1); ``knowledge``: whether
     ``OPSPILOT_KNOWLEDGE_TOOL=1`` (C2b), which also adds the runbook list's
-    boundary wording to ``prompt_revision``."""
+    boundary wording to ``prompt_revision``; ``todo``: whether
+    ``OPSPILOT_TODO_WRITE=1`` (C1), which adds ``TodoWrite`` and the
+    ``-todo`` variant."""
     return {
-        **investigation_versions(DISCIPLINE_VARIANT, knowledge_tool=knowledge),
+        **investigation_versions(_variant(todo), knowledge_tool=knowledge),
         "tool_schema_revision": tool_schema_revision(
             elasticsearch=elasticsearch,
             loki=loki,
             victorialogs=victorialogs,
             live_metrics=live_metrics,
             knowledge=knowledge,
+            todo=todo,
             sql=sql,
         ),
     }
@@ -419,6 +445,7 @@ def otel_demo_ext_face(
     victorialogs: bool = False,
     live_metrics: bool = False,
     knowledge: bool = False,
+    todo: bool = False,
     sql: str | None = None,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
@@ -431,15 +458,15 @@ def otel_demo_ext_face(
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
         context["data_sources"] = _data_sources(
-            elasticsearch, loki, victorialogs, live_metrics, knowledge, sql
+            elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
         )
         return context
 
     return ToolFace(
         tool_schemas=_tool_schemas(
-            elasticsearch, loki, victorialogs, live_metrics, knowledge, sql
+            elasticsearch, loki, victorialogs, live_metrics, knowledge, todo, sql=sql
         ),
-        variant_id=DISCIPLINE_VARIANT,
+        variant_id=_variant(todo),
         evidence_context=evidence_context,
     )
 
@@ -502,7 +529,7 @@ def otel_demo_ext_registrations(
             victorialogs is not None,
             live_metrics,
             knowledge,
-            None if sql is None else sql.dialect,
+            sql=None if sql is None else sql.dialect,
         ),
         targets=(_target(config, kubernetes, elasticsearch, loki, victorialogs, sql),),
     )
@@ -550,6 +577,7 @@ def otel_demo_ext_executor_factory(
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
     live_metrics: bool = False,
     knowledge: bool = False,
+    todo: bool = False,
     sql: sql_query.SqlConfig | None = None,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
@@ -579,7 +607,13 @@ def otel_demo_ext_executor_factory(
     registered, and each Run's executor routes it to a ``KnowledgeTransport``
     bound to that Run's own target and catalog threshold (the registered
     target is the fixed lab target, never the Run's ``resource_uid``).
+
+    ``todo`` (C1): ``OPSPILOT_TODO_WRITE=1``. Accepted for symmetry with the
+    face and versions and deliberately unused: ``TodoWrite`` is not a gateway
+    tool, so nothing is registered or routed; the loop answers it from the
+    Run input's tools.
     """
+    del todo
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
@@ -592,7 +626,7 @@ def otel_demo_ext_executor_factory(
         victorialogs,
         live_metrics,
         knowledge,
-        sql,
+        sql=sql,
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (

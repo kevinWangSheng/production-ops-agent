@@ -72,6 +72,8 @@ from scripts.holmes_evals.questions import (
     R8_13_SKILL_ASSERTION_DROPPED,
     UPSTREAM_COMMIT,
     UpstreamMismatch,
+    question_dir,
+    run_mode,
     verify_upstream,
 )
 from scripts.holmes_evals.scoring import score
@@ -116,6 +118,14 @@ LOKI_SHIFT_DISCLOSURES = (
     "LOKI_ORIGINALS_KEPT",
     "LOKI_FUTURE_DROPPED",
     "LOG_LINE_TIME_REWRITTEN",
+)
+#: PR-D: the C2 questions; Holmes reads the knowledge fixtures straight from
+#: the question directory as upstream does (CLI: ``*/SKILL.md``; server: the
+#: mock DAL's ``runbook_*.json``), no review.
+C2_DISCLOSURES = (
+    "TOOL_FACE_UPSTREAM_DEFAULT",
+    "UPSTREAM_HARNESS_JUDGE_TEXT",
+    "KNOWLEDGE_UPSTREAM_DIRECT",
 )
 DEFAULT_VICTORIALOGS_PORT = 29428
 
@@ -205,6 +215,13 @@ def preflight(cfg: Config) -> None:
         raise RoundAbort("JUDGE_KEY_MISSING")
     if needs_es:
         check_es_url(cfg.secrets["ELASTICSEARCH_URL"])
+    if cfg.kubeconfig is None and any(
+        backend_of(q) == "kubernetes" and LOG_QUESTIONS[q].needs_k8s
+        for q in cfg.questions
+    ):
+        # PR-D: 94/95/96/162 set up on a cluster; an unreachable one is the
+        # harness's env_broken, not checked here.
+        raise RoundAbort("KUBECONFIG_MISSING")
 
 
 def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
@@ -227,6 +244,9 @@ def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
                 "ELASTICSEARCH_API_KEY": s["ELASTICSEARCH_API_KEY"],
             }
         )
+    elif backend == "kubernetes":
+        # PR-D: no log backend, nothing to shift.
+        env["OHC_SHIFT_BACKEND"] = "none"
     else:
         spec = LOG_QUESTIONS[qid]
         # 259's generator stamps naive datetimes with the host zone.
@@ -527,8 +547,16 @@ def build_summary(
     harness = last.get("harness") or {}
     shift = _read_json(chance_dir / "shift.json")
     spec = LOG_QUESTIONS.get(qid)
+    mode: str | None = None
     if spec is None:
         disclosures = list(DISCLOSURES)
+    elif spec.backend == "kubernetes":
+        disclosures = list(C2_DISCLOSURES)
+        mode = holmes_run_mode(cfg, qid)
+        if mode == "cli" and not any(
+            question_dir(cfg.upstream, qid).glob("*/SKILL.md")
+        ):
+            disclosures.append("HOLMES_NO_SKILL_CATALOG")
     else:
         disclosures = list(C5_DISCLOSURES)
         if isinstance(shift, Mapping) and shift.get("applied"):
@@ -553,6 +581,8 @@ def build_summary(
         "code": last.get("code"),
         "history": history,
     }
+    if mode is not None:
+        block["run_mode"] = mode
     if not missing:
         block.update(
             {
@@ -599,6 +629,8 @@ def _data_plane(cfg: Config, qid: str) -> dict[str, Any]:
     spec = LOG_QUESTIONS.get(qid)
     if spec is None:
         url = cfg.secrets.get("ELASTICSEARCH_URL")
+    elif spec.backend == "kubernetes":
+        url = None
     elif spec.address:
         url = f"http://localhost:{spec.address.rsplit(':', 1)[1]}"
     else:
@@ -609,6 +641,12 @@ def _data_plane(cfg: Config, qid: str) -> dict[str, Any]:
         "product_url": url,
         "victorialogs_image": VICTORIALOGS_IMAGE if backend == "victorialogs" else None,
     }
+
+
+def holmes_run_mode(cfg: Config, qid: str) -> str:
+    """The mode upstream's harness runs the question in: the question's own
+    ``test_type``, else ``ASK_HOLMES_TEST_TYPE`` (this runner sets ``cli``)."""
+    return (run_mode(cfg.upstream, qid) or "cli").lower()
 
 
 def run_trial(cfg: Config, qid: str, trial: int) -> dict[str, Any]:

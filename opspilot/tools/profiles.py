@@ -50,8 +50,8 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
-``OPSPILOT_VICTORIALOGS_URL`` and ``OPSPILOT_SQL_URL`` each set (to the
-same value) in both or in neither, and
+``OPSPILOT_VICTORIALOGS_URL`` and ``OPSPILOT_SQL_URL`` each set (to the same
+value) in both or in neither, and
 ``OPSPILOT_K8S_LIVE_METRICS`` and ``OPSPILOT_KNOWLEDGE_TOOL`` the same in
 both).
 """
@@ -63,6 +63,7 @@ from dataclasses import dataclass
 
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
+from opspilot.investigation.todo import todo_write_enabled
 from opspilot.persistence import DurableStore
 from opspilot.tools.elasticsearch_logs import (
     ElasticsearchConfig,
@@ -172,6 +173,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C2b: the switch only; the worker reads knowledge with its own runtime
     # role, the web adds the runbook list to new Runs.
     knowledge = knowledge_tool_enabled(env)
+    # C1 (#565): the switch only; the loop answers ``TodoWrite`` from the Run
+    # input's tools, so the worker reads it only to record the same versions.
+    todo = todo_write_enabled(env)
     # C6-13: the dialect from the address's scheme only; never an
     # ``OPSPILOT_SQL_*`` credential in the web.
     sql = sql_dialect(env)
@@ -200,6 +204,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 victorialogs=VictoriaLogsConfig.from_env(env),
                 live_metrics=live_metrics,
                 knowledge=knowledge,
+                todo=todo,
                 sql=SqlConfig.from_env(env),
             )
         except ToolContractError as error:
@@ -217,6 +222,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             victorialogs=victorialogs,
             live_metrics=live_metrics,
             knowledge=knowledge,
+            todo=todo,
             sql=sql,
         ),
         versions=lambda: otel_demo_ext_versions(
@@ -225,6 +231,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             victorialogs=victorialogs,
             live_metrics=live_metrics,
             knowledge=knowledge,
+            todo=todo,
             sql=sql,
         ),
         runbook_catalog=knowledge,
