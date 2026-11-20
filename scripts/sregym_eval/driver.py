@@ -67,7 +67,7 @@ from scripts.sregym_eval.question import (
     check_no_problem_id,
     idempotency_key,
 )
-from scripts.sregym_eval.results import ResultError, read_attempt
+from scripts.sregym_eval.results import AttemptOutcome, ResultError, read_attempt
 from scripts.sregym_eval.summary import (
     CLUSTER_PATHS,
     Submission,
@@ -484,9 +484,20 @@ def run_trial(cfg: Config, host: Host, problem_id: str, trial: int) -> TrialOutc
     )
 
 
-def _submission(record: Mapping[str, Any]) -> Submission:
+ENTRY_RECORD_MISSING = "ENTRY_RECORD_MISSING"
+
+
+def _submission(
+    record: Mapping[str, Any], outcome: AttemptOutcome | None = None
+) -> Submission:
+    """The entry's submission. Without one in the record but with a verdict
+    in SREGym's results, SREGym did receive and judge a submission (the entry
+    was killed before it could record it): it counts by the CSV verdict, with
+    ``error_code = ENTRY_RECORD_MISSING`` and the disclosure of the same name."""
     raw = record.get("submission")
     if not isinstance(raw, Mapping):
+        if outcome is not None and outcome.success is not None:
+            return Submission(True, False, None, ENTRY_RECORD_MISSING, None, 0)
         return Submission(False, False, None, "NOT_SUBMITTED", None, 0)
     return Submission(
         submitted=raw.get("submitted") is True,
@@ -552,13 +563,14 @@ def _freeze(
             outcome = read_attempt(csv_path, 1)
         except ResultError:
             outcome = None
+    submission = _submission(record, outcome)
     block = trial_block(
         round=cfg.round,
         problem_id=problem_id,
         trial=trial,
         question=question,
         cluster_path=cfg.cluster_path,  # type: ignore[arg-type]
-        submission=_submission(record),
+        submission=submission,
         conversion_reason=record.get("conversion_reason"),
         outcome=outcome,
     )
@@ -577,6 +589,8 @@ def _freeze(
     block["disclosures"] = list(
         dict.fromkeys([*block["disclosures"], *record.get("disclosures", [])])
     )
+    if submission.error_code == ENTRY_RECORD_MISSING:
+        block["disclosures"].append(ENTRY_RECORD_MISSING)
     run_id = record.get("run_id")
     run_block = _read_json(work / RUN_FILE)
     ledger = _read_json(work / LEDGER_FILE)

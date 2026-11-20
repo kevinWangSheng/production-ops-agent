@@ -391,3 +391,83 @@ def test_results_lock_and_new_csv(tmp_path: Path) -> None:
     (old / f"{PID}_opspilot_results.csv").write_text("attempt\n1\n")
     before = driver.run_dirs(tmp_path)
     assert driver.new_result_csv(tmp_path, PID, before) is None
+
+
+def test_sigterm_after_submission_keeps_record_and_stops_product(
+    tmp_path: Path,
+) -> None:
+    import signal
+
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    calls: list[str] = []
+    before = signal.getsignal(signal.SIGTERM)
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path, done_wait_s=60.0))
+        host = _entry_host(url, calls)
+        # SREGym's deadline: SIGTERM while the entry waits for ``done``.
+        host.sleep = lambda s: os.kill(os.getpid(), signal.SIGTERM)
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+    finally:
+        server.shutdown()
+    assert code == agent_entry.EXIT_TERMINATED
+    assert signal.getsignal(signal.SIGTERM) == before
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["submission"]["submitted"] is True
+    assert record["terminated"] == "SystemExit" and record["exit_code"] == 7
+    for name in ("stop:worker", "stop:web", "stop:pg", "stop:pf:prometheus-server"):
+        assert name in calls
+
+
+def test_sigterm_before_submission_still_stops_product(tmp_path: Path) -> None:
+    import signal
+
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    calls: list[str] = []
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path))
+        host = _entry_host(url, calls)
+        host.run_state = lambda dsn, run_id: os.kill(os.getpid(), signal.SIGTERM)  # type: ignore[assignment,func-returns-value]
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+    finally:
+        server.shutdown()
+    assert code == agent_entry.EXIT_TERMINATED
+    assert not [r for r in fake.requests if r.method == "POST"]
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["submission"] is None and record["terminated"] == "SystemExit"
+    assert "stop:worker" in calls and "stop:pg" in calls
+
+
+def test_missing_entry_record_with_judged_csv_counts_by_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(driver, "verify_upstream", lambda root: None)
+    monkeypatch.setenv("OPSPILOT_LEDGER_DIR", str(tmp_path / "ledger"))
+    cfg = _cfg(tmp_path)
+    host = _driver_host(tmp_path, {c.label: c.expect for c in CAN_I_CHECKS})
+
+    def run_main(
+        argv: list[str], cwd: Path, env: dict[str, str], log: Path, timeout: float
+    ) -> int:
+        # The entry was SIGKILLed before writing anything; SREGym judged it.
+        run_dir = cwd / "results" / "1120_0100" / "opspilot" / PID
+        run_dir.mkdir(parents=True)
+        with (run_dir / f"{PID}_opspilot_results.csv").open("w", newline="") as handle:
+            w = csv.DictWriter(handle, fieldnames=["attempt", "Diagnosis.success"])
+            w.writeheader()
+            w.writerow({"attempt": "1", "Diagnosis.success": "True"})
+        return 0
+
+    host.run_main = run_main
+    driver.run_round(cfg, host, (1,))
+    block = json.loads(cfg.summary_path(PID, 1).read_text())["sregym_eval"]
+    assert block["category"] == "ok" and block["passed"] is True
+    assert block["submission"]["error_code"] == "ENTRY_RECORD_MISSING"
+    assert "ENTRY_RECORD_MISSING" in block["disclosures"]

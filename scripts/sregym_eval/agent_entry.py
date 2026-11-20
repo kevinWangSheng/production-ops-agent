@@ -16,7 +16,10 @@ wait for ``done`` -> entry record. The record is written on every path.
 
 Exit codes: 0 submitted (possibly empty) and ``done`` seen; 2 bad job;
 3 diagnosis stage missed or never reached; 4 product failed to start (an
-empty string was still submitted); 5 submission refused; 6 ``aborted``.
+empty string was still submitted); 5 submission refused; 6 ``aborted``;
+7 terminated (SIGTERM at SREGym's agent deadline, or an interrupt) -- the
+product is still stopped and the record written. The record is also written
+right after the submission and after the Run is collected.
 """
 
 from __future__ import annotations
@@ -24,8 +27,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
@@ -75,6 +80,8 @@ EXIT_STAGE = 3
 EXIT_PRODUCT = 4
 EXIT_SUBMIT = 5
 EXIT_ABORTED = 6
+#: SIGTERM (SREGym's agent deadline) or an interrupt.
+EXIT_TERMINATED = 7
 RECORD = "entry-record.json"
 QUESTION_FILE = "question.txt"
 RUN_FILE = "run.json"
@@ -300,15 +307,36 @@ class Entry:
                 chars=len(text),
             )
         )
+        # Persist at once: SREGym may kill the entry while it judges.
+        self._write_record()
         if status != 200:
             raise EntryFailure(code or "SUBMIT_FAILED", EXIT_SUBMIT)
 
     def run(self) -> int:
+        """Every path ends with the record on disk: a SIGTERM (SREGym's
+        agent deadline, turned into ``SystemExit`` by :func:`main`) or a
+        ``KeyboardInterrupt`` still stops the product and writes it."""
         self.record.update(
             exit_code=None, stage_seen=None, disclosures=[], observability={},
             leak_check=None, submission=None, conversion_reason=None,
             started_at=self.host.now().isoformat(),
         )  # fmt: skip
+        exit_code = EXIT_TERMINATED
+        try:
+            exit_code = self._run_steps()
+        except (SystemExit, KeyboardInterrupt) as stop:
+            self.record["terminated"] = type(stop).__name__
+            exit_code = EXIT_TERMINATED
+        finally:
+            errors = self.cleanup.close()
+            if errors:
+                self.record.setdefault("cleanup_errors", []).extend(errors)
+            self.record["exit_code"] = exit_code
+            self.record["ended_at"] = self.host.now().isoformat()
+            self._write_record()
+        return exit_code
+
+    def _run_steps(self) -> int:
         try:
             try:
                 self._run()
@@ -333,9 +361,6 @@ class Entry:
                 self.record["cleanup_errors"] = errors
         if exit_code == EXIT_OK or self.record.get("submission"):
             exit_code = self._wait_done(exit_code)
-        self.record["exit_code"] = exit_code
-        self.record["ended_at"] = self.host.now().isoformat()
-        self._write_record()
         return exit_code
 
     def _wait_done(self, exit_code: int) -> int:
@@ -512,6 +537,7 @@ class Entry:
             json.dumps(run_block, indent=1, default=str) + "\n"
         )
         (self.dir / LEDGER_FILE).write_text(json.dumps(ledger, default=str) + "\n")
+        self._write_record()
         if timed_out:
             # Past the deadline the Run counts as having no report.
             self.record["conversion_reason"] = "RUN_NOT_TERMINAL"
@@ -533,7 +559,26 @@ def main(
         job = read_job(Path(path))
     except JobError:
         return EXIT_BAD_JOB
-    return Entry(job, host or EntryHost(), environ).run()
+    entry = Entry(job, host or EntryHost(), environ)
+    previous = _install_sigterm()
+    try:
+        return entry.run()
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
+
+
+def _sigterm(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signum)
+
+
+def _install_sigterm() -> Any:
+    """SIGTERM -> ``SystemExit`` so ``Entry.run``'s cleanup and record run
+    (the product processes have their own sessions and outlive a group
+    kill). Only in the main thread; returns the previous handler."""
+    if threading.current_thread() is not threading.main_thread():
+        return None
+    return signal.signal(signal.SIGTERM, _sigterm)
 
 
 if __name__ == "__main__":
