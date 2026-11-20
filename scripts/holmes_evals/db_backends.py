@@ -139,9 +139,9 @@ def grant_script(spec: DbQuestionSpec) -> str:
     if spec.dialect == "postgresql":
         return f"""set -e
 read -r PW
-psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d {db} -v pw="$PW" <<'SQL'
+psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d {db} <<SQL
 DROP ROLE IF EXISTS {a};
-CREATE ROLE {a} LOGIN PASSWORD :'pw';
+CREATE ROLE {a} LOGIN PASSWORD '$PW';
 GRANT CONNECT ON DATABASE {db} TO {a};
 GRANT pg_read_all_data, pg_read_all_stats TO {a};
 ALTER ROLE {a} SET default_transaction_read_only = on;

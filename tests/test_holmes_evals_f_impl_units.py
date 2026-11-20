@@ -398,3 +398,40 @@ def test_dry_run_plan(tmp_path: Path) -> None:
     assert plan["backend"] == "sql" and plan["grants"] == "C6-21:mssql"
     assert plan["product_env"]["OPSPILOT_SQL_PASSWORD"] == "<random per attempt>"
     assert plan["flow"][5:7] == ["provision_db_account", "db_precheck"]
+
+
+_CLIENTS = ("psql", "mysql", "mariadb", "sqlcmd", "mongosh", "clickhouse-client")
+
+
+@pytest.mark.parametrize("qid", sorted(db_backends.DB_QUESTIONS))
+def test_grant_script_keeps_the_password_out_of_client_argv(
+    tmp_path: Path, qid: str
+) -> None:
+    """Run each grant script under sh with fake clients that log their argv
+    (review of #756: PG once passed the password with ``-v pw=``)."""
+    bin_dir, log = tmp_path / "bin", tmp_path / "argv.log"
+    bin_dir.mkdir()
+    for name in _CLIENTS:
+        fake = bin_dir / name
+        fake.write_text(f'#!/bin/sh\necho "{name}: $*" >> "{log}"\ncat > /dev/null\n')
+        fake.chmod(0o755)
+    users_d = tmp_path / "users.d"
+    users_d.mkdir()
+    script = (
+        db_backends.grant_script(db_backends.DB_QUESTIONS[qid])
+        .replace("/opt/mssql-tools18/bin/sqlcmd", "sqlcmd")
+        .replace("/etc/clickhouse-server/users.d", str(users_d))
+    )
+    password = "pw" + "Q7xZ" * 6
+    admin_env = {n: "admin-x" for n in db_backends.ADMIN_ENV_NAMES}
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "POSTGRES_USER": "postgres",
+           "MONGO_INITDB_ROOT_USERNAME": "root", **admin_env}  # fmt: skip
+    result = subprocess.run(
+        ["sh", "-c", script], input=password + "\n", env=env,
+        capture_output=True, text=True, timeout=30, check=False,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    logged = log.read_text() if log.exists() else ""
+    if db_backends.DB_QUESTIONS[qid].dialect != "clickhouse":
+        assert logged, "the client was not invoked"
+    assert password not in logged
