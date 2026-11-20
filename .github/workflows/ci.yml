@@ -1033,10 +1033,22 @@ jobs:
           # 2026-11-20 (C3-16).
           KAFKA_IMAGE: apache/kafka@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
         run: |
-          # CI-only SASL PLAIN users (C3-17), never real secrets.
-          jaas='org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin-pass" user_admin="admin-pass" user_opspilot="opspilot-pass" user_nobody="nobody-pass";'
+          # CI-only SASL PLAIN users (C3-17), never real secrets. The image's
+          # configure script requires the JAAS file in KAFKA_OPTS for SASL.
+          jaas_dir="$RUNNER_TEMP/kafka-jaas"
+          mkdir -p "$jaas_dir"
+          cat > "$jaas_dir/server_jaas.conf" <<'JAAS'
+          KafkaServer {
+            org.apache.kafka.common.security.plain.PlainLoginModule required
+            username="admin" password="admin-pass"
+            user_admin="admin-pass" user_opspilot="opspilot-pass" user_nobody="nobody-pass";
+          };
+          JAAS
+          chmod 755 "$jaas_dir"; chmod 644 "$jaas_dir/server_jaas.conf"
           docker run -d --name opspilot-ci-kafka --cpus=1 --memory=768m \
             -p 127.0.0.1:19092:19092 -p 127.0.0.1:19094:19094 \
+            -v "$jaas_dir:/etc/kafka/opspilot:ro" \
+            -e KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/opspilot/server_jaas.conf \
             -e KAFKA_HEAP_OPTS="-Xms384m -Xmx384m" \
             -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
             -e KAFKA_NODE_ID=1 \
@@ -1048,7 +1060,6 @@ jobs:
             -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
             -e KAFKA_INTER_BROKER_LISTENER_NAME=NOAUTH \
             -e KAFKA_SASL_ENABLED_MECHANISMS=PLAIN \
-            -e KAFKA_LISTENER_NAME_SASL_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG="$jaas" \
             -e KAFKA_AUTHORIZER_CLASS_NAME=org.apache.kafka.metadata.authorizer.StandardAuthorizer \
             -e "KAFKA_SUPER_USERS=User:admin;User:ANONYMOUS" \
             -e KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false \
@@ -1061,14 +1072,17 @@ jobs:
             "$KAFKA_IMAGE"
           ready=
           for _ in $(seq 1 90); do
-            if docker exec opspilot-ci-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
+            # A CLI JVM of its own beside the broker: keep it small.
+            if docker exec -e KAFKA_HEAP_OPTS=-Xmx64m -e KAFKA_OPTS= opspilot-ci-kafka \
+                /opt/kafka/bin/kafka-broker-api-versions.sh \
                 --bootstrap-server localhost:19094 > /dev/null 2>&1; then
               ready=1; break
             fi
             sleep 2
           done
           [ -n "$ready" ] || { docker logs opspilot-ci-kafka >&2; exit 1; }
-          docker exec opspilot-ci-kafka /opt/kafka/bin/kafka-topics.sh --version
+          docker exec -e KAFKA_HEAP_OPTS=-Xmx64m -e KAFKA_OPTS= opspilot-ci-kafka \
+            /opt/kafka/bin/kafka-topics.sh --version
       - name: Set up uv and Python
         if: steps.scope.outputs.full != 'false'
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -1077,6 +1091,7 @@ jobs:
           python-version: "3.12.13"
           enable-cache: false
       - name: Install locked development dependencies
+        id: setup
         if: steps.scope.outputs.full != 'false'
         run: make setup
       - name: Kafka tools against a real broker (independent author)
@@ -1097,7 +1112,7 @@ jobs:
           KAFKA_IT_PROBE_OUT="$RUNNER_TEMP/kafka-probe.jsonl" \
             .venv/bin/python -m pytest tests/integration/test_tool_expansion_c3_kafka.py -q -rs
       - name: Kafka tools against a real broker (implementer)
-        if: steps.scope.outputs.full != 'false' && (success() || failure())
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         env:
           OPSPILOT_KAFKA_BACKEND: "1"
           KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
