@@ -135,9 +135,11 @@ def test_submit_returns_a_pending_submission_with_its_original_text(h):
         "-leading",
         "trailing-",
         "two--dashes",
-        "two  spaces",
         "ünicode",
         "a" * 101,
+        # Still outside the rule after normalization.
+        "a / b",
+        "a" * 99 + "  b",
     ],
 )
 def test_names_outside_the_rule_are_refused(h, name):
@@ -145,6 +147,24 @@ def test_names_outside_the_rule_are_refused(h, name):
     response = h.submit(name=name)
     assert response.status == 400, response.text
     assert h.counts() == before
+
+
+@pytest.mark.parametrize(
+    ("raw", "normalized"),
+    [
+        # Upstream normalize_skill_name: re.sub(r"[\s_]+", "-", name.strip().lower())
+        ("two  spaces", "two-spaces"),
+        ("Under__Score", "under-score"),
+        ("  Trim Me  ", "trim-me"),
+        ("mixed _ \tRun", "mixed-run"),
+    ],
+)
+def test_names_are_normalized_like_upstream(h, raw, normalized):
+    suffix = uuid4().hex[:8]
+    response = h.submit(name=f"{raw} {suffix}")
+    assert response.status == 200, response.text
+    row = h.submission(response.json()["submission_id"])
+    assert row["name"] == f"{normalized}-{suffix}"
 
 
 def test_a_hundred_character_name_is_accepted(h):
