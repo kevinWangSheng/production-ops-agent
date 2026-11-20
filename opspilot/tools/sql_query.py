@@ -117,9 +117,20 @@ _SCHEMES: Mapping[str, str] = {
     "postgres": "postgresql",
     "mysql": "mysql",
     "mariadb": "mysql",
+    # C6b
+    "clickhouse+http": "clickhouse",
+    "clickhouse+https": "clickhouse",
+    "mssql": "mssql",
+    "mssql+pytds": "mssql",
 }
-DIALECTS: tuple[str, ...] = ("postgresql", "mysql")
-_DEFAULT_PORTS: Mapping[str, int] = {"postgresql": 5432, "mysql": 3306}
+DIALECTS: tuple[str, ...] = ("postgresql", "mysql", "clickhouse", "mssql")
+_DEFAULT_PORTS: Mapping[str, int] = {
+    "postgresql": 5432,
+    "mysql": 3306,
+    "clickhouse": 8123,
+    "mssql": 1433,
+}
+_CLICKHOUSE_HTTPS_PORT = 8443
 _TLS_MODES = ("verify-full", "require", "disable")
 
 REQUEST_TIMEOUT_SECONDS = 30.0
@@ -275,6 +286,8 @@ class SqlConfig:
     tls: str = "verify-full"
     ca_file: str | None = None
     dialect: str = field(init=False)
+    #: ClickHouse over HTTPS (``clickhouse+https``).
+    secure: bool = field(init=False)
     host: str = field(init=False)
     port: int = field(init=False)
     database: str = field(init=False)
@@ -283,9 +296,12 @@ class SqlConfig:
         if not isinstance(self.url, str) or not self.url:
             raise ToolContractError("SQL_CONFIG_MISSING")
         dialect, host, port, database = _url_parts(self.url)
+        secure = self.url.lower().startswith("clickhouse+https:")
         object.__setattr__(self, "dialect", dialect)
+        object.__setattr__(self, "secure", secure)
         object.__setattr__(self, "host", host)
-        object.__setattr__(self, "port", port or _DEFAULT_PORTS[dialect])
+        default_port = _CLICKHOUSE_HTTPS_PORT if secure else _DEFAULT_PORTS[dialect]
+        object.__setattr__(self, "port", port or default_port)
         object.__setattr__(self, "database", database)
         for value in (self.username, self.password):
             if not isinstance(value, str) or not value:
@@ -293,6 +309,12 @@ class SqlConfig:
             if not value.isprintable():
                 raise ToolContractError("SQL_CONFIG_INVALID")
         if self.tls not in _TLS_MODES:
+            raise ToolContractError("SQL_CONFIG_INVALID")
+        # C6b: ClickHouse's TLS follows the scheme; SQL Server has no TLS in
+        # this build (python-tds needs pyOpenSSL for it, not a dependency).
+        if dialect == "clickhouse" and (self.tls == "disable") == secure:
+            raise ToolContractError("SQL_CONFIG_INVALID")
+        if dialect == "mssql" and self.tls != "disable":
             raise ToolContractError("SQL_CONFIG_INVALID")
         if self.ca_file is not None:
             if self.tls == "disable":
@@ -417,6 +439,138 @@ _FORBIDDEN_FUNCTION_PREFIXES = (
     "xp_",
     "sp_",
 )
+#: C6b: words refused only in one dialect (C6a dialects unchanged).
+_DIALECT_WORDS: Mapping[str, frozenset[str]] = {
+    "clickhouse": frozenset(
+        {
+            "SETTINGS",
+            "FORMAT",
+            "SYSTEM",  # the ``system`` database must be written `system`
+            "KILL",
+            "OPTIMIZE",
+            "ATTACH",
+            "DETACH",
+            "RENAME",
+            "EXCHANGE",
+            "UNDROP",
+            "BACKUP",
+            "RESTORE",
+            "WATCH",
+            "MOVE",
+            "COMMIT",
+            "ROLLBACK",
+        }
+    ),
+    "mssql": frozenset(
+        {
+            "DECLARE",
+            "WAITFOR",
+            "BEGIN",
+            "COMMIT",
+            "ROLLBACK",
+            "SAVE",
+            "GO",
+            "GOTO",
+            "USE",
+            "DBCC",
+            "KILL",
+            "SHUTDOWN",
+            "RECONFIGURE",
+            "CHECKPOINT",
+            "BACKUP",
+            "RESTORE",
+            "BULK",
+            "DENY",
+            "ENABLE",
+            "DISABLE",
+            "WRITETEXT",
+            "UPDATETEXT",
+            "READTEXT",
+            "RAISERROR",
+            "THROW",
+            "REVERT",
+            "SETUSER",
+            "OPENXML",
+            # control flow: T-SQL needs no ';' between statements
+            "WHILE",
+            "IF",
+            "PRINT",
+            # locking hints, inside WITH (...) or the old ``FROM t (HINT)``
+            # form, refused as whole words anywhere outside quotes
+            "UPDLOCK",
+            "XLOCK",
+            "HOLDLOCK",
+            "TABLOCK",
+            "TABLOCKX",
+            "PAGLOCK",
+            "ROWLOCK",
+            "SERIALIZABLE",
+            "REPEATABLEREAD",
+            "READPAST",
+            "READCOMMITTEDLOCK",
+            "NOWAIT",
+            # Service Broker, cursors and further control flow (PR #749
+            # review); END is not refused (CASE ... END), BEGIN is
+            "RECEIVE",
+            "SEND",
+            "MOVE",
+            "CONVERSATION",
+            "OPEN",
+            "RETURN",
+            "BREAK",
+            "CONTINUE",
+            "FETCH",
+            "CLOSE",
+            "DEALLOCATE",
+        }
+    ),
+}
+#: C6b: ClickHouse table functions and side-effect functions (lower case).
+_CLICKHOUSE_FUNCTIONS = frozenset(
+    name.lower()
+    for name in (
+        "url",
+        "urlCluster",
+        "file",
+        "fileCluster",
+        "s3",
+        "s3Cluster",
+        "gcs",
+        "azureBlobStorage",
+        "azureBlobStorageCluster",
+        "hdfs",
+        "hdfsCluster",
+        "remote",
+        "remoteSecure",
+        "cluster",
+        "clusterAllReplicas",
+        "mysql",
+        "postgresql",
+        "sqlite",
+        "mongodb",
+        "redis",
+        "odbc",
+        "jdbc",
+        "executable",
+        "input",
+        "iceberg",
+        "icebergS3",
+        "icebergAzure",
+        "icebergHDFS",
+        "deltaLake",
+        "deltaLakeS3",
+        "deltaLakeCluster",
+        "hudi",
+        "hudiCluster",
+        "icebergCluster",
+        "cosn",
+        "oss",
+        "hive",
+        "paimon",
+        "sleep",
+        "sleepEachRow",
+    )
+)
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 _IDENT_CHAR = re.compile(r"[A-Za-z0-9_$]")
 _DOLLAR_TAG = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
@@ -438,7 +592,215 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
     identifier replaced by one space, and the quoted identifiers (position
     after the closing quote, content). ``backslash``: whether a backslash
     escapes the next character in a plain ``'...'`` (and MySQL ``"..."``)
-    literal -- both readings are checked (C6-3)."""
+    literal -- both readings are checked for PostgreSQL and MySQL (C6-3);
+    ClickHouse always and SQL Server never take backslash escapes (C6b)."""
+    if dialect == "clickhouse":
+        return _lex_clickhouse(sql)
+    if dialect == "mssql":
+        return _lex_mssql(sql)
+    return _lex_pg_mysql(sql, dialect, backslash)
+
+
+def _quoted_end(sql: str, i: int, quote: str, *, backslash: bool, what: str) -> int:
+    """Index just after the literal or identifier that starts at ``i``:
+    ``quote`` doubled is an escaped quote; with ``backslash``, a backslash
+    escapes the next character."""
+    j = i + 1
+    n = len(sql)
+    while True:
+        if j >= n:
+            raise _Reject("INVALID_QUERY", f"unterminated {what}")
+        c = sql[j]
+        if backslash and c == "\\":
+            j += 2
+            continue
+        if c == quote:
+            if j + 1 < n and sql[j + 1] == quote:
+                j += 2
+                continue
+            return j + 1
+        j += 1
+
+
+#: SQL Server: a dotted name with two dots (``db.schema.obj``, ``db..obj``,
+#: four-part names); ``\x01`` stands for a bracketed or quoted identifier.
+_MSSQL_PART = r"(?:[A-Za-z_@#][A-Za-z0-9_@#$]*|\x01)"
+_MSSQL_MULTIPART = re.compile(
+    _MSSQL_PART
+    + r"\s*\.\s*(?:"
+    + _MSSQL_PART
+    + r"\s*)?\.\s*"
+    + r"(?:"
+    + _MSSQL_PART
+    + r"|\*)"
+)
+_NUMBER = re.compile(r"0[xX][0-9A-Fa-f]*|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d*)?")
+
+
+def _line_end(sql: str, i: int) -> int:
+    """Where a ``--`` comment starting at ``i`` ends: the first carriage
+    return or line feed (a bare ``\\r`` ends it too, as on the servers)."""
+    ends = [pos for pos in (sql.find("\n", i), sql.find("\r", i)) if pos >= 0]
+    return min(ends) if ends else len(sql)
+
+
+def _number_end(sql: str, i: int) -> int | None:
+    """End of the numeric literal starting at ``i``, or ``None`` when ``i``
+    does not start one (a digit inside an identifier is not a number)."""
+    ch = sql[i]
+    if not (ch.isdigit() or (ch == "." and i + 1 < len(sql) and sql[i + 1].isdigit())):
+        return None
+    if not ch.isascii() or _ident_before(sql, i):
+        return None
+    match = _NUMBER.match(sql, i)
+    return None if match is None or match.end() == i else match.end()
+
+
+def _lex_clickhouse(sql: str) -> tuple[str, list[tuple[int, str]]]:
+    out: list[str] = []
+    quoted: list[tuple[int, str]] = []
+    i = 0
+    n = len(sql)
+    while i < n:
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < n else ""
+        if ch == "-" and nxt == "-":
+            end = _line_end(sql, i)
+            i = n if end < 0 else end
+            out.append(" ")
+            continue
+        if ch == "/" and nxt == "*":
+            end = sql.find("*/", i + 2)
+            if end < 0:
+                raise _Reject("INVALID_QUERY", "unterminated comment")
+            if "/*" in sql[i + 2 : end]:
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "a nested comment")
+            i = end + 2
+            out.append(" ")
+            continue
+        if ch in ("#", "$"):
+            raise _Reject(
+                "QUERY_CONSTRUCT_NOT_ALLOWED",
+                f"'{ch}' outside quotes (comment and heredoc forms are not accepted)",
+            )
+        if ch == "'":
+            i = _quoted_end(sql, i, "'", backslash=True, what="string literal")
+            out.append(" ")
+            continue
+        if ch in ('"', "`"):
+            j = _quoted_end(sql, i, ch, backslash=True, what="quoted identifier")
+            content = sql[i + 1 : j - 1].replace(ch * 2, ch)
+            i = j
+            out.append(" ")
+            quoted.append((len(out), content))
+            continue
+        number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out), quoted
+
+
+def _lex_mssql(sql: str) -> tuple[str, list[tuple[int, str]]]:
+    out: list[str] = []
+    quoted: list[tuple[int, str]] = []
+    i = 0
+    n = len(sql)
+    while i < n:
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < n else ""
+        if ch == "-" and nxt == "-":
+            end = _line_end(sql, i)
+            i = n if end < 0 else end
+            out.append(" ")
+            continue
+        if ch == "/" and nxt == "*":
+            depth = 1
+            j = i + 2
+            while j < n and depth:
+                if sql.startswith("*/", j):
+                    depth -= 1
+                    j += 2
+                elif sql.startswith("/*", j):
+                    depth += 1
+                    j += 2
+                else:
+                    j += 1
+            if depth:
+                raise _Reject("INVALID_QUERY", "unterminated comment")
+            i = j
+            out.append(" ")
+            continue
+        if ch == "'":
+            i = _quoted_end(sql, i, "'", backslash=False, what="string literal")
+            out.append(" ")
+            continue
+        if ch in ('"', "["):
+            close = '"' if ch == '"' else "]"
+            j = i + 1
+            content: list[str] = []
+            while True:
+                if j >= n:
+                    raise _Reject("INVALID_QUERY", "unterminated quoted identifier")
+                c = sql[j]
+                if c == close:
+                    if j + 1 < n and sql[j + 1] == close:
+                        content.append(close)
+                        j += 2
+                        continue
+                    break
+                content.append(c)
+                j += 1
+            i = j + 1
+            out.append("\x01")  # a quoted name, for the multi-part rule
+            quoted.append((len(out), "".join(content)))
+            continue
+        if ch == "$" and not _ident_before(sql, i):
+            # a money literal ($1.50): the number after the $ is a number,
+            # so ``$1e1EXEC`` is $1e1 then EXEC (PR #749 re-review)
+            money = _NUMBER.match(sql, i + 1)
+            if money is not None and money.end() > i + 1:
+                number_end: int | None = money.end()
+            else:
+                number_end = None
+        else:
+            number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out), quoted
+
+
+def _lex_pg_mysql(
+    sql: str, dialect: str, backslash: bool
+) -> tuple[str, list[tuple[int, str]]]:
+    """C6a lexing, PostgreSQL and MySQL/MariaDB (unchanged)."""
     out: list[str] = []
     quoted: list[tuple[int, str]] = []
     i = 0
@@ -454,12 +816,12 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
                     "QUERY_CONSTRUCT_NOT_ALLOWED",
                     "'--' must be followed by a space to start a comment",
                 )
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
         if mysql and ch == "#":
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
@@ -549,6 +911,21 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
             out.append(" ")
             quoted.append((len(out), "".join(content)))
             continue
+        number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
+            continue
         out.append(ch)
         i += 1
     # ``quoted`` holds indexes into ``out``; every replaced region is one
@@ -556,8 +933,10 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
     return "".join(out), quoted
 
 
-def _function_problem(name: str) -> bool:
+def _function_problem(name: str, dialect: str = "") -> bool:
     lowered = name.lower()
+    if dialect == "clickhouse" and lowered in _CLICKHOUSE_FUNCTIONS:
+        return True
     return (
         lowered in _FORBIDDEN_FUNCTIONS
         or lowered.startswith(_FORBIDDEN_FUNCTION_PREFIXES)
@@ -599,10 +978,28 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
             f"{start}the statement must start with SELECT, WITH, EXPLAIN, SHOW, "
             "DESCRIBE or DESC",
         )
+    extra = _DIALECT_WORDS.get(dialect, frozenset())
     for index, (word, _, end) in enumerate(words):
         upper = word.upper()
         if upper in _FORBIDDEN_WORDS:
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
+        if upper in extra and not (
+            # OFFSET n ROWS FETCH NEXT m ROWS ONLY is paging, not a cursor
+            dialect == "mssql"
+            and upper == "FETCH"
+            and index > 0
+            and words[index - 1][0].upper() in ("ROW", "ROWS")
+        ):
+            raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
+        if dialect == "mssql":
+            following = words[index + 1][0].upper() if index + 1 < len(words) else ""
+            if upper == "NEXT" and following == "VALUE":
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "NEXT VALUE")
+            if upper == "ADD" and following == "SIGNATURE":
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "ADD SIGNATURE")
+            if word.lower().startswith(("sp_", "xp_")):
+                # a system procedure named anywhere, called or not
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", word)
         if (
             upper == "FOR"
             and index + 1 < len(words)
@@ -611,10 +1008,21 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
             raise _Reject(
                 "QUERY_CONSTRUCT_NOT_ALLOWED", f"FOR {words[index + 1][0].upper()}"
             )
-        if _next_char(body, end) == "(" and _function_problem(word):
+        if _next_char(body, end) == "(" and _function_problem(word, dialect):
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", f"{word}()")
+    if dialect == "mssql":
+        if _MSSQL_MULTIPART.search(body):
+            # the account check covers the configured database only
+            raise _Reject(
+                "QUERY_CONSTRUCT_NOT_ALLOWED",
+                "a name with three or more parts or '..' (database-qualified "
+                "names are refused; use the configured database and aliases)",
+            )
+        for _, content in quoted:
+            if content.lower().startswith(("sp_", "xp_")):
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", content)
     for end, content in quoted:
-        if _next_char(code, end) == "(" and _function_problem(content):
+        if _next_char(code, end) == "(" and _function_problem(content, dialect):
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", f'"{content}"()')
 
 
@@ -628,7 +1036,14 @@ def sql_statement_problem(sql: object, dialect: str) -> str | None:
     if any(not (ch.isprintable() or ch in "\n\r\t") for ch in sql):
         return "INVALID_QUERY: sql must contain only printable characters."
     try:
-        for backslash in (True, False):
+        readings = (
+            (True,)
+            if dialect == "clickhouse"
+            else (False,)
+            if dialect == "mssql"
+            else (True, False)
+        )
+        for backslash in readings:
             code, quoted = _lex(sql, dialect, backslash)
             _scan(code, quoted, dialect)
     except _Reject as reject:
@@ -718,8 +1133,86 @@ _MYSQL_GRANT = re.compile(
 )
 _COLUMN_LIST = re.compile(r"\s*\([^()]*\)")
 
+#: C6b: ClickHouse -- two fixed GETs; the grants answer one line per row.
+_CLICKHOUSE_GRANTS_CHECK = ACCOUNT_CHECK_MARKER + " SHOW GRANTS"
+_CLICKHOUSE_READONLY_CHECK = (
+    ACCOUNT_CHECK_MARKER + " SELECT getSetting('readonly'), version()"
+)
+_CLICKHOUSE_ALLOWED_PRIVILEGES = frozenset(
+    {
+        "SELECT",
+        "SHOW",
+        "SHOW DATABASES",
+        "SHOW TABLES",
+        "SHOW COLUMNS",
+        "SHOW DICTIONARIES",
+    }
+)
+_MSSQL_SERVER_ROLES = (
+    "sysadmin",
+    "serveradmin",
+    "securityadmin",
+    "processadmin",
+    "setupadmin",
+    "bulkadmin",
+    "diskadmin",
+    "dbcreator",
+)
+_MSSQL_DATABASE_ROLES = (
+    "db_owner",
+    "db_datawriter",
+    "db_ddladmin",
+    "db_securityadmin",
+    "db_accessadmin",
+    "db_backupoperator",
+)
 
-def _mysql_grant_problem(line: str) -> str | None:
+
+#: C6b: SQL Server -- one problem code per row, none is a pass.
+def _ms_text(expr: str) -> str:
+    """One problem code in one collation: SQL Server refuses a UNION whose
+    branches mix catalog and database collations (error 451)."""
+    return f"CAST({expr} AS NVARCHAR(300)) COLLATE DATABASE_DEFAULT"
+
+
+_MSSQL_ACCOUNT_CHECK = (
+    ACCOUNT_CHECK_MARKER + " SELECT p FROM ("
+    f"SELECT {_ms_text(''''server_role:' + r''')} AS p FROM (VALUES "
+    + ", ".join(f"('{name}')" for name in _MSSQL_SERVER_ROLES)
+    + ") v(r) WHERE IS_SRVROLEMEMBER(r) = 1 "
+    f"UNION ALL SELECT {_ms_text(''''database_role:' + r''')} FROM (VALUES "
+    + ", ".join(f"('{name}')" for name in _MSSQL_DATABASE_ROLES)
+    + ") v(r) WHERE IS_ROLEMEMBER(r) = 1 "
+    f"UNION ALL SELECT {_ms_text(''''server_permission:' + permission_name''')} FROM "
+    "sys.fn_my_permissions(NULL, 'SERVER') WHERE permission_name NOT IN "
+    "('CONNECT SQL', 'VIEW ANY DATABASE') AND permission_name NOT LIKE 'VIEW %' "
+    f"UNION ALL SELECT {_ms_text(''''database_permission:' + permission_name''')} FROM "
+    "sys.fn_my_permissions(NULL, 'DATABASE') WHERE permission_name NOT IN "
+    "('CONNECT', 'SELECT', 'SHOWPLAN') AND permission_name NOT LIKE 'VIEW %' "
+    f"UNION ALL SELECT {_ms_text(''''granted_permission:' + dp.permission_name''')} FROM "
+    "sys.database_permissions dp JOIN sys.database_principals pr ON "
+    "pr.principal_id = dp.grantee_principal_id WHERE dp.state IN ('G', 'W') AND "
+    "(dp.grantee_principal_id = DATABASE_PRINCIPAL_ID() OR IS_MEMBER(pr.name) = 1) "
+    "AND dp.permission_name NOT IN ('CONNECT', 'SELECT', 'SHOWPLAN') AND "
+    "dp.permission_name NOT LIKE 'VIEW %' "
+    f"UNION ALL SELECT {_ms_text(''''schema_owner:' + s.name''')} FROM sys.schemas s JOIN "
+    "sys.database_principals pr ON pr.principal_id = s.principal_id WHERE "
+    "(s.principal_id = DATABASE_PRINCIPAL_ID() OR (pr.type = 'R' AND "
+    "pr.is_fixed_role = 0 AND IS_MEMBER(pr.name) = 1)) "
+    # PR #749 review: objects owned directly, and IMPERSONATE on a login
+    f"UNION ALL SELECT {_ms_text(''''object_owner:' + o.name''')} FROM sys.objects o "
+    "WHERE o.principal_id = DATABASE_PRINCIPAL_ID() "
+    f"UNION ALL SELECT {_ms_text(''''server_permission:' + sp.permission_name''')} FROM "
+    "sys.server_permissions sp WHERE sp.grantee_principal_id = SUSER_ID() AND "
+    "sp.state IN ('G', 'W') AND sp.permission_name IN ('IMPERSONATE', 'CONTROL', "
+    "'ALTER', 'TAKE OWNERSHIP')"
+    ") x"
+)
+
+
+def _mysql_grant_problem(
+    line: str, allowed: frozenset[str] = _MYSQL_ALLOWED_PRIVILEGES
+) -> str | None:
     text = line.strip()
     if ";" in text or len(re.findall(r"\bGRANT\b", text, re.I)) != 1:
         return "a grant line this check cannot read"
@@ -733,7 +1226,7 @@ def _mysql_grant_problem(line: str) -> str | None:
         return "a grant this check cannot read"
     for raw in privileges.split(","):
         name = " ".join(raw.split()).upper()
-        if name not in _MYSQL_ALLOWED_PRIVILEGES:
+        if name not in allowed:
             return f"{name[:64]} on {_scope_text(match.group('scope'))}"
     return None
 
@@ -748,9 +1241,10 @@ def _scope_text(scope: str) -> str:
 def session_problem(dialect: str, rows: Sequence[Sequence[object]]) -> str | None:
     """The refusal note of the post-connect check (C6-U1 and C6-8 third
     layer), or ``None`` when the account looks read-only. ``rows`` is what
-    the fixed check returned: PostgreSQL one problem code per row (none is a
-    pass), MySQL/MariaDB the ``SHOW GRANTS`` lines (never echoed whole)."""
-    if dialect == "postgresql":
+    the fixed check returned: PostgreSQL and SQL Server one problem code per
+    row (none is a pass), MySQL/MariaDB and ClickHouse the ``SHOW GRANTS``
+    lines (never echoed whole)."""
+    if dialect in ("postgresql", "mssql"):
         problems = sorted({str(row[0]) for row in rows if row})
         if "opspilot_schema" in problems:
             return (
@@ -769,8 +1263,13 @@ def session_problem(dialect: str, rows: Sequence[Sequence[object]]) -> str | Non
             "SQL_ACCOUNT_NOT_READ_ONLY: the account's grants could not be "
             "read; nothing was run."
         )
+    allowed = (
+        _CLICKHOUSE_ALLOWED_PRIVILEGES
+        if dialect == "clickhouse"
+        else _MYSQL_ALLOWED_PRIVILEGES
+    )
     for line in lines:
-        problem = _mysql_grant_problem(line)
+        problem = _mysql_grant_problem(line, allowed)
         if problem is not None:
             return (
                 "SQL_ACCOUNT_NOT_READ_ONLY: the configured account is not "
@@ -862,7 +1361,15 @@ def _classify(
     classifies raw psycopg/PyMySQL errors itself, so a connection only
     passes them through; a ``SqlDriverError`` is taken as it is."""
     if isinstance(error, SqlDriverError):
+        if cancelled and error.kind in ("unavailable", "error"):
+            return SqlDriverError("timeout", error.code, "")
         return error
+    if _is_pytds_error(error):
+        return _classify_mssql(error, connecting=connecting, cancelled=cancelled)
+    if isinstance(error, TimeoutError):  # a driver socket timeout
+        return SqlDriverError(
+            "unavailable" if connecting and not cancelled else "timeout"
+        )
     sqlstate = getattr(error, "sqlstate", None)
     args: tuple[Any, ...] = tuple(getattr(error, "args", ()))
     errno = args[0] if args and type(args[0]) is int else None
@@ -895,6 +1402,80 @@ def _classify(
     if cancelled:
         return SqlDriverError("timeout")
     return SqlDriverError("unavailable" if connecting else "error")
+
+
+#: SQL Server message numbers (C6b).
+_MSSQL_INVALID = frozenset(
+    {
+        102,
+        156,
+        170,
+        207,
+        208,
+        4104,
+        8134,
+        245,
+        8114,
+        105,
+        195,
+        515,
+        8115,
+        241,
+        242,
+        319,
+        1038,
+        4145,
+        8120,
+        8127,
+        209,
+    }
+)
+_MSSQL_FORBIDDEN = frozenset({229, 230, 262, 297, 300, 916, 18456, 4060})
+
+
+def _mssql_kind(number: int) -> str:
+    if number in _MSSQL_FORBIDDEN:
+        return "forbidden"
+    if number == 1222:
+        return "timeout"
+    if number in _MSSQL_INVALID:
+        return "invalid"
+    if number in (3906, 3908):
+        return "read_only"
+    return "error"
+
+
+def _classify_mssql(
+    error: BaseException, *, connecting: bool, cancelled: bool
+) -> SqlDriverError:
+    number = getattr(error, "number", 0) or getattr(error, "msg_no", 0) or 0
+    number = int(number) if isinstance(number, int) else 0
+    message = str(getattr(error, "message", "") or error)
+    if cancelled:
+        return SqlDriverError("timeout", str(number or ""), "")
+    if connecting and number != 18456:
+        # python-tds retries a refused or silent server until login_timeout
+        # and then raises a timeout: the server was not reachable.
+        return SqlDriverError("unavailable", str(number or ""), "")
+    if isinstance(error, socket.timeout):
+        return SqlDriverError("timeout", str(number or ""), "")
+    if number == 18456 or (connecting and number in _MSSQL_FORBIDDEN):
+        return SqlDriverError("forbidden", str(number), "")
+    if number == 0:
+        import pytds  # type: ignore[import-untyped]
+
+        lost = isinstance(error, pytds.tds_base.ClosedConnectionError)
+        return SqlDriverError("unavailable" if connecting or lost else "error")
+    kind = _mssql_kind(number)
+    return SqlDriverError(kind, str(number), message if kind == "invalid" else "")
+
+
+def _is_pytds_error(error: BaseException) -> bool:
+    try:
+        import pytds
+    except ImportError:  # pragma: no cover - a locked dependency
+        return False
+    return isinstance(error, pytds.tds_base.Error)
 
 
 def _is_mysql_error(error: BaseException) -> bool:
@@ -1125,9 +1706,298 @@ class _MySqlConnection:
                 pass
 
 
+#: ClickHouse exception codes (C6b, C6-14).
+_CLICKHOUSE_INVALID = frozenset(
+    {
+        62,
+        60,
+        47,
+        46,
+        81,
+        16,
+        43,
+        53,
+        42,
+        6,
+        27,
+        38,
+        41,
+        69,
+        70,
+        72,
+        36,
+        44,
+        48,
+        184,
+        215,
+    }
+)
+_CLICKHOUSE_FORBIDDEN = frozenset({497, 516, 192, 194})
+_CLICKHOUSE_CODE = re.compile(r"Code:\s*(\d+)")
+
+
+def _clickhouse_kind(code: int) -> str:
+    if code in _CLICKHOUSE_INVALID:
+        return "invalid"
+    if code in _CLICKHOUSE_FORBIDDEN:
+        return "forbidden"
+    if code == 164:
+        return "read_only"
+    if code in (159, 394):
+        return "timeout"
+    if code in (241, 202, 210):
+        return "unavailable"
+    return "error"
+
+
+class _ClickHouseConnection:
+    """ClickHouse over its HTTP interface (C6b): GET only, so the server
+    forces ``readonly=2`` on an account whose own ``readonly`` is 0
+    (``HTTPHandler.cpp``); every request is one statement, its own session.
+    No proxy, no redirects; credentials in the ``X-ClickHouse-*`` headers.
+    Failures are raised as ``SqlDriverError``."""
+
+    def __init__(self, config: SqlConfig, timeout: float) -> None:
+        self._config = config
+        self._deadline = time.monotonic() + timeout
+        self._lock = threading.Lock()
+        self._active: Any = None
+        self._cancelled = False
+        self.server_version = ""
+
+    def execute(self, statement: str, params: Sequence[object] = ()) -> None:
+        self.query(statement, params, max_rows=0)
+
+    def _settings(self) -> list[tuple[str, str]]:
+        left = self._deadline - time.monotonic()
+        seconds = max(1, int(_server_timeout(left)))
+        return [
+            ("database", self._config.database),
+            ("default_format", "JSONCompactEachRowWithNames"),
+            ("max_execution_time", str(seconds)),
+            ("timeout_overflow_mode", "throw"),
+            ("cancel_http_readonly_queries_on_client_close", "1"),
+            ("output_format_json_quote_64bit_integers", "0"),
+            ("query_id", f"opspilot-{uuid.uuid4()}"),
+        ]
+
+    def _open(self, timeout: float) -> Any:
+        import http.client
+
+        config = self._config
+        if config.secure:
+            context = ssl.create_default_context(cafile=config.ca_file)
+            if config.tls == "require":
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+            return http.client.HTTPSConnection(
+                config.host, config.port, timeout=timeout, context=context
+            )
+        return http.client.HTTPConnection(config.host, config.port, timeout=timeout)
+
+    def query(
+        self, statement: str, params: Sequence[object] = (), *, max_rows: int
+    ) -> tuple[list[str], list[tuple[Any, ...]], bool]:
+        left = self._deadline - time.monotonic()
+        if left <= 0:
+            raise SqlDriverError("timeout")
+        keys = [("query", statement), *self._settings()]
+        keys += [
+            (f"param_p{i}", "" if v is None else str(v)) for i, v in enumerate(params)
+        ]
+        path = "/?" + urllib.parse.urlencode(keys)
+        conn = self._open(left)
+        with self._lock:
+            self._active = conn
+        try:
+            try:
+                conn.request(
+                    "GET",
+                    path,
+                    headers={
+                        "X-ClickHouse-User": self._config.username,
+                        "X-ClickHouse-Key": self._config.password,
+                    },
+                )
+                response = conn.getresponse()
+            except (OSError, ssl.SSLError) as error:
+                late = self._cancelled or isinstance(error, TimeoutError)
+                raise SqlDriverError("timeout" if late else "unavailable") from None
+            if response.status != 200:
+                body = response.read(8192).decode("utf-8", "replace")
+                header = response.getheader("X-ClickHouse-Exception-Code") or ""
+                code = int(header) if header.isdigit() else None
+                if code is None:
+                    match = _CLICKHOUSE_CODE.search(body)
+                    code = int(match.group(1)) if match else None
+                if code is None:
+                    kind = (
+                        "forbidden"
+                        if response.status in (401, 403)
+                        else "unavailable"
+                        if response.status >= 500
+                        else "error"
+                    )
+                    raise SqlDriverError(kind, str(response.status), "")
+                raise SqlDriverError(_clickhouse_kind(code), str(code), body)
+            return self._read(response, max_rows)
+        except TimeoutError:
+            raise SqlDriverError("timeout") from None
+        finally:
+            with self._lock:
+                self._active = None
+            conn.close()
+
+    def _read(
+        self, response: Any, max_rows: int
+    ) -> tuple[list[str], list[tuple[Any, ...]], bool]:
+        rows: list[tuple[Any, ...]] = []
+        columns: list[str] = []
+        size = 0
+        first = True
+        while True:
+            try:
+                line = response.readline(READ_LIMIT_BYTES + 1)
+            except OSError as error:
+                late = self._cancelled or isinstance(error, TimeoutError)
+                raise SqlDriverError("timeout" if late else "unavailable") from None
+            if not line:
+                if self._cancelled:
+                    # the watchdog shut the socket: an end of stream here is
+                    # the deadline, not the end of the result
+                    raise SqlDriverError("timeout")
+                return columns, rows, False
+            size += len(line)
+            if size > READ_LIMIT_BYTES:
+                raise TransportResultTooLarge(str(READ_LIMIT_BYTES))
+            text = line.decode("utf-8", "replace").strip()
+            if not text:
+                continue
+            try:
+                value = json.loads(text)
+            except ValueError:
+                match = _CLICKHOUSE_CODE.search(text)
+                if match:
+                    code = int(match.group(1))
+                    raise SqlDriverError(
+                        _clickhouse_kind(code), str(code), text
+                    ) from None
+                raise SqlDriverError("error") from None
+            if not isinstance(value, list):
+                raise SqlDriverError("error")
+            if first:
+                columns = [str(item) for item in value]
+                first = False
+                continue
+            if len(rows) >= max_rows:
+                return columns, rows, True
+            rows.append(tuple(value))
+
+    def cancel(self) -> None:
+        self._cancelled = True
+        with self._lock:
+            conn = self._active
+        if conn is not None and getattr(conn, "sock", None) is not None:
+            try:
+                conn.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def close(self) -> None:
+        """Each request closes its own HTTP connection."""
+
+
+class _MssqlConnection:
+    """python-tds, ``autocommit`` (the tool sends ``BEGIN TRANSACTION`` and
+    ``ROLLBACK TRANSACTION`` itself), no TLS (C6b), plain language batches
+    for the model's statement. Driver errors pass through to the
+    transport."""
+
+    def __init__(self, config: SqlConfig, timeout: float) -> None:
+        import pytds
+
+        self._conn = pytds.connect(
+            server=config.host,
+            port=config.port,
+            database=config.database,
+            user=config.username,
+            password=config.password,
+            login_timeout=max(1, int(timeout)),
+            timeout=max(1.0, _server_timeout(timeout)),
+            appname=_APPLICATION_NAME,
+            autocommit=True,
+            disable_connect_retry=True,
+        )
+        self.server_version = ""
+        self._cursor: Any = None
+
+    def execute(self, statement: str, params: Sequence[object] = ()) -> None:
+        with self._conn.cursor() as cursor:
+            # ``None``, not ``()``: python-tds %-formats any non-None params,
+            # which would break a ``%`` in the model's own SQL.
+            cursor.execute(statement, tuple(params) if params else None)
+
+    def query(
+        self, statement: str, params: Sequence[object] = (), *, max_rows: int
+    ) -> tuple[list[str], list[tuple[Any, ...]], bool]:
+        rows: list[tuple[Any, ...]] = []
+        more = False
+        size = 0
+        cursor = self._conn.cursor()
+        self._cursor = cursor
+        try:
+            # ``None``, not ``()``: python-tds %-formats any non-None params,
+            # which would break a ``%`` in the model's own SQL.
+            cursor.execute(statement, tuple(params) if params else None)
+            columns = [str(item[0]) for item in cursor.description or ()]
+            if cursor.description is None:
+                return columns, rows, False
+            while True:
+                row = cursor.fetchone()
+                if row is None:
+                    break
+                if len(rows) >= max_rows:
+                    more = True
+                    break
+                size += _approx_size(row)
+                if size > READ_LIMIT_BYTES:
+                    raise TransportResultTooLarge(str(READ_LIMIT_BYTES))
+                rows.append(tuple(row))
+            if more:
+                try:
+                    cursor.cancel()
+                except Exception:
+                    pass
+        finally:
+            self._cursor = None
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        return columns, rows, more
+
+    def cancel(self) -> None:
+        cursor = self._cursor
+        if cursor is not None:
+            try:
+                cursor.cancel()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        try:
+            self._conn.close()
+        except Exception:
+            pass
+
+
 def default_connector(config: SqlConfig, timeout: float) -> SqlConnection:
     if config.dialect == "postgresql":
         return _PostgresConnection(config, timeout)
+    if config.dialect == "clickhouse":
+        return _ClickHouseConnection(config, timeout)
+    if config.dialect == "mssql":
+        return _MssqlConnection(config, timeout)
     return _MySqlConnection(config, timeout)
 
 
@@ -1278,6 +2148,13 @@ def _driver_failure(error: SqlDriverError, dialect: str) -> TransportResponse:
     return _answered(f"SQL_SOURCE_ERROR: the database failed the call ({label}).")
 
 
+_CLICKHOUSE_READONLY_1_NOTE = (
+    "SQL_ACCOUNT_UNSUPPORTED: the ClickHouse account has readonly=1, which "
+    "blocks the tool's own timeout setting; use readonly=2 (or leave it unset "
+    "with SELECT-only grants). Nothing was run."
+)
+
+
 def _server_timeout(remaining: float) -> float:
     return max(_SERVER_TIMEOUT_FLOOR, remaining - _SERVER_TIMEOUT_MARGIN)
 
@@ -1415,10 +2292,10 @@ class SqlTransport:
 
         def on_deadline() -> None:
             state["cancelled"] = True
-            if dialect == "postgresql":
-                conn.cancel()
-            else:
+            if dialect == "mysql":
                 kill_late_query()
+            else:
+                conn.cancel()
 
         timer = threading.Timer(max(0.0, deadline - self._monotonic()), on_deadline)
         timer.daemon = True
@@ -1427,7 +2304,9 @@ class SqlTransport:
 
         def rollback() -> None:
             try:
-                conn.execute("ROLLBACK")
+                conn.execute(
+                    "ROLLBACK TRANSACTION" if dialect == "mssql" else "ROLLBACK"
+                )
             except Exception:
                 pass  # read-only work is discarded with the connection
 
@@ -1443,6 +2322,40 @@ class SqlTransport:
                 problem = session_problem(dialect, rows)
                 if problem is not None:
                     return _answered(problem)
+            elif dialect == "clickhouse":
+                # C6b: every GET is its own session; nothing to begin or roll
+                # back -- the server makes a GET read-only.
+                try:
+                    _, rows, _ = conn.query(_CLICKHOUSE_GRANTS_CHECK, max_rows=256)
+                except SqlDriverError as error:
+                    if error.kind != "read_only":
+                        raise
+                    # 164 on a read: the account's readonly=1 refused the
+                    # tool's own settings (max_execution_time and the rest)
+                    return _answered(_CLICKHOUSE_READONLY_1_NOTE)
+                problem = session_problem(dialect, rows)
+                if problem is not None:
+                    return _answered(problem)
+                _, setting_rows, _ = conn.query(_CLICKHOUSE_READONLY_CHECK, max_rows=1)
+                readonly = str(setting_rows[0][0]) if setting_rows else ""
+                if readonly == "1":
+                    return _answered(_CLICKHOUSE_READONLY_1_NOTE)
+                if readonly != "2":
+                    return _answered(
+                        "SQL_ACCOUNT_NOT_READ_ONLY: ClickHouse did not report a "
+                        "read-only session for this account; nothing was run."
+                    )
+            elif dialect == "mssql":
+                ms = int(_server_timeout(remaining()) * 1000)
+                conn.execute(f"SET LOCK_TIMEOUT {ms}")
+                conn.execute("SET XACT_ABORT ON")
+                conn.execute("SET IMPLICIT_TRANSACTIONS OFF")
+                _, rows, _ = conn.query(_MSSQL_ACCOUNT_CHECK, max_rows=64)
+                problem = session_problem(dialect, rows)
+                if problem is not None:
+                    return _answered(problem)
+                conn.execute("BEGIN TRANSACTION")
+                began = True
             else:
                 _, version_rows, _ = conn.query(
                     "SELECT VERSION(), CONNECTION_ID()", max_rows=1
@@ -1470,7 +2383,8 @@ class SqlTransport:
             remaining()
             response = plan(conn)
             began = False
-            rollback()
+            if dialect != "clickhouse":  # a ClickHouse GET has no transaction
+                rollback()
             return response
         except TransportError:
             if began:
@@ -1556,6 +2470,33 @@ class SqlTransport:
                     "n.nspname = %s ORDER BY 1, 2 LIMIT %s"
                 )
                 params = (kinds, schema, MAX_LIST_ROWS + 1)
+        elif self._config.dialect == "clickhouse":
+            where = (
+                "database = {p0:String}" if schema else "database = currentDatabase()"
+            )
+            views = (
+                ""
+                if include_views
+                else " AND engine NOT IN ('View', 'MaterializedView')"
+            )
+            statement = (
+                CATALOG_MARKER + " SELECT database, name, multiIf(engine = 'View', "
+                "'VIEW', engine = 'MaterializedView', 'm', 'BASE TABLE') FROM "
+                f"`system`.tables WHERE {where}{views} ORDER BY database, name "
+                f"LIMIT {MAX_LIST_ROWS + 1}"
+            )
+            params = (schema,) if schema else ()
+        elif self._config.dialect == "mssql":
+            kinds_sql = "('U', 'V')" if include_views else "('U')"
+            statement = (
+                CATALOG_MARKER + f" SELECT TOP {MAX_LIST_ROWS + 1} s.name, o.name, "
+                "CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END FROM "
+                "sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id "
+                f"WHERE o.type IN {kinds_sql} AND s.name = "
+                + ("%s" if schema else "SCHEMA_NAME()")
+                + " ORDER BY s.name, o.name"
+            )
+            params = (schema,) if schema else ()
         else:
             types = (
                 "('BASE TABLE', 'VIEW', 'SYSTEM VIEW')"
@@ -1598,6 +2539,10 @@ class SqlTransport:
     ) -> TransportResponse:
         if self._config.dialect == "postgresql":
             found = self._pg_describe(conn, schema, table)
+        elif self._config.dialect == "clickhouse":
+            found = self._clickhouse_describe(conn, schema, table)
+        elif self._config.dialect == "mssql":
+            found = self._mssql_describe(conn, schema, table)
         else:
             found = self._mysql_describe(conn, schema, table)
         if found is None:
@@ -1720,6 +2665,170 @@ class SqlTransport:
         ]
         return _describe_body(
             str(nspname), str(relname), columns, primary, foreign, indexes
+        )
+
+    @staticmethod
+    def _clickhouse_describe(
+        conn: SqlConnection, schema: str | None, table: str
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+        where_db = (
+            "database = {p1:String}" if schema else "database = currentDatabase()"
+        )
+        params: tuple[object, ...] = (table, schema) if schema else (table,)
+        _, found, _ = conn.query(
+            CATALOG_MARKER + " SELECT database, name, sorting_key FROM `system`.tables "
+            f"WHERE name = {{p0:String}} AND {where_db} LIMIT 1",
+            params,
+            max_rows=1,
+        )
+        if not found:
+            return None
+        nspname, relname, sorting_key = str(found[0][0]), str(found[0][1]), found[0][2]
+        _, column_rows, _ = conn.query(
+            CATALOG_MARKER + " SELECT name, type, default_expression, position, "
+            "is_in_primary_key FROM `system`.columns WHERE database = {p0:String} AND "
+            "table = {p1:String} ORDER BY position",
+            (nspname, relname),
+            max_rows=5000,
+        )
+        _, index_rows, _ = conn.query(
+            CATALOG_MARKER + " SELECT name, expr, type FROM "
+            "`system`.data_skipping_indices WHERE database = {p0:String} AND "
+            "table = {p1:String} ORDER BY name",
+            (nspname, relname),
+            max_rows=5000,
+        )
+        columns = []
+        primary: list[str] = []
+        for name, kind, default, ordinal, in_primary in column_rows:
+            text = str(kind)
+            columns.append(
+                {
+                    "name": str(name),
+                    "type": text,
+                    "nullable": text.startswith(
+                        ("Nullable(", "LowCardinality(Nullable(")
+                    ),
+                    "default": default if default else None,
+                    "ordinal": int(ordinal),
+                }
+            )
+            if in_primary in (1, True, "1"):
+                primary.append(str(name))
+        indexes: list[dict[str, Any]] = [
+            {
+                "name": str(name),
+                "columns": [],
+                "unique": False,
+                "primary": False,
+                "definition": f"{expr} TYPE {kind}",
+            }
+            for name, expr, kind in index_rows
+        ]
+        if sorting_key:
+            indexes.insert(
+                0,
+                {
+                    "name": "sorting_key",
+                    "columns": [p.strip() for p in str(sorting_key).split(",")],
+                    "unique": False,
+                    "primary": True,
+                    "definition": str(sorting_key),
+                },
+            )
+        return _describe_body(nspname, relname, columns, primary, [], indexes)
+
+    @staticmethod
+    def _mssql_describe(
+        conn: SqlConnection, schema: str | None, table: str
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+        where_schema = "s.name = %s" if schema else "s.name = SCHEMA_NAME()"
+        params: tuple[object, ...] = (table, schema) if schema else (table,)
+        _, found, _ = conn.query(
+            CATALOG_MARKER + " SELECT TOP 1 o.object_id, s.name, o.name FROM "
+            "sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE "
+            f"o.name = %s AND {where_schema} AND o.type IN ('U', 'V')",
+            params,
+            max_rows=1,
+        )
+        if not found:
+            return None
+        oid, nspname, relname = int(found[0][0]), str(found[0][1]), str(found[0][2])
+        _, column_rows, _ = conn.query(
+            CATALOG_MARKER + " SELECT c.name, TYPE_NAME(c.user_type_id), "
+            "c.is_nullable, dc.definition, c.column_id FROM sys.columns c LEFT JOIN "
+            "sys.default_constraints dc ON dc.parent_object_id = c.object_id AND "
+            "dc.parent_column_id = c.column_id WHERE c.object_id = %s ORDER BY "
+            "c.column_id",
+            (oid,),
+            max_rows=5000,
+        )
+        _, index_rows, _ = conn.query(
+            CATALOG_MARKER + " SELECT i.name, i.is_unique, i.is_primary_key, "
+            "COL_NAME(ic.object_id, ic.column_id) FROM sys.indexes i JOIN "
+            "sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = "
+            "i.index_id WHERE i.object_id = %s AND i.index_id > 0 AND "
+            "ic.is_included_column = 0 ORDER BY i.name, ic.key_ordinal",
+            (oid,),
+            max_rows=5000,
+        )
+        _, fk_rows, _ = conn.query(
+            CATALOG_MARKER + " SELECT fk.name, COL_NAME(fkc.parent_object_id, "
+            "fkc.parent_column_id), OBJECT_SCHEMA_NAME(fkc.referenced_object_id), "
+            "OBJECT_NAME(fkc.referenced_object_id), COL_NAME(fkc.referenced_object_id, "
+            "fkc.referenced_column_id) FROM sys.foreign_keys fk JOIN "
+            "sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id "
+            "WHERE fk.parent_object_id = %s ORDER BY fk.name, fkc.constraint_column_id",
+            (oid,),
+            max_rows=5000,
+        )
+        columns = [
+            {
+                "name": str(name),
+                "type": str(kind),
+                "nullable": bool(nullable),
+                "default": None if default is None else str(default),
+                "ordinal": int(ordinal),
+            }
+            for name, kind, nullable, default, ordinal in column_rows
+        ]
+        index_by_name: dict[str, dict[str, Any]] = {}
+        for name, unique, is_primary, column in index_rows:
+            entry = index_by_name.setdefault(
+                str(name),
+                {
+                    "name": str(name),
+                    "columns": [],
+                    "unique": bool(unique),
+                    "primary": bool(is_primary),
+                    "definition": None,
+                },
+            )
+            entry["columns"].append(str(column))
+        primary = next(
+            (list(e["columns"]) for e in index_by_name.values() if e["primary"]), []
+        )
+        foreign_by_name: dict[str, dict[str, Any]] = {}
+        for name, column, ref_schema, ref_table, ref_column in fk_rows:
+            entry = foreign_by_name.setdefault(
+                str(name),
+                {
+                    "name": str(name),
+                    "columns": [],
+                    "referred_schema": None if ref_schema is None else str(ref_schema),
+                    "referred_table": None if ref_table is None else str(ref_table),
+                    "referred_columns": [],
+                },
+            )
+            entry["columns"].append(str(column))
+            entry["referred_columns"].append(str(ref_column))
+        return _describe_body(
+            nspname,
+            relname,
+            columns,
+            primary,
+            sorted(foreign_by_name.values(), key=lambda item: str(item["name"])),
+            sorted(index_by_name.values(), key=lambda item: str(item["name"])),
         )
 
     @staticmethod
@@ -1911,6 +3020,8 @@ def overflow_summary(
 _DIALECT_TEXT: Mapping[str, str] = {
     "postgresql": "PostgreSQL",
     "mysql": "MySQL or MariaDB",
+    "clickhouse": "ClickHouse",
+    "mssql": "SQL Server",
 }
 _CANNOT_PROVE = (
     "This is the database as it is at query time, not its state during the "
@@ -1945,7 +3056,79 @@ _ERRORS_TEXT = (
 )
 
 
+#: C6b: the refusal texts of the two later dialects (C6a texts unchanged).
+_CLICKHOUSE_REFUSALS_TEXT = (
+    "Only one read-only statement is run: it must start with SELECT, WITH, "
+    "EXPLAIN, SHOW, DESCRIBE or DESC; at most one trailing semicolon. Refused "
+    "before sending (QUERY_CONSTRUCT_NOT_ALLOWED): write and DDL words "
+    "(INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, RENAME, ATTACH, "
+    "DETACH, OPTIMIZE, KILL, SYSTEM statements, INTO OUTFILE and more), "
+    "SETTINGS and FORMAT clauses (so the format() function is refused too), "
+    "'#' and '$' outside quotes, and the table functions that reach outside "
+    "the database: url, file, s3, gcs, azureBlobStorage, hdfs, remote, "
+    "remoteSecure, cluster, mysql, postgresql, sqlite, mongodb, redis, odbc, "
+    "jdbc, executable, input, iceberg, deltaLake, hudi, cosn, oss, hive and "
+    "paimon (and their Cluster forms), plus sleep; merge() is refused too. "
+    "A number must not run straight into a word (1e1EXEC). "
+    "Reading system tables is allowed, but write the database name with "
+    "backticks: `system`.query_log, `system`.parts, `system`.processes (an "
+    "unquoted SYSTEM is refused). A column with one of those names must be quoted. The tool "
+    "sends HTTP GET only, which ClickHouse runs read-only, and first checks "
+    "that the configured account only has read grants "
+    "(SQL_ACCOUNT_NOT_READ_ONLY otherwise, nothing run). Write operations "
+    "cannot be enabled."
+)
+_MSSQL_REFUSALS_TEXT = (
+    "Only one read-only statement is run: it must start with SELECT or WITH "
+    "(use TOP n, not LIMIT); at most one trailing semicolon. Refused before "
+    "sending (QUERY_CONSTRUCT_NOT_ALLOWED): write and DDL words (INSERT, "
+    "UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, MERGE, SELECT ... INTO "
+    "and more), EXEC/EXECUTE, DECLARE, WAITFOR, BEGIN, COMMIT, ROLLBACK, USE, "
+    "DBCC, KILL, BULK, BACKUP, RESTORE, SET, GO, WHILE, IF, PRINT, NEXT VALUE "
+    "FOR, the locking hints UPDLOCK, XLOCK, HOLDLOCK, TABLOCK, TABLOCKX, "
+    "PAGLOCK, ROWLOCK, SERIALIZABLE, REPEATABLEREAD and READPAST (NOLOCK is "
+    "allowed), RECEIVE, SEND, OPEN, cursor FETCH (OFFSET n ROWS "
+    "FETCH NEXT m ROWS ONLY paging is allowed), CLOSE, DEALLOCATE, RETURN, BREAK, CONTINUE, any name "
+    "starting sp_ or xp_, names with three or more parts or '..' (stay in "
+    "the configured database; use table aliases for columns), a number "
+    "running straight into a word (1e1EXEC), and calls of "
+    "xp_*, sp_*, OPENROWSET, OPENQUERY, OPENDATASOURCE and OPENXML. A column "
+    "with one of those names must be quoted with [] . There is no EXPLAIN "
+    "and SET SHOWPLAN is refused: read plans and query statistics from DMVs "
+    "such as sys.dm_exec_query_stats, sys.dm_exec_requests and "
+    "sys.dm_exec_query_plan. SQL Server has no read-only session: the tool "
+    "first checks that the configured account is read-only "
+    "(SQL_ACCOUNT_NOT_READ_ONLY otherwise, nothing run) and runs the "
+    "statement inside a transaction that is always rolled back. Write "
+    "operations cannot be enabled."
+)
+
+
+def _refusals(dialect: str) -> str:
+    if dialect == "clickhouse":
+        return _CLICKHOUSE_REFUSALS_TEXT
+    if dialect == "mssql":
+        return _MSSQL_REFUSALS_TEXT
+    return _REFUSALS_TEXT
+
+
 def _query_description(dialect: str) -> str:
+    if dialect in ("clickhouse", "mssql"):
+        limit_hint = "TOP n" if dialect == "mssql" else "a LIMIT"
+        return (
+            f"Run one read-only SQL statement against the configured "
+            f"{_DIALECT_TEXT[dialect]} database and return the rows. Use the "
+            f"{_DIALECT_TEXT[dialect]} dialect. Start by listing tables and "
+            "describing the relevant ones; summarise with COUNT(*), GROUP BY "
+            f"and aggregates instead of reading every row, and put {limit_hint} "
+            "in the SQL (the tool reads at most limit rows, default "
+            f"{DEFAULT_LIMIT}, at most {MAX_LIMIT}, and marks the result "
+            "incomplete when more were left). "
+            + _refusals(dialect)
+            + " Results are the data at query time. Each row is an object of "
+            f"column name to value; string values are cut to {MAX_VALUE_CHARS} "
+            "characters and marked. " + _ERRORS_TEXT
+        )
     return (
         f"Run one read-only SQL statement against the configured "
         f"{_DIALECT_TEXT[dialect]} database and return the rows. Use the "
@@ -2105,7 +3288,16 @@ def sql_registrations(
         "max_result_bytes": READ_LIMIT_BYTES,
         "max_view_tokens": MAX_VIEW_TOKENS,
         "max_window_seconds": max_window_seconds,
-        "error_classes": dict(_ERROR_CLASSES),
+        # C6b: the ClickHouse-only code joins only that dialect's table, so
+        # the C6a registrations (and revisions) are unchanged.
+        "error_classes": {
+            **_ERROR_CLASSES,
+            **(
+                {"SQL_ACCOUNT_UNSUPPORTED": "SOURCE_FORBIDDEN"}
+                if dialect == "clickhouse"
+                else {}
+            ),
+        },
     }
     query = ToolRegistration(
         name=QUERY_TOOL,
@@ -2129,7 +3321,7 @@ def sql_registrations(
             ),
             window_format=_WINDOW_FORMAT,
             values_format=_VALUES_FORMAT,
-            limits=_LIMITS + " " + _REFUSALS_TEXT,
+            limits=_LIMITS + " " + _refusals(dialect),
             cannot_prove=_CANNOT_PROVE,
         ),
         **common,

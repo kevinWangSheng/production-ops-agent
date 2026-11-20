@@ -1713,11 +1713,8 @@ def _mint_ca(tmp_path: Path) -> str:
         ({"OPSPILOT_SQL_URL": "postgresql://127.0.0.1:5432/"}, "SQL_CONFIG_INVALID"),
         ({"OPSPILOT_SQL_URL": "postgresql://127.0.0.1:5432/a/b"}, "SQL_CONFIG_INVALID"),
         ({"OPSPILOT_SQL_URL": "mysql://127.0.0.1:3306/db?ssl=0"}, "SQL_CONFIG_INVALID"),
-        (
-            {"OPSPILOT_SQL_URL": "clickhouse+http://127.0.0.1:8123/default"},
-            "SQL_CONFIG_INVALID",
-        ),
-        ({"OPSPILOT_SQL_URL": "mssql://127.0.0.1:1433/db"}, "SQL_CONFIG_INVALID"),
+        # clickhouse+http:// and mssql:// were refused here until C6b opened
+        # them (tests/test_tool_expansion_c6b_contract.py).
         (
             {"OPSPILOT_SQL_URL": "postgresql+psycopg://127.0.0.1/db"},
             "SQL_CONFIG_INVALID",
@@ -1797,8 +1794,8 @@ def test_a_missing_ca_file_is_config_invalid(tmp_path, tls):
 @pytest.mark.parametrize(
     "url",
     [
-        "clickhouse+http://127.0.0.1:8123/default",
-        "mssql://127.0.0.1:1433/db",
+        "clickhouse://127.0.0.1:8123/default",  # C6b opened clickhouse+http
+        "mssql+pyodbc://127.0.0.1:1433/db",  # C6b opened mssql and mssql+pytds
         "oracle://127.0.0.1/db",
         "127.0.0.1:5432/db",
     ],

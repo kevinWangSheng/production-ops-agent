@@ -498,7 +498,7 @@ def test_password_column_is_redacted(fake_db) -> None:
         ),
         (
             {
-                sq.URL_ENV: "mssql://127.0.0.1/shop",
+                sq.URL_ENV: "oracle://127.0.0.1/shop",
                 sq.USERNAME_ENV: "ro",
                 sq.PASSWORD_ENV: "x",
             },
@@ -561,7 +561,7 @@ def test_profile_and_lab_gate(fake_db) -> None:
     assert sq.sql_dialect({}) is None
     assert sq.sql_dialect({sq.URL_ENV: "mariadb://h/db"}) == "mysql"
     with pytest.raises(SystemExit, match="SQL_CONFIG_INVALID"):
-        sq.sql_dialect({sq.URL_ENV: "clickhouse+http://h/db"})
+        sq.sql_dialect({sq.URL_ENV: "oracle://h/db"})
     profile = select_profile(_env())
     assert (
         profile.versions()["tool_schema_revision"]
