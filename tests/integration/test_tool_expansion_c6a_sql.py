@@ -88,6 +88,8 @@ ADMIN_PASSWORD = os.environ.get("C6_ADMIN_PASSWORD", "changeme570")
 PG_ADMIN_PASSWORD = ADMIN_PASSWORD
 MYSQL_ROOT_PASSWORD = ADMIN_PASSWORD
 PG_CONTAINER = os.environ.get("C6_PG_CONTAINER", "c6-postgres")
+# ASSUMPTION: default follows the c6-postgres naming; CI sets the real name.
+MYSQL_CONTAINER = os.environ.get("C6_MYSQL_CONTAINER", "c6-mysql")
 
 DB = "c6_tests"
 OPSMOCK_DB = "c6_tests_opspilot"
@@ -252,11 +254,13 @@ MY_BAD_USERS: dict[str, list[str]] = {
     "column_update": ["GRANT SELECT, UPDATE (note) ON c6_tests.c6t_orders TO {u}"],
     "file": ["GRANT SELECT ON c6_tests.* TO {u}", "GRANT FILE ON *.* TO {u}"],
     "role": ["GRANT SELECT ON c6_tests.* TO {u}", "GRANT c6_tests_writer TO {u}"],
-    "proxy": [
-        "GRANT SELECT ON c6_tests.* TO {u}",
-        "GRANT PROXY ON 'c6_tests_ro'@'%' TO {u}",
-    ],
+    # The PROXY grant itself is made last, by _grant_proxy (lead ruling a/c).
+    "proxy": ["GRANT SELECT ON c6_tests.* TO {u}"],
 }
+PROXY_GRANT = "GRANT PROXY ON 'c6_tests_ro'@'%' TO 'c6_tests_bad_proxy'@'%'"
+#: Why the PROXY grant could not be made, per backend (the proxy case fails
+#: with it instead of the whole setup).
+PROXY_SETUP_ERROR: dict[str, str] = {}
 
 
 def _pg_setup() -> None:
@@ -469,6 +473,39 @@ def _my_setup(backend: str) -> None:
                     cur.execute(grant.format(u=user))
     finally:
         conn.close()
+    _grant_proxy(backend)
+
+
+def _grant_proxy(backend: str) -> None:
+    """Last step of the setup, so a failure here spares every other case.
+
+    On MySQL 8 the image's root@'%' has ALL but not PROXY WITH GRANT OPTION
+    (only root@localhost has it), so the grant runs inside the container as
+    the local root (lead ruling a). MariaDB's root@'%' can grant it.
+    """
+    PROXY_SETUP_ERROR.pop(backend, None)
+    try:
+        if backend == "mysql":
+            result = subprocess.run(
+                [
+                    "docker", "exec", "-e", f"MYSQL_PWD={MYSQL_ROOT_PASSWORD}",
+                    MYSQL_CONTAINER, "mysql", "-uroot", "-e", PROXY_GRANT,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )  # fmt: skip
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        else:
+            conn = _my(backend)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(PROXY_GRANT)
+            finally:
+                conn.close()
+    except Exception as error:  # reported by the proxy case, not swallowed
+        PROXY_SETUP_ERROR[backend] = f"{type(error).__name__}: {error}"
 
 
 _READY: set[str] = set()
@@ -1065,6 +1102,8 @@ def test_postgres_whitelisted_monitoring_roles_pass(k8s_ca):
 @pytest.mark.parametrize("case", sorted(MY_BAD_USERS))
 def test_mysql_over_privileged_accounts_are_refused(backend_name, case, k8s_ca):
     _ensure(backend_name)
+    if case == "proxy" and backend_name in PROXY_SETUP_ERROR:
+        pytest.fail(f"PROXY grant fixture failed: {PROXY_SETUP_ERROR[backend_name]}")
     marker = _marker(f"u1-my-{case}")
     tool = Tool(_env(backend_name, k8s_ca, user=f"c6_tests_bad_{case}"))
     outcome = tool.query(f"SELECT '{marker}' AS marker")
