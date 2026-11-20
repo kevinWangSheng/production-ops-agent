@@ -25,6 +25,7 @@ m0 = [
     "psycopg[binary]==3.3.3",
     "pydantic==2.13.5",
     "pymysql==1.2.3",
+    "pymongo==4.19.0",
     "python-tds==1.17.1",
     "sqlalchemy==2.1.3",
 ]

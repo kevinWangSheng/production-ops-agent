@@ -267,6 +267,14 @@
 - 命令是否到达服务器（⑨）：测试库开 profiler（工程师侧 `{"profile": 2}`），之后查该库 `system.profile` 里有没有带标记的命令（标记放在 filter 的值里，或工具自己的 `comment`）。
 - 断言（与 C6a ①–⑪ 对应）：① 六个工具都有真实返回（含索引与估计数、`serverStatus` 所选段、`$currentOp`）；③ 600 条集合按 limit 截断并标不完整，5000 字符长值截断，2 MiB 与视图超限整条拒；④ `password`/`api_token` 字段脱敏；⑤ 内容检查的代表构造（顶层与 `$facet`/`$lookup.pipeline`/`$unionWith.pipeline` 嵌套的 `$out`、`$merge`，`$where`、`$function`、`$accumulator`，跨库 `$lookup`，`$documents`、`$collStats`）在真实库上被拒、不到达服务器、集合数与文档数不变；⑥ 命令面：跳过 `account_problem` 用 root 账号经工具发一条合法的 `aggregate`，profiler 里只出现 `connectionStatus` 与该 `aggregate`（没有别的命令）；⑦ 只读账号直连 `insertOne`、`updateOne`、`deleteOne`、`drop`、含 `$out` 的 aggregate 全部被拒（13），文档数不变；⑧ 超时：低期限下跑一条重 pipeline（`$range` 展开），报 `TOOL_TIMEOUT`，之后 `$currentOp` 里没有带本次 `comment` 的操作；⑨ root 账号、`readWrite` 账号、自定义角色账号都报 `MONGODB_ACCOUNT_NOT_READ_ONLY` 且工具命令未到达；⑩ `OPSPILOT_WORKER_DSN` 与地址同主机同端口时启动失败 `MONGODB_TARGETS_OPSPILOT_DB`；⑪ 错误分类用真实应答（未知操作符、错误口令、无权限的库、端口无人监听、0 条结果）。
 
+### 实现决定（C6c，实现者自定，可逆，2026-11-20）
+
+- 扩展档位 revision：仅 MongoDB `otel-demo-ext-f3c82122dcd8`；不设地址时无后端 `c63f058afb18`、Kafka `b78a67921a9c`、各 SQL 方言等现有值不变（本分支实测）。
+- 工具在 `mongodb_query.py`，SQL 那边的 `_host_key`、`_dsn_endpoints`、`SqlDriverError` 复用（导入，不改 C6a/C6b 代码）。驱动原始异常由传输层分类：`OperationFailure` 按 `code`，`NetworkTimeout`/`ConnectionFailure`/`ServerSelectionTimeoutError` 未到期为不可用、到期为超时；到期后的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`。
+- `MongoClient` 另设 `maxPoolSize=1`、`connect=False`（第一条命令时才连），看门狗到期时关闭客户端。
+- `mongodb_current_op` 返回其他会话的操作与查询文本，`may_contain_secrets=True`（六个工具都是），按字段名走现有脱敏；B/C 记录的新数据源登记写明。
+- relaxed 扩展 JSON 里的 `{"$code": …}` 会被解析成 JavaScript 代码值，内容检查按值类型同样拒绝。
+
 ### 交给 #669
 
 - 229、230：题目自带 `holmes` 是 root，会被 C6-U1 拒；评测脚本用 `kubectl exec … mongosh` 按 C6-21 建只读账号，`OPSPILOT_MONGODB_URL=mongodb://127.0.0.1:10227`（230 为 10228）、`OPSPILOT_MONGODB_DATABASE=shopdb`（230 为 `opsdb`）、`AUTH_SOURCE=admin`、`TLS=disable`。

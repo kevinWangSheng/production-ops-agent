@@ -51,6 +51,11 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   web reads the address only, the worker the ``kafka-ro`` settings
   (``OPSPILOT_KAFKA_SECURITY_PROTOCOL``, ``_SASL_MECHANISM``, ``_USERNAME``,
   ``_PASSWORD``, ``_CA_FILE``; ``KAFKA_CONFIG_MISSING``/``_INVALID``).
+  ``OPSPILOT_MONGODB_URL`` adds the six MongoDB tools (C6c): the web reads
+  the address only, the worker the ``mongodb-ro`` settings
+  (``OPSPILOT_MONGODB_DATABASE``, ``_USERNAME``, ``_PASSWORD``,
+  ``_AUTH_SOURCE``, ``_TLS``, ``_CA_FILE``; ``MONGODB_CONFIG_MISSING``/
+  ``_INVALID``, ``MONGODB_TARGETS_OPSPILOT_DB``).
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
@@ -85,6 +90,7 @@ from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
 from opspilot.tools.kubernetes_core import KubernetesConfig
 from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
 from opspilot.tools.loki_logs import LokiConfig, loki_enabled
+from opspilot.tools.mongodb_query import MongoConfig, mongodb_enabled
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
     otel_demo_executor_factory,
@@ -158,6 +164,9 @@ _STARTUP_CODES = frozenset(
         "SQL_CONFIG_MISSING",
         "SQL_CONFIG_INVALID",
         "SQL_TARGETS_OPSPILOT_DB",
+        "MONGODB_CONFIG_MISSING",
+        "MONGODB_CONFIG_INVALID",
+        "MONGODB_TARGETS_OPSPILOT_DB",
         "KAFKA_CONFIG_MISSING",
         "KAFKA_CONFIG_INVALID",
     }
@@ -190,6 +199,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C3-12: the bootstrap address only; never an ``OPSPILOT_KAFKA_*``
     # credential in the web.
     kafka = kafka_enabled(env)
+    # C6c: the address only; never an ``OPSPILOT_MONGODB_*`` credential.
+    mongodb = mongodb_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -218,6 +229,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 todo=todo,
                 sql=SqlConfig.from_env(env),
                 kafka=KafkaConfig.from_env(env),
+                mongodb=MongoConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -237,6 +249,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             todo=todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -247,6 +260,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             todo=todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,
