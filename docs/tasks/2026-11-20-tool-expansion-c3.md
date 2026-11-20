@@ -116,7 +116,8 @@
   2. 夹具 `_sasl_env(**overrides)` 重复关键字参数（3 个失败）；
   3. 接口内部冲突（4 个失败）：1000 行上限与 25k token 视图上限放不下同一张表——1000 个组 26,432 token、1000 个 topic 分区行 38,470、1000 个滞后行 34,528（`list_topics` 1000 行放得下）。待 lead 裁决上限数字。
   临时副本只修 1、2 两处夹具时 190 过，只剩 3 的 4 个。
-- 真实 broker 集成测试交 CI（本机不起容器）。
+- 2026-11-20 CI `kafka-backend`（PR #748，`apache/kafka:4.3.2`）：实现者 `_impl.py` 4 passed——只有 Describe 类 ACL（无 READ）的 `opspilot` 账号 8 个工具全部 ok（`list_consumer_group_offsets` 不需要 Group READ）；`impl-stopped` 组滞后精确为 40；匿名监听、broker 开着自动建主题时，随机拼错的名字经 `describe_topic`（含 `fetch_configuration`）、`find_consumer_groups_by_topic`、`describe_configs` 都是 `no_data`/`TOPIC_NOT_FOUND`，3 秒后主题列表里没有它；每次调用新建客户端约 0.06–0.9 秒，低于 C3-9 的 1 秒阈值，保持短命客户端。独立作者的集成文件在夹具阶段失败（新建主题后立即 `list_offsets` 得 `NOT_LEADER_FOR_PARTITION`，测试夹具未等分区 leader），已报 lead。
+- CI 实测 broker 刚启动时 `list_consumer_groups` 偶发「1 个 broker 未应答」且 `valid` 为空，原实现会报 `no_data`（等于声称没有组）；已改为：一个组都没列出时按第一个错误分类，部分列出时标不完整并在 notes 写错误名。
 
 ## 下一步
 
