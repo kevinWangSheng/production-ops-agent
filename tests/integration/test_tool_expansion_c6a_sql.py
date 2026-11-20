@@ -994,7 +994,8 @@ def test_a_heavy_query_times_out_and_is_gone_from_the_server(
     marker = _marker("timeout")
     started = time.monotonic()
     outcome = tool.query(
-        f"SELECT /* {marker} */ COUNT(*) FROM c6t_bulk a, c6t_bulk b, c6t_bulk c, c6t_bulk d"
+        f"SELECT /* {marker} */ COUNT(*) FROM c6t_bulk a, c6t_bulk b, c6t_bulk c, c6t_bulk d "
+        "WHERE a.n + b.n + c.n + d.n = -1"
     )
     elapsed = time.monotonic() - started
     assert (outcome.status, outcome.reason) == ("timeout", "TOOL_TIMEOUT"), _view(
