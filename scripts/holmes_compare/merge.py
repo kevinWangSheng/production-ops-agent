@@ -8,6 +8,10 @@
 must have run on the same real ES (R8-12). Holmes trials judged on different
 judge paths are refused (``HOLMES_JUDGE_PATH_MIXED``).
 
+OpsPilot trials with ``TodoWrite`` forced on or off (#666 PR-E ``--todo``),
+or a question whose two sides ran with the task list differently, are
+refused (``TODO_MODE_DIFFERS``).
+
 Both sides are counted with the same rule (``scripts.holmes_evals.scoring``:
 trials 1-3, only a judged ``A`` passes; a missing trial, no answer, or a judge
 without a verdict scores 0 and stays in the denominator). The two totals are
@@ -108,6 +112,21 @@ def merge(
     if len(paths) > 1:
         raise MergeRefused("HOLMES_JUDGE_PATH_MIXED")
     judge_path = paths[0] if paths else None
+    known = set(questions)
+    if any(r.todo_source == "forced" for r in opspilot if r.qid in known):
+        # PR-E: forced task-list rounds belong to the C1 comparison table only.
+        raise MergeRefused("TODO_MODE_DIFFERS")
+    for qid in questions:
+        sides_on = [
+            {
+                r.todo_enabled
+                for r in rows
+                if r.qid == qid and r.todo_enabled is not None
+            }
+            for rows in (opspilot, holmes)
+        ]
+        if all(sides_on) and sides_on[0] != sides_on[1]:
+            raise MergeRefused("TODO_MODE_DIFFERS")
     sides = {"opspilot": _side(opspilot, questions), "holmes": _side(holmes, questions)}
     table = []
     for qid in questions:

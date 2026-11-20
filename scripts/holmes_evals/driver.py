@@ -62,7 +62,7 @@ from typing import Any, Literal
 from scripts import lab_evidence, run_freeze
 from scripts.holmes_evals import judge as judge_mod
 from scripts.holmes_evals import knowledge as knowledge_mod
-from scripts.holmes_evals import scoring
+from scripts.holmes_evals import scoring, task_list
 from scripts.holmes_evals.intake import (
     TARGET_ID,
     SubmitResult,
@@ -80,6 +80,7 @@ from scripts.holmes_evals.log_backends import (
     LogQuestionSpec,
     backend_of,
     namespace_gone,
+    namespaces_with_prefix,
     start_fake_log_backend,
     start_gateway,
     start_port_forward,
@@ -90,8 +91,10 @@ from scripts.holmes_evals.log_backends import RELEASE_WAIT_S as RELEASE_WAIT_S
 from scripts.holmes_evals.questions import (
     ALL_QUESTIONS,
     B1_QUESTIONS,
+    C1_QUESTIONS,
     QUESTION_GROUPS,
     R8_13_SKILL_ASSERTION_DROPPED,
+    TODO_HARD_QUESTIONS,
     UPSTREAM_COMMIT,
     Question,
     UpstreamMismatch,
@@ -121,6 +124,7 @@ from scripts.holmes_evals.shift import (
     seconds_to_wait_for_shift_day,
     shift_question,
 )
+from scripts.holmes_evals.task_list import TODO_MODES, todo_for
 from scripts.holmes_evals.text import ToolCall, report_to_text
 from scripts.holmes_evals.tool_calls import read_tool_calls
 from scripts.itbench_lite import services
@@ -139,6 +143,8 @@ from scripts.itbench_lite.driver import (
 from scripts.itbench_lite.services import Started
 
 ROOT = Path(__file__).resolve().parents[2]
+#: PR-E: the C1-U2 comparison table's questions.
+TODO_COMPARED = frozenset(C1_QUESTIONS + TODO_HARD_QUESTIONS)
 TMP_ROOT = ROOT / "tmp" / "holmes-evals"
 EVIDENCE_ROOT = ROOT / "docs" / "evidence"
 EVIDENCE_PREFIX = "holmes-evals-"
@@ -264,6 +270,9 @@ class Config:
     worker_settle_seconds: float = 5.0
     loki_mode: Literal["fake", "gateway"] = "fake"
     victorialogs_mode: Literal["fake", "docker"] = "fake"
+    #: PR-E: ``question`` follows each question's ``enable_todo``; ``on``/
+    #: ``off`` force ``OPSPILOT_TODO_WRITE`` for the C1-U2 comparison rounds.
+    todo_mode: Literal["question", "on", "off"] = "question"
     # Filled by prepare_round; never printed or frozen.
     git: dict[str, Any] = field(default_factory=dict)
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
@@ -376,7 +385,11 @@ def product_log_url(cfg: Config, backend: str) -> str:
 
 
 def tool_env(
-    cfg: Config, backend: str = "elasticsearch", *, knowledge: bool = False
+    cfg: Config,
+    backend: str = "elasticsearch",
+    *,
+    knowledge: bool = False,
+    todo: bool = False,
 ) -> dict[str, str]:
     """The tool profile's addresses, the same for web and worker. Only the
     question's own log backend is configured (as upstream's per-question
@@ -400,6 +413,10 @@ def tool_env(
         del env["OPSPILOT_ES_URL"]
     if knowledge:
         env["OPSPILOT_KNOWLEDGE_TOOL"] = "1"
+    if todo:
+        # PR-E: the task list (C1); web and worker both, or the claim is
+        # refused on differing versions.
+        env["OPSPILOT_TODO_WRITE"] = "1"
     return env
 
 
@@ -412,6 +429,7 @@ def web_env(
     backend: str = "elasticsearch",
     knowledge: bool = False,
     import_account: UiAccount | None = None,
+    todo: bool = False,
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
     users = account.users_env()
@@ -420,7 +438,7 @@ def web_env(
         users += "," + import_account.users_env()
     return _strs(
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge)
+        | tool_env(cfg, backend, knowledge=knowledge, todo=todo)
         | {
             "OPSPILOT_WEB_DSN": pg.web_dsn,
             "OPSPILOT_UI_USERS": users,
@@ -444,6 +462,7 @@ def worker_env(
     backend: str = "elasticsearch",
     log_env: Mapping[str, str] | None = None,
     knowledge: bool = False,
+    todo: bool = False,
 ) -> dict[str, str]:
     data_plane: dict[str, str]
     if backend == "kubernetes":
@@ -461,7 +480,7 @@ def worker_env(
         }
     env = (
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge)
+        | tool_env(cfg, backend, knowledge=knowledge, todo=todo)
         | data_plane
         | {
             "OPSPILOT_WORKER_DSN": pg.runtime_dsn,
@@ -660,6 +679,10 @@ class Backends:
     start_port_forward: Callable[..., Started] = start_port_forward
     loki_admin: Callable[[str], LokiAdmin] = LokiAdmin
     namespace_gone: Callable[[str, Mapping[str, str]], bool] = namespace_gone
+    #: PR-E: the namespaces with a prefix, None when kubectl did not answer.
+    namespaces_with_prefix: Callable[[str, Mapping[str, str]], list[str] | None] = (
+        namespaces_with_prefix
+    )
     # PR-D (C2 knowledge fixtures).
     import_runbooks: Callable[..., tuple[list[dict[str, Any]], list[str]]] = (
         knowledge_mod.import_runbooks
@@ -667,6 +690,9 @@ class Backends:
     revoke_runbooks: Callable[..., list[str]] = knowledge_mod.revoke_runbooks
     active_runbooks: Callable[[str, str], list[str]] = knowledge_mod.active_runbooks
     run_catalog: Callable[[str, str], dict[str, Any] | None] = knowledge_mod.run_catalog
+    # PR-E (C1 task list).
+    run_tool_names: Callable[[str, str], list[str]] = task_list.run_tool_names
+    task_list_stats: Callable[[str, str], dict[str, Any]] = task_list.task_list_stats
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     sleep: Callable[[float], None] = time.sleep
 
@@ -715,6 +741,14 @@ def disclosures(
         and k8s_namespace is not None
         and spec.namespace != k8s_namespace
     ):
+        codes.append("K8S_SCOPE_DIFFERS")
+    elif (
+        spec is not None
+        and spec.namespace_prefix is not None
+        and k8s_namespace is not None
+        and not k8s_namespace.startswith(spec.namespace_prefix)
+    ):
+        # PR-E (283): its ``app-283-*`` namespaces, the same rule.
         codes.append("K8S_SCOPE_DIFFERS")
     if qid in KNOWLEDGE_QUESTIONS:
         codes.append("RUNBOOKS_IMPORTED_REVIEWED")
@@ -811,6 +845,14 @@ class Attempt:
         self.log_env: dict[str, str] = {}
         # PR-D: this attempt's knowledge fixtures (C2 questions only).
         self.knowledge = qid in KNOWLEDGE_QUESTIONS
+        # PR-E: this attempt's task-list switch (C1).
+        self.todo, self.todo_source = todo_for(cfg.todo_mode, question)
+        # The ``todo`` summary block: the comparison questions (the main
+        # run's "off" rows come from it) and any attempt with the switch on
+        # or forced; other summaries keep their keys.
+        self.todo_recorded = (
+            self.todo or self.todo_source == "forced" or qid in TODO_COMPARED
+        )
         self._imported: list[dict[str, Any]] = []
         self._owner_dsn: str | None = None
         self._revoked = False
@@ -885,6 +927,17 @@ class Attempt:
                 if self.b.now() >= deadline:
                     break
                 self.b.sleep(2)
+        if gone and self.spec.namespace_prefix is not None:
+            # PR-E (283): every ``app-283-*`` namespace gone; an unanswered
+            # kubectl (None) is not released.
+            env = self._setup_env()
+            while True:
+                left = self.b.namespaces_with_prefix(self.spec.namespace_prefix, env)
+                gone = left == []
+                if gone or self.b.now() >= deadline:
+                    break
+                self.b.sleep(2)
+            state["namespaces_left"] = left
         state["namespace_gone"] = gone
         busy = [p for p in self.spec.host_ports if self.b.port_in_use(p)]
         state["busy_ports"] = busy
@@ -1222,6 +1275,16 @@ class Attempt:
         self.block["disclosures"] = disclosures(
             self.qid, q, shift, k8s_namespace=cfg.k8s.namespace
         )
+        if self.todo:
+            self.block["disclosures"].append("TODO_UPSTREAM_REMINDER_NOT_COPIED")
+        if self.todo_source == "forced":
+            self.block["disclosures"].append("TODO_FORCED")
+        if self.todo_recorded:
+            self.block["todo"] = {
+                "mode": cfg.todo_mode,
+                "enabled": self.todo,
+                "source": self.todo_source,
+            }
         self.block["data_plane"] = self._data_plane()
 
         try:
@@ -1238,6 +1301,7 @@ class Attempt:
             cfg, pg, identities, cfg.account, backend=self.backend,
             knowledge=self.knowledge,
             import_account=cfg.import_account if self.knowledge else None,
+            todo=self.todo,
         )  # fmt: skip
         check_env_isolation(
             wenv, cfg.engineer_key, role="web", backend_addresses=addresses
@@ -1245,6 +1309,7 @@ class Attempt:
         kenv = worker_env(
             cfg, pg, cfg.product_es, cfg.k8s, q.cluster_name, cfg.secrets,
             backend=self.backend, log_env=self.log_env, knowledge=self.knowledge,
+            todo=self.todo,
         )  # fmt: skip
         check_env_isolation(
             kenv, cfg.engineer_key, role="worker", backend_addresses=addresses
@@ -1319,6 +1384,16 @@ class Attempt:
         if not setup_to_delivery_ok(setup_ended, responded):
             raise VoidAttempt("SETUP_TO_DELIVERY_EXCEEDED_AFTER_POST")
         run_id = result.run_id
+        if self.todo or self.todo_source == "forced":
+            # PR-E: the Run input offers TodoWrite exactly when this attempt
+            # switched it on; otherwise the trial measures the wrong product.
+            # (Off by the question: the product default, not read here.)
+            offered = task_list.TOOL in b.run_tool_names(pg.owner_dsn, run_id)
+            self.block["todo"]["offered"] = offered
+            if offered is not self.todo:
+                raise DeterministicError(
+                    "TODO_SWITCH_MISMATCH", f"enabled={self.todo} offered={offered}"
+                )
 
         began = time.monotonic()
         deadline = b.now() + cfg.terminal_wait
@@ -1340,6 +1415,15 @@ class Attempt:
         worker.stop()
 
         run_block, ledger = b.collect(pg.owner_dsn, run_id)
+        versions = run_block.get("versions")
+        versions = versions if isinstance(versions, Mapping) else {}
+        if self.todo_recorded:
+            self.block["todo"].update(
+                prompt_revision=versions.get("prompt_revision"),
+                tool_schema_revision=versions.get("tool_schema_revision"),
+            )
+        if self.todo:
+            self.block["todo"]["stats"] = b.task_list_stats(pg.owner_dsn, run_id)
         if self.knowledge:
             self._check_run_catalog(pg.owner_dsn, run_id)
             self._revoke_knowledge(after_run=True)
@@ -1713,9 +1797,25 @@ class Round:
         return self.cleanup.close()
 
 
+def check_todo_mode(cfg: Config) -> None:
+    """PR-E: a round keeps one ``--todo`` mode; resuming it with another
+    would mix two measures in one round (``TODO_MODE_CHANGED``)."""
+    for path in sorted(cfg.evidence_dir.glob("*/trial-*/summary.json")):
+        summary = _read_json(path)
+        block = summary.get("holmes_eval") if isinstance(summary, Mapping) else None
+        todo = block.get("todo") if isinstance(block, Mapping) else None
+        if not isinstance(block, Mapping):
+            continue
+        # A summary without the block ran with each question's own switch.
+        mode = todo.get("mode") if isinstance(todo, Mapping) else "question"
+        if mode != cfg.todo_mode:
+            raise RoundAbort("TODO_MODE_CHANGED", f"{mode} -> {cfg.todo_mode}")
+
+
 def prepare_round(cfg: Config, backends: Backends, round_: Round) -> None:
     if not _ROUND.match(cfg.round):
         raise RoundAbort("BAD_ROUND", cfg.round)
+    check_todo_mode(cfg)
     try:
         verify_upstream(cfg.upstream)
     except UpstreamMismatch as error:
@@ -1887,6 +1987,12 @@ def _common(parser: argparse.ArgumentParser) -> None:
         "--env-file", type=Path, help="private KEY=value file (never printed)"
     )
     parser.add_argument("--trace", choices=("off", "lab"), default="off")
+    parser.add_argument(
+        "--todo",
+        choices=TODO_MODES,
+        default="question",
+        help="TodoWrite: each question's enable_todo, or forced on/off (C1-U2)",
+    )
     parser.add_argument("--no-judge", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--tmp-root", type=Path, default=TMP_ROOT)
@@ -1906,6 +2012,7 @@ def _config(args: argparse.Namespace) -> Config:
         es_mode=args.es,
         loki_mode=args.loki,
         victorialogs_mode=args.victorialogs,
+        todo_mode=args.todo,
         es_url=args.es_url,
         es_readonly_env=args.es_readonly_env,
         k8s_env_file=args.k8s_env_file,
@@ -2047,6 +2154,7 @@ __all__ = [
     "Ports",
     "Round",
     "check_env_isolation",
+    "check_todo_mode",
     "finish_judging",
     "k8s_from_env_file",
     "load_env_file",
@@ -2056,6 +2164,7 @@ __all__ = [
     "run_trial",
     "seconds_to_wait_for_utc_midnight",
     "setup_to_delivery_ok",
+    "todo_for",
     "tool_env",
     "trial_record",
     "trial_state",
