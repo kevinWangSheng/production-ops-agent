@@ -390,6 +390,9 @@ _FORBIDDEN_FUNCTIONS = frozenset(
         "wait_for_executed_gtid_set",
         "wait_until_sql_thread_after_gtids",
         "txid_current",
+        # run the SQL text they are given
+        "ts_stat",
+        "ts_rewrite",
         "pg_current_xact_id",
         "openrowset",
         "openquery",

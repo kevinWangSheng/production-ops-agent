@@ -617,6 +617,11 @@ def test_mysql_errors_classified_by_number_not_sqlstate(code, sqlstate, kind) ->
         ("postgresql", "SELECT table_to_xmlschema('t', true, true, '')"),
         ("postgresql", "SELECT pg_try_advisory_lock(1)"),
         ("postgresql", "SELECT txid_current()"),
+        ("postgresql", "SELECT * FROM ts_stat('SELECT vector FROM docs')"),
+        (
+            "postgresql",
+            "SELECT ts_rewrite('a & b'::tsquery, 'SELECT t, s FROM aliases')",
+        ),
         ("mysql", "SELECT /*+ MAX_EXECUTION_TIME(999999) */ 1"),
         ("mysql", "SELECT /*+ SET_VAR(sql_mode='') */ 1"),
         ("mysql", "SELECT @a := 1"),
