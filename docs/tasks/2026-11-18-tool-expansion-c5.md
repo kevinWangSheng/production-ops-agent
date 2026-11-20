@@ -60,6 +60,19 @@
 - 只有 400 回显 Loki 的错误文本（截短、脱敏）；401、403、404 只带状态。
 - 扩展档位 revision：无后端 `otel-demo-ext-c63f058afb18`、仅 ES `otel-demo-ext-4f7faf728706` 不变；仅 Loki `otel-demo-ext-dd942a2f1292`，ES 加 Loki `otel-demo-ext-f11fc2ce4d18`（审查修复加入 step 后的值，main `2d13f48a` 实测）。
 
+## 实现决定（C5b，实现者自定，可逆，2026-11-19）
+
+- 凭据与地址规则照 C5a：设了地址必须配凭据（`VICTORIALOGS_CONFIG_MISSING`），两种都配或半对、地址带 userinfo/查询串/片段、无地址却配了其余变量、http 配 CA 报 `VICTORIALOGS_CONFIG_INVALID`；地址可带路径前缀。理由：与 Loki 一致，产品的只读身份就是网关账号（C5-U1）。
+- `AccountID`、`ProjectID` 各自可选、只接受十进制 0 到 2^32−1；只配一个就只发一个头（VictoriaLogs 缺省为 0）。理由：两者在 VictoriaLogs 是独立的头。
+- streams、field_names、field_values 的 `limit` 上限同 query（1–500），field_names 照上游不带 `limit`；hits 不加 `fields_limit`，分组过多由 2 MiB 与 25k 上限整条拒绝。理由：不比上游多参数。
+- 元数据行按 `hits` 降序再按取值排序，截断保留命中最多的；query 行按 `_time` 降序，`_time` 解析不了的行按原序排后。理由：结果确定，便于测试。
+- hits 去掉 `total` 为 0 的序列，全无序列为 `no_data`。理由：空桶不是证据。
+- LogsQL 扫描不把 `#` 当注释、字面量外拒 `'`、未闭合字面量报 `INVALID_QUERY`；禁用词按整词、不分大小写，要搜它们须加引号。理由：fail-closed，避免工具与 VictoriaLogs 对引号或注释理解不一致而漏检。
+- 发请求的 HTTP 读取与期限逻辑抽成 `loki_logs.http_get`，Loki 与 VictoriaLogs 共用，Loki 行为与字节不变（C5-13）。
+- 只读网关：`scripts/loki_readonly_gateway.py` 加 `--backend victorialogs`，不另起脚本；默认 `loki` 渲染的配置逐字节不变（本机对照旧版输出 diff 为空）。VictoriaLogs 网关容器 `opspilot-victorialogs-gateway`、默认端口 53103、状态目录 `tmp/m1-kind-lab/victorialogs-gateway`、设置文件 `tmp/m1-kind-lab/victorialogs-readonly.env`，`start` 支持 `--account-id`/`--project-id`。
+- CI：`log-backends` job 加 `victoriametrics/victoria-logs:v1.54.0`（digest `sha256:ee4e820c…`，2026-11-19 从 Docker Hub 读取）与第二个 nginx 网关容器，新步骤跑 `tests/integration/test_tool_expansion_c5b_victorialogs.py`，子查询探针结果写入 job 日志。
+- 扩展档位 revision（本分支实测）：仅 VictoriaLogs `otel-demo-ext-1616059eb3fa`；ES 加 VictoriaLogs `otel-demo-ext-8be0fd839109`；Loki 加 VictoriaLogs `otel-demo-ext-8d5b08e18df7`；三者都有 `otel-demo-ext-1ada4b9c17db`。不含 VictoriaLogs 的四个值不变。
+
 ## 证据
 
 - 本机：独立作者合同测试 `tests/test_tool_expansion_c5a_contract.py` 113 passed（作者未看实现，对自写替身做 23 处变异全部检出）；B1 合同与 tracing 222 passed；ruff、mypy 干净。全量与真实 Loki 集成测试交 CI（`log-backends`）。

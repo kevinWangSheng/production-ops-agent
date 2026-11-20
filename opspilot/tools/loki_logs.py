@@ -319,53 +319,75 @@ class LokiClient:
         }
         if self._tenant_id is not None:
             headers["X-Scope-OrgID"] = self._tenant_id
-        http_request = urllib.request.Request(url, headers=headers, method="GET")
-        sockets = RequestSockets(_remaining(deadline))
+        return http_get(
+            self._opener,
+            self._deadline_handlers,
+            url,
+            headers,
+            deadline=deadline,
+            max_bytes=max_bytes,
+            thread_name="loki-query",
+        )
 
-        def read() -> _Fetched:
-            self._deadline_handlers.local.sockets = sockets
-            try:
-                try:
-                    with self._opener.open(
-                        http_request, timeout=sockets.remaining()
-                    ) as response:
-                        body = response.read(max_bytes + 1)
-                        status = int(response.status)
-                except urllib.error.HTTPError as error:
-                    with error:
-                        body = error.read(ERROR_BODY_BYTES)
-                    code = int(error.code)
-                    if code >= 500:
-                        raise TransportUnavailable(str(code)) from None
-                    return _Fetched(code, body)
-                if len(body) > max_bytes:
-                    raise TransportResultTooLarge(str(max_bytes))
-                return _Fetched(status, body)
-            finally:
-                del self._deadline_handlers.local.sockets
 
-        future: Future[_Fetched] = Future()
+def http_get(
+    opener: urllib.request.OpenerDirector,
+    deadline_handlers: DeadlineHandlers,
+    url: str,
+    headers: Mapping[str, str],
+    *,
+    deadline: float,
+    max_bytes: int,
+    thread_name: str,
+) -> _Fetched:
+    """One ``GET`` bounded by ``deadline`` (shared by the C5 log backends):
+    5xx is unavailable, another HTTP error its status and at most
+    ``ERROR_BODY_BYTES`` of body, a body over ``max_bytes`` too large."""
+    http_request = urllib.request.Request(url, headers=dict(headers), method="GET")
+    sockets = RequestSockets(_remaining(deadline))
 
-        def run() -> None:
-            try:
-                future.set_result(read())
-            except BaseException as error:
-                future.set_exception(error)
-
-        thread = threading.Thread(target=run, daemon=True, name="loki-query")
+    def read() -> _Fetched:
+        deadline_handlers.local.sockets = sockets
         try:
-            thread.start()
-            return future.result(timeout=sockets.remaining())
-        except TimeoutError:
-            raise TransportTimeout("TIMEOUT") from None
-        except urllib.error.URLError as error:
-            if isinstance(error.reason, TimeoutError):
-                raise TransportTimeout("TIMEOUT") from None
-            raise TransportUnavailable("UNREACHABLE") from None
-        except OSError:
-            raise TransportUnavailable("UNREACHABLE") from None
+            try:
+                with opener.open(http_request, timeout=sockets.remaining()) as response:
+                    body = response.read(max_bytes + 1)
+                    status = int(response.status)
+            except urllib.error.HTTPError as error:
+                with error:
+                    body = error.read(ERROR_BODY_BYTES)
+                code = int(error.code)
+                if code >= 500:
+                    raise TransportUnavailable(str(code)) from None
+                return _Fetched(code, body)
+            if len(body) > max_bytes:
+                raise TransportResultTooLarge(str(max_bytes))
+            return _Fetched(status, body)
         finally:
-            sockets.abort()
+            del deadline_handlers.local.sockets
+
+    future: Future[_Fetched] = Future()
+
+    def run() -> None:
+        try:
+            future.set_result(read())
+        except BaseException as error:
+            future.set_exception(error)
+
+    thread = threading.Thread(target=run, daemon=True, name=thread_name)
+    try:
+        thread.start()
+        return future.result(timeout=sockets.remaining())
+    except TimeoutError:
+        raise TransportTimeout("TIMEOUT") from None
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, TimeoutError):
+            raise TransportTimeout("TIMEOUT") from None
+        raise TransportUnavailable("UNREACHABLE") from None
+    except OSError:
+        raise TransportUnavailable("UNREACHABLE") from None
+    finally:
+        sockets.abort()
 
 
 # -- LogQL checks ------------------------------------------------------------------

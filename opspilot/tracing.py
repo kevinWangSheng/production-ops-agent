@@ -213,6 +213,10 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     loki_url = env.get("OPSPILOT_LOKI_URL") or ""
     if loki_url and not _is_lab_host(loki_url):
         failures.append("LOKI_NOT_LAB")
+    # C5-5: likewise the VictoriaLogs address.
+    victorialogs_url = env.get("OPSPILOT_VICTORIALOGS_URL") or ""
+    if victorialogs_url and not _is_lab_host(victorialogs_url):
+        failures.append("VICTORIALOGS_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
