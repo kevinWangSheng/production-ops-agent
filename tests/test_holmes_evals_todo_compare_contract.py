@@ -31,10 +31,14 @@ Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
   instead would fail.
 * ``run.model_requests_used`` is read from the summary's ``run`` block (the
   synthetic summaries carry the value at ``run`` and ``run.run``).
-* A ``status: missing`` summary carries no ``todo`` block in PR-B's shape,
-  so which row it belongs to is not defined by the interface (reported as a
-  gap); the tests use trials without a summary instead, and judge-exhausted
-  and ``no_report`` trials for "counts 0".
+* Revision r3 (``db616537``): rows are located by round name and qid; a
+  ``status: missing`` trial (no ``todo`` block) counts in that row's
+  ``trials`` and in a ``missing`` column and never passes; the pass rate's
+  denominator is always 3; one round with both switch values for one
+  question is ``TODO_ROW_MIXED``; one (qid, switch) in two rounds is
+  ``TODO_ROW_DUPLICATE``; an expected cell no round produced is a row with
+  ``round`` None and ``trials`` 0. A missing trial's per-trial values are
+  not pinned (the tests drop ``None`` and ``—`` before comparing).
 """
 
 from __future__ import annotations
@@ -117,7 +121,16 @@ def _st(ok: int, refused: int, queries: int, done: int, total: int) -> dict:
     return stats(ok, refused, queries + 100, last)  # not the table's measure
 
 
-def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> None:
+DUP = "c1-todo-off-283-again"
+
+
+def build(
+    root: Path,
+    *,
+    duplicate: bool = False,
+    mixed: bool = False,
+    drop_193_on: bool = False,
+) -> None:
     q = dict(source="question", mode="question")
     # Main round: B1 hard questions off (question), 283 on (question), and
     # an unrelated B1 question that must stay out of the table.
@@ -128,15 +141,18 @@ def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> 
                                     **q))  # fmt: skip
     # A swing trial (4) of 184: never in the table.
     put(root, MAIN, summary(Q184, 4, "pass", enabled=False, **q))
-    # Trial 3 left no summary (see the module docstring on missing trials).
-    for t, kind in ((1, "pass"), (2, "exhausted")):
+    for t, kind in ((1, "pass"), (2, "exhausted"), (3, "missing")):
         put(root, MAIN, summary(Q283, t, kind, enabled=True, requests=30 + t,
                                 st=_st(2, 1, 8 + t, 3, 4), queries=8 + t,
                                 seconds=90.0, **q))  # fmt: skip
     for t in (1, 2, 3):
         put(root, MAIN, summary(Q275, t, "pass", enabled=False, **q))
-    if duplicate:
-        put(root, MAIN, summary(Q283, 1, "pass", enabled=False, **q))
+    if mixed:  # one trial of 185 in the main round ran with the list on
+        put(root, MAIN, summary(Q185, 3, "pass", enabled=True, **q))
+    if duplicate:  # 283 off again in a fourth round
+        for t in (1, 2, 3):
+            put(root, DUP, summary(Q283, t, "fail", enabled=False,
+                                   source="forced", mode="off"))  # fmt: skip
     # 283 off (forced).
     f_off = dict(source="forced", mode="off")
     for t, kind in ((1, "fail"), (2, "fail"), (3, "no_report")):
@@ -147,7 +163,7 @@ def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> 
     for qid in HARD:
         if drop_193_on and qid == Q193:
             continue
-        for t in (1, 2, 3):
+        for t in (1, 2) if qid == Q280 else (1, 2, 3):  # 280: trial 3 never ran
             st = _st(0, 0, 9, 0, 0) if (qid == Q185 and t == 2) else _st(1, 0, 9, 2, 5)
             put(root, ON, summary(qid, t, "pass", enabled=True, st=st, requests=40,
                                   queries=9,
@@ -182,6 +198,10 @@ def values(col: Any) -> list[Any]:
     return list(col["values"])
 
 
+def _done(items: Any) -> list[Any]:
+    return [x for x in items if x is not None and x != "—"]
+
+
 @pytest.fixture
 def table(tmp_path: Path) -> tuple[int, Path]:
     root, out = tmp_path / "evidence", tmp_path / "out"
@@ -210,16 +230,21 @@ def test_rows_by_question_and_switch(table: tuple[int, Path]) -> None:
 def test_passes_follow_trial_record(table: tuple[int, Path]) -> None:
     _, out = table
     rs = rows(out)
-    r = row(rs, Q283, True)  # pass, judge exhausted, no summary
-    assert r["trials"] == 2
+    r = row(rs, Q283, True)  # pass, judge exhausted, missing
+    assert r["trials"] == 3
+    assert r["missing"] == 1
     assert r["passes"] == 1
     assert r["pass_rate"] == pytest.approx(1 / 3)
     r = row(rs, Q283, False)  # fail, fail, no_report
     assert (r["trials"], r["passes"], r["pass_rate"]) == (3, 0, 0)
+    assert r["missing"] == 0
     r = row(rs, Q184, False)  # pass, fail, pass; trial 4 ignored
     assert (r["trials"], r["passes"]) == (3, 2)
     assert r["pass_rate"] == pytest.approx(2 / 3)
     assert row(rs, Q185, True)["passes"] == 3
+    r = row(rs, Q280, True)  # two summaries, both pass: the rate is still /3
+    assert (r["trials"], r["passes"]) == (2, 2)
+    assert r["pass_rate"] == pytest.approx(2 / 3)
 
 
 def test_per_trial_measures(table: tuple[int, Path]) -> None:
@@ -235,11 +260,11 @@ def test_per_trial_measures(table: tuple[int, Path]) -> None:
     assert r["trials_with_todo"] == 0
     assert list(r["last_completed"]) == ["—", "—", "—"]
     on283 = row(rs, Q283, True)
-    assert values(on283["model_requests"]) == [31, 32]
-    assert values(on283["queries"]) == [9, 10]
+    assert _done(values(on283["model_requests"])) == [31, 32]
+    assert _done(values(on283["queries"])) == [9, 10]
     assert (on283["todo_calls_ok"], on283["todo_calls_refused"]) == (4, 2)
     assert on283["trials_with_todo"] == 2
-    assert list(on283["last_completed"]) == ["3/4", "3/4"]
+    assert _done(on283["last_completed"]) == ["3/4", "3/4"]
     r185 = row(rs, Q185, True)
     assert r185["trials_with_todo"] == 2
     assert r185["todo_calls_ok"] == 2
@@ -251,6 +276,7 @@ def test_missing_row_is_written_with_zero_trials(tmp_path: Path) -> None:
     build(root, drop_193_on=True)
     assert run(root, out) == 0
     r = row(rows(out), Q193, True)
+    assert r["round"] is None
     assert r["trials"] == 0
     assert r["passes"] == 0
     assert r["pass_rate"] == 0
@@ -260,11 +286,24 @@ def test_row_in_two_rounds_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root, out = tmp_path / "evidence", tmp_path / "out"
-    build(root, duplicate=True)  # 283 off in the main round and in OFF
-    code = run(root, out)
+    build(root, duplicate=True)  # 283 off in OFF and in DUP
+    code = run(root, out, f"{MAIN},{OFF},{ON},{DUP}")
     captured = capsys.readouterr()
     assert code != 0
     assert "TODO_ROW_DUPLICATE" in captured.out + captured.err
+    # Without the fourth round the same files make a table.
+    assert run(root, tmp_path / "ok") == 0
+
+
+def test_mixed_switch_in_one_round_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, out = tmp_path / "evidence", tmp_path / "out"
+    build(root, mixed=True)
+    code = run(root, out)
+    captured = capsys.readouterr()
+    assert code != 0
+    assert "TODO_ROW_MIXED" in captured.out + captured.err
 
 
 def test_json_and_md_hold_the_same_rows(table: tuple[int, Path]) -> None:
@@ -287,7 +326,8 @@ def test_no_threshold_all_failing_still_exits_zero(tmp_path: Path) -> None:
     assert run(root, out, MAIN) == 0
     rs = rows(out)
     assert all(r["passes"] == 0 for r in rs)
-    assert row(rs, Q280, True)["trials"] == 0  # not run anywhere
+    empty = row(rs, Q280, True)  # not run anywhere
+    assert empty["trials"] == 0 and empty["round"] is None
 
 
 def test_module_entry_point(tmp_path: Path) -> None:

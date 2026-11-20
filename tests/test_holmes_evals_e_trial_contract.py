@@ -28,10 +28,14 @@ Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
 * Revision r2 (lead, 2026-11-20): ``run_tool_names`` is read only when the
   pass is enabled or forced, ``task_list_stats`` only when enabled; the
   ``todo`` block always has ``mode``/``enabled``/``source``/
-  ``prompt_revision``/``tool_schema_revision`` (from the collected run
-  block's ``run.versions``, None when absent), ``offered`` only when checked
-  and ``stats`` only when enabled. The harness puts a decoy at the block's
-  top-level ``versions`` so reading that instead fails.
+  ``prompt_revision``/``tool_schema_revision`` (from ``collect``'s run
+  block ``versions``, None when absent), ``offered`` only when checked and
+  ``stats`` only when enabled. Revision r3 (``db616537``): the block is
+  written only for ``C1_QUESTIONS + TODO_HARD_QUESTIONS`` and for enabled or
+  forced passes; other questions' summaries are unchanged; an earlier
+  summary without the block counts as ``question`` for
+  ``TODO_MODE_CHANGED``. The harness puts a decoy at ``run.versions`` (the
+  DB row's nested dict) so reading that instead fails.
 * ``setup.released`` keeps PR-C's ``{"before": {...}, "after": {...}}``
   shape for 283 and each side gains ``namespaces_left``.
 * ``TODO_SWITCH_MISMATCH`` is seen through ``run_question`` (deterministic
@@ -142,14 +146,13 @@ class TodoHarness(C2Harness):
     def collect(self, dsn: str, run_id: str) -> tuple[dict, dict]:
         block, ledger = super().collect(dsn, run_id)
         block = dict(block)
-        block["versions"] = {
-            "prompt_revision": "decoy",
-            "tool_schema_revision": "decoy",
-        }
-        run = dict(block.get("run") or {})
+        block.pop("versions", None)
         if self.versions is not None:
-            run["versions"] = dict(self.versions)
-        block["run"] = run
+            block["versions"] = dict(self.versions)
+        block["run"] = dict(
+            block.get("run") or {},
+            versions={"prompt_revision": "decoy", "tool_schema_revision": "decoy"},
+        )
         return block, ledger
 
     def backends(self) -> Any:
@@ -341,7 +344,9 @@ def test_283_forced_on(world) -> None:
 # -- B1 under the switch -------------------------------------------------------------------
 
 
-def test_b1_default_gains_only_the_todo_block(world) -> None:
+def test_b1_default_summary_unchanged(world) -> None:
+    """275 is not one of the five compared questions: off by the question,
+    no todo block, no new key, no PG read for the switch."""
     driver = mod("driver")
     h, cfg = world((Q275,))
     _seed_275(h)
@@ -351,26 +356,40 @@ def test_b1_default_gains_only_the_todo_block(world) -> None:
     assert h.nwp_calls == []  # no prefix for a B1 question
     summary, _ = _summary(cfg, Q275)
     he = summary["holmes_eval"]
-    assert set(he) == SUMMARY_KEYS | {"shift_timing", "data_plane", "todo"}
+    assert set(he) == SUMMARY_KEYS | {"shift_timing", "data_plane"}
     assert set(he["disclosures"]) <= DISCLOSURES
     assert "released" not in he["setup"]
-    t = he["todo"]
-    assert t == {
-        "mode": "question",
-        "enabled": False,
-        "source": "question",
-        "prompt_revision": VERSIONS["prompt_revision"],
-        "tool_schema_revision": VERSIONS["tool_schema_revision"],
-    }
     # Off by the question: no PG read for the switch (existing harnesses
     # need no new seam).
     assert "run_tool_names" not in h.events
     assert "task_list_stats" not in h.events
 
 
+def test_compared_question_off_by_question_gets_the_short_block(world) -> None:
+    """A compared question (283 here, with ``enable_todo`` false) gets the
+    five-key block, unchecked and without stats."""
+    driver = mod("driver")
+    h, cfg = world((Q283,))
+    write_283(Path(cfg.upstream), expected=EXPECTED_SENTINEL, enable_todo=False)
+    record = driver.run_trial(cfg, h.backends(), Q283, _load(cfg, Q283), 1)
+    assert record["status"] == "completed", record
+    assert _todo_envs(h) == (None, None)
+    he = _summary(cfg, Q283)[0]["holmes_eval"]
+    assert he["todo"] == {
+        "mode": "question",
+        "enabled": False,
+        "source": "question",
+        "prompt_revision": VERSIONS["prompt_revision"],
+        "tool_schema_revision": VERSIONS["tool_schema_revision"],
+    }
+    assert "run_tool_names" not in h.events
+    assert "task_list_stats" not in h.events
+    assert REMINDER not in he["disclosures"] and FORCED not in he["disclosures"]
+
+
 def test_versions_absent_are_none(world) -> None:
     driver = mod("driver")
-    h, cfg = world((Q275,))
+    h, cfg = world((Q275,), todo_mode="on")
     _seed_275(h)
     h.versions = None
     record = driver.run_trial(cfg, h.backends(), Q275, _load(cfg, Q275), 1)
@@ -526,6 +545,20 @@ def test_resuming_a_round_under_another_mode_aborts(world) -> None:
     world((Q283,), todo_mode="off")
 
 
+def test_summary_without_block_counts_as_question_mode(world) -> None:
+    driver = mod("driver")
+    h, cfg = world((Q275,))
+    _seed_275(h)
+    record = driver.run_trial(cfg, h.backends(), Q275, _load(cfg, Q275), 1)
+    assert record["status"] == "completed", record
+    assert "todo" not in _summary(cfg, Q275)[0]["holmes_eval"]
+    for other in ("on", "off"):
+        with pytest.raises(driver.RoundAbort) as caught:
+            world((Q275,), todo_mode=other)
+        assert caught.value.code == "TODO_MODE_CHANGED", other
+    world((Q275,), todo_mode="question")
+
+
 def test_off_by_question_is_not_checked(world) -> None:
     """Revision r2: an off-by-question pass never reads the Run's tools, so
     an offered TodoWrite there is not seen (and not a mismatch)."""
@@ -536,4 +569,4 @@ def test_off_by_question_is_not_checked(world) -> None:
     record = driver.run_trial(cfg, h.backends(), Q275, _load(cfg, Q275), 1)
     assert record["status"] == "completed", record
     assert "run_tool_names" not in h.events
-    assert "offered" not in _summary(cfg, Q275)[0]["holmes_eval"]["todo"]
+    assert "todo" not in _summary(cfg, Q275)[0]["holmes_eval"]

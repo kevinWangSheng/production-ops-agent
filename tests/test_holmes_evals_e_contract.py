@@ -82,6 +82,8 @@ def test_c1_lists_and_groups() -> None:
     assert len(set(q.ALL_QUESTIONS)) == len(q.ALL_QUESTIONS)
     assert tuple(q.QUESTION_GROUPS["c1"]) == C1_ALL
     assert tuple(q.QUESTION_GROUPS["todo-hard"]) == HARD
+    # Revision r3: the five compared questions.
+    assert tuple(mod("driver").TODO_COMPARED) == C1_ALL + HARD
     # Existing groups unchanged.
     assert tuple(q.QUESTION_GROUPS["c5"]) == C5_ALL
     assert tuple(q.QUESTION_GROUPS["c2"]) == C2_ALL
