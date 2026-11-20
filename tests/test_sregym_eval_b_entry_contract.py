@@ -769,3 +769,44 @@ def test_product_start_failure_still_submits_empty_and_exits_4(make) -> None:  #
     assert _submits(s) == [{"stage": "diagnosis", "solution": ""}]
     assert s.harness.intake_calls == []
     assert _record(s)["exit_code"] == 4
+
+
+# --- clarifications (interface 0045f5ec and lead notes) ----------------------------------------------
+
+
+@pytest.mark.parametrize("which", ["secrets_file", "loki_env_file"])
+def test_unreadable_secret_files_exit_4_and_submit_empty(make, which: str) -> None:  # noqa: ANN001
+    s = make()
+    Path(getattr(s.job, which)).unlink()
+    s.harness.fake.advance("diagnosis")
+    assert _run(s) == 4
+    assert _submits(s) == [{"stage": "diagnosis", "solution": ""}]
+    rec = _record(s)
+    assert rec["exit_code"] == 4
+    assert "ENTRY_FILES_UNREADABLE" in json.dumps(rec)
+
+
+def test_unexpected_crash_exits_4_and_submits_empty(make) -> None:  # noqa: ANN001
+    s = make()
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise KeyError("unexpected")
+
+    s.harness.start_pg = boom  # type: ignore[method-assign]
+    s.harness.fake.advance("diagnosis")
+    assert _run(s) == 4
+    assert _submits(s) == [{"stage": "diagnosis", "solution": ""}]
+    rec = _record(s)
+    assert rec["exit_code"] == 4
+    assert "ENTRY_CRASHED:KeyError" in json.dumps(rec)
+
+
+def test_unknown_remaining_seconds_counts_as_1800(make) -> None:  # noqa: ANN001
+    s = make()
+    s.harness.states = ["running"]
+    s.harness.fake.remaining_s = None
+    s.harness.fake.advance("diagnosis")
+    assert _run(s) == 0
+    (at,) = s.harness.submit_at
+    deadline = MONO0 + 1800 - 120
+    assert deadline <= at <= deadline + 30

@@ -735,3 +735,13 @@ def test_trial_outcome_shape(rnd: Round) -> None:
     assert out.problem_id == PID and out.trial == 1
     assert out.status in ("completed", "missing")
     assert out.category == "env_broken"
+
+
+def test_loki_gateway_is_started_on_29532_over_the_forward_and_recorded(
+    rnd: Round,
+) -> None:
+    rnd.prepare()
+    rnd.trial(1)
+    assert rnd.fake.gateway == ("loki", 29532, "127.0.0.1:29531")
+    plane = json.dumps(rnd.summary(1)["sregym_eval"]["data_plane"])
+    assert "29532" in plane and "127.0.0.1:29531" in plane
