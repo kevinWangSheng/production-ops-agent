@@ -646,13 +646,20 @@ def test_all_eight_backend_sets_have_distinct_revisions_in_a_fixed_order():
 
 def test_new_constants_name_the_victorialogs_only_face():
     from opspilot.tools.otel_demo_ext import (
+        LOKI_TOOL_NAMES,
         VICTORIALOGS_TOOL_NAMES,
         VICTORIALOGS_TOOL_SCHEMA_REVISION,
         tool_schema_revision,
     )
 
-    assert sorted(VICTORIALOGS_TOOL_NAMES) == sorted(TOOLS)
-    assert len(VICTORIALOGS_TOOL_NAMES) == 5
+    # Lead ruling (PR #731): like ES_TOOL_NAMES / LOKI_TOOL_NAMES, the names
+    # of the whole face with only VictoriaLogs configured -- the base tools
+    # plus the five, no Elasticsearch or Loki tool.
+    names = list(VICTORIALOGS_TOOL_NAMES)
+    assert len(names) == len(set(names))
+    base = set(LOKI_TOOL_NAMES) - {"grafana_loki_query"}
+    assert set(names) == base | set(TOOLS)
+    assert not any(n.startswith(("elasticsearch_", "grafana_loki")) for n in names)
     assert VICTORIALOGS_TOOL_SCHEMA_REVISION == tool_schema_revision(victorialogs=True)
     assert (
         select_profile(_web(vlogs=True)).versions()["tool_schema_revision"]

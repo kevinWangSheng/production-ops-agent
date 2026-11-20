@@ -184,7 +184,8 @@ def _insert(
 
 
 def _flush() -> None:
-    status, text = _http("GET", f"{VLOGS_DIRECT}/internal/force_flush")
+    # Engineer side, VictoriaLogs' own port: v1.54 accepts only POST here.
+    status, text = _http("POST", f"{VLOGS_DIRECT}/internal/force_flush", b"")
     assert status == 200, (status, text[:300])
 
 
