@@ -511,3 +511,30 @@ def test_profile_and_lab_gate(fake) -> None:
         {mq.URL_ENV: "mongodb://db.example.com"}
     )
     assert "MONGODB_NOT_LAB" not in check_lab_target({mq.URL_ENV: URL})
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": {"$where": "1"}, "a": 1}',
+        '{"$WHERE": "1"}',
+        '{"a": {"$Code": "x"}}',
+    ],
+)
+def test_rulings_refuse(text: str) -> None:
+    problem = mq.query_problem(text)
+    assert problem is not None and problem.split(":")[0] in (
+        "INVALID_JSON",
+        "QUERY_CONSTRUCT_NOT_ALLOWED",
+    ), problem
+
+
+def test_rulings_pipeline_case_and_depth() -> None:
+    assert (mq.pipeline_problem('[{"$OUT": "x"}]') or "").startswith(
+        "QUERY_CONSTRUCT_NOT_ALLOWED"
+    )
+    twenty = '{"a": ' * 20 + "1" + "}" * 20
+    assert mq.query_problem(twenty) is None
+    forty = '{"a": ' * 40 + "1" + "}" * 40
+    assert (mq.query_problem(forty) or "").startswith("INVALID_QUERY")

@@ -273,6 +273,8 @@ class MongoConfig:
 _FORBIDDEN_KEYS = frozenset(
     {"$where", "$function", "$accumulator", "$code", "$out", "$merge"}
 )
+#: compared case-insensitively (``$WHERE``, ``$Out``), fail-closed
+_FORBIDDEN_KEYS_LOWER = frozenset(key.lower() for key in _FORBIDDEN_KEYS)
 _ALLOWED_STAGES = frozenset(
     {
         "$match",
@@ -321,6 +323,21 @@ def _parse(text: object, what: str) -> Any:
         )
     from bson import json_util
 
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _ in pairs]
+        if len(set(keys)) != len(keys):
+            raise _Reject("INVALID_JSON", f"{what} repeats a key")
+        return dict(pairs)
+
+    try:
+        # plain JSON first: repeated keys are refused, and operators such as
+        # $code are seen as keys before json_util turns them into values
+        plain = json.loads(text, object_pairs_hook=unique)
+    except _Reject:
+        raise
+    except (ValueError, RecursionError):
+        raise _Reject("INVALID_JSON", f"{what} is not valid JSON") from None
+    _walk(plain)
     try:
         return json_util.loads(text, json_options=json_util.RELAXED_JSON_OPTIONS)
     except (ValueError, TypeError) as error:
@@ -339,7 +356,7 @@ def _walk(value: Any, depth: int = 0) -> None:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise _Reject("INVALID_QUERY", "a key that is not a string")
-            if key in _FORBIDDEN_KEYS:
+            if key.lower() in _FORBIDDEN_KEYS_LOWER:
                 raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", key)
             _walk(item, depth + 1)
     elif isinstance(value, (list, tuple)):
@@ -551,6 +568,7 @@ class _PyMongoConnection:
             "retryReads": False,
             "retryWrites": False,
             "appname": _APPLICATION_NAME,
+            "readPreference": "secondaryPreferred",
             "serverSelectionTimeoutMS": select_ms,
             "connectTimeoutMS": select_ms,
             "socketTimeoutMS": ms,
@@ -1093,6 +1111,7 @@ class MongoTransport:
                 "listCollections": 1,
                 "nameOnly": True,
                 "authorizedCollections": True,
+                "maxTimeMS": max_time_ms(),
                 "comment": self._comment(),
             },
         )
@@ -1194,7 +1213,10 @@ class MongoTransport:
         max_time_ms: Callable[[], int],
         sections: list[str],
     ) -> TransportResponse:
-        status = conn.command("admin", {"serverStatus": 1, "comment": self._comment()})
+        status = conn.command(
+            "admin",
+            {"serverStatus": 1, "maxTimeMS": max_time_ms(), "comment": self._comment()},
+        )
         row: dict[str, Any] = {
             "host": status.get("host"),
             "version": status.get("version"),

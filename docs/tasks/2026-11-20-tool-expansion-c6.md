@@ -275,6 +275,16 @@
 - `mongodb_current_op` 返回其他会话的操作与查询文本，`may_contain_secrets=True`（六个工具都是），按字段名走现有脱敏；B/C 记录的新数据源登记写明。
 - relaxed 扩展 JSON 里的 `{"$code": …}` 会被解析成 JavaScript 代码值，内容检查按值类型同样拒绝。
 
+### 裁决补充（C6c，lead 2026-11-20，测试作者提问后）
+
+- JSON 里重复的键拒绝（`INVALID_JSON`）：先用普通 JSON 解析一遍检查重复键与禁用键，再用 `bson.json_util` 解析成值。所以 `{"$code": …}` 在变成代码值之前就按键被拒。
+- 嵌套深度：顶层为 0，对象或数组每进一层加 1，超过 30 层报 `INVALID_QUERY`（20 层放行、40 层拒）。
+- 禁用运算符不分大小写比较（`$WHERE`、`$Out` 同样拒）；阶段白名单本来就只认原样拼写，大小写不对的阶段名不在白名单里，也被拒。
+- `account_problem` 收整个 `connectionStatus` 应答。
+- 每条工具命令都带 `maxTimeMS`，只有 `listIndexes` 与 `killCursors` 不带（`listCollections`、`serverStatus` 带）；`readPreference=secondaryPreferred` 设在客户端上。
+- 连不上的端口：`serverSelectionTimeoutMS`、`connectTimeoutMS` 取「剩余期限减 2 秒」与 10 秒的较小者，在期限前报 `SOURCE_UNAVAILABLE`。
+- admin 库 profiler 不可用时，测试跳过那一段并记录，可以接受。
+
 ### 交给 #669
 
 - 229、230：题目自带 `holmes` 是 root，会被 C6-U1 拒；评测脚本用 `kubectl exec … mongosh` 按 C6-21 建只读账号，`OPSPILOT_MONGODB_URL=mongodb://127.0.0.1:10227`（230 为 10228）、`OPSPILOT_MONGODB_DATABASE=shopdb`（230 为 `opsdb`）、`AUTH_SOURCE=admin`、`TLS=disable`。
