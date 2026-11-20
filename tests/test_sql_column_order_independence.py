@@ -11,10 +11,17 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "opspilot"
+#: C6a (#570): the read-only SQL tool queries the database under
+#: investigation, never OpsPilot's own schema; it must keep result columns in
+#: order and by position (duplicate names such as ``SELECT id, id``), so this
+#: guard of OpsPilot's own tables does not apply to it.
+EXTERNAL_DATABASE_TOOLS = {ROOT / "tools" / "sql_query.py"}
 SOURCES = [
     path
     for path in ROOT.rglob("*.py")
-    if "migrations" not in path.parts and path.name != "schema.py"
+    if "migrations" not in path.parts
+    and path.name != "schema.py"
+    and path not in EXTERNAL_DATABASE_TOOLS
 ]
 
 INSERT_WITHOUT_COLUMNS = re.compile(
