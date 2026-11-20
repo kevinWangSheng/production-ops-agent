@@ -967,6 +967,8 @@ jobs:
           C6_MARIADB_ADMIN_USER: root
           C6_ADMIN_PASSWORD: changeme570
           C6_PG_CONTAINER: c6-postgres
+          C6_MYSQL_CONTAINER: c6-mysql
+          C6_MARIADB_CONTAINER: c6-mariadb
         run: |
           jq --version
           files=""
