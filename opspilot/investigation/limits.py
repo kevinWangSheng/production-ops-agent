@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Any
 
-from opspilot.tools.executor import MAX_OPERATIONS_PER_RUN, MAX_TOOL_SECONDS_PER_RUN
 from opspilot.tools.registry import MAX_REQUEST_TIMEOUT_SECONDS, MAX_RESULT_BYTES
 
 # Per-Run model HTTP requests, including the reserved final-report request.
@@ -101,7 +100,7 @@ class RunLimits:
     logical rounds than the frozen value allows. The product boundary (the
     runner that admits a Run) must refuse any instance that is not
     ``within(M1_FROZEN_LIMITS)``; raising the freeze remains a user decision.
-    Tool ceilings stay on the tool gateway scope and are not repeated here.
+    Per-call tool ceilings stay on the tool registry and are not repeated here.
     """
 
     model_requests: int = MAX_MODEL_REQUESTS_PER_RUN
@@ -151,7 +150,6 @@ class RunLimits:
 M1_FROZEN_LIMITS = RunLimits()
 
 # Re-exported so tests and callers do not have to remember two modules.
-MAX_TOOL_OPERATIONS_PER_RUN = MAX_OPERATIONS_PER_RUN
 MAX_TOOL_TIMEOUT_SECONDS = MAX_REQUEST_TIMEOUT_SECONDS
 MAX_TOOL_RESULT_BYTES = MAX_RESULT_BYTES
 
@@ -163,9 +161,7 @@ __all__ = [
     "MAX_HTTP_RESPONSE_BYTES",
     "MAX_MODEL_REQUESTS_PER_RUN",
     "MAX_OUTPUT_TOKENS",
-    "MAX_TOOL_OPERATIONS_PER_RUN",
     "MAX_TOOL_RESULT_BYTES",
-    "MAX_TOOL_SECONDS_PER_RUN",
     "MAX_TOOL_TIMEOUT_SECONDS",
     "MODEL_REQUEST_TIMEOUT_SECONDS",
     "RUN_WALL_SECONDS",

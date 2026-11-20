@@ -67,9 +67,7 @@ from .tokens import TokenCounter, default_counter
 __all__ = [
     "EVIDENCE_SOURCE",
     "EVIDENCE_TOOL",
-    "MAX_OPERATIONS_PER_RUN",
     "MAX_SOURCE_ERROR_CHARS",
-    "MAX_TOOL_SECONDS_PER_RUN",
     "ControlAuthority",
     "OverflowSummary",
     "ControlSnapshot",
@@ -89,12 +87,6 @@ __all__ = [
     "TransportTimeout",
     "TransportUnavailable",
 ]
-
-# Frozen M1-01 per-Run ceilings (acceptance packet
-# docs/testing/first-investigation-v4-2026-09-10.md, user approved 2026-09-13):
-# at most 20 tool calls per Run and 240 s of cumulative tool wall time.
-MAX_OPERATIONS_PER_RUN = 20
-MAX_TOOL_SECONDS_PER_RUN = 240.0
 
 # #308 contract r1, U2: an over-limit view's redacted raw body is kept as
 # un-adopted evidence, at most 16 records or 16 MiB of raw per Run, whichever
@@ -216,7 +208,7 @@ class ControlSnapshot:
     # 解除暂停后「新尝试使用当前所有控制版本」，旧授权不自动恢复（bot review 发现）。
     # 必填，不给默认值：默认 0 会让一个尚未填这两个字段的 controller 适配器在
     # 「全局/目标暂停后又解除」时与旧 scope 恰好相等而悄悄放行——正是这两个字段
-    # 要挡住的那条路径。与 max_operations / dispatch_id 同一理由：不完整的接线
+    # 要挡住的那条路径。与 dispatch_id 同一理由：不完整的接线
     # 必须 fail closed（bot review 发现）。
     global_suspension_generation: int
     target_suspension_generation: int
@@ -259,8 +251,6 @@ class QueryScope:
     tool_names: frozenset[str]
     window: Window
     deadline: datetime
-    max_operations: int = MAX_OPERATIONS_PER_RUN
-    max_tool_seconds: float = MAX_TOOL_SECONDS_PER_RUN
     # M1-04 J4: the query window a call that names none reads, inside
     # ``window`` (an alert Run's anchored hour onward). ``None`` leaves the
     # transport's own default. A default, never an authorization.
@@ -301,23 +291,6 @@ class QueryScope:
             or self.deadline.utcoffset() is None
         ):
             raise ToolContractError("INVALID_DEADLINE")
-        # M1-01 (2026-09-28 user decision, L2): these two fields are no
-        # longer a ceiling the executor or the durable ledger enforces (see
-        # ``ReadOnlyToolExecutor._reserve()`` and
-        # ``opspilot.persistence.DurableStore.charge_tool``) -- only basic
-        # positivity is worth checking here now, not an upper bound tied to
-        # the old frozen constants, which would otherwise fail-closed refuse
-        # a value that is not actually a ceiling violation of anything.
-        if type(self.max_operations) is not int or self.max_operations < 1:
-            raise ToolContractError("OPERATION_BUDGET_OUT_OF_RANGE")
-        seconds = self.max_tool_seconds
-        if (
-            type(seconds) not in (int, float)
-            or seconds != seconds  # NaN
-            or seconds in (float("inf"), float("-inf"))
-            or seconds <= 0
-        ):
-            raise ToolContractError("TIME_BUDGET_OUT_OF_RANGE")
         for names in (self.target_ids, self.tool_names):
             if not isinstance(names, frozenset) or any(
                 not isinstance(name, str) or not name for name in names
@@ -847,10 +820,8 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", decision)
         # M1-01 (2026-09-28 user decision, docs/tasks/2026-09-28-m1-01-loop-limits.md
         # L2): no per-Run ceiling on operation count or cumulative tool time --
-        # the loop's single anti-loop ceiling is the model-request count (L1).
-        # ``scope.max_operations``/``scope.max_tool_seconds`` still bound what a
-        # ``QueryScope`` may declare (__post_init__), but this method no longer
-        # refuses a dispatch on either one. The per-call timeout, result-byte
+        # the loop's single anti-loop ceiling is the model-request count (L1);
+        # the ledger only accumulates both. The per-call timeout, result-byte
         # ceiling and view truncation are untouched (they guard one call, not
         # investigation length).
         #

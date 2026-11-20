@@ -75,8 +75,6 @@ from opspilot.tools.evidence_read import (
     RoutedTransport,
 )
 from opspilot.tools.executor import (
-    MAX_OPERATIONS_PER_RUN,
-    MAX_TOOL_SECONDS_PER_RUN,
     Clock,
     EvidenceSink,
     QueryScope,
@@ -478,12 +476,7 @@ def otel_demo_ext_executor_factory(
             evidence=evidence,
             control=control,
             clock=clock,
-            ledger=DurableToolLedger(
-                store,
-                lease,
-                max_operations=MAX_OPERATIONS_PER_RUN,
-                max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
-            ),
+            ledger=DurableToolLedger(store, lease),
             token_counter=counter,
             overflow_summary=_overflow_summary,
         )
