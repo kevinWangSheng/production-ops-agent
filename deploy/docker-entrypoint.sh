@@ -41,7 +41,8 @@ trim() {
 # knowledge tool switch OPSPILOT_KNOWLEDGE_TOOL (C2b, #566), and the task list
 # switch OPSPILOT_TODO_WRITE (C1, #565), and the SQL address and sql-ro
 # credential OPSPILOT_SQL_* (C6a, #570), and the Kafka address and kafka-ro
-# settings OPSPILOT_KAFKA_* (C3, #567); export those and
+# settings OPSPILOT_KAFKA_* (C3, #567), and the Helm release switch
+# OPSPILOT_HELM_RELEASES (B4, #563); export those and
 # nothing else (worker_main reads the model and
 # LangSmith keys from the file itself). Same reading as worker_main._read_env_file: per KEY, the first
 # KEY=value line wins; line and value are stripped and one pair of matching
@@ -64,7 +65,7 @@ if [ -n "$env_file" ]; then
                 LANGSMITH_ENDPOINT | LANGSMITH_WORKSPACE_ID) ;;
             OPSPILOT_K8S_* | OPSPILOT_ES_* | OPSPILOT_LOKI_* | OPSPILOT_VICTORIALOGS_* | \
                 OPSPILOT_SQL_* | OPSPILOT_KAFKA_* | OPSPILOT_KNOWLEDGE_TOOL | \
-                OPSPILOT_TODO_WRITE)
+                OPSPILOT_TODO_WRITE | OPSPILOT_HELM_RELEASES)
                 # a name, never shell text: it reaches eval below
                 case "$name" in *[!A-Z0-9_]*) continue ;; esac
                 ;;

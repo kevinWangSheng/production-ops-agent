@@ -212,9 +212,16 @@ def _q(value: str | None) -> str:
     return urllib.parse.quote(value or "undiscovered", safe="")
 
 
-def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
+def rows(
+    namespace: str, found: dict[str, str | None], *, helm_overlay: bool = False
+) -> list[dict[str, Any]]:
     """The probe table: ``name``, ``method``, ``path``, ``expected`` and,
-    for some, request ``headers`` and a JSON ``body``."""
+    for some, request ``headers`` and a JSON ``body``.
+
+    ``helm_overlay`` (B4-4, #563): the identity also has the Helm overlay
+    ClusterRole (``secrets`` ``list`` only), so the three Secret lists are
+    expected to answer 200 -- the residual risk, recorded as a status only --
+    while getting one Secret and watching Secrets stay 403."""
     ns = _q(namespace)
     pod = f"/api/v1/namespaces/kube-system/pods/{_q(found['pod'])}"
     log_query = "?tailLines=1" + (
@@ -242,19 +249,36 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
         ("list pods.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/pods"),
         ("list nodes.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/nodes"),
     ]
+    secret_lists = [
+        ("list secrets, all namespaces", "GET", "/api/v1/secrets"),
+        ("list kube-system secrets", "GET", "/api/v1/namespaces/kube-system/secrets"),
+        ("list app secrets", "GET", f"/api/v1/namespaces/{ns}/secrets"),
+    ]
+    if helm_overlay:
+        allowed = [*allowed, *secret_lists]
     table: list[dict[str, Any]] = [
         {"name": n, "method": m, "path": p, "expected": 200} for n, m, p in allowed
     ]
     denied: list[tuple[str, str, str, dict[str, str], Any]] = [
-        ("list secrets, all namespaces", "GET", "/api/v1/secrets", {}, None),
-        (
-            "list kube-system secrets",
-            "GET",
-            "/api/v1/namespaces/kube-system/secrets",
-            {},
-            None,
+        *(
+            []
+            if helm_overlay
+            else [(name, method, path, {}, None) for name, method, path in secret_lists]
         ),
-        ("list app secrets", "GET", f"/api/v1/namespaces/{ns}/secrets", {}, None),
+        *(
+            [
+                (
+                    "get one kube-system secret",
+                    "GET",
+                    "/api/v1/namespaces/kube-system/secrets/bootstrap-token-probe",
+                    {},
+                    None,
+                ),
+                ("watch secrets", "GET", "/api/v1/secrets?watch=true", {}, None),
+            ]
+            if helm_overlay
+            else []
+        ),
         ("watch pods", "GET", "/api/v1/pods?watch=true", {}, None),
         (
             "exec (GET)",
@@ -496,6 +520,7 @@ def probe(
     namespace: str = DEFAULT_NAMESPACE,
     known_secrets: list[str] | tuple[str, ...] = (),
     known: list[str] | tuple[str, ...] = (),
+    helm_overlay: bool = False,
 ) -> dict[str, Any]:
     """The probe table and the ConfigMap search, through ``request``; the
     report's ``ok`` also needs known lab secret values to have been given.
@@ -506,7 +531,7 @@ def probe(
     needles = [auth.removeprefix("Bearer "), *known]
     found = discover(send)
     results = []
-    for row in rows(namespace, found):
+    for row in rows(namespace, found, helm_overlay=helm_overlay):
         status = _send_row(send, row)
         expected = row["expected"]
         accepted = expected if isinstance(expected, list) else [expected]
@@ -569,6 +594,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out-dir", type=Path, help="write probe.json and rules.json here"
     )
+    parser.add_argument(
+        "--expect-helm-overlay",
+        action="store_true",
+        help="the Helm overlay ClusterRole is applied (B4): expect the Secret "
+        "lists to answer 200 (status only; bodies are discarded) and getting "
+        "or watching a Secret to stay 403",
+    )
     args = parser.parse_args(argv)
     try:
         env = read_env(args.env_file)
@@ -578,7 +610,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     token = env["OPSPILOT_K8S_TOKEN"]
     report = probe(
-        env_file=args.env_file, namespace=args.namespace, known_secrets=known
+        env_file=args.env_file,
+        namespace=args.namespace,
+        known_secrets=known,
+        helm_overlay=args.expect_helm_overlay,
     )
     report = {
         "side": args.side,

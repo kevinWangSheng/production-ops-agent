@@ -1,0 +1,7 @@
+# CANARY-B4-VALUES must never leave OpsPilot's Helm tools.
+image:
+  tag: CANARY-B4-VALUES
+fromSet: ""
+# true renders an invalid ConfigMap name: the API server refuses it and the
+# upgrade is recorded as failed.
+failName: false

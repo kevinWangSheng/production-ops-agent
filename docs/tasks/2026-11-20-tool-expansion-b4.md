@@ -1,9 +1,9 @@
 # 工具面拓展 B4：Helm 发布历史
 
-- 状态：进行中（公开接口已定；实现排在 C6a #570、C3 #567 之后，lead 通知再写代码）
+- 状态：进行中（实现与本机测试完成，Draft PR 等 CI；F11 第 4 步代码面论证与 B4 冲突，待 lead 裁决，见「待决」）
 - 更新日期：2026-11-20
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-15、R8-18、R8-25、R8-27 与 r11（B4C4-U1=a、B4 残余风险、修正 R8-18 措辞）；C3 第 8 节；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/helm.yaml:11-42`（`helm/core`）。issue #563。预审全文在仓库外（`~/.agent/handoffs/opspilot-b4c4-prereview-2026-11-19.md`），可逆默认 B4-1 至 B4-16 全部采纳；本记录与预审不同处在「实现决定」逐条写理由，以本记录为准
-- 工作区：`../poa-563-helm`，分支 `feature/563-helm`（起点 `882bd49c`）
+- 工作区：`../poa-563-helm`，分支 `feature/563-helm`（起点 `882bd49c`，实现前 merge `origin/main` `923c734e`；测试作者提交 `bf218708` cherry-pick 为 `7c51c951`，断言未改）
 
 ## 目标
 
@@ -143,15 +143,30 @@
 - 开关值用 `1` 不用 `on`：与 B3、C1、C2b 实际实现一致（都是 `1`/`0`/空、其他值 `*_INVALID`），同一档位一种写法。
 - 网关从「白名单内可选键」收紧为「键集合固定、恰一次、值全等」并要求原始串等于重编码：r11 裁决原文；重编码比较让编码变体无需逐个枚举。
 - 网关另加 `helm_page` 调用标记：即使将来有 bug 拼出 Helm 形状的 URL，jq/tabular 等拿完整对象的工具也取不到 Secret。
-- 资源位的 `watch`、`proxy` 对所有请求拒绝：旧式 watch 路径会把 `secrets` 挪到别的位置，现有工具不发这类路径（实现时 grep 核实）。
+- 资源位的 `watch`、`proxy` 对所有请求拒绝：旧式 watch 路径会把 `secrets` 挪到别的位置，现有工具不发这类路径（`git grep` 核实，`opspilot/` 里没有拼 watch/proxy 路径的代码）。
 - `helm_history`/`helm_status` 必填 `namespace`：同上游 CLI 参数；`helm_list` 的 `namespace` 可选（R17）。
 - 时间到秒、UTC：与 B3 一致，`helm history` 本身也只显示到秒。
 - CI 钉 apiserver 端口 36443、审计 `Metadata` 级：测试与 seed 不必从 kubeconfig 取端口；审计只需 requestURI 与用户，不存内容。
 
+- 实现时补的（可逆）：
+  - 档位位置：C6a、C3 实际排在 `fetch_skill`/`TodoWrite` **之后**，「全部后端之后且在这两者之前」做不到；Helm 排在实时用量之后、`fetch_skill` 之前，SQL、Kafka 不动（不动它们的 revision）。`change_history` 键插在 `victorialogs` 之后、`knowledge` 之前；`evidence_context` 经 `canonical` 后键按字母序，位置在面上不可见。
+  - 超页数或超 16 MiB 时，结果不是通用的 transport 拒绝，而是 `source_status=RESULT_TOO_LARGE` 加一条 note，提示给 `namespace`/`release_name`。为此 `registry.SOURCE_ERROR_REASONS` 加了 `RESULT_TOO_LARGE`：通用拒绝只说「缩小窗口或 limit」，对这三个工具没用。
+  - 「queried at」用执行器时钟（`KubernetesTransport(now=clock.now)`）：产品代码禁用 `datetime.now`。
+  - `chart`、`chart_version`、`description` 缺字段时为 `null`；字段存在但不是字符串，整条按 malformed 丢弃。`status` 缺字段同样按 malformed。
+  - 页面要求 `kind == "SecretList"` 且 `items` 必须存在（缺 `items` 为 `MALFORMED_RESULT`；`_page` 把缺省当作空列表，这里不复用它）。
+  - 自建场景的金丝雀放在模板不渲染的 values 键里：放进 Pod 注解的话，别的集群工具能合法读到，检查会误报泄漏。nginx 镜像只钉 tag，不钉 digest：`helm create` 的模板不支持 digest。
+  - safety：加 `tests/safety/test_safety_helm_releases.py`，以及变异 M39（放开网关的 Secret 收窄）、M40（把 values 拷进行）。
+
 ## 证据
 
-尚无（接口阶段）。
+- revision（本分支实测）：开关关时现有值不变（无后端 `c63f058afb18`、仅实时用量 `4730c27997c9`，与 B3 记录一致）；只开 Helm 为 `otel-demo-ext-ec596e186760`，Helm 加实时用量为 `5887c48a3d72`，Helm 加 ES 为 `3ef779d06145`，Helm 加 Loki 为 `cfb67cba921f`。
+- 本机（共享 `.venv`）：测试作者合同测试 637 条中 626 过、11 失败（见「待决」第 2 项，均属断言与接口或替身行为不符，未改断言）；`tests/safety` 加 B1/B3/C1/C2b/C5a/C5b/C6a 合同、`test_tracing`、`test_architecture`、`test_m1_otel_demo_contract` 等共 2354 过；新 safety 7 过；变异 M39、M40 均被抓到。ruff 通过。mypy 只在 `kafka_admin.py` 报 6 处，C3 合同测试 1 条失败，都因为共享 venv 没装 `confluent_kafka`，属环境问题，与本改动无关。
+- 集成测试本机跳过，交给 CI `k8s-backends`。
 
 ## 待决
 
-无。实施中再冒出的不可逆项或合同层取舍停下回报 lead。
+1. **F11 第 4 步代码面论证与 B4 冲突（需 lead/用户裁决）**：`tests/acceptance/test_f11_step4_verdicts_no_gate.py::test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api` 禁止产品模块的字符串常量出现 `\bhelm\b`、`\bkubectl\b`，A2 只给 `kubernetes_core.py` 的读路径开了例外。B4 有三处绕不开：`kubernetes_core.HELM_FIELD_SELECTOR`（`type=helm.sh/release.v1`）、`HELM_OWNER`（`helm`），以及 `helm_releases._CANNOT_PROVE` 里的 `kubectl`（测试作者断言要求 `cannot_prove` 含 kubectl）。其余文字已改写避开。按 A2 先例（X1/Q1/Q2 后由独立测试作者修订论证），建议由独立测试作者把例外扩到这三处：只读的 Helm 记录选择器，加上 `cannot_prove` 说明文字。验收步骤原文不改。
+2. **测试断言与接口不符（未改，列给 lead）**：
+   - `test_other_secrets_are_never_read_even_when_present`：断言 `fieldSelector == ["helm.sh/release.v1"]`。接口与 `LEGAL` 表里都是 `type=helm.sh/release.v1`，断言漏了 `type=`。
+   - `test_a_bad_entry_is_dropped_counted_and_never_echoed[owner-label-missing / owner-label-not-helm]`：替身 apiserver 按 `labelSelector=owner=helm` 过滤（真实 apiserver 也是），这两条记录根本不会返回，`malformed` 只能是 0。工具里的 owner 校验是纵深防御，这两个用例测不到它。
+   - `test_switch_on_adds_exactly_the_three_tools_and_the_change_history_source[8 个组合]`：断言 `available` 的键顺序是 `change_history` 排在最后一个后端之后，但 `_surface` 经过 `canonical`，键按字母序。本机核对过同一测试的其余断言，按集合比较全部成立。

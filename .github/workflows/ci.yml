@@ -849,6 +849,146 @@ jobs:
           kubectl get apiservice v1beta1.metrics.k8s.io -o yaml 2>&1 || true
           kubectl -n kube-system logs deployment/metrics-server --tail=200 2>&1 || true
 
+  # B4 (#563, R8-25): the Helm release history tools against a real kind
+  # cluster `b4` (apiserver pinned to 127.0.0.1:36443, Secret requests in an
+  # audit log at Metadata level), release records written by real Helm 3 and
+  # Helm 4, and only the read-only identity's tokens. No model. Names and
+  # variables are fixed by docs/tasks/2026-11-20-tool-expansion-b4.md; C4 adds
+  # its steps here. Gated by OPSPILOT_K8S_BACKENDS_LIVE=1; the independent
+  # author's file runs first, then the implementer's _impl file.
+  k8s-backends:
+    name: k8s-backends
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Install kind and Helm 3 and 4
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # kind v0.31.0 and its node image, as k8s-live-metrics.
+          KIND_VERSION: v0.31.0
+          KIND_SHA256: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+          # Helm v3.22.1 and v4.3.1 (2026-10-15; v4.3.2 is under two weeks
+          # old), sha256 from the release notes' checksum links.
+          HELM3_VERSION: v3.22.1
+          HELM3_SHA256: 896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea
+          HELM4_VERSION: v4.3.1
+          HELM4_SHA256: 0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kind" \
+            "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/kind" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kind"
+          for pair in "helm3 ${HELM3_VERSION} ${HELM3_SHA256}" "helm4 ${HELM4_VERSION} ${HELM4_SHA256}"; do
+            set -- $pair
+            curl -fsSL -o "$RUNNER_TEMP/$1.tar.gz" "https://get.helm.sh/helm-$2-linux-amd64.tar.gz"
+            echo "$3  $RUNNER_TEMP/$1.tar.gz" | sha256sum -c -
+            mkdir -p "$RUNNER_TEMP/$1"
+            tar -xzf "$RUNNER_TEMP/$1.tar.gz" -C "$RUNNER_TEMP/$1" --strip-components=1 linux-amd64/helm
+            "$RUNNER_TEMP/$1/helm" version --short
+          done
+          {
+            echo "B4_HELM3_BIN=$RUNNER_TEMP/helm3/helm"
+            echo "B4_HELM4_BIN=$RUNNER_TEMP/helm4/helm"
+          } >> "$GITHUB_ENV"
+      - name: Start kind b4 with the audit log and the read-only identities
+        if: steps.scope.outputs.full != 'false'
+        env:
+          KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+        run: |
+          sed "s|__REPO__|$GITHUB_WORKSPACE|" tests/fixtures/b4_helm/kind-config.yaml \
+            > "$RUNNER_TEMP/b4-kind-config.yaml"
+          "$RUNNER_TEMP/kind" create cluster --name b4 --image "$KIND_NODE_IMAGE" \
+            --config "$RUNNER_TEMP/b4-kind-config.yaml" --wait 120s
+          kubectl version
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac.yaml
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac-helm.yaml
+          kubectl apply -f tests/fixtures/b4_helm/base-only-sa.yaml
+          mkdir -p "$RUNNER_TEMP/b4"
+          kubectl config view --raw --minify \
+            -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+            | base64 -d > "$RUNNER_TEMP/b4/ca.crt"
+          server=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
+          [ "$server" = "https://127.0.0.1:36443" ] || { echo "unexpected apiserver $server" >&2; exit 1; }
+          # Tokens go to files, never to the log.
+          kubectl -n opspilot-readonly create token opspilot-investigator --duration=1h \
+            > "$RUNNER_TEMP/b4/readonly.token"
+          kubectl -n opspilot-readonly create token opspilot-investigator-base --duration=1h \
+            > "$RUNNER_TEMP/b4/base-only.token"
+          chmod 0600 "$RUNNER_TEMP/b4/"*.token
+          docker exec b4-control-plane test -f /var/log/kubernetes/audit/audit.log
+          {
+            echo "B4_K8S_API_URL=$server"
+            echo "B4_K8S_CA_FILE=$RUNNER_TEMP/b4/ca.crt"
+            echo "B4_K8S_TOKEN_FILE=$RUNNER_TEMP/b4/readonly.token"
+            echo "B4_K8S_BASE_TOKEN_FILE=$RUNNER_TEMP/b4/base-only.token"
+            echo "B4_KIND_NODE=b4-control-plane"
+            echo "B4_AUDIT_LOG=/var/log/kubernetes/audit/audit.log"
+            echo "B4_CANARIES=tests/fixtures/b4_helm/canaries.txt"
+          } >> "$GITHUB_ENV"
+      - name: Seed the synthetic Helm release history
+        if: steps.scope.outputs.full != 'false'
+        run: bash tests/fixtures/b4_helm/seed.sh
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Helm release tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b4_helm.py -q -rs
+      - name: Helm release tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b4_helm_impl.py -q -rs
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide 2>&1 || true
+          # Names only, never a Secret body.
+          kubectl get secrets -A --field-selector type=helm.sh/release.v1 -o name 2>&1 || true
+
   # C6a (#570, R8-25): the SQL tools against real PostgreSQL 17, MySQL 8.0
   # and MariaDB 11 (the HolmesGPT database tasks' images), synthetic data and
   # a read-only account each test file creates for itself. No model. Not

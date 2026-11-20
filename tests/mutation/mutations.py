@@ -346,4 +346,18 @@ MUTATIONS: tuple[Mutation, ...] = (
         '            "content": redact_credentials(item["content"]),\n',
         '            "content": item["content"],\n',
     ),
+    Mutation(
+        "M39",
+        "scope: with Helm on, only the exact Helm release page of Secrets is sent (#563 B4-5)",
+        "opspilot/tools/kubernetes_core.py",
+        '    if resource != "secrets":\n        return None\n',
+        "    if True:\n        return None\n",
+    ),
+    Mutation(
+        "M40",
+        "credentials: Helm values, manifest and notes never leave the Helm tools (#563 R8-18)",
+        "opspilot/tools/helm_releases.py",
+        '        "rollback_revision": rollback,\n    }\n',
+        '        "rollback_revision": rollback,\n        "config": record.get("config"),\n    }\n',
+    ),
 )
