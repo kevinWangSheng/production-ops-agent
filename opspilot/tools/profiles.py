@@ -47,11 +47,16 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   (``OPSPILOT_SQL_USERNAME``, ``OPSPILOT_SQL_PASSWORD``; ``OPSPILOT_SQL_TLS``,
   ``OPSPILOT_SQL_CA_FILE``) and refuses an address that is one of
   OpsPilot's own ``OPSPILOT_*DSN`` databases (``SQL_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` adds the eight Kafka tools (C3): the
+  web reads the address only, the worker the ``kafka-ro`` settings
+  (``OPSPILOT_KAFKA_SECURITY_PROTOCOL``, ``_SASL_MECHANISM``, ``_USERNAME``,
+  ``_PASSWORD``, ``_CA_FILE``; ``KAFKA_CONFIG_MISSING``/``_INVALID``).
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
-``OPSPILOT_VICTORIALOGS_URL`` and ``OPSPILOT_SQL_URL`` each set (to the same
-value) in both or in neither, and
+``OPSPILOT_VICTORIALOGS_URL``, ``OPSPILOT_SQL_URL`` and
+``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` each set (to the same value) in both or
+in neither, and
 ``OPSPILOT_K8S_LIVE_METRICS`` and ``OPSPILOT_KNOWLEDGE_TOOL`` the same in
 both).
 """
@@ -90,6 +95,7 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_face,
     otel_demo_ext_versions,
 )
+from opspilot.tools.kafka_admin import KafkaConfig, kafka_enabled
 from opspilot.tools.registry import ToolContractError
 from opspilot.tools.sql_query import SqlConfig, sql_dialect
 from opspilot.tools.victorialogs_logs import (
@@ -152,6 +158,8 @@ _STARTUP_CODES = frozenset(
         "SQL_CONFIG_MISSING",
         "SQL_CONFIG_INVALID",
         "SQL_TARGETS_OPSPILOT_DB",
+        "KAFKA_CONFIG_MISSING",
+        "KAFKA_CONFIG_INVALID",
     }
 )
 
@@ -179,6 +187,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C6-13: the dialect from the address's scheme only; never an
     # ``OPSPILOT_SQL_*`` credential in the web.
     sql = sql_dialect(env)
+    # C3-12: the bootstrap address only; never an ``OPSPILOT_KAFKA_*``
+    # credential in the web.
+    kafka = kafka_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -191,7 +202,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` and
         # ``VICTORIALOGS_CONFIG_MISSING`` / ``VICTORIALOGS_CONFIG_INVALID``
         # for C5-4; ``SQL_CONFIG_*`` and ``SQL_TARGETS_OPSPILOT_DB`` for
-        # C6-7/C6-8).
+        # C6-7/C6-8; ``KAFKA_CONFIG_*`` for C3-4).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -206,6 +217,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 knowledge=knowledge,
                 todo=todo,
                 sql=SqlConfig.from_env(env),
+                kafka=KafkaConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -224,6 +236,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             knowledge=knowledge,
             todo=todo,
             sql=sql,
+            kafka=kafka,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -233,6 +246,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             knowledge=knowledge,
             todo=todo,
             sql=sql,
+            kafka=kafka,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,

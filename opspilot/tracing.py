@@ -221,6 +221,14 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     sql_url = env.get("OPSPILOT_SQL_URL") or ""
     if sql_url and not _is_lab_host(sql_url):
         failures.append("SQL_NOT_LAB")
+    # C3-6: every Kafka bootstrap address, whenever any is set (the tools
+    # exist only then). Brokers the client is redirected to by metadata are
+    # outside this check (a known limit, listed in the C3 task record).
+    kafka_servers = env.get("OPSPILOT_KAFKA_BOOTSTRAP_SERVERS") or ""
+    if kafka_servers and not all(
+        _is_lab_host(f"kafka://{server}") for server in kafka_servers.split(",")
+    ):
+        failures.append("KAFKA_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
