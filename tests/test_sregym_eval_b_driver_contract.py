@@ -134,9 +134,16 @@ def _imports(tree: ast.AST) -> set[str]:
     return names
 
 
-def test_filter_proxy_does_not_import_this_repository() -> None:
+def test_filter_proxy_does_not_import_this_repository_at_module_level() -> None:
+    # It runs inside the upstream environment; the driver-side helpers that
+    # live in the same file (start_filter_proxy, probe_product_path) may only
+    # import this repository lazily.
     tree = ast.parse(FILTER_PROXY.read_text())
-    for name in _imports(tree):
+    top = ast.Module(
+        body=[n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))],
+        type_ignores=[],
+    )
+    for name in _imports(top):
         assert not name.startswith((".", "scripts", "opspilot", "tests")), name
 
 

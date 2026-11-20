@@ -56,12 +56,14 @@ def test_ports_is_frozen() -> None:
         ports.web = 1  # type: ignore[misc]
 
 
-def test_per_trial_ports_are_every_port_except_unreachable() -> None:
+def test_per_trial_ports_are_every_port_except_unreachable_and_gateway() -> None:
+    # interface revision 0045f5ec: the Loki gateway stays up for the whole round
     per_trial = mod("ports").Ports().per_trial()
     assert isinstance(per_trial, dict)
-    expected = {n for name, n in PORTS.items() if name != "unreachable"}
+    expected = {
+        n for name, n in PORTS.items() if name not in ("unreachable", "loki_gateway")
+    }
     assert set(per_trial.values()) == expected
-    assert 29599 not in per_trial.values()
     assert all(isinstance(v, int) for v in per_trial.values())
 
 
