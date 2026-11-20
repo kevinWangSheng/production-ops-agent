@@ -187,7 +187,7 @@ def test_an_unknown_target_is_refused(h):
     before = h.counts()
     response = h.submit(resource_uid="not-a-known-target")
     assert response.status in {400, 404, 422}, response.text
-    assert _code(response) == "TARGET_UNKNOWN"
+    assert _code(response) == "UNKNOWN_TARGET"
     assert h.counts() == before
 
 
