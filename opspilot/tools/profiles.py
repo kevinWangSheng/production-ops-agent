@@ -31,11 +31,15 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   ``loki-ro`` credential (``OPSPILOT_LOKI_USERNAME`` and
   ``OPSPILOT_LOKI_PASSWORD``, or ``OPSPILOT_LOKI_BEARER_TOKEN``;
   ``OPSPILOT_LOKI_CA_FILE`` for HTTPS) and the tenant
-  ``OPSPILOT_LOKI_TENANT_ID``.
+  ``OPSPILOT_LOKI_TENANT_ID``. ``OPSPILOT_VICTORIALOGS_URL`` adds the five
+  ``victorialogs_*`` tools likewise (C5b): only the worker reads the
+  ``vlogs-ro`` credential (``OPSPILOT_VICTORIALOGS_USERNAME`` and
+  ``_PASSWORD``, or ``_BEARER_TOKEN``; ``_CA_FILE``) and the tenant
+  (``_ACCOUNT_ID``, ``_PROJECT_ID``).
 
 Both processes must be started with the same value (and, for
-``otel-demo-ext``, with ``OPSPILOT_ES_URL`` and ``OPSPILOT_LOKI_URL`` each set
-in both or in neither).
+``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
+``OPSPILOT_VICTORIALOGS_URL`` each set in both or in neither).
 """
 
 from __future__ import annotations
@@ -70,6 +74,10 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_versions,
 )
 from opspilot.tools.registry import ToolContractError
+from opspilot.tools.victorialogs_logs import (
+    VictoriaLogsConfig,
+    victorialogs_enabled,
+)
 
 __all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
 
@@ -118,6 +126,8 @@ _STARTUP_CODES = frozenset(
         "ES_CONFIG_INVALID",
         "LOKI_CONFIG_MISSING",
         "LOKI_CONFIG_INVALID",
+        "VICTORIALOGS_CONFIG_MISSING",
+        "VICTORIALOGS_CONFIG_INVALID",
     }
 )
 
@@ -133,6 +143,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C5-14: likewise the Loki address; never an ``OPSPILOT_LOKI_*``
     # credential or tenant in the web.
     loki = loki_enabled(env)
+    victorialogs = victorialogs_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -142,7 +153,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
         # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters;
         # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4;
-        # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` for C5-4).
+        # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` and
+        # ``VICTORIALOGS_CONFIG_MISSING`` / ``VICTORIALOGS_CONFIG_INVALID``
+        # for C5-4).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -152,6 +165,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 kubernetes=KubernetesConfig.from_env(env),
                 elasticsearch=ElasticsearchConfig.from_env(env),
                 loki=LokiConfig.from_env(env),
+                victorialogs=VictoriaLogsConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)
@@ -162,9 +176,11 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     return ToolProfile(
         name="otel-demo-ext",
         face=lambda clock: otel_demo_ext_face(
-            clock, elasticsearch=elasticsearch, loki=loki
+            clock, elasticsearch=elasticsearch, loki=loki, victorialogs=victorialogs
         ),
-        versions=lambda: otel_demo_ext_versions(elasticsearch=elasticsearch, loki=loki),
+        versions=lambda: otel_demo_ext_versions(
+            elasticsearch=elasticsearch, loki=loki, victorialogs=victorialogs
+        ),
         executor_factory=executor_factory,
     )
 

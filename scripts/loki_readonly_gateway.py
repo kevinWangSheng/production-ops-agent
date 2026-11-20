@@ -27,6 +27,14 @@ Subcommands:
   keep running.
 * ``stop`` -- remove the gateway container (by its fixed name only).
 
+``--backend victorialogs`` (C5b) renders and runs the same gateway in front
+of VictoriaLogs: it forwards ``GET`` of the five ``/select/logsql/*`` paths
+the ``victorialogs_*`` tools send, passes ``AccountID``/``ProjectID``
+through (the product's configured tenant, C5-0), and ``start`` writes
+``OPSPILOT_VICTORIALOGS_*``; its container, port, state directory and
+settings file are separate from the Loki gateway's, so both can run on one
+host. The default ``--backend loki`` is unchanged.
+
 Usage on a rental host::
 
     .venv/bin/python scripts/loki_readonly_gateway.py start --upstream 127.0.0.1:3100
@@ -48,6 +56,7 @@ import secrets
 import stat
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +75,47 @@ NGINX_IMAGE = (
 )
 #: C5-3: the one path the gateway forwards.
 READ_PATH = "/loki/api/v1/query_range"
+#: C5b: the paths the VictoriaLogs gateway forwards (``victorialogs_logs.PATHS``).
+VICTORIALOGS_READ_PATHS = (
+    "/select/logsql/query",
+    "/select/logsql/streams",
+    "/select/logsql/field_names",
+    "/select/logsql/field_values",
+    "/select/logsql/hits",
+)
+
+
+@dataclass(frozen=True)
+class Backend:
+    name: str
+    read_paths: tuple[str, ...]
+    env_prefix: str
+    container: str
+    port: int
+    state: Path
+    out: Path
+
+
+BACKENDS = {
+    "loki": Backend(
+        "loki",
+        (READ_PATH,),
+        "OPSPILOT_LOKI",
+        CONTAINER,
+        DEFAULT_PORT,
+        DEFAULT_STATE,
+        DEFAULT_OUT,
+    ),
+    "victorialogs": Backend(
+        "victorialogs",
+        VICTORIALOGS_READ_PATHS,
+        "OPSPILOT_VICTORIALOGS",
+        "opspilot-victorialogs-gateway",
+        53103,
+        LAB_DIR / "victorialogs-gateway",
+        LAB_DIR / "victorialogs-readonly.env",
+    ),
+}
 _UPSTREAM = re.compile(r"[A-Za-z0-9.-]+:[0-9]{1,5}")
 _HOST = re.compile(r"[0-9.]+|[A-Za-z0-9.-]+")
 #: The product's own tenant rule (``loki_logs._tenant_ok``): printable, no
@@ -77,11 +127,13 @@ class SetupError(Exception):
     """A fixed message; never carries a credential."""
 
 
-def _server(bind: str, port: int, upstream: str | None) -> str:
+def _server(
+    bind: str, port: int, upstream: str | None, backend: Backend = BACKENDS["loki"]
+) -> str:
     head = f"""  server {{
     listen {bind}:{port};
     root /var/empty;
-    auth_basic "loki read-only";
+    auth_basic "{backend.name} read-only";
     auth_basic_user_file HTPASSWD;
 """
     if upstream is None:
@@ -93,17 +145,21 @@ def _server(bind: str, port: int, upstream: str | None) -> str:
   }
 """
         )
+    reads = "".join(
+        f"    location = {path} {{ try_files /__absent__ @read; }}\n"
+        for path in backend.read_paths
+    )
     return (
         head
-        + f"""    location = {READ_PATH} {{ try_files /__absent__ @read; }}
-    location / {{ try_files /__absent__ @denied; }}
+        + reads
+        + f"""    location / {{ try_files /__absent__ @denied; }}
     location @denied {{ return 403; }}
     location @read {{
       if ($request_method != GET) {{ return 403; }}
       proxy_pass_request_body off;
       proxy_set_header Content-Length "";
       proxy_set_header Authorization "";
-      proxy_pass http://loki_{port}$uri$is_args$args;
+      proxy_pass http://{backend.name}_{port}$uri$is_args$args;
     }}
   }}
 """
@@ -116,6 +172,7 @@ def gateway_config(
     bind: str = "127.0.0.1",
     htpasswd: str = "/etc/opspilot-gateway/htpasswd",
     access_log: str = "/dev/stdout",
+    backend: str = "loki",
 ) -> str:
     """The nginx configuration: one server per ``(port, upstream)``; an
     upstream of ``None`` refuses every authenticated request. try_files runs
@@ -124,6 +181,9 @@ def gateway_config(
     method, path and status only -- no query string, headers or bodies."""
     if not servers:
         raise SetupError("no server to render")
+    if backend not in BACKENDS:
+        raise SetupError("--backend must be loki or victorialogs")
+    chosen = BACKENDS[backend]
     if not _HOST.fullmatch(bind):
         raise SetupError("--bind must be a host name or IPv4 address")
     for port, upstream in servers:
@@ -134,11 +194,13 @@ def gateway_config(
     # Named upstream groups: resolved when nginx (re)loads, so a container
     # name works without a runtime resolver.
     groups = "".join(
-        f"  upstream loki_{port} {{ server {upstream}; }}\n"
+        f"  upstream {chosen.name}_{port} {{ server {upstream}; }}\n"
         for port, upstream in servers
         if upstream is not None
     )
-    body = groups + "".join(_server(bind, port, upstream) for port, upstream in servers)
+    body = groups + "".join(
+        _server(bind, port, upstream, chosen) for port, upstream in servers
+    )
     return (
         (
             """worker_processes 1;
@@ -194,27 +256,30 @@ def _docker(*args: str) -> None:
         raise SetupError(f"docker {args[0]} failed: {result.stderr.strip()[:300]}")
 
 
-def _write_config(state: Path, port: int, upstream: str) -> None:
+def _write_config(state: Path, port: int, upstream: str, backend: str) -> None:
     # The nginx worker (another uid in the container) reads both files; the
     # htpasswd holds a salted hash only. The plain password is only in the
     # mode-600 env file.
     config = gateway_config(
-        [(port, upstream)], htpasswd="/etc/opspilot-gateway/htpasswd"
+        [(port, upstream)], htpasswd="/etc/opspilot-gateway/htpasswd", backend=backend
     )
     _private_write(state / "nginx.conf", config.splitlines(), _PUBLIC)
     (state / "upstream").write_text(f"{port} {upstream}\n")
 
 
 def start(args: argparse.Namespace) -> str:
-    state: Path = args.state_dir
+    backend = BACKENDS[args.backend]
+    state: Path = args.state_dir or backend.state
+    port: int = args.port or backend.port
+    out: Path = args.out or backend.out
     password = secrets.token_urlsafe(24)
     _private_write(state / "htpasswd", [ssha_entry(args.user, password)], _PUBLIC)
-    _write_config(state, args.port, args.upstream)
+    _write_config(state, port, args.upstream, backend.name)
     _docker(
         "run",
         "-d",
         "--name",
-        CONTAINER,
+        backend.container,
         "--network",
         "host",
         "--memory=64m",
@@ -228,40 +293,47 @@ def start(args: argparse.Namespace) -> str:
         "-c",
         "/etc/opspilot-gateway/nginx.conf",
     )
+    prefix = backend.env_prefix
     lines = [
-        f"OPSPILOT_LOKI_URL=http://127.0.0.1:{args.port}",
-        f"OPSPILOT_LOKI_USERNAME={args.user}",
-        f"OPSPILOT_LOKI_PASSWORD={password}",
+        f"{prefix}_URL=http://127.0.0.1:{port}",
+        f"{prefix}_USERNAME={args.user}",
+        f"{prefix}_PASSWORD={password}",
     ]
     if args.tenant:
         lines.append(f"OPSPILOT_LOKI_TENANT_ID={args.tenant}")
-    _private_write(args.out, lines, _PRIVATE)
+    if args.account_id:
+        lines.append(f"{prefix}_ACCOUNT_ID={args.account_id}")
+    if args.project_id:
+        lines.append(f"{prefix}_PROJECT_ID={args.project_id}")
+    _private_write(out, lines, _PRIVATE)
     return (
-        f"gateway {CONTAINER} on 127.0.0.1:{args.port} -> {args.upstream}; "
-        f"account {args.user}; settings written to {args.out} (mode 600)"
+        f"gateway {backend.container} on 127.0.0.1:{port} -> {args.upstream}; "
+        f"account {args.user}; settings written to {out} (mode 600)"
     )
 
 
 def switch(args: argparse.Namespace) -> str:
-    state: Path = args.state_dir
+    backend = BACKENDS[args.backend]
+    state: Path = args.state_dir or backend.state
     recorded = (state / "upstream").read_text().split()
     port = int(recorded[0])
-    _write_config(state, port, args.upstream)
+    _write_config(state, port, args.upstream, backend.name)
     _docker(
         "exec",
-        CONTAINER,
+        backend.container,
         "nginx",
         "-c",
         "/etc/opspilot-gateway/nginx.conf",
         "-s",
         "reload",
     )
-    return f"gateway {CONTAINER} on 127.0.0.1:{port} now -> {args.upstream}"
+    return f"gateway {backend.container} on 127.0.0.1:{port} now -> {args.upstream}"
 
 
 def stop(args: argparse.Namespace) -> str:
-    _docker("rm", "-f", CONTAINER)
-    return f"removed {CONTAINER}"
+    container = BACKENDS[args.backend].container
+    _docker("rm", "-f", container)
+    return f"removed {container}"
 
 
 def _server_arg(value: str) -> tuple[int, str]:
@@ -284,14 +356,18 @@ def main(argv: list[str] | None = None) -> int:
     render.add_argument("--access-log", default="/dev/stdout")
     for name in ("start", "switch"):
         command = commands.add_parser(name)
-        command.add_argument("--upstream", required=True, help="Loki host:port")
-        command.add_argument("--state-dir", type=Path, default=DEFAULT_STATE)
+        command.add_argument("--upstream", required=True, help="backend host:port")
+        command.add_argument("--state-dir", type=Path, default=None)
     begin = commands.choices["start"]
-    begin.add_argument("--port", type=int, default=DEFAULT_PORT)
+    begin.add_argument("--port", type=int, default=None)
     begin.add_argument("--user", default=DEFAULT_USER)
     begin.add_argument("--tenant", help="OPSPILOT_LOKI_TENANT_ID for the worker")
-    begin.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    begin.add_argument("--account-id", help="OPSPILOT_VICTORIALOGS_ACCOUNT_ID")
+    begin.add_argument("--project-id", help="OPSPILOT_VICTORIALOGS_PROJECT_ID")
+    begin.add_argument("--out", type=Path, default=None)
     commands.add_parser("stop")
+    for command in commands.choices.values():
+        command.add_argument("--backend", choices=sorted(BACKENDS), default="loki")
     args = parser.parse_args(argv)
     try:
         if args.command == "render":
@@ -303,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
                     bind=args.bind,
                     htpasswd=args.htpasswd,
                     access_log=args.access_log,
+                    backend=args.backend,
                 )
             )
             return 0
@@ -318,6 +395,14 @@ def main(argv: list[str] | None = None) -> int:
             raise SetupError(
                 "--tenant must be 1 to 150 printable characters without whitespace or |"
             )
+        if args.command == "start":
+            if args.backend == "loki" and (args.account_id or args.project_id):
+                raise SetupError("--account-id/--project-id are for victorialogs")
+            if args.backend == "victorialogs" and args.tenant:
+                raise SetupError("--tenant is for loki; use --account-id")
+            for value in (args.account_id, args.project_id):
+                if value and not (value.isdigit() and int(value) <= 2**32 - 1):
+                    raise SetupError("tenant ids must be unsigned 32-bit integers")
         message = {"start": start, "switch": switch, "stop": stop}[args.command](args)
     except (SetupError, OSError, ValueError, IndexError) as error:
         print(f"loki_readonly_gateway: {error}", file=sys.stderr)

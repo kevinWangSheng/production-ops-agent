@@ -623,6 +623,45 @@ jobs:
           [ "$status" = "401" ] || { docker logs loki-gateway >&2; exit 1; }
           curl -fsS http://127.0.0.1:53111/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
           curl -fsS http://127.0.0.1:53110/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
+      - name: Start VictoriaLogs and its read-only gateway
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # victoriametrics/victoria-logs:v1.54.0 multi-platform index, read
+          # from Docker Hub on 2026-11-19; same nginx digest as above.
+          VLOGS_IMAGE: victoriametrics/victoria-logs@sha256:ee4e820cac3721f5f5d91641b950c22439593adc4224f9655e5333d5a84c1dfe
+          NGINX_IMAGE: nginx@sha256:b24de00298eb7fb23839442d46c780991be7bc7ddb081b6c0876ac777012e352
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          docker run -d --name vlogs --network c5-logs --cpus=1 --memory=256m \
+            -p 127.0.0.1:53113:9428 "$VLOGS_IMAGE" -retentionPeriod=7d
+          ready=
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://127.0.0.1:53113/health > /dev/null; then
+              ready=1; break
+            fi
+            sleep 1
+          done
+          [ -n "$ready" ] || { docker logs vlogs >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/c5b-gateway" "$RUNNER_TEMP/c5b-gateway-logs"
+          chmod 0777 "$RUNNER_TEMP/c5b-gateway-logs"
+          python3 -I scripts/loki_readonly_gateway.py render --backend victorialogs \
+            --server 8080=vlogs:9428 --deny-port 8081 \
+            --bind 0.0.0.0 --access-log /var/log/opspilot/access.log \
+            > "$RUNNER_TEMP/c5b-gateway/nginx.conf"
+          cp "$RUNNER_TEMP/c5-gateway/htpasswd" "$RUNNER_TEMP/c5b-gateway/htpasswd"
+          chmod 0644 "$RUNNER_TEMP/c5b-gateway/nginx.conf" "$RUNNER_TEMP/c5b-gateway/htpasswd"
+          docker run -d --name vlogs-gateway --network c5-logs --cpus=0.5 --memory=64m \
+            -p 127.0.0.1:53103:8080 -p 127.0.0.1:53104:8081 \
+            -v "$RUNNER_TEMP/c5b-gateway:/etc/opspilot-gateway:ro" \
+            -v "$RUNNER_TEMP/c5b-gateway-logs:/var/log/opspilot" \
+            "$NGINX_IMAGE" nginx -g 'daemon off;' -c /etc/opspilot-gateway/nginx.conf
+          for _ in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:53103/" || true)
+            [ "$status" = "401" ] && break
+            sleep 1
+          done
+          [ "$status" = "401" ] || { docker logs vlogs-gateway >&2; exit 1; }
+          curl -fsS http://127.0.0.1:53113/metrics | grep -m1 '^vm_app_version' || true
       - name: Set up uv and Python
         if: steps.scope.outputs.full != 'false'
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -642,11 +681,26 @@ jobs:
           jq --version
           C5_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5-gateway-logs/access.log" \
             .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5_log_backends.py -q -rs
+      - name: VictoriaLogs tools against a real backend
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_LOG_BACKENDS: "1"
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          C5B_VLOGS_URL=http://127.0.0.1:53113 \
+          C5B_GATEWAY_VLOGS_URL=http://127.0.0.1:53103 \
+          C5B_GATEWAY_URL=http://127.0.0.1:53103 \
+          C5_GATEWAY_DENY_URL=http://127.0.0.1:53102 \
+          C5B_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5b-gateway-logs/access.log" \
+          C5B_PROBE_OUT="$RUNNER_TEMP/c5b-probe.json" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5b_victorialogs*.py -q -rs -s
+          cat "$RUNNER_TEMP/c5b-probe.json"
       - name: Container logs on failure
         if: failure()
         run: |
-          for name in loki3 loki29 loki-gateway; do
+          for name in loki3 loki29 loki-gateway vlogs vlogs-gateway; do
             echo "--- $name"
             docker logs --tail 200 "$name" 2>&1 || true
           done
           tail -n 50 "$RUNNER_TEMP/c5-gateway-logs/access.log" 2>/dev/null || true
+          tail -n 50 "$RUNNER_TEMP/c5b-gateway-logs/access.log" 2>/dev/null || true
