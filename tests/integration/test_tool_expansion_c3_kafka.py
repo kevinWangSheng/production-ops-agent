@@ -151,21 +151,36 @@ def _committed(admin, group: str) -> dict[tuple[str, int], int]:
     }
 
 
+#: A partition whose leader is in the metadata may still answer ListOffsets
+#: with these for a moment after creation; retried, never asserted on.
+_LEADER_RACE = {"NOT_LEADER_FOR_PARTITION", "LEADER_NOT_AVAILABLE"}
+
+
 def _offsets(admin, topics: Mapping[str, int], kind: str) -> dict[tuple[str, int], int]:
-    from confluent_kafka import TopicPartition
+    from confluent_kafka import KafkaException, TopicPartition
     from confluent_kafka.admin import OffsetSpec
 
     spec = OffsetSpec.latest() if kind == "latest" else OffsetSpec.earliest()
-    request = {
-        TopicPartition(topic, p): spec
-        for topic, count in topics.items()
-        for p in range(count)
-    }
-    futures = admin.list_offsets(request, request_timeout=30)
-    return {
-        (tp.topic, tp.partition): future.result(timeout=30).offset
-        for tp, future in futures.items()
-    }
+    pending = [(topic, p) for topic, count in topics.items() for p in range(count)]
+    found: dict[tuple[str, int], int] = {}
+    deadline = time.monotonic() + 60
+    while True:
+        request = {TopicPartition(topic, p): spec for topic, p in pending}
+        futures = admin.list_offsets(request, request_timeout=30)
+        racing = []
+        for tp, future in futures.items():
+            try:
+                found[(tp.topic, tp.partition)] = future.result(timeout=30).offset
+            except KafkaException as error:
+                name = error.args[0].name()
+                if name not in _LEADER_RACE:
+                    raise
+                racing.append((tp.topic, tp.partition, name))
+        if not racing:
+            return found
+        assert time.monotonic() < deadline, f"list_offsets still racing: {racing}"
+        pending = [(topic, p) for topic, p, _ in racing]
+        time.sleep(1)
 
 
 def _set_offsets(admin, group: str, offsets: Mapping[tuple[str, int], int], meta=None):
