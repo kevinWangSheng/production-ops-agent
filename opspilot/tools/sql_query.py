@@ -1726,6 +1726,10 @@ class _ClickHouseConnection:
                 late = self._cancelled or isinstance(error, TimeoutError)
                 raise SqlDriverError("timeout" if late else "unavailable") from None
             if not line:
+                if self._cancelled:
+                    # the watchdog shut the socket: an end of stream here is
+                    # the deadline, not the end of the result
+                    raise SqlDriverError("timeout")
                 return columns, rows, False
             size += len(line)
             if size > READ_LIMIT_BYTES:
