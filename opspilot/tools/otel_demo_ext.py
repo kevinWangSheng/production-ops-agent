@@ -67,6 +67,13 @@ listed under ``sql`` in ``data_sources.available``; the dialect
 dialect has its own revision, and every set without an SQL address is byte
 for byte what it was before C6a. The worker routes them to their own
 ``SqlTransport`` (``sql-ro`` slot, address in the selector ``sql_endpoint``).
+
+C3 (#567): the eight Kafka tools of :mod:`opspilot.tools.kafka_admin` join
+last, after the SQL tools, when ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` is set,
+listed under ``kafka`` in ``data_sources.available``; every set without the
+address is byte for byte what it was before C3. The worker routes them to
+their own ``KafkaTransport`` (``kafka-ro`` slot, address in the selector
+``kafka_bootstrap``).
 """
 
 from __future__ import annotations
@@ -87,6 +94,7 @@ from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
     elasticsearch_logs,
     jaeger_query,
+    kafka_admin,
     knowledge_fetch,
     kubernetes_core,
     kubernetes_live_metrics,
@@ -131,6 +139,8 @@ __all__ = [
     "PROFILE_NAME",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
+    "KAFKA_TOOL_NAMES",
+    "KAFKA_TOOL_SCHEMA_REVISION",
     "SQL_MYSQL_TOOL_SCHEMA_REVISION",
     "SQL_POSTGRESQL_TOOL_SCHEMA_REVISION",
     "SQL_TOOL_NAMES",
@@ -182,6 +192,7 @@ def _tool_schemas(
     knowledge: bool = False,
     todo: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
     fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1), the
@@ -203,6 +214,9 @@ def _tool_schemas(
         # C6-13 (#570): after every earlier item; the dialect is in the
         # query tool's description.
         schemas = (*schemas, *sql_query.tool_schemas(sql))
+    if kafka:
+        # C3-12 (#567): after every earlier item.
+        schemas = (*schemas, *kafka_admin.TOOL_SCHEMAS)
     return schemas
 
 
@@ -223,6 +237,7 @@ def _data_sources(
     live_metrics: bool = False,
     knowledge: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
@@ -246,6 +261,8 @@ def _data_sources(
         available["knowledge"] = list(knowledge_fetch.TOOL_NAMES)
     if sql is not None:
         available["sql"] = sorted(sql_query.TOOL_NAMES)
+    if kafka:
+        available["kafka"] = sorted(kafka_admin.TOOL_NAMES)
     return {
         "available": available,
         "not_integrated": list(_NOT_INTEGRATED),
@@ -260,6 +277,7 @@ def _registrations(
     live_metrics: bool = False,
     knowledge: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -319,6 +337,13 @@ def _registrations(
                 sql, max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if kafka:
+        base = (
+            *base,
+            *kafka_admin.kafka_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     return base
 
 
@@ -331,6 +356,7 @@ def tool_schema_revision(
     knowledge: bool = False,
     todo: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -350,17 +376,30 @@ def tool_schema_revision(
                     knowledge,
                     todo,
                     sql=sql,
+                    kafka=kafka,
                 )
             ],
             "registry": ToolRegistry(
                 _registrations(
-                    elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
+                    elasticsearch,
+                    loki,
+                    victorialogs,
+                    live_metrics,
+                    knowledge,
+                    sql=sql,
+                    kafka=kafka,
                 )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
             "data_sources": _data_sources(
-                elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
+                elasticsearch,
+                loki,
+                victorialogs,
+                live_metrics,
+                knowledge,
+                sql=sql,
+                kafka=kafka,
             ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
@@ -403,6 +442,11 @@ SQL_MYSQL_TOOL_SCHEMA_REVISION = tool_schema_revision(sql="mysql")
 SQL_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(sql="postgresql")
 )
+#: C3-12: the same with only ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` set.
+KAFKA_TOOL_SCHEMA_REVISION = tool_schema_revision(kafka=True)
+KAFKA_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(kafka=True)
+)
 
 
 def otel_demo_ext_versions(
@@ -414,6 +458,7 @@ def otel_demo_ext_versions(
     knowledge: bool = False,
     todo: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -433,6 +478,7 @@ def otel_demo_ext_versions(
             knowledge=knowledge,
             todo=todo,
             sql=sql,
+            kafka=kafka,
         ),
     }
 
@@ -447,6 +493,7 @@ def otel_demo_ext_face(
     knowledge: bool = False,
     todo: bool = False,
     sql: str | None = None,
+    kafka: bool = False,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -458,13 +505,26 @@ def otel_demo_ext_face(
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
         context["data_sources"] = _data_sources(
-            elasticsearch, loki, victorialogs, live_metrics, knowledge, sql=sql
+            elasticsearch,
+            loki,
+            victorialogs,
+            live_metrics,
+            knowledge,
+            sql=sql,
+            kafka=kafka,
         )
         return context
 
     return ToolFace(
         tool_schemas=_tool_schemas(
-            elasticsearch, loki, victorialogs, live_metrics, knowledge, todo, sql=sql
+            elasticsearch,
+            loki,
+            victorialogs,
+            live_metrics,
+            knowledge,
+            todo,
+            sql=sql,
+            kafka=kafka,
         ),
         variant_id=_variant(todo),
         evidence_context=evidence_context,
@@ -478,6 +538,7 @@ def _target(
     loki: loki_logs.LokiConfig | None = None,
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
     sql: sql_query.SqlConfig | None = None,
+    kafka: kafka_admin.KafkaConfig | None = None,
 ) -> RegisteredTarget:
     base = otel_demo._target(config)
     selector = {
@@ -493,6 +554,8 @@ def _target(
         selector[victorialogs_logs.ENDPOINT_SELECTOR] = victorialogs.url
     if sql is not None:
         selector[sql_query.ENDPOINT_SELECTOR] = sql.endpoint
+    if kafka is not None:
+        selector[kafka_admin.ENDPOINT_SELECTOR] = kafka.bootstrap_servers
     return RegisteredTarget(
         target_id=base.target_id,
         source=base.source,
@@ -520,6 +583,7 @@ def otel_demo_ext_registrations(
     live_metrics: bool = False,
     knowledge: bool = False,
     sql: sql_query.SqlConfig | None = None,
+    kafka: kafka_admin.KafkaConfig | None = None,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
@@ -530,8 +594,11 @@ def otel_demo_ext_registrations(
             live_metrics,
             knowledge,
             sql=None if sql is None else sql.dialect,
+            kafka=kafka is not None,
         ),
-        targets=(_target(config, kubernetes, elasticsearch, loki, victorialogs, sql),),
+        targets=(
+            _target(config, kubernetes, elasticsearch, loki, victorialogs, sql, kafka),
+        ),
     )
 
 
@@ -562,6 +629,8 @@ def _overflow_summary(
         return {"row_unit": "nodes"}
     if tool in sql_query.TOOL_NAMES:
         return sql_query.overflow_summary(tool, rows, query)
+    if tool in kafka_admin.TOOL_NAMES:
+        return kafka_admin.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -579,6 +648,7 @@ def otel_demo_ext_executor_factory(
     knowledge: bool = False,
     todo: bool = False,
     sql: sql_query.SqlConfig | None = None,
+    kafka: kafka_admin.KafkaConfig | None = None,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -627,6 +697,7 @@ def otel_demo_ext_executor_factory(
         live_metrics,
         knowledge,
         sql=sql,
+        kafka=kafka,
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (
@@ -699,6 +770,10 @@ def otel_demo_ext_executor_factory(
         # C6-7/C6-8: its own ``sql-ro`` slot; never a DSN of OpsPilot's own.
         database = sql_query.SqlTransport(sql)
         routes.update(dict.fromkeys(sql_query.TOOL_NAMES, database))
+    if kafka is not None:
+        # C3-4/C3-9: its own ``kafka-ro`` slot, one short client per call.
+        brokers = kafka_admin.KafkaTransport(kafka)
+        routes.update(dict.fromkeys(kafka_admin.TOOL_NAMES, brokers))
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
