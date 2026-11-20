@@ -1,6 +1,6 @@
 # 工具面拓展 C1：调查任务清单工具 `TodoWrite`
 
-- 状态：进行中（公开接口已写；实现等 C2b（PR #741）与 #722（PR #725）合并后 merge `origin/main` 再开工）
+- 状态：进行中（公开接口已写；实现等 C2b（PR #741）合并后 merge `origin/main` 再开工；#722（PR #725）晚于 C1 合并，变体冲突由后合者解决）
 - 更新日期：2026-11-20
 - 依据：issue #565；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) r11 C1-U1=a、C1-U2=a，R8-3、R8-4、R8-9；C3 §5（指令分层与 revision）、§8（工具网关）。预审全文在仓库外 `~/.agent/handoffs/opspilot-c1-prereview-2026-11-19.md`，可逆默认 C1-0 至 C1-14 采纳，偏离两处见「合同（r11）」末两行
 - 上游：HolmesGPT `a0009195` `holmes/plugins/toolsets/investigator/{core_investigation.py,model.py,investigator_instructions.jinja2}`、`holmes/plugins/prompts/generic_ask.jinja2:33-43`、`tests/llm/utils/test_toolset.py:178-190`
@@ -122,5 +122,5 @@ R8-25 集成测试不适用（无后端容器）；R8-9 的「报告引用其证
 
 ## 下一步与交接
 
-- C2b（PR #741）与 #722（PR #725）合并后，本分支 merge `origin/main`，按本接口实现；合同测试交独立作者。
+- C2b（PR #741）合并后，本分支 merge `origin/main`，按本接口实现（不等 #725，冲突由后合者解决）；合同测试由 tests-565 在 `../poa-565-tests`（`test/565-todo`）独立编写。
 - 驱动侧 §10 另开 #666 后续 PR；对照在 #669 租机时跑，结果表写回本记录。
