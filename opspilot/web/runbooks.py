@@ -61,6 +61,14 @@ _FIELDS = {
 }
 
 
+_FIELD_CODES = {
+    "name": "RUNBOOK_NAME_INVALID",
+    "description": "RUNBOOK_DESCRIPTION_INVALID",
+    "source_label": "RUNBOOK_SOURCE_INVALID",
+    "source_ref": "RUNBOOK_SOURCE_INVALID",
+}
+
+
 class RunbookError(ReviewError):
     """A refused runbook request, in the shape of ``ReviewError``."""
 
@@ -175,7 +183,9 @@ class RunbookReview:
                 if value:
                     _reject_ambiguous_text(value)
             except ValueError:
-                raise RunbookError("INVALID_INPUT", fields=(name,)) from None
+                # The field's own code (C2b interface: NUL and other control
+                # characters are that field's ``*_INVALID``, 400).
+                raise RunbookError(_FIELD_CODES[name], fields=(name,)) from None
         raw_supersedes = fields.get("supersedes_entry_id", "")
         try:
             supersedes = UUID(raw_supersedes) if raw_supersedes else None

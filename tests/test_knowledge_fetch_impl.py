@@ -429,3 +429,46 @@ def test_import_submits_and_approves_through_the_workbench(tmp_path: Path) -> No
     assert submit[2]["Origin"] == "http://127.0.0.1:8080"
     assert approve[0].endswith("/runbooks/submissions/s-1/review")
     assert approve[1]["action"] == ["approve"]
+
+
+# -- the revision a resumed Run records (lead item 3) -------------------------------
+
+
+@pytest.mark.parametrize("with_catalog", [False, True])
+def test_a_resumed_run_records_the_revision_its_input_implies(
+    with_catalog: bool,
+) -> None:
+    from dataclasses import replace
+
+    from opspilot.investigation.context import Transcript, delivered_from_context
+    from tests.m1_investigation_support import assemble, reply, report_json
+
+    loop, request, _, _, _, _ = assemble(
+        replies=[
+            reply(content=report_json(evidence_id="missing", status="incomplete"))
+        ],
+        model_requests=1,
+    )
+    value = request.as_input()
+    if with_catalog:
+        empty = build_catalog([], retrieved_at=NOW, max_age_seconds=60)
+        value = replace(
+            value, scope_facts={**value.scope_facts, RUNBOOK_CATALOG: empty}
+        )
+    messages, _ = initial_messages(value, evidence_context=request.evidence_context)
+    delivered = delivered_from_context(request.evidence_context, run_id=request.run_id)
+    transcript = Transcript(
+        run_id=request.run_id,
+        input=value,
+        evidence_context=request.evidence_context,
+        messages=messages,
+        delivered=list(delivered),
+        evidence_ids=[view.evidence_id for view in delivered],
+        next_round=1,
+        segment="initial",
+        live_steps=0,
+        prefix_len=len(messages),
+    )
+    outcome = loop.resume(transcript)
+    expected = prompt_revision_versions(knowledge_tool=with_catalog)["prompt_revision"]
+    assert outcome.prompt_revision == expected
