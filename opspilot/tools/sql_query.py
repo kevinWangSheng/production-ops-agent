@@ -768,7 +768,16 @@ def _lex_mssql(sql: str) -> tuple[str, list[tuple[int, str]]]:
             out.append("\x01")  # a quoted name, for the multi-part rule
             quoted.append((len(out), "".join(content)))
             continue
-        number_end = _number_end(sql, i)
+        if ch == "$" and not _ident_before(sql, i):
+            # a money literal ($1.50): the number after the $ is a number,
+            # so ``$1e1EXEC`` is $1e1 then EXEC (PR #749 re-review)
+            money = _NUMBER.match(sql, i + 1)
+            if money is not None and money.end() > i + 1:
+                number_end: int | None = money.end()
+            else:
+                number_end = None
+        else:
+            number_end = _number_end(sql, i)
         if number_end is not None:
             # a numeric literal as the server reads it; a letter straight
             # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the

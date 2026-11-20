@@ -565,6 +565,8 @@ def test_clickhouse_unreachable() -> None:
         ("mssql", "SELECT 1 FETCH NEXT FROM c"),
         ("mssql", "SELECT * FROM t WITH (READCOMMITTEDLOCK)"),
         ("mssql", "SELECT * FROM t WITH (NOWAIT)"),
+        ("mssql", "SELECT $1e1EXEC x"),
+        ("mssql", "SELECT $1.e1EXEC x"),
         ("clickhouse", "SELECT * FROM cosn('x')"),
         ("clickhouse", "SELECT * FROM hive('thrift://x', 'd', 't', 'a String', 'a')"),
         ("clickhouse", "SELECT * FROM deltaLakeS3('x')"),
@@ -583,6 +585,7 @@ def test_review_cases_refused(dialect: str, sql: str) -> None:
     ("dialect", "sql"),
     [
         ("mssql", "SELECT 1.5, 2e3, 0x1F, .5 FROM t"),
+        ("mssql", "SELECT $1.50 AS price, $.5, a$1 FROM t"),
         ("mssql", "SELECT o.name FROM sys.objects o"),
         ("mssql", "SELECT CASE WHEN a = 1 THEN 'x' END FROM t"),
         ("mssql", "SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY"),

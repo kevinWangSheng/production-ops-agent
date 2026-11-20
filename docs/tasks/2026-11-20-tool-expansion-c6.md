@@ -188,6 +188,8 @@
   - SQL Server 自查补：账号直接拥有的对象（`sys.objects.principal_id`）、服务器级对登录的 `IMPERSONATE`/`CONTROL`/`ALTER`/`TAKE OWNERSHIP`（`sys.server_permissions`）。
   - ClickHouse 表函数补 `cosn`、`oss`、`hive`、`paimon`、`deltaLakeS3`、`deltaLakeCluster`、`hudiCluster`、`icebergCluster`。已知限制：`merge()` 因整词 `MERGE` 被拒（只会误拒）。
   - 非阻塞：`_MSSQL_INVALID` 去掉重复的 102；ClickHouse 流中途的异常行按码分类（无码记 `SOURCE_ERROR`）、SQL Server 4060（库打不开）记 `SOURCE_FORBIDDEN`，两者照旧，记为已知取舍。
+- 聚焦复审补一处（lead 2026-11-20）：SQL Server 里前面不是标识符字符的 `$` 后跟数字按 money 字面量读（`$1.50`），所以 `$1e1EXEC` 也落到「数字后紧跟字母」被拒。lead 同意 `END` 不拒、`ROW`/`ROWS` 后的 `FETCH` 放行。
+- 已知误拒（只会多拒，不修）：ClickHouse 的 `1_000`、`0b101` 数字写法；MySQL 以数字开头、不加反引号的标识符（如 `2fa_codes`）；SQL Server 三段列引用（`dbo.t.col`，用别名）；SQL Server 以 `sp_`/`xp_` 开头的列名或表名（加方括号也拒）；ClickHouse `merge()`（整词 `MERGE`）。
 - 常量 `SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION`、`SQL_MSSQL_TOOL_SCHEMA_REVISION` 已加到 `otel_demo_ext`。SQL Server 连接中途断开（python-tds `ClosedConnectionError`，消息号 0）报 `SOURCE_UNAVAILABLE`。
 
 ### 交给 #669
