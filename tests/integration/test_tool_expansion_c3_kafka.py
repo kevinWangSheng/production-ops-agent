@@ -171,10 +171,48 @@ def _offsets(admin, topics: Mapping[str, int], kind: str) -> dict[tuple[str, int
 def _set_offsets(admin, group: str, offsets: Mapping[tuple[str, int], int], meta=None):
     from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
 
-    request = ConsumerGroupTopicPartitions(
-        group, [TopicPartition(t, p, o, meta) for (t, p), o in offsets.items()]
-    )
-    _wait_all(admin.alter_consumer_group_offsets([request]))
+    # Partition-level failures do not raise: each returned TopicPartition
+    # carries its own ``error``, so check them and retry for a while.
+    deadline = time.monotonic() + 60
+    while True:
+        request = ConsumerGroupTopicPartitions(
+            group,
+            [TopicPartition(t, p, o, meta or "") for (t, p), o in offsets.items()],
+        )
+        (result,) = _wait_all(admin.alter_consumer_group_offsets([request]))
+        errors = [
+            f"{tp.topic}[{tp.partition}]: {tp.error.name()}"
+            for tp in result.topic_partitions
+            if tp.error is not None
+        ]
+        if not errors:
+            return
+        assert time.monotonic() < deadline, f"offsets of {group} not set: {errors}"
+        time.sleep(1)
+
+
+def _wait_for_leaders(admin, names) -> None:
+    """New partitions answer NOT_LEADER_FOR_PARTITION until a leader is
+    elected; wait until every partition of ``names`` has one."""
+    from confluent_kafka import KafkaException, TopicCollection
+
+    deadline = time.monotonic() + 120
+    while True:
+        pending = []
+        try:
+            futures = admin.describe_topics(
+                TopicCollection(list(names)), request_timeout=30
+            )
+            for name, future in futures.items():
+                for part in future.result(timeout=30).partitions:
+                    if part.leader is None or part.leader.id < 0:
+                        pending.append(f"{name}[{part.id}]")
+        except KafkaException as error:
+            pending.append(str(error))
+        if not pending:
+            return
+        assert time.monotonic() < deadline, f"no leader yet: {pending[:5]}"
+        time.sleep(1)
 
 
 def _snapshot(admin) -> dict[str, Any]:
@@ -301,6 +339,7 @@ def cluster():
     while not set(wanted) <= _topic_names(admin):
         assert time.monotonic() < deadline, "topics never appeared"
         time.sleep(1)
+    _wait_for_leaders(admin, wanted)
 
     ends = _offsets(admin, {"orders": 3, "payments": 1}, "latest")
     producer = Producer(_conf(ADMIN, ADMIN_PASSWORD))
