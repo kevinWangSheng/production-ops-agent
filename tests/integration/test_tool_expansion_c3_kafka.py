@@ -183,6 +183,28 @@ def _offsets(admin, topics: Mapping[str, int], kind: str) -> dict[tuple[str, int
         time.sleep(1)
 
 
+def _delete_records_before(admin, topic: str, partition: int, offset: int) -> None:
+    """``delete_records`` with the same leader-race retry as ``_offsets``."""
+    from confluent_kafka import KafkaException, TopicPartition
+
+    deadline = time.monotonic() + 60
+    while True:
+        futures = admin.delete_records(
+            [TopicPartition(topic, partition, offset)], request_timeout=30
+        )
+        try:
+            _wait_all(futures)
+            return
+        except KafkaException as error:
+            name = error.args[0].name()
+            if name not in _LEADER_RACE:
+                raise
+            assert time.monotonic() < deadline, (
+                f"delete_records still racing: {topic}[{partition}] {name}"
+            )
+            time.sleep(1)
+
+
 def _set_offsets(admin, group: str, offsets: Mapping[tuple[str, int], int], meta=None):
     from confluent_kafka import ConsumerGroupTopicPartitions, TopicPartition
 
@@ -327,7 +349,7 @@ class _AuditMember(threading.Thread):
 
 @pytest.fixture(scope="module", autouse=True)
 def cluster():
-    from confluent_kafka import Producer, TopicPartition
+    from confluent_kafka import Producer
     from confluent_kafka.admin import NewTopic
 
     admin = _admin()
@@ -382,9 +404,7 @@ def cluster():
         META_SENTINEL,
     )
     _set_offsets(admin, "stale", {("payments", 0): STALE_COMMIT})
-    _wait_all(
-        admin.delete_records([TopicPartition("payments", 0, STALE_DELETE_BEFORE)])
-    )
+    _delete_records_before(admin, "payments", 0, STALE_DELETE_BEFORE)
     _set_offsets(admin, "stale-ahead", {("audit-idle", 0): AHEAD_COMMIT})
     for group in BULK:
         _set_offsets(admin, group, {("payments", 0): 0})
