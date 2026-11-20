@@ -345,10 +345,12 @@ def _cfg(tmp_path: Path) -> driver.Config:
     upstream.mkdir()
     (tmp_path / "kc").write_text("token: engineer-admin-token-xyz\n")
     (tmp_path / "env").write_text("DEEPSEEK_API_KEY=fake\nZAI_API_KEY=fake\n")
+    (tmp_path / "hosts").write_text("127.0.0.1 localhost kafka\n")
     return driver.Config(
         round="r1", upstream=upstream, kubeconfig=tmp_path / "kc", env_file=tmp_path / "env",
         problems=(PID,), cluster_path="direct_readonly", tmp_root=tmp_path / "tmp",
         evidence_root=tmp_path / "ev", baseline=tmp_path / "no-baseline", allow_dirty=True,
+        hosts_file=tmp_path / "hosts",
     )  # fmt: skip
 
 
@@ -675,3 +677,35 @@ def test_sigterm_swallowed_by_a_stop_callback_still_exits_7(tmp_path: Path) -> N
     record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
     assert record["exit_code"] == 7 and "done_seen" not in record
     assert record["submission"]["submitted"] is True
+
+
+# -- C3 Kafka wiring (#567) ---------------------------------------------------------
+
+
+def test_kafka_hosts_missing_reads_hosts_syntax() -> None:
+    text = (
+        "# 127.0.0.1 kafka\n"
+        "10.0.0.1 kafka\n"
+        "127.0.0.1   localhost  KAFKA.example  # kafka\n"
+    )
+    assert driver.kafka_hosts_missing(text, ["kafka", "kafka.example"]) == ["kafka"]
+    assert driver.kafka_hosts_missing("127.0.0.1\tKafka other\n", ["kafka"]) == []
+
+
+def test_missing_kafka_host_entry_aborts_prepare_before_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(driver, "verify_upstream", lambda root: None)
+    calls: list[str] = []
+    monkeypatch.setattr(driver.identity, "check_context", lambda h, k: None)
+    monkeypatch.setattr(driver.identity, "check_baseline", lambda b: None)
+    monkeypatch.setattr(
+        driver.identity, "apply_identity", lambda h, k: calls.append("apply")
+    )
+    cfg = _cfg(tmp_path)
+    (tmp_path / "hosts").write_text("127.0.0.1 localhost\n")
+    before = (tmp_path / "hosts").read_bytes()
+    with pytest.raises(driver.RoundAbort, match="KAFKA_HOSTS_ENTRY_MISSING"):
+        driver.prepare(cfg, None)  # type: ignore[arg-type]
+    assert calls == []
+    assert (tmp_path / "hosts").read_bytes() == before

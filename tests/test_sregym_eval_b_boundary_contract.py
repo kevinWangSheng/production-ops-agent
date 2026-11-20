@@ -41,6 +41,7 @@ PORTS = {
     "mcp": 29954,
     "sregym_proxy": 26443,
     "opspilot_proxy": 26444,
+    "kafka": 9092,  # Kafka wiring interface: equals the broker's advertised port
 }
 
 
