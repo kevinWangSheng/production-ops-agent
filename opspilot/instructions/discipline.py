@@ -158,6 +158,18 @@ services…ingresses…logs 语序）；事件太大先分组计数（#628 句�
 另加结论强度句与「模板未变的重启对象不作根因」句，共 25 句。
 字面投影字段名与分组示例在 L3 工具描述里。"""
 
+TODO_GUIDANCE: Final = (
+    " For an investigation that needs three or more distinct steps, or a question that lists several tasks, use the TodoWrite tool to plan and track the work: send the initial task list before gathering data, and in that same turn mark the tasks you start as in_progress and issue their queries alongside it."
+    " Work on independent tasks at the same time and only serialize a task that needs another task's result; send status updates in one TodoWrite call together with the turn's queries, not in a turn of their own."
+    " Mark a task completed as soon as it is done; when a task is blocked, keep it in_progress and add a task for what must be resolved, and add follow-up tasks you discover."
+    " When every task is done, check whether you can answer the question completely and have reached the actual cause; if not, add tasks for the next phase, such as an upstream service or dependency your findings implicate, and continue."
+    " The task list is your plan, not evidence: cite only evidence_id values from tool results, and before the final report trace each claim to a tool result and state anything you could not verify as a hypothesis."
+)
+"""任务清单指导（5 句），C1（#565，r11 C1-U1/C1-U2，预审 C1-4）新增，改写自 HolmesGPT
+``generic_ask.jinja2:36-42`` 与 ``investigator_instructions.jinja2:2-6``；不搬「问题不清先问用户」、
+``<system-reminder>``、带 ``priority`` 的片段与「五个为什么」字样，也不搬上游追加在用户问题后的提醒。
+点名工具 ``TodoWrite``，标 ``tool_specific``。只在 ``-todo`` 后缀的变体里，紧接报告契约槽位之前。"""
+
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
 
@@ -207,6 +219,7 @@ _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
 _METHOD: Final = Segment("investigation_method", LAYER_TEMPLATE, INVESTIGATION_METHOD)
 _IMPACT: Final = Segment("impact_scope", LAYER_TEMPLATE, IMPACT_SCOPE)
 _KUBERNETES: Final = Segment("kubernetes_guidance", LAYER_TEMPLATE, KUBERNETES_GUIDANCE)
+_TODO: Final = Segment("todo_guidance", LAYER_TEMPLATE, TODO_GUIDANCE, True)
 # 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
 _WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
@@ -275,6 +288,30 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _REPORT_SLOT,
     ),
 }
+
+TODO_SUFFIX: Final = "-todo"
+#: C1（#565，接口 §4）：扩展档位开了 ``OPSPILOT_TODO_WRITE`` 时，变体名加 ``-todo`` 后缀，
+#: 段落 = 基础变体全部段落，在报告契约槽位之前插入 ``TODO_GUIDANCE``。按后缀组合而不是手写
+#: 变体：基础变体（K8s、以后的集群段）在前，任务清单段在后，报告契约最后。
+TODO_BASE_VARIANTS: Final = ("replay-candidate-k8s",)
+
+
+def _with_todo(segments: tuple[Segment, ...]) -> tuple[Segment, ...]:
+    at = segments.index(_REPORT_SLOT)
+    return (*segments[:at], _TODO, *segments[at:])
+
+
+for _base in TODO_BASE_VARIANTS:
+    _VARIANTS[_base + TODO_SUFFIX] = _with_todo(_VARIANTS[_base])
+del _base
+
+
+def todo_variant(variant_id: str) -> str:
+    """``variant_id`` with the task-list guidance (C1); unknown bases fail."""
+    if variant_id not in TODO_BASE_VARIANTS:
+        raise UnknownVariantError(variant_id + TODO_SUFFIX)
+    return variant_id + TODO_SUFFIX
+
 
 VARIANTS: Final[Mapping[str, tuple[Segment, ...]]] = MappingProxyType(_VARIANTS)
 
