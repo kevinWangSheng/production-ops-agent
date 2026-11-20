@@ -315,6 +315,8 @@ def test_an_ok_runbook_projection() -> None:
     }
     assert result["source"]["source_label"] == "HolmesGPT 评测夹具"
     assert response.data_as_of == approved
+    assert response.view_fields is not None
+    assert response.view_fields["cannot_prove"] == knowledge_fetch._CANNOT_PROVE
 
 
 def test_a_postmortem_projection_hides_historical_evidence_ids() -> None:

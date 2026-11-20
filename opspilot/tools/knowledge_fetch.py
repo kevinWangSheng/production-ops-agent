@@ -245,7 +245,11 @@ class KnowledgeTransport:
             data_as_of=read["row"]["approved_at"],
             row_unit="entries",
             backend_rows_returned=1,
-            view_fields={"notes": [_NOTE], "kind": row["kind"]},
+            view_fields={
+                "notes": [_NOTE],
+                "kind": row["kind"],
+                "cannot_prove": _CANNOT_PROVE,
+            },
         )
 
 
