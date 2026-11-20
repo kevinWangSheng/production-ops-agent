@@ -37,7 +37,11 @@ Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
   ``TODO_MODE_CHANGED``. The harness puts a decoy at ``run.versions`` (the
   DB row's nested dict) so reading that instead fails.
 * ``setup.released`` keeps PR-C's ``{"before": {...}, "after": {...}}``
-  shape for 283 and each side gains ``namespaces_left``.
+  shape for 283 and each side gains ``namespaces_left``. Lead ruling (PR
+  #747 review N2): it is a count (None when kubectl did not answer); the
+  names stay in the local directory log, never in the public summary.
+  Review B1 fix: a missing trial of a forced round or a compared question
+  also carries ``todo: {mode, enabled, source}``.
 * ``TODO_SWITCH_MISMATCH`` is seen through ``run_question`` (deterministic
   errors are recorded there, PR-B); only trial 1 is run, so whether later
   trials of the question are also set missing is not asserted.
@@ -299,7 +303,9 @@ def test_283_question_mode_end_to_end(world) -> None:
     assert FORCED not in he["disclosures"]
     released = he["setup"]["released"]
     for phase in ("before", "after"):
-        assert released[phase]["namespaces_left"] == [], phase
+        assert released[phase]["namespaces_left"] == 0, phase
+    for name in NS_283:
+        assert name not in raw, name
     plane = he["data_plane"]
     assert plane["backend"] == "kubernetes" and plane["mode"] == "none"
     assert "knowledge" not in he  # 283 imports no runbooks
@@ -468,7 +474,11 @@ def test_prefix_leftover_before_pass_is_retried(world) -> None:
     assert len(h.submits) == 1
     he = _summary(cfg, Q283)[0]["holmes_eval"]
     assert he["chance"] >= 2
-    assert he["setup"]["released"]["after"]["namespaces_left"] == []
+    assert he["setup"]["released"]["before"]["namespaces_left"] == 0
+    assert he["setup"]["released"]["after"]["namespaces_left"] == 0
+    raw = _summary(cfg, Q283)[1]
+    for name in NS_283:  # the leftover's name stays out of the summary
+        assert name not in raw, name
 
 
 def test_kubectl_failure_before_pass_counts_as_not_released(world) -> None:
@@ -570,3 +580,21 @@ def test_off_by_question_is_not_checked(world) -> None:
     assert record["status"] == "completed", record
     assert "run_tool_names" not in h.events
     assert "todo" not in _summary(cfg, Q275)[0]["holmes_eval"]
+
+
+def test_forced_round_missing_trial_keeps_its_mode_on_resume(world) -> None:
+    """A missing trial of a forced round records ``todo.mode``; resuming
+    under the same mode goes on, under ``question`` stops."""
+    driver = mod("driver")
+    h, cfg = world((Q283,), todo_mode="off")
+    h.offer = True  # mismatch: the trial is missing
+    out = driver.run_question(cfg, h.backends(), Q283, [1])
+    assert out["trials"][1]["status"] == "missing"
+    summary = _summary(cfg, Q283)[0]
+    assert summary["status"] == "missing"
+    todo = summary["holmes_eval"]["todo"]
+    assert (todo["mode"], todo["enabled"], todo["source"]) == ("off", False, "forced")
+    world((Q283,), todo_mode="off")
+    with pytest.raises(driver.RoundAbort) as caught:
+        world((Q283,), todo_mode="question")
+    assert caught.value.code == "TODO_MODE_CHANGED"
