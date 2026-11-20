@@ -195,6 +195,25 @@ def to_markdown(result: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _stand_in_rows(evidence: Path, questions: Sequence[str]) -> list[str]:
+    """OpsPilot trials whose ``holmes_eval.data_plane.mode`` is ``fake``."""
+    known = set(questions)
+    out = []
+    for path in sorted(evidence.glob("*/trial-*/summary.json")):
+        try:
+            block = json.loads(path.read_text()).get("holmes_eval") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        plane = block.get("data_plane") if isinstance(block, dict) else None
+        if (
+            block.get("qid") in known
+            and isinstance(plane, dict)
+            and plane.get("mode") == "fake"
+        ):
+            out.append(str(block.get("qid")))
+    return out
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--opspilot-evidence", type=Path, required=True)
@@ -215,6 +234,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         from scripts.holmes_evals.driver import resolve_questions
 
         questions = resolve_questions(args.questions)
+    if _stand_in_rows(args.opspilot_evidence, questions):
+        # PR-C: OpsPilot summaries record their data plane; a stand-in
+        # backend (fake ES, Loki or VictoriaLogs) is never compared.
+        print(json.dumps({"status": "refused", "code": "DATA_PLANE_DIFFERS"}))
+        return 2
     try:
         result = merge(
             load_rows(args.opspilot_evidence, "opspilot"),

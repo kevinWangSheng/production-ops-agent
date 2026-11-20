@@ -29,6 +29,16 @@ Usage (repository root)::
 
 Evidence ``docs/evidence/holmes-evals-<round>/<qid>/trial-<n>/summary.json``
 and ``scores.json``; everything else under ``tmp/holmes-evals/<round>/``.
+
+C5 questions (PR-C, ``--questions c5``): each Loki question brings its own
+Loki and each attempt gets a fresh VictoriaLogs; the product only ever holds
+the read-only gateway's account (C5-U1 = A; ``--loki gateway`` /
+``--victorialogs docker`` on a rental host, ``fake`` stand-ins locally). One
+attempt adds, around the B1 flow: the question's ports free -> (100a, 101,
+259_loki: wait for a whole-day offset) -> per-attempt VictoriaLogs or stand-in
+-> after_test + release check -> before_test -> ``kubectl port-forward`` per
+``port_forwards`` -> gateway switch -> whole-day Loki shift -> ... -> stop the
+port-forwards -> after_test + release check (namespace gone, ports free).
 """
 
 from __future__ import annotations
@@ -43,7 +53,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -62,9 +72,24 @@ from scripts.holmes_evals.intake import (
     write_identities,
 )
 from scripts.holmes_evals.judge_run import JUDGE_KEYS, judge_env
+from scripts.holmes_evals.log_backends import (
+    LOG_QUESTIONS,
+    VICTORIALOGS_IMAGE,
+    LogQuestionSpec,
+    backend_of,
+    namespace_gone,
+    start_fake_log_backend,
+    start_gateway,
+    start_port_forward,
+    start_victorialogs,
+    switch_gateway,
+)
+from scripts.holmes_evals.log_backends import RELEASE_WAIT_S as RELEASE_WAIT_S
 from scripts.holmes_evals.questions import (
+    ALL_QUESTIONS,
     B1_QUESTIONS,
-    SKILL_ASSERTION_DROPPED,
+    QUESTION_GROUPS,
+    R8_13_SKILL_ASSERTION_DROPPED,
     UPSTREAM_COMMIT,
     Question,
     UpstreamMismatch,
@@ -76,18 +101,23 @@ from scripts.holmes_evals.questions import (
 from scripts.holmes_evals.setup import (
     DEFAULT_SETUP_TIMEOUT,
     ScriptResult,
+    log_setup_env,
     purge_question_indices,
     run_script,
     setup_env,
 )
 from scripts.holmes_evals.shift import (
     LEAD,
+    LOKI_FIXED_TIME,
     TIME_BOX_LIMITED,
     UTC_DATE_SENSITIVE,
     EsAdmin,
+    LokiAdmin,
     ShiftError,
     ShiftRecord,
     apply_shift,
+    seconds_to_wait_for_shift_day,
+    shift_question,
 )
 from scripts.holmes_evals.text import ToolCall, report_to_text
 from scripts.holmes_evals.tool_calls import read_tool_calls
@@ -129,6 +159,20 @@ K8S_NAMESPACE = "otel-demo"
 #: The judge's own key names; checked for in web/worker environments.
 _JUDGE_SECRET_KEYS = ("ZAI_API_KEY", "GLM_API_KEY")
 FINAL_JUDGE_ERRORS = frozenset({"JUDGE_REQUEST_OVERSIZE"})
+#: PR-C: shift failures an attempt retries (the rest are deterministic).
+INFRA_SHIFT_ERRORS = frozenset(
+    {
+        "SHIFT_IO_FAILED",
+        "ES_NOT_FOUND",
+        "SHIFT_NO_FIXED_ENTRIES",
+        "SHIFT_DAY_UNAVAILABLE",
+    }
+)
+#: 258 asks about "the last 5 minutes": data written (``before_test`` start)
+#: to delivery at most this long, leaving a minute for the first query.
+DATA_WINDOW_SECONDS = {"258_victorialogs_streams": 240.0}
+LOG_ENV_PREFIXES = ("OPSPILOT_LOKI_", "OPSPILOT_VICTORIALOGS_")
+_LOG_SECRET_SUFFIXES = ("_USERNAME", "_PASSWORD", "_BEARER_TOKEN")
 ALWAYS_DISCLOSED = (
     "TOOL_FACE_FIXED",
     "NO_INTERMEDIATE_OUTPUT",
@@ -148,13 +192,44 @@ class Ports:
     prometheus: int = 29290
     jaeger_query: int = 29286
     k8s: int = 29243
+    # PR-C: the product's gateway ports (round-level, or the stand-in's
+    # gateway side), the Loki stand-in's backend side, the attempt's
+    # VictoriaLogs.
+    loki_gateway: int = 29231
+    loki_fake: int = 29232
+    victorialogs_gateway: int = 29233
+    victorialogs: int = 29428
 
     def all(self) -> dict[str, int]:
         return asdict(self)
 
     def per_attempt(self) -> dict[str, int]:
         """Ports an attempt needs free: its own, and the unreachable ones."""
-        return {k: v for k, v in self.all().items() if k != "es"}
+        return {k: v for k, v in self.all().items() if k not in _ROUND_PORTS}
+
+    def for_summary(self, backend: str) -> dict[str, int]:
+        """The ``ports`` block: B1 keeps its six keys (PR-C adds only
+        ``data_plane`` to a B1 summary); C5 questions list every port."""
+        if backend == "elasticsearch":
+            return {k: v for k, v in self.all().items() if k not in _LOG_PORTS}
+        return self.all()
+
+    def log_ports(self, backend: str, mode: str) -> dict[str, int]:
+        """The ports one attempt of a C5 question opens itself."""
+        if backend == "loki" and mode == "fake":
+            return {"loki_fake": self.loki_fake, "loki_gateway": self.loki_gateway}
+        if backend == "victorialogs":
+            out = {"victorialogs": self.victorialogs}
+            if mode == "fake":
+                out["victorialogs_gateway"] = self.victorialogs_gateway
+            return out
+        return {}
+
+
+_LOG_PORTS = frozenset(
+    {"loki_gateway", "loki_fake", "victorialogs_gateway", "victorialogs"}
+)
+_ROUND_PORTS = _LOG_PORTS | {"es"}
 
 
 @dataclass(frozen=True)
@@ -185,11 +260,15 @@ class Config:
     poll_seconds: float = 5.0
     terminal_wait: timedelta = TERMINAL_WAIT
     worker_settle_seconds: float = 5.0
+    loki_mode: Literal["fake", "gateway"] = "fake"
+    victorialogs_mode: Literal["fake", "docker"] = "fake"
     # Filled by prepare_round; never printed or frozen.
     git: dict[str, Any] = field(default_factory=dict)
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
     engineer_key: str = field(default="", repr=False)
     product_es: dict[str, str] = field(default_factory=dict, repr=False)
+    product_loki: dict[str, str] = field(default_factory=dict, repr=False)
+    product_victorialogs: dict[str, str] = field(default_factory=dict, repr=False)
     k8s: K8sTarget | None = None
     account: UiAccount | None = None
     project: dict[str, Any] | None = None
@@ -217,6 +296,16 @@ class Config:
 
     def summary_path(self, qid: str, trial: int) -> Path:
         return self.evidence_dir / qid / f"trial-{trial}" / "summary.json"
+
+    def log_mode(self, backend: str) -> str:
+        if backend == "loki":
+            return self.loki_mode
+        if backend == "victorialogs":
+            return self.victorialogs_mode
+        return self.es_mode
+
+    def gateway_state(self, backend: str) -> Path:
+        return self.round_dir / f"{backend}-gateway"
 
 
 # -- environments ----------------------------------------------------------------------
@@ -272,24 +361,46 @@ def _strs(env: Mapping[str, object]) -> dict[str, str]:
     return {str(k): str(v) for k, v in env.items()}
 
 
-def tool_env(cfg: Config) -> dict[str, str]:
-    """The tool profile's addresses, the same for web and worker."""
-    return {
+def product_log_url(cfg: Config, backend: str) -> str:
+    """The product's log backend address: always the gateway port (C5-U1)."""
+    port = (
+        cfg.ports.loki_gateway if backend == "loki" else cfg.ports.victorialogs_gateway
+    )
+    return f"http://127.0.0.1:{port}"
+
+
+def tool_env(cfg: Config, backend: str = "elasticsearch") -> dict[str, str]:
+    """The tool profile's addresses, the same for web and worker. Only the
+    question's own log backend is configured (as upstream's per-question
+    ``toolsets.yaml``); B1's default is unchanged."""
+    env = {
         "OPSPILOT_TOOL_PROFILE": "otel-demo-ext",
         "OPSPILOT_OTEL_PROMETHEUS_URL": f"http://127.0.0.1:{cfg.ports.prometheus}",
         "OPSPILOT_OTEL_JAEGER_URL": f"http://127.0.0.1:{cfg.ports.jaeger_query}",
         "OPSPILOT_ES_URL": cfg.es_url,
         "OPSPILOT_HEALTH_BIND": "",
     }
+    if backend == "loki":
+        del env["OPSPILOT_ES_URL"]
+        env["OPSPILOT_LOKI_URL"] = product_log_url(cfg, backend)
+    elif backend == "victorialogs":
+        del env["OPSPILOT_ES_URL"]
+        env["OPSPILOT_VICTORIALOGS_URL"] = product_log_url(cfg, backend)
+    return env
 
 
 def web_env(
-    cfg: Config, pg: Any, identities: Path, account: UiAccount
+    cfg: Config,
+    pg: Any,
+    identities: Path,
+    account: UiAccount,
+    *,
+    backend: str = "elasticsearch",
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
     return _strs(
         services.base_env()
-        | tool_env(cfg)
+        | tool_env(cfg, backend)
         | {
             "OPSPILOT_WEB_DSN": pg.web_dsn,
             "OPSPILOT_UI_USERS": account.users_env(),
@@ -309,13 +420,26 @@ def worker_env(
     k8s: K8sTarget,
     cluster_name: str | None,
     secrets: Mapping[str, str],
+    *,
+    backend: str = "elasticsearch",
+    log_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
+    if backend == "elasticsearch":
+        data_plane = {
+            k: v for k, v in product_es.items() if k.startswith("OPSPILOT_ES_")
+        } | {"OPSPILOT_ES_URL": cfg.es_url}
+    else:
+        prefix = "OPSPILOT_LOKI_" if backend == "loki" else "OPSPILOT_VICTORIALOGS_"
+        # The account's own address wins, so ``check_env_isolation`` sees an
+        # address that points past the gateway.
+        data_plane = {prefix + "URL": product_log_url(cfg, backend)} | {
+            k: v for k, v in (log_env or {}).items() if k.startswith(prefix)
+        }
     env = (
         services.base_env()
-        | tool_env(cfg)
-        | {k: v for k, v in product_es.items() if k.startswith("OPSPILOT_ES_")}
+        | tool_env(cfg, backend)
+        | data_plane
         | {
-            "OPSPILOT_ES_URL": cfg.es_url,
             "OPSPILOT_WORKER_DSN": pg.runtime_dsn,
             "OPSPILOT_K8S_API_URL": k8s.api_url,
             "OPSPILOT_K8S_CA_FILE": k8s.ca_file,
@@ -345,12 +469,35 @@ _WEB_FORBIDDEN = (
 
 
 def check_env_isolation(
-    env: Mapping[str, str], engineer_key: str, *, role: Literal["web", "worker"]
+    env: Mapping[str, str],
+    engineer_key: str,
+    *,
+    role: Literal["web", "worker"],
+    backend_addresses: Sequence[str] = (),
 ) -> None:
     """H-5: neither product process holds an engineer credential; the web
-    holds no ES credential, model or judge key; the worker no judge key."""
+    holds no ES or log-backend credential, model or judge key; the worker no
+    judge key. PR-C: neither holds the engineer's ``VICTORIALOGS_URL``, and
+    the product's Loki/VictoriaLogs address is never a backend's own port
+    (``backend_addresses``, ``host:port``) -- only the gateway's."""
     if any(k.startswith("ELASTICSEARCH_") for k in env):
         raise RoundAbort("ENV_ISOLATION", f"{role}:ELASTICSEARCH_*")
+    if "VICTORIALOGS_URL" in env:
+        raise RoundAbort("ENV_ISOLATION", f"{role}:VICTORIALOGS_URL")
+    for name in ("OPSPILOT_LOKI_URL", "OPSPILOT_VICTORIALOGS_URL"):
+        value = env.get(name, "")
+        if value and any(
+            value.rstrip("/").endswith("//" + address) for address in backend_addresses
+        ):
+            raise RoundAbort("ENV_ISOLATION", f"{role}:{name} not the gateway")
+    if role == "web":
+        leaked = [
+            k
+            for k in env
+            if k.startswith(LOG_ENV_PREFIXES) and k.endswith(_LOG_SECRET_SUFFIXES)
+        ]
+        if leaked:
+            raise RoundAbort("ENV_ISOLATION", f"web:{leaked[0]}")
     if engineer_key and any(engineer_key in v for v in env.values()):
         raise RoundAbort("ENV_ISOLATION", f"{role}:engineer key value")
     forbidden = _WEB_FORBIDDEN if role == "web" else _JUDGE_SECRET_KEYS
@@ -479,6 +626,16 @@ class Backends:
     start_fake_es: Callable[[int, Path], tuple[Started, str]] = start_fake_es
     readonly_identity: Callable[[str, str, Path], dict[str, str]] = readonly_identity
     unreachable_k8s: Callable[[Path, int], K8sTarget] = unreachable_k8s
+    # PR-C (C5 log backends).
+    start_gateway: Callable[..., tuple[Started, dict[str, str]]] = start_gateway
+    switch_gateway: Callable[..., None] = switch_gateway
+    start_victorialogs: Callable[[int, Path], Started] = start_victorialogs
+    start_fake_log_backend: Callable[..., tuple[Started, dict[str, str]]] = (
+        start_fake_log_backend
+    )
+    start_port_forward: Callable[..., Started] = start_port_forward
+    loki_admin: Callable[[str], LokiAdmin] = LokiAdmin
+    namespace_gone: Callable[[str, Mapping[str, str]], bool] = namespace_gone
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     sleep: Callable[[float], None] = time.sleep
 
@@ -494,16 +651,40 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def disclosures(qid: str, question: Question, shift: ShiftRecord) -> list[str]:
+def disclosures(
+    qid: str,
+    question: Question,
+    shift: ShiftRecord,
+    *,
+    k8s_namespace: str | None = None,
+) -> list[str]:
     codes = list(ALWAYS_DISCLOSED)
-    if shift.applied:
+    if shift.applied and shift.backend == "loki":
+        # Whole-day offset: times of day and lone dates need no deshift.
+        codes += [
+            "SHIFT_WHOLE_DAYS",
+            "LOKI_ORIGINALS_KEPT",
+            "LOKI_FUTURE_DROPPED",
+            "LOG_LINE_TIME_REWRITTEN",
+        ]
+    elif shift.applied:
         codes += ["DESHIFT_TIME_ONLY_UNCHANGED", "DESHIFT_DATE_MIDPOINT"]
     if shift.question_rewrites:
         codes.append("QUESTION_TIME_REWRITTEN")
     if question.cluster_name:
         codes.append("CLUSTER_NAME_ENV_ONLY")
-    if qid in SKILL_ASSERTION_DROPPED:
+    if qid in R8_13_SKILL_ASSERTION_DROPPED:
         codes.append("SKILL_ASSERTION_DROPPED")
+    spec = LOG_QUESTIONS.get(qid)
+    if spec is not None and spec.upstream_k8s_disabled:
+        codes.append("K8S_TOOLS_UPSTREAM_DISABLED")
+    if (
+        spec is not None
+        and spec.namespace is not None
+        and k8s_namespace is not None
+        and spec.namespace != k8s_namespace
+    ):
+        codes.append("K8S_SCOPE_DIFFERS")
     return codes
 
 
@@ -579,9 +760,15 @@ class Attempt:
         self.trial, self.chance, self.history = trial, chance, history
         self.dir = cfg.trial_dir(qid, trial) / f"chance-{chance}"
         self.cleanup = Cleanup()
+        self.forwards = Cleanup()
         self.owned_ports: dict[str, int] = {}
         self._cleaned_after = False
+        self._clean_armed = False
         self._admin: EsAdmin | None = None
+        self.backend = backend_of(qid)
+        self.spec: LogQuestionSpec | None = LOG_QUESTIONS.get(qid)
+        self.mode = cfg.log_mode(self.backend)
+        self.log_env: dict[str, str] = {}
         self.block: dict[str, Any] = {
             "schema": SUMMARY_SCHEMA,
             "track": scoring.TRACK,
@@ -591,7 +778,7 @@ class Attempt:
             "trial": trial,
             "chance": chance,
             "git": cfg.git,
-            "ports": cfg.ports.all(),
+            "ports": cfg.ports.for_summary(backend_of(qid)),
             "cluster_name": {
                 "value": question.cluster_name,
                 "env_set": bool(question.cluster_name),
@@ -604,16 +791,60 @@ class Attempt:
         self.cleanup.push(item.name, item.stop)
         return item
 
+    def _setup_env(self) -> dict[str, str]:
+        if self.spec is None:
+            return setup_env(
+                self.cfg.es_url, self.cfg.engineer_key, self.cfg.kubeconfig
+            )
+        return log_setup_env(
+            self.spec,
+            victorialogs_url=f"http://127.0.0.1:{self.cfg.ports.victorialogs}",
+            kubeconfig=self.cfg.kubeconfig,
+        )
+
+    def _loki_address(self) -> str:
+        """The question's own Loki (engineer side, gateway upstream)."""
+        if self.mode == "fake":
+            return f"127.0.0.1:{self.cfg.ports.loki_fake}"
+        assert self.spec is not None and self.spec.address is not None
+        return self.spec.address
+
+    def _backend_addresses(self) -> list[str]:
+        ports = self.cfg.ports
+        out = [f"127.0.0.1:{ports.loki_fake}", f"127.0.0.1:{ports.victorialogs}"]
+        if self.spec is not None and self.spec.address:
+            out.append(self.spec.address)
+        return out
+
     def _script(self, operation: str) -> ScriptResult:
         text = self.q.before_test if operation == "before_test" else self.q.after_test
         return self.b.run_script(
             text,
             operation=operation,
             cwd=question_dir(self.cfg.upstream, self.qid),
-            env=setup_env(self.cfg.es_url, self.cfg.engineer_key, self.cfg.kubeconfig),
+            env=self._setup_env(),
             timeout_s=self.q.setup_timeout or DEFAULT_SETUP_TIMEOUT,
             log_path=self.dir / f"{operation}-{len(self.block['setup'])}.log",
         )
+
+    def _release_check(self) -> dict[str, Any]:
+        """C5: the question's namespace gone (waits up to ``RELEASE_WAIT_S``)
+        and its host ports free."""
+        assert self.spec is not None
+        state: dict[str, Any] = {"namespace": self.spec.namespace}
+        deadline = self.b.now() + timedelta(seconds=RELEASE_WAIT_S)
+        gone = True
+        if self.spec.namespace is not None:
+            env = self._setup_env()
+            while not (gone := self.b.namespace_gone(self.spec.namespace, env)):
+                if self.b.now() >= deadline:
+                    break
+                self.b.sleep(2)
+        state["namespace_gone"] = gone
+        busy = [p for p in self.spec.host_ports if self.b.port_in_use(p)]
+        state["busy_ports"] = busy
+        state["ok"] = gone and not busy
+        return state
 
     def _clean(self, slot: str) -> None:
         """``after_test`` (recorded, its exit code is upstream's business),
@@ -623,8 +854,17 @@ class Attempt:
         the next trial."""
         result = self._script("after_test")
         self.block["setup"][slot] = asdict(result)
-        assert self._admin is not None
         phase = slot.split("_")[1]
+        if self.spec is not None:
+            released = self._release_check()
+            self.block["setup"].setdefault("released", {})[phase] = released
+            self.block["setup"].setdefault("purged", {})[phase] = []
+            if not released["ok"]:
+                if phase == "before":
+                    raise InfraFailure("LOG_BACKEND_NOT_RELEASED", json.dumps(released))
+                raise RoundAbort("CLEANUP_FAILED", "log backend not released")
+            return
+        assert self._admin is not None
         try:
             purged = purge_question_indices(self._admin, self.qid)
         except ShiftError as error:
@@ -640,8 +880,8 @@ class Attempt:
         try:
             return self._run()
         finally:
-            failures = self.cleanup.close()
-            if not self._cleaned_after and self._admin is not None:
+            failures = self.forwards.close() + self.cleanup.close()
+            if not self._cleaned_after and self._clean_armed:
                 self._cleaned_after = True
                 try:
                     self._clean("cleanup_after")
@@ -660,13 +900,107 @@ class Attempt:
             self.b.sleep(0.5)
         return [f"port:{n}" for n in busy]
 
+    def _start_log_backend(self) -> None:
+        """The attempt's own VictoriaLogs, or the stand-in backend; the
+        product's log account (``self.log_env``)."""
+        cfg, b = self.cfg, self.b
+        if self.spec is None:
+            return
+        work = self.dir / "log-backend"
+        try:
+            if self.mode == "fake":
+                started, self.log_env = b.start_fake_log_backend(
+                    self.backend,
+                    cfg.ports.loki_fake
+                    if self.backend == "loki"
+                    else cfg.ports.victorialogs,
+                    cfg.ports.loki_gateway
+                    if self.backend == "loki"
+                    else cfg.ports.victorialogs_gateway,
+                    work,
+                )
+                self._started(started)
+                return
+        except services.ServiceError as error:
+            raise InfraFailure("FAKE_LOG_BACKEND_START_FAILED", error.code) from None
+        if self.backend == "victorialogs":
+            try:
+                self._started(b.start_victorialogs(cfg.ports.victorialogs, work))
+            except services.ServiceError as error:
+                raise InfraFailure("VICTORIALOGS_START_FAILED", error.code) from None
+            self.log_env = dict(cfg.product_victorialogs)
+        else:
+            self.log_env = dict(cfg.product_loki)
+
+    def _connect_log_backend(self) -> None:
+        """After ``before_test``: the question's port-forwards and the Loki
+        gateway's switch to the question's Loki (rental mode only)."""
+        if self.spec is None:
+            return
+        env = self._setup_env()
+        for i, forward in enumerate(self.q.port_forwards or []):
+            try:
+                started = self.b.start_port_forward(
+                    forward, env, self.dir / f"port-forward-{i}.log"
+                )
+            except services.ServiceError as error:
+                raise InfraFailure("PORT_FORWARD_FAILED", error.code) from None
+            self.forwards.push(started.name, started.stop)
+        if self.backend == "loki" and self.mode == "gateway":
+            try:
+                self.b.switch_gateway(
+                    "loki", self._loki_address(), self.cfg.gateway_state("loki")
+                )
+            except (services.ServiceError, OSError) as error:
+                raise InfraFailure(
+                    "GATEWAY_SWITCH_FAILED",
+                    getattr(error, "code", type(error).__name__),
+                ) from None
+
+    def _data_plane(self) -> dict[str, Any]:
+        cfg = self.cfg
+        if self.spec is None:
+            return {
+                "backend": "elasticsearch",
+                "mode": cfg.es_mode,
+                "product_url": cfg.es_url,
+                "gateway_upstream": None,
+                "port_forwards": [],
+                "victorialogs_image": None,
+            }
+        return {
+            "backend": self.backend,
+            "mode": self.mode,
+            "product_url": product_log_url(cfg, self.backend),
+            "gateway_upstream": (
+                self._loki_address()
+                if self.backend == "loki"
+                else f"127.0.0.1:{cfg.ports.victorialogs}"
+            ),
+            "port_forwards": [
+                {
+                    k: f.get(k)
+                    for k in ("namespace", "service", "local_port", "remote_port")
+                }
+                for f in (self.q.port_forwards or [])
+            ],
+            "victorialogs_image": VICTORIALOGS_IMAGE
+            if self.backend == "victorialogs" and self.mode == "docker"
+            else None,
+        }
+
     def _run(self) -> AttemptResult:
         cfg, b, q = self.cfg, self.b, self.q
         self.dir.mkdir(parents=True, exist_ok=True)
-        busy = [n for n, p in cfg.ports.per_attempt().items() if b.port_in_use(p)]
+        own = cfg.ports.log_ports(self.backend, self.mode)
+        busy = [
+            n for n, p in {**cfg.ports.per_attempt(), **own}.items() if b.port_in_use(p)
+        ]
+        if self.spec is not None:
+            busy += [f"question:{p}" for p in self.spec.host_ports if b.port_in_use(p)]
         if busy:
             raise InfraFailure("PORT_BUSY", ",".join(busy))
-        self.owned_ports = {"pg": cfg.ports.pg, "web": cfg.ports.web}
+        self.owned_ports = {"pg": cfg.ports.pg, "web": cfg.ports.web, **own}
         wait = seconds_to_wait_for_utc_midnight(self.qid, b.now())
         if wait:
             self.block["midnight_wait_seconds"] = round(wait, 1)
@@ -674,9 +1008,19 @@ class Attempt:
         if not isinstance(q.user_prompt, str):
             raise DeterministicError("QUESTION_MULTI_TURN")
         prompt = q.user_prompt
+        timeout_s = q.setup_timeout or DEFAULT_SETUP_TIMEOUT
+        if self.qid in LOKI_FIXED_TIME:
+            day_wait = seconds_to_wait_for_shift_day(self.qid, b.now(), timeout_s)
+            self.block["shift_day_wait_seconds"] = round(day_wait, 1)
+            if day_wait:
+                b.sleep(day_wait)
+        self._start_log_backend()
 
-        self._admin = b.es_admin(cfg.es_url, cfg.engineer_key)
+        if self.spec is None:
+            self._admin = b.es_admin(cfg.es_url, cfg.engineer_key)
+        self._clean_armed = True
         self._clean("cleanup_before")
+        before_started = b.now()
         before = self._script("before_test")
         self.block["setup"]["before_test"] = asdict(before)
         if not before.ok:
@@ -684,12 +1028,31 @@ class Attempt:
                 "SETUP_TIMEOUT" if before.timed_out else "SETUP_FAILED",
                 f"exit={before.exit_code}",
             )
+        self._connect_log_backend()
         shift_started = b.now()
         self.block["setup"]["ended_at"] = _iso(shift_started)
         try:
-            delivered, shift = apply_shift(self._admin, self.qid, prompt, shift_started)
+            if self.backend == "elasticsearch":
+                assert self._admin is not None
+                delivered, shift = apply_shift(
+                    self._admin, self.qid, prompt, shift_started
+                )
+            else:
+                delivered, shift = shift_question(
+                    self.backend,
+                    es_admin=self._admin,
+                    loki_admin=(
+                        b.loki_admin("http://" + self._loki_address())
+                        if self.backend == "loki"
+                        else None
+                    ),
+                    qid=self.qid,
+                    question=prompt,
+                    now=shift_started,
+                    setup_started=before_started,
+                )
         except ShiftError as error:
-            if error.code in ("SHIFT_IO_FAILED", "ES_NOT_FOUND"):
+            if error.code in INFRA_SHIFT_ERRORS:
                 raise InfraFailure(error.code, error.detail) from None
             raise DeterministicError(error.code, error.detail) from None
         # The 120 s line runs from the end of the shift (184/185 rewrite
@@ -714,7 +1077,11 @@ class Attempt:
             ],
             "time_only_phrases": shift.time_only_phrases,
         }
-        self.block["disclosures"] = disclosures(self.qid, q, shift)
+        assert cfg.k8s is not None
+        self.block["disclosures"] = disclosures(
+            self.qid, q, shift, k8s_namespace=cfg.k8s.namespace
+        )
+        self.block["data_plane"] = self._data_plane()
 
         try:
             pg = b.start_pg(self.dir / "pg", cfg.ports.pg)
@@ -724,10 +1091,18 @@ class Attempt:
         identities = self.dir / "target_identities.json"
         write_identities(identities)
         assert cfg.account is not None and cfg.k8s is not None
-        wenv = web_env(cfg, pg, identities, cfg.account)
-        check_env_isolation(wenv, cfg.engineer_key, role="web")
-        kenv = worker_env(cfg, pg, cfg.product_es, cfg.k8s, q.cluster_name, cfg.secrets)
-        check_env_isolation(kenv, cfg.engineer_key, role="worker")
+        addresses = self._backend_addresses() if self.spec is not None else []
+        wenv = web_env(cfg, pg, identities, cfg.account, backend=self.backend)
+        check_env_isolation(
+            wenv, cfg.engineer_key, role="web", backend_addresses=addresses
+        )
+        kenv = worker_env(
+            cfg, pg, cfg.product_es, cfg.k8s, q.cluster_name, cfg.secrets,
+            backend=self.backend, log_env=self.log_env,
+        )  # fmt: skip
+        check_env_isolation(
+            kenv, cfg.engineer_key, role="worker", backend_addresses=addresses
+        )
         try:
             self._started(b.start_web(wenv, cfg.ports.web, self.dir / "web.log"))
             worker = self._started(
@@ -748,6 +1123,14 @@ class Attempt:
         }
         if not setup_to_delivery_ok(setup_ended, now):
             raise VoidAttempt("SETUP_TO_DELIVERY_EXCEEDED", f"{gap:.1f}s")
+        if self.spec is not None:
+            written = (now - before_started).total_seconds()
+            self.block["delivery"]["data_written_to_delivery_seconds"] = round(
+                written, 3
+            )
+            limit = DATA_WINDOW_SECONDS.get(self.qid)
+            if limit is not None and written > limit:
+                raise VoidAttempt("DATA_WINDOW_EXCEEDED", f"{written:.1f}s")
         if shift.applied and shift.original_max is not None:
             # H-8's anchor rule at delivery time: the shifted data ends at
             # least LEAD before the question arrives.
@@ -827,6 +1210,8 @@ class Attempt:
         )
         self.block["conversion"] = conversion
 
+        for failure in self.forwards.close():
+            raise RoundAbort("CLEANUP_FAILED", failure)
         self._clean("cleanup_after")
         self._cleaned_after = True
         self.block["history"] = list(self.history)
@@ -1138,12 +1523,21 @@ def git_state(allow_dirty: bool) -> dict[str, Any]:
 
 
 def resolve_questions(spec: str | None) -> tuple[str, ...]:
-    """``254,275`` or full directory names; only B1 questions."""
+    """``254,275``, full directory names or the groups ``b1``/``c5``; empty
+    is B1. A number naming two questions (``259``) is ``QUESTION_AMBIGUOUS``."""
     if not spec:
         return B1_QUESTIONS
-    out = []
+    out: list[str] = []
     for item in (s.strip() for s in spec.split(",") if s.strip()):
-        found = [q for q in B1_QUESTIONS if q == item or q.split("_", 1)[0] == item]
+        if item in QUESTION_GROUPS:
+            out.extend(QUESTION_GROUPS[item])
+            continue
+        if item in ALL_QUESTIONS:
+            out.append(item)
+            continue
+        found = [q for q in ALL_QUESTIONS if q.split("_", 1)[0] == item]
+        if len(found) > 1:
+            raise RoundAbort("QUESTION_AMBIGUOUS", item)
         if len(found) != 1:
             raise RoundAbort("QUESTION_UNKNOWN", item)
         out.append(found[0])
@@ -1189,6 +1583,70 @@ def prepare_round(cfg: Config, backends: Backends, round_: Round) -> None:
         assert project is not None
         cfg.project = lab_evidence.ensure_longlived_project(client, project)
     cfg.round_dir.mkdir(parents=True, exist_ok=True)
+    backends_needed = {backend_of(q) for q in cfg.questions}
+    if "elasticsearch" in backends_needed:
+        _prepare_es(cfg, backends, round_, private)
+    _prepare_gateways(cfg, backends, round_, backends_needed)
+    cfg.k8s = (
+        k8s_from_env_file(cfg.k8s_env_file)
+        if cfg.k8s_env_file is not None
+        else backends.unreachable_k8s(cfg.round_dir / "k8s-ca", cfg.ports.k8s)
+    )
+    cfg.account = new_account()
+
+
+def _prepare_gateways(
+    cfg: Config, backends: Backends, round_: Round, needed: Collection[str]
+) -> None:
+    """Rental mode: the round's read-only gateways (C5-U1). The Loki one
+    starts pointed at the first Loki question and is switched per attempt;
+    the VictoriaLogs one always points at the attempt's VictoriaLogs."""
+    plans: list[tuple[str, int, str, str]] = []
+    if "loki" in needed and cfg.loki_mode == "gateway":
+        first = next(q for q in cfg.questions if backend_of(q) == "loki")
+        address = LOG_QUESTIONS[first].address
+        assert address is not None
+        plans.append(
+            ("loki", cfg.ports.loki_gateway, address, "LOKI_GATEWAY_START_FAILED")
+        )
+    if "victorialogs" in needed and cfg.victorialogs_mode == "docker":
+        plans.append(
+            (
+                "victorialogs",
+                cfg.ports.victorialogs_gateway,
+                f"127.0.0.1:{cfg.ports.victorialogs}",
+                "VICTORIALOGS_GATEWAY_START_FAILED",
+            )
+        )
+    for backend, port, upstream, code in plans:
+        if backends.port_in_use(port):
+            raise RoundAbort("PORT_BUSY", f"{backend}_gateway")
+        try:
+            started, env = backends.start_gateway(
+                backend,
+                port,
+                upstream,
+                cfg.gateway_state(backend),
+                cfg.round_dir / f"{backend}-readonly.env",
+            )
+        except (services.ServiceError, OSError) as error:
+            raise RoundAbort(
+                code, getattr(error, "code", type(error).__name__)
+            ) from None
+        round_.cleanup.push(started.name, started.stop)
+        if backend == "loki":
+            cfg.product_loki = env
+        else:
+            cfg.product_victorialogs = env
+        if env.get(f"OPSPILOT_{backend.upper()}_URL", "").rstrip(
+            "/"
+        ) != product_log_url(cfg, backend):
+            raise RoundAbort(code, "gateway address differs from the product's")
+
+
+def _prepare_es(
+    cfg: Config, backends: Backends, round_: Round, private: Mapping[str, str]
+) -> None:
     if cfg.es_mode == "fake":
         if backends.port_in_use(cfg.ports.es):
             raise RoundAbort("PORT_BUSY", "es")
@@ -1225,12 +1683,6 @@ def prepare_round(cfg: Config, backends: Backends, round_: Round) -> None:
         or cfg.product_es.get("OPSPILOT_ES_USERNAME")
     ):
         raise RoundAbort("ES_READONLY_IDENTITY_FAILED")
-    cfg.k8s = (
-        k8s_from_env_file(cfg.k8s_env_file)
-        if cfg.k8s_env_file is not None
-        else backends.unreachable_k8s(cfg.round_dir / "k8s-ca", cfg.ports.k8s)
-    )
-    cfg.account = new_account()
 
 
 def run_round(
@@ -1257,9 +1709,12 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--round", required=True)
     parser.add_argument("--upstream", required=True, type=Path)
     parser.add_argument(
-        "--questions", help="comma-separated numbers or names; default all 30"
+        "--questions",
+        help="comma-separated numbers, names or groups (b1, c5); default B1's 30",
     )
     parser.add_argument("--es", choices=("fake", "external"), default="fake")
+    parser.add_argument("--loki", choices=("fake", "gateway"), default="fake")
+    parser.add_argument("--victorialogs", choices=("fake", "docker"), default="fake")
     parser.add_argument("--es-url", default="")
     parser.add_argument("--es-readonly-env", type=Path)
     parser.add_argument("--k8s-env-file", type=Path)
@@ -1285,6 +1740,8 @@ def _config(args: argparse.Namespace) -> Config:
         questions=resolve_questions(args.questions),
         ports=Ports(**{n: getattr(args, f"{n}_port") for n in Ports().all()}),
         es_mode=args.es,
+        loki_mode=args.loki,
+        victorialogs_mode=args.victorialogs,
         es_url=args.es_url,
         es_readonly_env=args.es_readonly_env,
         k8s_env_file=args.k8s_env_file,

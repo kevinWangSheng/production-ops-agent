@@ -18,6 +18,14 @@ text judged by OpsPilot's #666 judge (``scripts.holmes_evals.judge_run``),
 the same judge for both agents. ``upstream`` (optional comparison) uses
 upstream's autoevals classifier pointed at the same receiver and model.
 
+C5 questions (#666 PR-C): Loki questions reach their own Loki through
+upstream's own port-forwards (``toolsets.yaml`` addresses); each attempt of a
+VictoriaLogs question gets a fresh VictoriaLogs container, given to the
+harness as ``VICTORIALOGS_URL=http://localhost:<port>``; 100a/101/259_loki
+wait for a whole-day offset before pytest starts and are shifted by the same
+rule as OpsPilot's driver; after each attempt the question's namespace must
+be gone and its ports free (the ES questions keep the index purge).
+
 Raw files: ``tmp/holmes-compare/<round>/<qid>/trial-<n>/chance-<k>/`` (judge
 input, the plugin's ``harness.json``, the shift record; the pytest log and
 the judge rationale under ``answer-derived/``). Evidence:
@@ -50,7 +58,16 @@ from scripts.holmes_compare.records import (
     load_rows,
 )
 from scripts.holmes_evals.judge import JUDGE_MODEL, ZAI_BASE, ZAI_KEY_NAMES
+from scripts.holmes_evals.log_backends import (
+    LOG_QUESTIONS,
+    RELEASE_WAIT_S,
+    VICTORIALOGS_IMAGE,
+    backend_of,
+    namespace_gone,
+    start_victorialogs,
+)
 from scripts.holmes_evals.questions import (
+    ALL_QUESTIONS,
     B1_QUESTIONS,
     R8_13_SKILL_ASSERTION_DROPPED,
     UPSTREAM_COMMIT,
@@ -58,7 +75,7 @@ from scripts.holmes_evals.questions import (
     verify_upstream,
 )
 from scripts.holmes_evals.scoring import score
-from scripts.itbench_lite.services import base_env
+from scripts.itbench_lite.services import ServiceError, base_env, port_in_use
 
 ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_DIR = Path(__file__).resolve().parent / "pytest_plugin"
@@ -91,6 +108,16 @@ DISCLOSURES = (
     "DESHIFT_TIME_ONLY_UNCHANGED",
     "DESHIFT_DATE_MIDPOINT",
 )
+#: PR-C: C5 questions replace the minute-shift deshift notes.
+C5_DISCLOSURES = ("TOOL_FACE_UPSTREAM_DEFAULT", "UPSTREAM_HARNESS_JUDGE_TEXT")
+LOKI_SHIFT_DISCLOSURES = (
+    "QUESTION_TIME_REWRITTEN",
+    "SHIFT_WHOLE_DAYS",
+    "LOKI_ORIGINALS_KEPT",
+    "LOKI_FUTURE_DROPPED",
+    "LOG_LINE_TIME_REWRITTEN",
+)
+DEFAULT_VICTORIALOGS_PORT = 29428
 
 
 class RoundAbort(RuntimeError):
@@ -110,6 +137,7 @@ class Config:
     trials: tuple[int, ...] = (1, 2, 3)
     secrets: dict[str, str] = field(default_factory=dict, repr=False)
     kubeconfig: Path | None = None
+    victorialogs_port: int = DEFAULT_VICTORIALOGS_PORT
     tmp_root: Path = ROOT / "tmp" / "holmes-compare"
     evidence_root: Path = ROOT / "docs" / "evidence"
 
@@ -154,7 +182,7 @@ def preflight(cfg: Config) -> None:
         raise RoundAbort("BAD_ROUND")
     if any(t not in range(1, 7) for t in cfg.trials):
         raise RoundAbort("BAD_TRIALS")
-    unknown = [q for q in cfg.questions if q not in B1_QUESTIONS]
+    unknown = [q for q in cfg.questions if q not in ALL_QUESTIONS]
     if unknown:
         raise RoundAbort("QUESTION_UNKNOWN")
     try:
@@ -166,12 +194,17 @@ def preflight(cfg: Config) -> None:
         raise RoundAbort("UPSTREAM_DOTENV_PRESENT")
     if not cfg.holmes_python.is_file():
         raise RoundAbort("HOLMES_PYTHON_MISSING")
-    for name in ("DEEPSEEK_API_KEY", "ELASTICSEARCH_URL", "ELASTICSEARCH_API_KEY"):
+    needs_es = any(backend_of(q) == "elasticsearch" for q in cfg.questions)
+    names = ["DEEPSEEK_API_KEY"]
+    if needs_es:
+        names += ["ELASTICSEARCH_URL", "ELASTICSEARCH_API_KEY"]
+    for name in names:
         if not cfg.secrets.get(name):
             raise RoundAbort(f"{name}_MISSING")
     if not _zai_key(cfg.secrets):
         raise RoundAbort("JUDGE_KEY_MISSING")
-    check_es_url(cfg.secrets["ELASTICSEARCH_URL"])
+    if needs_es:
+        check_es_url(cfg.secrets["ELASTICSEARCH_URL"])
 
 
 def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
@@ -184,14 +217,31 @@ def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
     OpenAI-compatible endpoint, so the judge key never enters this process.
     """
     s = cfg.secrets
+    backend = backend_of(qid)
     env = base_env(os.environ)
     env.update(MODEL_ENV)
+    if backend == "elasticsearch":
+        env.update(
+            {
+                "ELASTICSEARCH_URL": s["ELASTICSEARCH_URL"],
+                "ELASTICSEARCH_API_KEY": s["ELASTICSEARCH_API_KEY"],
+            }
+        )
+    else:
+        spec = LOG_QUESTIONS[qid]
+        # 259's generator stamps naive datetimes with the host zone.
+        env["TZ"] = "UTC"
+        if backend == "loki":
+            env["OHC_SHIFT_BACKEND"] = "loki"
+            assert spec.address is not None
+            env["OHC_LOKI_URL"] = f"http://{spec.address}"
+        else:
+            env["OHC_SHIFT_BACKEND"] = "none"
+            env["VICTORIALOGS_URL"] = f"http://localhost:{cfg.victorialogs_port}"
     env.update(
         {
             "MODEL": MODEL,
             "DEEPSEEK_API_KEY": s["DEEPSEEK_API_KEY"],
-            "ELASTICSEARCH_URL": s["ELASTICSEARCH_URL"],
-            "ELASTICSEARCH_API_KEY": s["ELASTICSEARCH_API_KEY"],
             "RUN_LIVE": "true",
             "ITERATIONS": "1",
             "ASK_HOLMES_TEST_TYPE": "cli",
@@ -261,7 +311,35 @@ def _sha256_file(path: Path) -> str | None:
         return None
 
 
+def release_state(cfg: Config, qid: str, *, sleep: Any = time.sleep) -> dict[str, Any]:
+    """C5: the question's namespace gone (up to ``RELEASE_WAIT_S``) and its
+    host ports free; ``ok`` false is a failed purge."""
+    spec = LOG_QUESTIONS[qid]
+    env = base_env(os.environ)
+    if cfg.kubeconfig is not None:
+        env["KUBECONFIG"] = str(cfg.kubeconfig)
+    gone = True
+    if spec.namespace is not None:
+        deadline = time.monotonic() + RELEASE_WAIT_S
+        while not (gone := namespace_gone(spec.namespace, env)):
+            if time.monotonic() >= deadline:
+                break
+            sleep(2)
+    busy = [p for p in spec.host_ports if port_in_use(p)]
+    return {
+        "namespace": spec.namespace,
+        "namespace_gone": gone,
+        "busy_ports": busy,
+        "ok": gone and not busy,
+    }
+
+
 def _purge(cfg: Config, qid: str) -> list[str]:
+    if backend_of(qid) != "elasticsearch":
+        state = release_state(cfg, qid)
+        if not state["ok"]:
+            raise RuntimeError("LOG_BACKEND_NOT_RELEASED")
+        return []
     from scripts.holmes_evals.setup import purge_question_indices
     from scripts.holmes_evals.shift import EsAdmin
 
@@ -314,6 +392,20 @@ def judge_upstream(harness: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def shift_day_wait(cfg: Config, qid: str, *, sleep: Any = time.sleep) -> float:
+    """100a/101/259_loki: wait for a whole-day offset (same rule as OpsPilot)."""
+    from scripts.holmes_evals.questions import load_question
+    from scripts.holmes_evals.setup import DEFAULT_SETUP_TIMEOUT
+    from scripts.holmes_evals.shift import seconds_to_wait_for_shift_day
+
+    timeout = load_question(cfg.upstream, qid).setup_timeout or DEFAULT_SETUP_TIMEOUT
+    # pytest collection and harness start come before before_test.
+    wait = seconds_to_wait_for_shift_day(qid, datetime.now(UTC), timeout + 120)
+    if wait:
+        sleep(wait)
+    return wait
+
+
 def run_attempt(cfg: Config, qid: str, chance_dir: Path) -> dict[str, Any]:
     (chance_dir / "answer-derived").mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -321,6 +413,37 @@ def run_attempt(cfg: Config, qid: str, chance_dir: Path) -> dict[str, Any]:
         purged_before = _purge(cfg, qid)
     except Exception:  # noqa: BLE001 - classified, never printed
         return {"category": "env_broken", "code": "PURGE_FAILED"}
+    backend = backend_of(qid)
+    day_wait = 0.0
+    if backend == "loki":
+        try:
+            day_wait = shift_day_wait(cfg, qid)
+        except Exception as exc:  # noqa: BLE001 - ShiftError("SHIFT_WAIT_FOR_DAY")
+            return {
+                "category": "env_broken",
+                "code": getattr(exc, "code", "SHIFT_WAIT"),
+            }
+    vlogs = None
+    if backend == "victorialogs":
+        try:
+            vlogs = start_victorialogs(cfg.victorialogs_port, chance_dir)
+        except ServiceError:
+            return {"category": "env_broken", "code": "VICTORIALOGS_START_FAILED"}
+    try:
+        return _run_pytest(cfg, qid, chance_dir, started, purged_before, day_wait)
+    finally:
+        if vlogs is not None:
+            vlogs.stop()
+
+
+def _run_pytest(
+    cfg: Config,
+    qid: str,
+    chance_dir: Path,
+    started: float,
+    purged_before: list[str],
+    day_wait: float,
+) -> dict[str, Any]:
     timed_out = False
     with (chance_dir / "answer-derived" / "pytest.log").open("wb") as log:
         try:
@@ -364,6 +487,7 @@ def run_attempt(cfg: Config, qid: str, chance_dir: Path) -> dict[str, Any]:
         "tool_calls": props.get("tool_call_count"),
         "llm_calls": props.get("num_llm_calls"),
         "purged": {"before": purged_before, "after": purged_after},
+        "shift_day_wait_seconds": round(day_wait, 1),
     }
 
 
@@ -402,7 +526,15 @@ def build_summary(
     missing = last["category"] == "env_broken"
     harness = last.get("harness") or {}
     shift = _read_json(chance_dir / "shift.json")
-    disclosures = list(DISCLOSURES)
+    spec = LOG_QUESTIONS.get(qid)
+    if spec is None:
+        disclosures = list(DISCLOSURES)
+    else:
+        disclosures = list(C5_DISCLOSURES)
+        if isinstance(shift, Mapping) and shift.get("applied"):
+            disclosures += LOKI_SHIFT_DISCLOSURES
+        if spec.upstream_k8s_disabled:
+            disclosures.append("K8S_TOOLS_UPSTREAM_DISABLED")
     if qid in R8_13_SKILL_ASSERTION_DROPPED:
         disclosures.append("SKILL_ASSERTION_DROPPED")
     if cfg.judge_path == "opspilot":
@@ -449,6 +581,8 @@ def build_summary(
                     "deshift_count": harness.get("deshift_count"),
                 },
                 "purged": last.get("purged"),
+                "shift_day_wait_seconds": last.get("shift_day_wait_seconds"),
+                "data_plane": _data_plane(cfg, qid),
                 "disclosures": disclosures,
             }
         )
@@ -457,6 +591,23 @@ def build_summary(
         "status": "missing" if missing else "completed",
         "written_at": datetime.now(UTC).isoformat(),
         HOLMES_BLOCK: block,
+    }
+
+
+def _data_plane(cfg: Config, qid: str) -> dict[str, Any]:
+    backend = backend_of(qid)
+    spec = LOG_QUESTIONS.get(qid)
+    if spec is None:
+        url = cfg.secrets.get("ELASTICSEARCH_URL")
+    elif spec.address:
+        url = f"http://localhost:{spec.address.rsplit(':', 1)[1]}"
+    else:
+        url = f"http://localhost:{cfg.victorialogs_port}"
+    return {
+        "backend": backend,
+        "mode": "upstream-direct",
+        "product_url": url,
+        "victorialogs_image": VICTORIALOGS_IMAGE if backend == "victorialogs" else None,
     }
 
 
@@ -517,6 +668,14 @@ def scores(evidence_dir: Path, questions: Sequence[str]) -> dict[str, Any]:
     return result
 
 
+def _score_questions(spec: str | None) -> tuple[str, ...]:
+    if not spec:
+        return B1_QUESTIONS
+    from scripts.holmes_evals.driver import resolve_questions
+
+    return resolve_questions(spec)
+
+
 def _parse_trials(spec: str) -> tuple[int, ...]:
     try:
         return tuple(int(x) for x in spec.split(",") if x.strip())
@@ -536,19 +695,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     r.add_argument("--questions")
     r.add_argument("--trials", default="1,2,3")
     r.add_argument("--kubeconfig", type=Path)
+    r.add_argument("--victorialogs-port", type=int, default=DEFAULT_VICTORIALOGS_PORT)
     r.add_argument("--tmp-root", type=Path)
     r.add_argument("--evidence-root", type=Path)
     s = sub.add_parser("scores")
     s.add_argument("--round", required=True)
     s.add_argument("--evidence-root", type=Path, default=ROOT / "docs" / "evidence")
     s.add_argument("--out", type=Path)
+    s.add_argument("--questions", help="numbers, names or groups (b1, c5); default B1")
     args = parser.parse_args(argv)
     try:
         if args.command == "scores":
             evidence = args.evidence_root / f"holmes-compare-{args.round}"
             out = args.out or evidence / "scores.json"
             out.write_text(
-                json.dumps(scores(evidence, B1_QUESTIONS), ensure_ascii=False, indent=1)
+                json.dumps(
+                    scores(evidence, _score_questions(args.questions)),
+                    ensure_ascii=False,
+                    indent=1,
+                )
                 + "\n"
             )
             return 0
@@ -563,6 +728,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             trials=_parse_trials(args.trials),
             secrets=load_env_file(args.env_file),
             kubeconfig=args.kubeconfig.resolve() if args.kubeconfig else None,
+            victorialogs_port=args.victorialogs_port,
         )
         if args.tmp_root:
             cfg.tmp_root = args.tmp_root.resolve()
