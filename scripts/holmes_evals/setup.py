@@ -22,7 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from scripts.itbench_lite.services import base_env
 
@@ -44,6 +44,27 @@ def setup_env(
     env["ELASTICSEARCH_URL"] = es_url
     env["ELASTICSEARCH_API_KEY"] = engineer_key
     env["ES_UPDATE_SHARD_LIMIT"] = "true"
+    if kubeconfig is not None:
+        env["KUBECONFIG"] = str(kubeconfig)
+    return {str(k): str(v) for k, v in env.items()}
+
+
+def log_setup_env(
+    spec: Any,
+    *,
+    victorialogs_url: str | None,
+    kubeconfig: Path | None,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """The setup/cleanup child's environment for a C5 question (#666 PR-C):
+    base variables, ``TZ=UTC`` (259's generator turns naive datetimes into
+    epoch seconds with the host zone), ``VICTORIALOGS_URL`` (the attempt's
+    backend port, engineer side) for VictoriaLogs questions, ``KUBECONFIG``
+    when given. No Elasticsearch, product, model or judge variable."""
+    env = base_env(environ)
+    env["TZ"] = "UTC"
+    if getattr(spec, "backend", None) == "victorialogs" and victorialogs_url:
+        env["VICTORIALOGS_URL"] = victorialogs_url
     if kubeconfig is not None:
         env["KUBECONFIG"] = str(kubeconfig)
     return {str(k): str(v) for k, v in env.items()}

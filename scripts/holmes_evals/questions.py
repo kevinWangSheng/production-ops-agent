@@ -91,6 +91,26 @@ R8_13_SKILL_ASSERTION_DROPPED: frozenset[str] = SKILL_ASSERTION_DROPPED | {
     "282_loki_custom_stream_label"
 }
 
+#: C5 (#569, PR-C): log search questions; each brings its own backend.
+C5_LOKI_QUESTIONS: tuple[str, ...] = (
+    "100a_loki_historical_logs",
+    "101_loki_historical_logs_pod_deleted",
+    "102_loki_label_discovery",
+    "102a_loki_logs_transparency",
+    "102b_loki_multiple_pods",
+    "259_loki_historical_logs_pod_deleted_docker",
+    "282_loki_custom_stream_label",
+)
+C5_VICTORIALOGS_QUESTIONS: tuple[str, ...] = (
+    "257_victorialogs_log_search",
+    "258_victorialogs_streams",
+)
+C5_QUESTIONS: tuple[str, ...] = C5_LOKI_QUESTIONS + C5_VICTORIALOGS_QUESTIONS
+#: Every question the drivers accept (B1 first, the order rounds run in).
+ALL_QUESTIONS: tuple[str, ...] = B1_QUESTIONS + C5_QUESTIONS
+#: ``--questions`` group names.
+QUESTION_GROUPS: dict[str, tuple[str, ...]] = {"b1": B1_QUESTIONS, "c5": C5_QUESTIONS}
+
 
 class UpstreamMismatch(RuntimeError):
     """The checkout is not the pinned upstream; carries a fixed code."""

@@ -10,6 +10,9 @@
   and ``YYYY-MM-DD`` dates that fall inside the shifted data range ± 1 hour are
   shifted back (H-9). Times outside that range are left alone; a time of day
   written without a date is not touched (known limitation, disclosed).
+* English month-name dates (``August 2, 2025``, ``Nov 19 2026 at 13:45 UTC``;
+  #666 PR-C, the C5 Loki question texts use this form) are read the same way
+  and rewritten in their own style.
 """
 
 from __future__ import annotations
@@ -118,6 +121,98 @@ _STAMP = re.compile(
 )
 
 
+_MONTHS = (
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+)  # fmt: skip
+_MONTH_NUMBER = (
+    {m: i + 1 for i, m in enumerate(_MONTHS)}
+    | {m[:3]: i + 1 for i, m in enumerate(_MONTHS)}
+    | {"sept": 9}
+)
+# ``<Month|Mon>[.] <D>[st|nd|rd|th][,] <YYYY>``, optionally followed by a time
+# of day (``at``/``around``/``,``/space, ``H:MM[:SS]``, optional ``UTC``/``GMT``
+# /``Z``). A time without a zone is read as UTC (the question texts say UTC).
+_MONTH_DATE = re.compile(
+    r"(?<![A-Za-z])"
+    r"(?P<mon>(?i:january|february|march|april|may|june|july|august|september"
+    r"|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec))"
+    r"(?P<dot>\.)?(?P<sp1>\s)(?P<d>\d{1,2})(?P<ord>st|nd|rd|th)?(?P<comma>,)?"
+    r"(?P<sp2>\s)(?P<y>\d{4})(?![\d])"
+    r"(?:(?P<conn>,?\s+(?:at\s+|around\s+)?|,\s*)"
+    r"(?P<h>\d{1,2}):(?P<mi>[0-5]\d)(?::(?P<s>[0-5]\d))?"
+    r"(?P<zone>\s?(?:UTC|GMT)|Z)?(?![\d:]))?"
+)
+
+
+def _ordinal(day: int) -> str:
+    if 10 <= day % 100 <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _month_name(original: str, month: int) -> str:
+    full = _MONTHS[month - 1]
+    if (len(original) > 3 or original.lower() == "may") and original.lower() != "sept":
+        name = full
+    elif original.lower() == "sept":
+        name = "sept" if month == 9 else full[:3]
+    else:
+        name = full[:3]
+    if original.isupper():
+        return name.upper()
+    if original[0].isupper():
+        return name.capitalize()
+    return name
+
+
+def month_date_parts(m: re.Match[str]) -> tuple[date, datetime | None]:
+    """The date of a :data:`_MONTH_DATE` match and, when a time follows, the
+    UTC instant. Raises ValueError for an impossible date or time."""
+    if not m["mon"][0].isupper():
+        raise ValueError("month name not capitalised")  # "it may 3, 2026"
+    month = _MONTH_NUMBER[m["mon"].lower()]
+    day = date(int(m["y"]), month, int(m["d"]))
+    if m["h"] is None:
+        return day, None
+    moment = datetime(
+        day.year, day.month, day.day, int(m["h"]), int(m["mi"]), int(m["s"] or 0),
+        tzinfo=UTC,
+    )  # fmt: skip
+    return day, moment
+
+
+def format_month_date(m: re.Match[str], day: date, moment: datetime | None) -> str:
+    """``day`` (and ``moment``'s time of day) in the match's own style."""
+    out = _month_name(m["mon"], day.month) + (m["dot"] or "") + m["sp1"]
+    out += str(day.day) + (_ordinal(day.day) if m["ord"] else "")
+    out += (m["comma"] or "") + m["sp2"] + f"{day.year:04d}"
+    if m["h"] is None or moment is None:
+        return out
+    hour = f"{moment.hour:02d}" if len(m["h"]) == 2 else str(moment.hour)
+    out += m["conn"] + f"{hour}:{moment.minute:02d}"
+    if m["s"] is not None:
+        out += f":{moment.second:02d}"
+    return out + (m["zone"] or "")
+
+
+def _deshift_month(
+    m: re.Match[str], shift: Shift, low: datetime, high: datetime
+) -> str | None:
+    try:
+        day, moment = month_date_parts(m)
+    except ValueError:
+        return None
+    if moment is None:
+        original = _deshift_date(day, shift, low, high)
+        return None if original is None else format_month_date(m, original, None)
+    if not low <= moment <= high:
+        return None
+    step = (shift.seconds // 60) * 60 if m["s"] is None else shift.seconds
+    back = moment - timedelta(seconds=step)
+    return format_month_date(m, back.date(), back)
+
+
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
@@ -212,7 +307,16 @@ def deshift(text: str, shift: Shift | None) -> tuple[str, int]:
         count += 1
         return new
 
-    return _STAMP.sub(replace, text), count
+    def replace_month(m: re.Match[str]) -> str:
+        nonlocal count
+        new = _deshift_month(m, shift, low, high)
+        if new is None:
+            return m.group(0)
+        count += 1
+        return new
+
+    text = _STAMP.sub(replace, text)
+    return _MONTH_DATE.sub(replace_month, text), count
 
 
 # --------------------------------------------------------------------------

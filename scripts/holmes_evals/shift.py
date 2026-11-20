@@ -30,6 +30,19 @@ evaluation moves that data instead of loosening the tool (#666 comment):
    disclosure.
 
 The rule reads data, mappings and the question text only -- never an answer.
+
+C5 Loki questions (#666 PR-C, R10-1, C5-U2 a): 100a, 101 and 259_loki carry a
+2025-08 timeline whose incident sits two days before the data's end, so the
+anchor is the question's own time, not the data's latest value. The offset
+is a whole number of days (lead, 2026-11-19), so a time of day written alone
+needs no deshift: the incident hour must end at least ``LEAD`` before now and
+still lie wholly inside the 24-hour authorised box at delivery; when no day
+fits the attempt waits (:func:`seconds_to_wait_for_shift_day`). The entries
+older than ``FIXED_ENTRY_AGE`` before ``before_test`` began are read back from
+the question's own Loki, moved by the offset (entry time and ISO times inside
+the line), entries that would land after ``now - LEAD`` are dropped, and the
+rest are pushed back under their labels. Loki cannot rewrite in place: the
+2025 originals stay, outside the box (disclosed).
 """
 
 from __future__ import annotations
@@ -44,7 +57,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
-from scripts.holmes_evals.text import _STAMP, DESHIFT_MARGIN, Shift
+from scripts.holmes_evals.text import (
+    _MONTH_DATE,
+    _STAMP,
+    DESHIFT_MARGIN,
+    Shift,
+    format_month_date,
+    month_date_parts,
+)
 
 #: §1 of the prereview: questions whose data sits at a fixed historical time.
 FIXED_TIME: frozenset[str] = frozenset(
@@ -91,6 +111,39 @@ ES_TIMEOUT_S = 60
 #: ``_forcemerge`` over ``app-<id>-*`` can touch ~1600 indices in one request.
 FORCEMERGE_TIMEOUT_S = 600
 _DATE_TYPES = frozenset({"date", "date_nanos"})
+
+#: C5 (PR-C): Loki questions with a fixed 2025-08 timeline.
+LOKI_FIXED_TIME: frozenset[str] = frozenset(
+    {
+        "100a_loki_historical_logs",
+        "101_loki_historical_logs_pod_deleted",
+        "259_loki_historical_logs_pod_deleted_docker",
+    }
+)
+#: The question time of each (``question_instants`` of its ``user_prompt``,
+#: checked by a unit test); :func:`seconds_to_wait_for_shift_day` needs it
+#: before the question is loaded into an attempt.
+LOKI_ANCHORS: dict[str, datetime] = {
+    qid: datetime(2025, 8, 2, 13, 45, tzinfo=UTC) for qid in LOKI_FIXED_TIME
+}
+#: The incident hour the question text points at ("around 13:45 UTC").
+INCIDENT_SPAN = timedelta(hours=1)
+#: The product's authorised box: the 24 hours before submission.
+BOX = timedelta(hours=24)
+#: Delivery may come up to the driver's 120 s void line after the shift.
+DELIVERY_ALLOWANCE = timedelta(seconds=120)
+BOX_MARGIN = timedelta(minutes=10)
+SHIFT_DAY_WAIT_CAP = timedelta(hours=2)
+#: Loki entries older than this before ``before_test`` began are fixed-time data.
+FIXED_ENTRY_AGE = timedelta(hours=24)
+#: How far back the fixed-time read goes (the fixtures' Loki keeps 2 years).
+FIXED_READ_SPAN = timedelta(days=730)
+LOKI_PAGE = 5000
+LOKI_MAX_ENTRIES = 200_000
+LOKI_PUSH_ENTRIES = 5000
+LOKI_PUSH_BYTES = 4 * 1024 * 1024
+LOKI_TIMEOUT_S = 60
+DAY = timedelta(days=1)
 
 
 class ShiftError(Exception):
@@ -324,9 +377,23 @@ def _forward(m: re.Match[str], seconds: int) -> tuple[str, datetime] | None:
     return out + (m["zone"] or ""), moved.astimezone(UTC)
 
 
+def _forward_month(m: re.Match[str], seconds: int) -> tuple[str, datetime] | None:
+    try:
+        day, moment = month_date_parts(m)
+    except ValueError:
+        return None
+    if moment is None:
+        noon = datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
+        moved = noon + timedelta(seconds=seconds)
+        return format_month_date(m, moved.date(), None), moved
+    moved = moment + timedelta(seconds=seconds)
+    return format_month_date(m, moved.date(), moved), moved
+
+
 def rewrite_question(text: str, seconds: int) -> tuple[str, list[QuestionRewrite]]:
     """Every date-time and date the deshift reads, moved forward by
-    ``seconds``; the same pattern as PR-A's deshift, so the two invert."""
+    ``seconds``; the same patterns as PR-A's deshift (ISO, and English month
+    names since PR-C), so the two invert."""
     rewrites: list[QuestionRewrite] = []
 
     def replace(m: re.Match[str]) -> str:
@@ -337,7 +404,70 @@ def rewrite_question(text: str, seconds: int) -> tuple[str, list[QuestionRewrite
         rewrites.append(QuestionRewrite(m.group(0), new, instant))
         return new
 
-    return _STAMP.sub(replace, text), rewrites
+    def replace_month(m: re.Match[str]) -> str:
+        result = _forward_month(m, seconds)
+        if result is None:
+            return m.group(0)
+        new, instant = result
+        rewrites.append(QuestionRewrite(m.group(0), new, instant))
+        return new
+
+    text = _STAMP.sub(replace, text)
+    return _MONTH_DATE.sub(replace_month, text), rewrites
+
+
+def question_instants(text: str) -> list[datetime]:
+    """The UTC instants the question's dates and date-times stand for (a date
+    alone counts as its 12:00 UTC), in text order."""
+    _, rewrites = rewrite_question(text, 0)
+    return [r.instant for r in rewrites]
+
+
+def _incident_at(anchor: datetime, at: datetime) -> datetime:
+    """The latest ``anchor + k days`` whose incident hour ends ``LEAD``
+    before ``at``."""
+    days = (at - LEAD - INCIDENT_SPAN - anchor) // DAY
+    return anchor + days * DAY
+
+
+def _day_fits(incident: datetime, at: datetime) -> bool:
+    return incident >= at + DELIVERY_ALLOWANCE + BOX_MARGIN - BOX
+
+
+def plan_day_shift_seconds(anchor: datetime, now: datetime) -> int:
+    """The whole-day offset (in seconds) that puts the question's incident
+    hour inside the box: the largest ``k`` with ``anchor + k days + 1 h <=
+    now - LEAD``; ``SHIFT_DAY_UNAVAILABLE`` when that incident would start
+    before the box at delivery, ``SHIFT_NOT_NEEDED`` for ``k <= 0``."""
+    incident = _incident_at(anchor, now)
+    days = (incident - anchor) // DAY
+    if days <= 0:
+        raise ShiftError("SHIFT_NOT_NEEDED")
+    if not _day_fits(incident, now):
+        raise ShiftError("SHIFT_DAY_UNAVAILABLE")
+    return int(days) * 86400
+
+
+def seconds_to_wait_for_shift_day(
+    qid: str, now: datetime, setup_timeout_s: float
+) -> float:
+    """0 when a whole-day offset fits from ``now`` through ``now +
+    setup_timeout_s`` (the shift runs after ``before_test``); otherwise the
+    seconds until the next day's incident hour has ended ``LEAD`` ago.
+    Only :data:`LOKI_FIXED_TIME`; over ``SHIFT_DAY_WAIT_CAP`` raises
+    ``ShiftError("SHIFT_WAIT_FOR_DAY")``."""
+    if qid not in LOKI_FIXED_TIME:
+        return 0.0
+    anchor = LOKI_ANCHORS[qid]
+    latest = now + timedelta(seconds=setup_timeout_s)
+    incident = _incident_at(anchor, now)
+    if _incident_at(anchor, latest) == incident and _day_fits(incident, latest):
+        return 0.0
+    ready = _incident_at(anchor, now) + DAY + INCIDENT_SPAN + LEAD
+    wait = ready - now
+    if wait > SHIFT_DAY_WAIT_CAP:
+        raise ShiftError("SHIFT_WAIT_FOR_DAY")
+    return max(wait.total_seconds(), 0.0) + 1.0
 
 
 _TIME_ONLY = re.compile(r"(?<![\d:T])\d{1,2}:\d{2}(?::\d{2})?(?![\d:])")
@@ -345,7 +475,7 @@ _TIME_ONLY = re.compile(r"(?<![\d:T])\d{1,2}:\d{2}(?::\d{2})?(?![\d:])")
 
 def time_only_phrases(text: str) -> int:
     """Times of day written without a date (not rewritten; disclosed)."""
-    stripped = _STAMP.sub(" ", text)
+    stripped = _MONTH_DATE.sub(" ", _STAMP.sub(" ", text))
     return len(_TIME_ONLY.findall(stripped))
 
 
@@ -367,6 +497,15 @@ class ShiftRecord:
     store_size_after: dict[str, int] = field(default_factory=dict)
     question_rewrites: list[QuestionRewrite] = field(default_factory=list)
     time_only_phrases: int = 0
+    # PR-C (Loki); left out of ``as_json`` for Elasticsearch so B1 records
+    # stay byte-identical.
+    backend: str = "elasticsearch"
+    anchor_source: str | None = None
+    fixed_entries: int = 0
+    pushed: int = 0
+    dropped_future: int = 0
+    line_stamps_rewritten: int = 0
+    streams: list[dict[str, Any]] = field(default_factory=list)
 
     def as_text_shift(self) -> Shift | None:
         """PR-A's deshift input, or None when nothing was shifted."""
@@ -385,7 +524,24 @@ class ShiftRecord:
             return value
 
         out: dict[str, Any] = plain(asdict(self))
+        if self.backend == "elasticsearch":
+            for name in _LOG_ONLY_FIELDS:
+                out.pop(name, None)
+        else:
+            for name in ("indices", "store_size_before", "store_size_after"):
+                out.pop(name, None)
         return out
+
+
+_LOG_ONLY_FIELDS = (
+    "backend",
+    "anchor_source",
+    "fixed_entries",
+    "pushed",
+    "dropped_future",
+    "line_stamps_rewritten",
+    "streams",
+)
 
 
 # -- engineer-side client -------------------------------------------------------------------
@@ -709,3 +865,284 @@ def apply_shift(
         if low <= anchor and original_min <= high:
             raise ShiftError("SHIFT_OVERLAP")
     return delivered, record
+
+
+# -- Loki (PR-C) -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LokiEntry:
+    labels: Mapping[str, str]
+    ns: int
+    line: str
+
+
+def _ns(moment: datetime) -> int:
+    moment = moment.astimezone(UTC)
+    whole = int((moment - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(seconds=1))
+    return whole * 1_000_000_000 + moment.microsecond * 1000
+
+
+def _from_ns(ns: int) -> datetime:
+    return datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=ns // 1000)
+
+
+def _selector_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+class LokiAdmin:
+    """Engineer-side client of a question's own Loki (its original port, not
+    the gateway; the fixtures' Loki has no authentication)."""
+
+    def __init__(
+        self, url: str, *, opener: urllib.request.OpenerDirector | None = None
+    ) -> None:
+        parts = urllib.parse.urlsplit(url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ShiftError("LOKI_URL_INVALID")
+        self.url = url.rstrip("/")
+        self._opener = opener or urllib.request.build_opener(
+            urllib.request.ProxyHandler({})
+        )
+
+    def __repr__(self) -> str:
+        return f"LokiAdmin({self.url!r})"
+
+    def _call(
+        self, method: str, path: str, query: Mapping[str, str] | None = None,
+        body: Any = None,
+    ) -> Any:  # fmt: skip
+        url = self.url + path
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        data = None if body is None else json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            method=method,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        try:
+            with self._opener.open(request, timeout=LOKI_TIMEOUT_S) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as error:
+            raise ShiftError(
+                "SHIFT_IO_FAILED", f"{method} {path} HTTP {error.code}"
+            ) from None
+        except (urllib.error.URLError, OSError) as error:
+            raise ShiftError(
+                "SHIFT_IO_FAILED", f"{method} {path} {type(error).__name__}"
+            ) from None
+        if not raw.strip():
+            return None
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except ValueError:
+            raise ShiftError("SHIFT_IO_FAILED", "not JSON") from None
+
+    def label_names(self, start: datetime, end: datetime) -> list[str]:
+        out = self._call(
+            "GET", "/loki/api/v1/labels",
+            {"start": str(_ns(start)), "end": str(_ns(end))},
+        )  # fmt: skip
+        data = out.get("data") if isinstance(out, dict) else None
+        return sorted(str(n) for n in data or [] if not str(n).startswith("__"))
+
+    def _page(self, selector: str, start_ns: int, end_ns: int) -> list[LokiEntry]:
+        out = self._call(
+            "GET",
+            "/loki/api/v1/query_range",
+            {
+                "query": selector,
+                "start": str(start_ns),
+                "end": str(end_ns),
+                "limit": str(LOKI_PAGE),
+                "direction": "forward",
+            },
+        )
+        data = out.get("data") if isinstance(out, dict) else None
+        if not isinstance(data, dict) or data.get("resultType") != "streams":
+            raise ShiftError("SHIFT_IO_FAILED", "unexpected query_range result")
+        rows: list[LokiEntry] = []
+        for stream in data.get("result") or []:
+            labels = {str(k): str(v) for k, v in (stream.get("stream") or {}).items()}
+            for ts, line in stream.get("values") or []:
+                rows.append(LokiEntry(labels, int(ts), str(line)))
+        return rows
+
+    def entries(self, start: datetime, end: datetime) -> list[LokiEntry]:
+        """Every entry in ``[start, end)`` of every stream, oldest first.
+
+        One selector per label name, each excluding the streams the earlier
+        ones covered (``{L2=~".+", L1=""}``), paged forward by time."""
+        names = self.label_names(start, end)
+        seen: set[tuple[tuple[tuple[str, str], ...], int, str]] = set()
+        out: list[LokiEntry] = []
+        end_ns = _ns(end)
+        for i, name in enumerate(names):
+            matchers = [f'{name}=~".+"'] + [f'{n}=""' for n in names[:i]]
+            selector = "{" + ", ".join(matchers) + "}"
+            cursor = _ns(start)
+            while True:
+                page = self._page(selector, cursor, end_ns)
+                for entry in page:
+                    key = (tuple(sorted(entry.labels.items())), entry.ns, entry.line)
+                    if key in seen or not cursor <= entry.ns < end_ns:
+                        continue
+                    seen.add(key)
+                    out.append(entry)
+                    if len(out) > LOKI_MAX_ENTRIES:
+                        raise ShiftError("SHIFT_TOO_MANY_ENTRIES")
+                if len(page) < LOKI_PAGE:
+                    break
+                latest = max(e.ns for e in page)
+                if latest <= cursor:
+                    raise ShiftError("SHIFT_PAGE_STUCK")
+                cursor = latest
+        out.sort(key=lambda e: (e.ns, sorted(e.labels.items()), e.line))
+        return out
+
+    def push(self, entries: Sequence[LokiEntry]) -> None:
+        """Chunked ``/loki/api/v1/push`` (at most ``LOKI_PUSH_ENTRIES``
+        entries or ``LOKI_PUSH_BYTES`` per request)."""
+        batch: dict[tuple[tuple[str, str], ...], list[list[str]]] = {}
+        count = size = 0
+
+        def flush() -> None:
+            nonlocal batch, count, size
+            if batch:
+                streams = [{"stream": dict(k), "values": v} for k, v in batch.items()]
+                self._call("POST", "/loki/api/v1/push", body={"streams": streams})
+            batch, count, size = {}, 0, 0
+
+        for entry in entries:
+            key = tuple(sorted(entry.labels.items()))
+            batch.setdefault(key, []).append([str(entry.ns), entry.line])
+            count += 1
+            size += len(entry.line) + 32
+            if count >= LOKI_PUSH_ENTRIES or size >= LOKI_PUSH_BYTES:
+                flush()
+        flush()
+
+
+def shift_line(line: str, seconds: int) -> tuple[str, int]:
+    """ISO date-times and dates inside a log line moved by ``seconds``."""
+    count = 0
+
+    def replace(m: re.Match[str]) -> str:
+        nonlocal count
+        result = _forward(m, seconds)
+        if result is None:
+            return m.group(0)
+        count += 1
+        return result[0]
+
+    return _STAMP.sub(replace, line), count
+
+
+def apply_loki_shift(
+    admin: LokiAdmin,
+    qid: str,
+    question: str,
+    now: datetime,
+    *,
+    setup_started: datetime,
+) -> tuple[str, ShiftRecord]:
+    """Shift a fixed-time Loki question by whole days (see module docstring)."""
+    phrases = time_only_phrases(question)
+    if qid not in LOKI_FIXED_TIME:
+        return question, ShiftRecord(
+            applied=False, reason="RELATIVE_TIME", time_only_phrases=phrases,
+            backend="loki",
+        )  # fmt: skip
+    instants = question_instants(question)
+    if not instants:
+        raise ShiftError("SHIFT_NO_QUESTION_TIME")
+    anchor = min(instants)
+    seconds = plan_day_shift_seconds(anchor, now)
+    fixed = admin.entries(
+        setup_started - FIXED_READ_SPAN, setup_started - FIXED_ENTRY_AGE
+    )
+    if not fixed:
+        raise ShiftError("SHIFT_NO_FIXED_ENTRIES")
+    check_no_overlap(_from_ns(fixed[0].ns), _from_ns(fixed[-1].ns), seconds)
+    cutoff = _ns(now - LEAD)
+    offset = seconds * 1_000_000_000
+    kept: list[LokiEntry] = []
+    stamps = dropped = 0
+    per_stream: dict[tuple[tuple[str, str], ...], list[int]] = {}
+    for entry in fixed:
+        key = tuple(sorted(entry.labels.items()))
+        tally = per_stream.setdefault(key, [0, 0])
+        tally[0] += 1
+        moved = entry.ns + offset
+        if moved > cutoff:
+            dropped += 1
+            continue
+        line, n = shift_line(entry.line, seconds)
+        stamps += n
+        kept.append(LokiEntry(entry.labels, moved, line))
+        tally[1] += 1
+    if not kept:
+        raise ShiftError("SHIFT_NO_FIXED_ENTRIES", "all entries after now")
+    admin.push(kept)
+    delivered, rewrites = rewrite_question(question, seconds)
+    low, high = _from_ns(kept[0].ns - offset), _from_ns(kept[-1].ns - offset)
+    shifted = [_from_ns(kept[0].ns), _from_ns(kept[-1].ns)] + [
+        r.instant for r in rewrites
+    ]
+    record = ShiftRecord(
+        applied=True,
+        seconds=seconds,
+        anchor=anchor,
+        original_min=low,
+        original_max=high,
+        shifted_min=min(shifted),
+        shifted_max=max(shifted),
+        question_rewrites=rewrites,
+        time_only_phrases=phrases,
+        backend="loki",
+        anchor_source="question",
+        fixed_entries=len(fixed),
+        pushed=len(kept),
+        dropped_future=dropped,
+        line_stamps_rewritten=stamps,
+        streams=[
+            {"labels": dict(k), "entries": v[0], "pushed": v[1]}
+            for k, v in sorted(per_stream.items())
+        ],
+    )
+    if (
+        min(shifted) - DESHIFT_MARGIN <= _from_ns(fixed[-1].ns)
+        and _from_ns(fixed[0].ns) <= max(shifted) + DESHIFT_MARGIN
+    ):
+        raise ShiftError("SHIFT_OVERLAP")
+    return delivered, record
+
+
+def shift_question(
+    backend: str,
+    *,
+    es_admin: EsAdmin | None,
+    loki_admin: LokiAdmin | None,
+    qid: str,
+    question: str,
+    now: datetime,
+    setup_started: datetime,
+) -> tuple[str, ShiftRecord]:
+    """One entry point for every backend: Elasticsearch -> :func:`apply_shift`,
+    Loki -> :func:`apply_loki_shift`, VictoriaLogs -> no shift (both questions
+    are relative)."""
+    if backend == "elasticsearch":
+        assert es_admin is not None
+        return apply_shift(es_admin, qid, question, now)
+    if backend == "loki":
+        assert loki_admin is not None
+        return apply_loki_shift(
+            loki_admin, qid, question, now, setup_started=setup_started
+        )
+    return question, ShiftRecord(
+        applied=False, reason="RELATIVE_TIME",
+        time_only_phrases=time_only_phrases(question), backend=backend,
+    )  # fmt: skip

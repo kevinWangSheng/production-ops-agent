@@ -57,6 +57,9 @@ STATE: dict[str, Any] = {
 }
 _PROPERTY_KEYS = ("holmes_duration", "num_llm_calls", "tool_call_count")
 STEP_TIMEOUT_S = 1800
+#: PR-C: when this session began (``before_test`` runs after it); the Loki
+#: shift reads entries older than a day before it as fixed-time data.
+SESSION_STARTED: list[str] = []
 
 
 def _trial_dir() -> Path:
@@ -156,8 +159,18 @@ def _opspilot_holmes_compare(
             for k in ("ELASTICSEARCH_URL", "ELASTICSEARCH_API_KEY")
             if k in os.environ
         }
+        backend = os.environ.get("OHC_SHIFT_BACKEND", "elasticsearch")
+        extra: list[str] = ["--backend", backend]
+        if backend == "loki":
+            extra += [
+                "--loki-url",
+                os.environ.get("OHC_LOKI_URL", ""),
+                "--setup-started",
+                SESSION_STARTED[0] if SESSION_STARTED else "",
+            ]
         STATE["shift"] = _step(
             "shift",
+            *extra,
             "--qid",
             QID,
             "--question-file",
@@ -236,6 +249,13 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
     if call.excinfo is not None:
         STATE["errors"][report.when] = call.excinfo.typename
     _write_state()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    if ACTIVE and not SESSION_STARTED:
+        from datetime import UTC, datetime
+
+        SESSION_STARTED.append(datetime.now(UTC).isoformat())
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

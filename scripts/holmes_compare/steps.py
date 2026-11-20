@@ -6,6 +6,9 @@ driver applies (``scripts.holmes_evals.shift.apply_shift`` and
 
     python -m scripts.holmes_compare.steps shift --qid Q --question-file F \\
         --out F2 --record R          # env: ELASTICSEARCH_URL, ELASTICSEARCH_API_KEY
+    python -m scripts.holmes_compare.steps shift --backend loki --loki-url U \\
+        --setup-started ISO --qid Q --question-file F --out F2 --record R
+    python -m scripts.holmes_compare.steps shift --backend none ...  # VictoriaLogs
     python -m scripts.holmes_compare.steps deshift --record R --in F --out F2
 
 The last stdout line is one JSON object (``status``, and ``code`` on error,
@@ -46,7 +49,40 @@ def _emit(payload: Mapping[str, Any]) -> None:
 
 
 def _shift(args: argparse.Namespace) -> int:
-    from scripts.holmes_evals.shift import EsAdmin, ShiftError, apply_shift
+    from scripts.holmes_evals.shift import (
+        EsAdmin,
+        LokiAdmin,
+        ShiftError,
+        ShiftRecord,
+        apply_loki_shift,
+        apply_shift,
+        time_only_phrases,
+    )
+
+    if args.backend != "elasticsearch":
+        question = args.question_file.read_text(encoding="utf-8")
+        try:
+            if args.backend == "loki":
+                if not args.loki_url or not args.setup_started:
+                    _emit({"status": "error", "code": "LOKI_ARGS_MISSING"})
+                    return 3
+                started = datetime.fromisoformat(args.setup_started)
+                delivered, record = apply_loki_shift(
+                    LokiAdmin(args.loki_url), args.qid, question, datetime.now(UTC),
+                    setup_started=started,
+                )  # fmt: skip
+            else:
+                delivered, record = question, ShiftRecord(
+                    applied=False, reason="RELATIVE_TIME",
+                    time_only_phrases=time_only_phrases(question), backend="victorialogs",
+                )  # fmt: skip
+        except ShiftError as exc:
+            _emit({"status": "error", "code": exc.code})
+            return 3
+        args.out.write_text(delivered, encoding="utf-8")
+        args.record.write_text(json.dumps(record.as_json(), sort_keys=True) + "\n")
+        _emit({"status": "ok", "applied": record.applied, "reason": record.reason})
+        return 0
 
     url = os.environ.get("ELASTICSEARCH_URL", "")
     key = os.environ.get("ELASTICSEARCH_API_KEY", "")
@@ -89,6 +125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     s.add_argument("--question-file", type=Path, required=True)
     s.add_argument("--out", type=Path, required=True)
     s.add_argument("--record", type=Path, required=True)
+    s.add_argument(
+        "--backend", choices=("elasticsearch", "loki", "none"), default="elasticsearch"
+    )
+    s.add_argument("--loki-url")
+    s.add_argument("--setup-started")
     d = sub.add_parser("deshift")
     d.add_argument("--record", type=Path, required=True)
     d.add_argument("--in", dest="input", type=Path, required=True)
