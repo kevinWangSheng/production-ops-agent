@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set nav = "runbooks" %}
+{% set s = page %}
+{% block title %}Runbook submission {{ s.name }}{% endblock %}
+{% block body %}
+<h1>Runbook submission <code>{{ s.name }}</code></h1>
+<p>target <code>{{ s.resource_uid }}</code> · state <strong id="submission-state">{{ s.state }}</strong>
+  · submitted {{ s.submitted_at }} by <code>{{ s.submitted_by }}</code>
+  {% if s.decision %}· {{ s.decision }} {{ s.decided_at }} by <code>{{ s.decided_by }}</code>{% if s.reason %}: {{ s.reason }}{% endif %}{% endif %}
+  {% if s.approved_entry_id %}· <a href="/runbooks/{{ s.approved_entry_id }}">entry, revision {{ s.approved_revision }}</a>{% endif %}</p>
+<p>{{ s.description }}</p>
+<p class="muted">Source: {{ s.source_label }}{% if s.source_ref %} · <code>{{ s.source_ref }}</code>{% endif %} · sha256 <code>{{ s.content_sha256 }}</code></p>
+{% if s.supersedes_entry_id %}<p>Replaces <a href="/runbooks/{{ s.supersedes_entry_id }}">entry <code>{{ s.supersedes_entry_id }}</code></a>{% if s.supersedes %} (latest revision {{ s.supersedes.latest_revision }}, {{ s.supersedes.state }}){% endif %}.</p>{% endif %}
+{% include "_runbook_error.html" %}
+{% if s.state == "pending" %}
+<h2>Review</h2>
+<form method="post" action="/runbooks/submissions/{{ s.submission_id }}/review" id="form-approve">
+  <input type="hidden" name="action" value="approve">
+  <input type="hidden" name="expected_generation" value="{{ s.generation }}">
+  {% if s.supersedes %}<input type="hidden" name="entry_generation" value="{{ s.supersedes.generation }}">{% endif %}
+  <input type="hidden" name="idempotency_key" value="approve-{{ s.submission_id }}-{{ form_nonce }}">
+  <button type="submit">approve{% if s.supersedes_entry_id %} and replace{% endif %}</button>
+</form>
+<form method="post" action="/runbooks/submissions/{{ s.submission_id }}/review" id="form-reject">
+  <input type="hidden" name="action" value="reject">
+  <input type="hidden" name="expected_generation" value="{{ s.generation }}">
+  <input type="hidden" name="idempotency_key" value="reject-{{ s.submission_id }}-{{ form_nonce }}">
+  <input name="reason" placeholder="why reject" required maxlength="8192">
+  <button type="submit">reject</button>
+</form>
+{% endif %}
+<h2>Content</h2>
+<pre id="submission-content">{{ s.content }}</pre>
+<h2>Audit</h2>
+<table id="submission-audit">
+  <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Generation</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for a in s.audit %}
+  <tr><td>{{ a.recorded_at }}</td><td><code>{{ a.action }}</code></td><td><code>{{ a.actor_id }}</code> ({{ a.principal_kind }})</td><td>{{ a.expected_generation }} → {{ a.resulting_generation }}</td><td>{{ a.reason or "" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

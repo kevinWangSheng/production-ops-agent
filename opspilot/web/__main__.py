@@ -85,6 +85,7 @@ from pathlib import Path
 from opspilot import health, logs, schema
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
+from opspilot.knowledge.runbooks import RunbookStore
 from opspilot.observer.health_profile import (
     PROFILE_DIRECTORY,
     HealthProfile,
@@ -99,6 +100,7 @@ from opspilot.web.auth import AuthConfig, Authenticator, hash_password, token_di
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
 from opspilot.web.review import PostmortemReview
+from opspilot.web.runbooks import RunbookReview
 from opspilot.web.service import Workbench
 from opspilot.web.store import (
     DurableClock,
@@ -339,12 +341,13 @@ def _serve() -> int:
         raise SystemExit(
             "OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS must be a nonnegative integer"
         ) from None
+    targets = _target_registry()
     workbench = Workbench(
         incidents=DurableIncidentStore(store),
         events=events,
         evidence=evidence,
         ledger=ledger,
-        targets=_target_registry(),
+        targets=targets,
         knowledge=None
         if os.environ.get("OPSPILOT_KNOWLEDGE_HINTS") == "off"
         else knowledge,
@@ -362,6 +365,12 @@ def _serve() -> int:
         Authenticator(config),
         clock,
         review=PostmortemReview(knowledge=knowledge, events=events),
+        # C2a (#566): imported runbooks for the registry's targets, or any
+        # target an intake accepts when no registry is configured
+        runbooks=RunbookReview(
+            store=RunbookStore(dsn),
+            target_keys=lambda: None if targets is None else targets.keys(),
+        ),
     )
     host, _, port = bind.rpartition(":")
     # Before any thread: a bind that cannot be served refuses to start.

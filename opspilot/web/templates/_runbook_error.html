@@ -1,0 +1,11 @@
+{% if error %}
+<div id="runbook-error" class="unknown">
+  <p><strong>Refused: <code>{{ error.code }}</code></strong> ({{ error.error_class }})
+  {% if error.error_class == "conflict" %}— the page is out of date or the name is already used by an active runbook of this target. Reload and try again.
+  {% elif error.error_class == "refused" %}— not allowed in the current state.
+  {% elif error.error_class == "invalid" %}— check {{ error.fields | join(", ") if error.fields else "the form" }}.
+  {% elif error.error_class == "not_found" %}— not found.
+  {% elif error.error_class == "unavailable" %}— storage is unavailable; retry the same form.
+  {% endif %}</p>
+</div>
+{% endif %}

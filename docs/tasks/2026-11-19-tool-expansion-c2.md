@@ -1,6 +1,6 @@
 # 工具面拓展 C2：按需取已审核的 runbook 与复盘知识
 
-- 状态：进行中（公开接口已定，等 lead 确认拆分与测试作者）
+- 状态：进行中（C2a 实现中；lead 2026-11-19 确认拆分与实现决定 1、4）
 - 更新日期：2026-11-19
 - 依据：issue #566；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-13、R8-15、R8-25 与 r11 C2-U1=a、C2-U2=a（用户 2026-11-19 选推荐；R8-14 按 r11 修改）；C3 §5 输入快照与 `prompt_revision`、§10「复盘与知识」；F13 第 2、3 步与 F7 第 2 步（`feature_list.json`，均 `passes: true`，须在新来源上重证）。预审全文在仓库外 `~/.agent/handoffs/opspilot-c2-prereview-2026-11-19.md`，可逆默认 C2-0 至 C2-18 采纳，下文只写落地形状与一处偏离（见「实现决定」第 1 条）
 - 上游：HolmesGPT `a0009195` `holmes/plugins/toolsets/skills/skills_fetcher.py`（`fetch_skill`）、`holmes/plugins/skills/skill_loader.py`（目录）、`holmes/plugins/prompts/base_user_prompt.jinja2:16-41`
@@ -49,9 +49,13 @@
 | 入口 | 作用 |
 |---|---|
 | `GET /runbooks` | 按目标列出当前有效、待审核、已驳回、已撤销/取代的条目与提交；导航栏加「Runbooks」 |
-| `GET /runbooks/new`、`POST /runbooks` | 提交：`resource_uid`（必须是工作台已知目标，否则 `TARGET_UNKNOWN`）、`name`、`description`、`content`、`source_label`、`source_ref`、可选 `supersedes_entry_id`、`idempotency_key`；返回 `submission_id` |
+| `GET /runbooks/new`、`POST /runbooks` | 提交：`resource_uid`（配置了目标表时必须是其中的键，否则 `UNKNOWN_TARGET`；没配目标表时接受 intake 接受的任何标识，与能建 Run 的目标一致）、`name`、`description`、`content`、`source_label`、`source_ref`、可选 `supersedes_entry_id`、`idempotency_key`；返回 `submission_id` |
 | `GET /runbooks/submissions/{id}`、`POST .../review` | 看原文并 `action=approve|reject`、`reason`、`expected_generation`、（取代时）`entry_generation`、`idempotency_key`；批准返回 `entry_id`、`revision` |
 | `GET /runbooks/{entry_id}`、`POST .../revoke` | 条目页（每个版本的来源、审核人、批准时间、状态、撤销原因）；撤销带 `revision`、`reason`、`expected_generation`、`idempotency_key` |
+
+表单为 `application/x-www-form-urlencoded`（同现有审核表单）；提交表单上限 512 KiB（32 KiB 多字节正文 URL 编码后最多约 9 倍），其他表单沿用 64 KiB。
+
+错误码（C2a 实现时定，HTTP 状态照审核表单的 R3 分组）：400 `INVALID_INPUT`、`RUNBOOK_NAME_INVALID`、`RUNBOOK_DESCRIPTION_INVALID`、`RUNBOOK_CONTENT_INVALID`、`RUNBOOK_SOURCE_INVALID`、`REASON_REQUIRED`；409 `GENERATION_CONFLICT`、`IDEMPOTENCY_CONFLICT`、`RUNBOOK_NAME_TAKEN`；422 `SUPERSEDE_TARGET_INACTIVE`、`SUPERSEDE_MISMATCH`、`REVISION_NOT_ACTIVE`（撤销非当前有效版本）、`UNKNOWN_TARGET`、`INTEGRITY_REFUSED`；404 `NOT_FOUND`；503 存储不可用。
 
 页面开关：入口不受 C2 开关控制（它不影响模型输入）；没有迁移时进程照常因 schema 不在 head 启动失败。
 
@@ -98,10 +102,14 @@
 4. 开关取值 `1`（预审写 `on`）：与 B3 的 `OPSPILOT_K8S_LIVE_METRICS=1` 一致，非法值启动失败。
 5. 新鲜度阈值从 v7 事实读，worker 不读 `OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS`：同一 Run 的目录与取用口径一致，且不给 worker 加配置。
 6. 撤销不可恢复、要用就重新提交：与 F13 撤销语义一致，审计里每次导入都留痕（C2-12 逐题导入/撤销依赖这一点）。
+7. 目标校验跟 intake 走：配置了目标表时只收表里的键，没配时收任何 intake 标识。评测租机不一定配目标表，而 runbook 只对能建 Run 的目标有意义。
+8. 待审核提交与决定的并发用事务级 advisory lock（按提交 ID、按目标），不用行锁：web 对提交表没有 UPDATE 权限，`FOR UPDATE` 需要它；批准时的同名检查在数据库触发器里再做一次，用同一把目标锁。
+9. 审核页与 JSON 共用表单编码：评测脚本与浏览器走同一条路径，不另开 JSON 入口，F7 第 1 步的路由清单只多 7 条。
 
 ## 证据
 
-尚无。C2a 的 PG 测试交草稿 PR 的 CI `pg-integration`（本机不跑全量、不起 docker）。
+- C2a 本机：`tests/test_runbooks_impl.py`、`test_schema_baseline`、`test_knowledge_store_callers`、`test_architecture` 43 passed、2 xfailed（原有）；ruff、mypy 干净。实现者 PG 测试 `tests/integration/test_runbooks_impl_postgres.py`（10 例，`-m pg` 能收集到）与迁移、角色目录测试交草稿 PR 的 CI（本机 swap 已满，不起 PG）。
+- 改动的钉值：迁移头 5 个文件；`test_schema_migrations_postgres.py` 的 `TABLES_AT_HEAD` 47 → 54；`test_429_schema_downgrade.py` 降级随行表加 0028 的 7 表 1 视图。F7 第 1 步路由清单的 7 条新路由交测试作者登记（先例如此）。
 
 ## 待决
 
