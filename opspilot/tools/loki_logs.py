@@ -833,8 +833,10 @@ class LokiTransport:
         if lookback:
             notes.append(
                 f"The longest range reads {lookback} s back, so evaluation "
-                f"started {lookback} s after the window start: no point counts "
-                "a line from before the window."
+                f"started at {_z(window.start + timedelta(seconds=lookback))}: "
+                f"the requested window start plus {lookback} s, rounded up to "
+                "the step, at most one step later. No point counts a line from "
+                f"before {_z(window.start)}."
             )
         return self._respond(
             request,
