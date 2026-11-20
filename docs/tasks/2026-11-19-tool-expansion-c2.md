@@ -124,9 +124,15 @@ C2a 已合并（#737，`8c68d9f1`）。与上文第 5–7 节一致，这里只�
 8. 待审核提交与决定的并发用事务级 advisory lock（按提交 ID、按目标），不用行锁：web 对提交表没有 UPDATE 权限，`FOR UPDATE` 需要它；批准时的同名检查在数据库触发器里再做一次，用同一把目标锁。
 9. 审核页与 JSON 共用表单编码：评测脚本与浏览器走同一条路径，不另开 JSON 入口，F7 第 1 步的路由清单只多 7 条。
 
+10. （C2b）`ToolRegistration` 加 `citable_as_fact: bool = True`，执行器的 ok 视图再与它取与；只在为 `False` 时进注册表指纹，现有所有 registry revision 不变：报告合同只看视图上的 `citable_as_fact`，而视图字段由执行器生成、适配器不能覆盖（`_GENERIC_VIEW_KEYS`），所以 C2-8 只能在注册上声明。
+11. （C2b）`fetch_skill` 的注册 `source` 用档位的 lab 来源（`otel_demo.SOURCE`），不是 `knowledge`：执行器要求注册来源等于目标来源（`executor.py:781`）；视图另带 `kind`，结果行里的 `source` 写知识出处。
+12. （C2b）结果上限 192 KiB（接口草稿写 64 KiB）：32 KiB 正文在 JSON 里转义（引号、换行、控制字符）后可能超过 64 KiB，而接口要求「取到的总是全文、不截断」；视图仍受通用 25k token 上限。
+13. （C2b）DAL 夹具标题转名字时，所有非 `[a-z0-9]` 字符各段折成一个连字符（162 的标题含空格与大写）；SKILL.md 的 `name` 也走同一函数。
+
 ## 证据
 
 - C2a 本机：`tests/test_runbooks_impl.py`、`test_schema_baseline`、`test_knowledge_store_callers`、`test_architecture` 43 passed、2 xfailed（原有）；ruff、mypy 干净。实现者 PG 测试 `tests/integration/test_runbooks_impl_postgres.py`（10 例，`-m pg` 能收集到）与迁移、角色目录测试交草稿 PR 的 CI（本机 swap 已满，不起 PG）。
+- C2b 本机（`feature/566-runbooks-b`）：revision 实测——开关关时扩展档位 `otel-demo-ext-c63f058afb18`、仅实时用量 `4730c27997c9`、`prompt_revision` `prompt-replay-candidate-860b743085d1` 都不变；开关开：仅知识 `otel-demo-ext-65c98185560b`，ES+知识 `6f658b947ac5`，实时用量+知识 `c695bd998d3a`，五者全开 `14f13fceed04`；`prompt_revision` 开时 `prompt-replay-candidate-75757ad151a2`。实现者单测 `tests/test_knowledge_fetch_impl.py` 29 passed；B1/B3/C5a/C5b 合同、`tests/contracts`、`tests/safety`（非 PG）、F7 第 1 步、架构等 1623 passed；ruff、mypy 干净。PG 测试 `tests/integration/test_knowledge_fetch_impl_postgres.py`（7 例）交 CI。
 - 改动的钉值：迁移头 5 个文件；`test_schema_migrations_postgres.py` 的 `TABLES_AT_HEAD` 47 → 54；`test_429_schema_downgrade.py` 降级随行表加 0028 的 7 表 1 视图。F7 第 1 步路由清单的 7 条新路由交测试作者登记（先例如此）。
 
 ## 待决

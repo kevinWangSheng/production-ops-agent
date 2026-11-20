@@ -29,6 +29,8 @@ from opspilot.investigation.context import (
     KNOWLEDGE_BOUNDARY,
     PRIOR_REPLIES,
     RELEASE_CONTEXT_BOUNDARY,
+    RUNBOOK_CATALOG,
+    RUNBOOK_CATALOG_BOUNDARY,
     InvestigationInput,
     Transcript,
     calibrated,
@@ -103,7 +105,10 @@ LoopExecution = Literal[
 
 
 def prompt_revision_versions(
-    variant_id: str = DISCIPLINE_VARIANT, *, report_contract: str = REPORT_CONTRACT
+    variant_id: str = DISCIPLINE_VARIANT,
+    *,
+    report_contract: str = REPORT_CONTRACT,
+    runbook_catalog: bool = False,
 ) -> dict[str, str]:
     """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
     ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
@@ -140,6 +145,9 @@ def prompt_revision_versions(
             alert_context_template=ALERT_CONTEXT_BOUNDARY,
             knowledge_template=KNOWLEDGE_BOUNDARY,
             release_context_template=RELEASE_CONTEXT_BOUNDARY,
+            runbook_catalog_template=RUNBOOK_CATALOG_BOUNDARY
+            if runbook_catalog
+            else None,
         )
     }
 
@@ -170,14 +178,19 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
-def investigation_versions(variant_id: str = DISCIPLINE_VARIANT) -> dict[str, str]:
+def investigation_versions(
+    variant_id: str = DISCIPLINE_VARIANT, *, runbook_catalog: bool = False
+) -> dict[str, str]:
     """Every ``versions`` key the loop's behaviour depends on (C3 §5).
 
     ``prompt_revision`` (L1a + L2) and ``context_policy_revision`` (the
     compaction path). ``tool_schema_revision`` belongs to the tool registry and
     is merged in by the caller that builds the Run's ``versions``.
     """
-    return {**prompt_revision_versions(variant_id), **context_policy_versions()}
+    return {
+        **prompt_revision_versions(variant_id, runbook_catalog=runbook_catalog),
+        **context_policy_versions(),
+    }
 
 
 _STORE_REFUSALS = frozenset(
@@ -478,6 +491,7 @@ class InvestigationLoop:
         folded_since: Sequence[UUID] = (),
         compactions: int = 0,
         compaction_attempts: int = 0,
+        runbook_catalog: bool = False,
     ) -> _State:
         usage = self.store.usage()
         floor, mode = conversation_of(
@@ -502,7 +516,11 @@ class InvestigationLoop:
             prior_model_seconds=usage.model_seconds_used,
             tool_seconds_at_open=self.executor.tool_seconds_used,
             attempt_started=self.clock.monotonic(),
-            revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
+            # C2b: a Run whose input carries the runbook list was created
+            # with the switch on, so its revision includes that wording.
+            revision=prompt_revision_versions(
+                request.variant_id, runbook_catalog=runbook_catalog
+            )["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
             prefix_len=prefix_len,
@@ -583,6 +601,7 @@ class InvestigationLoop:
             folded_since=transcript.folded_since,
             compactions=transcript.compactions,
             compaction_attempts=transcript.compaction_attempts,
+            runbook_catalog=RUNBOOK_CATALOG in input.scope_facts,
         )
         state.last_step_id = transcript.last_step_id
         state.message_sequences = set(transcript.message_sequences)

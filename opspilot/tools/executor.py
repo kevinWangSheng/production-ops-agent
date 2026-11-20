@@ -1835,7 +1835,9 @@ class ReadOnlyToolExecutor:
             # rule ("fact-like claims cite ok views only") was invisible to
             # the model while ``adopted: true`` on a ``no_data`` view looked
             # like an invitation to cite it (v4 packet, normal-2 / fault-1).
-            "citable_as_fact": adopted and status == "ok",
+            "citable_as_fact": adopted
+            and status == "ok"
+            and registration.citable_as_fact,
             "tool": registration.name,
             "tool_version": registration.version,
             "source": registration.source if carried is None else carried["source"],
