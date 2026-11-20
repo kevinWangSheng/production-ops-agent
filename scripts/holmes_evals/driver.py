@@ -124,7 +124,11 @@ from scripts.holmes_evals.shift import (
     seconds_to_wait_for_shift_day,
     shift_question,
 )
-from scripts.holmes_evals.task_list import TODO_MODES, todo_for
+from scripts.holmes_evals.task_list import (
+    TODO_MODES,
+    task_list_stats_from_rows,
+    todo_for,
+)
 from scripts.holmes_evals.text import ToolCall, report_to_text
 from scripts.holmes_evals.tool_calls import read_tool_calls
 from scripts.itbench_lite import services
@@ -144,7 +148,7 @@ from scripts.itbench_lite.services import Started
 
 ROOT = Path(__file__).resolve().parents[2]
 #: PR-E: the C1-U2 comparison table's questions.
-TODO_COMPARED = frozenset(C1_QUESTIONS + TODO_HARD_QUESTIONS)
+TODO_COMPARED: tuple[str, ...] = C1_QUESTIONS + TODO_HARD_QUESTIONS
 TMP_ROOT = ROOT / "tmp" / "holmes-evals"
 EVIDENCE_ROOT = ROOT / "docs" / "evidence"
 EVIDENCE_PREFIX = "holmes-evals-"
@@ -2164,6 +2168,7 @@ __all__ = [
     "run_trial",
     "seconds_to_wait_for_utc_midnight",
     "setup_to_delivery_ok",
+    "task_list_stats_from_rows",
     "todo_for",
     "tool_env",
     "trial_record",

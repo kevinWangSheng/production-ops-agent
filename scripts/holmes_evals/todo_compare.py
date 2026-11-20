@@ -135,21 +135,18 @@ def _row(
         "missing": len(members) - len(present),
         "passes": passes,
         "pass_rate": passes / len(MAIN_TRIALS),
-        "model_requests": requests,
-        "model_requests_mean": _mean(requests),
-        "queries": queries,
-        "queries_mean": _mean(queries),
+        "model_requests": {"values": requests, "mean": _mean(requests)},
+        "queries": {"values": queries, "mean": _mean(queries)},
         "todo_calls_ok": sum(t["calls_ok"] for t in present),
         "todo_calls_refused": sum(t["calls_refused"] for t in present),
         "trials_with_todo": sum(1 for t in present if t["calls_ok"] > 0),
         "last_completed": [
-            None
+            "—"
             if t["last"] is None
             else f"{t['last'].get('completed', 0)}/{t['last'].get('total', 0)}"
             for t in present
         ],
-        "seconds": seconds,
-        "seconds_mean": _mean(seconds),
+        "seconds": {"values": seconds, "mean": _mean(seconds)},
     }
 
 
@@ -200,6 +197,10 @@ def _cell(values: Sequence[Any]) -> str:
                       for v in values) or "—"  # fmt: skip
 
 
+def _measure(column: Mapping[str, Any]) -> str:
+    return f"{_cell(column['values'])}；{_mean_text(column['mean'])}"
+
+
 def _switch(value: bool | None) -> str:
     return "—" if value is None else "开" if value else "关"
 
@@ -220,11 +221,10 @@ def to_markdown(result: Mapping[str, Any]) -> str:
         lines.append(
             f"| {r['qid']} | {_switch(r['todo'])} | {r['round'] or '—'} "
             f"| {r['trials']}（缺 {r['missing']}） | {r['passes']} "
-            f"| {_cell(r['model_requests'])}；{_mean_text(r['model_requests_mean'])} "
-            f"| {_cell(r['queries'])}；{_mean_text(r['queries_mean'])} "
+            f"| {_measure(r['model_requests'])} | {_measure(r['queries'])} "
             f"| {r['todo_calls_ok']}/{r['todo_calls_refused']} | {r['trials_with_todo']} "
             f"| {_cell(r['last_completed'])} "
-            f"| {_cell(r['seconds'])}；{_mean_text(r['seconds_mean'])} |"
+            f"| {_measure(r['seconds'])} |"
         )
     lines += ["", "## 说明", ""] + [f"- {n}" for n in result["notes"]]
     return "\n".join(lines) + "\n"
