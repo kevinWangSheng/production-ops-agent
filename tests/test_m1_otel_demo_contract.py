@@ -202,8 +202,6 @@ class FakeStore:
         operation_id,
         seconds,
         *,
-        max_operations,
-        max_tool_seconds,
         dispatch_id,
     ):
         self.charges.append((operation_id, seconds, dispatch_id))

@@ -152,8 +152,6 @@ class _BudgetOps(_StoreBase):
         operation_id: str,
         seconds: float,
         *,
-        max_operations: int,
-        max_tool_seconds: float,
         dispatch_id: UUID,
     ) -> None:
         """Charge one tool dispatch to the Run's durable tool budget.
@@ -186,15 +184,10 @@ class _BudgetOps(_StoreBase):
 
         M1-01 (2026-09-28 user decision,
         docs/tasks/2026-09-28-m1-01-loop-limits.md, L2): counting a *new*
-        operation is never refused on ``max_operations``/``max_tool_seconds``
-        any more -- the loop's single anti-loop ceiling is the model-request
-        count (L1), not a separate per-Run tool-call-count or cumulative
-        tool-time ceiling. ``max_operations``/``max_tool_seconds`` stay
-        **required** parameters (this module still does not import from
-        ``opspilot.tools.executor``, so every caller supplies its own values)
-        purely so the input-validation shape below is unchanged for existing
-        callers; they no longer gate the UPDATE below and a caller may pass
-        any positive value. ``tool_operations_used``/``tool_seconds_used``
+        operation is never refused on a per-Run count or time ceiling -- the
+        loop's single anti-loop ceiling is the model-request count (L1), not a
+        separate per-Run tool-call-count or cumulative tool-time ceiling.
+        ``tool_operations_used``/``tool_seconds_used``
         keep accumulating without limit -- accounting and audit, not a cap.
         The row lock (``FOR UPDATE`` above) still serializes concurrent
         charges against the same Run, so the accounting itself stays race-free.
@@ -206,15 +199,6 @@ class _BudgetOps(_StoreBase):
             or seconds != seconds
             or seconds in (float("inf"), float("-inf"))
             or seconds < 0
-        ):
-            raise PersistenceError("INVALID_INPUT")
-        if type(max_operations) is not int or max_operations <= 0:
-            raise PersistenceError("INVALID_INPUT")
-        if (
-            type(max_tool_seconds) not in (int, float)
-            or max_tool_seconds != max_tool_seconds
-            or max_tool_seconds in (float("inf"), float("-inf"))
-            or max_tool_seconds <= 0
         ):
             raise PersistenceError("INVALID_INPUT")
         if not isinstance(dispatch_id, UUID):
@@ -266,9 +250,8 @@ class _BudgetOps(_StoreBase):
                         float(seconds),
                     ),
                 )
-                # M1-01 (2026-09-28 user decision, L2): no ``max_operations``/
-                # ``max_tool_seconds`` condition in the WHERE clause any more --
-                # the row is already locked (``FOR UPDATE`` above) and confirmed
+                # M1-01 (2026-09-28 user decision, L2): no count or time
+                # ceiling in the WHERE clause -- the row is already locked (``FOR UPDATE`` above) and confirmed
                 # to exist, so this UPDATE always matches it; it only counts and
                 # accumulates, never refuses.
                 conn.execute(

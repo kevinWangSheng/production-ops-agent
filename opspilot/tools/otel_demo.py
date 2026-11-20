@@ -101,9 +101,7 @@ from opspilot.tools.evidence_read import (
     evidence_registration,
 )
 from opspilot.tools.executor import (
-    MAX_OPERATIONS_PER_RUN,
     MAX_SOURCE_ERROR_CHARS,
-    MAX_TOOL_SECONDS_PER_RUN,
     Clock,
     ControlSnapshot,
     ControlUnavailable,
@@ -2332,12 +2330,7 @@ def otel_demo_executor_factory(
             evidence=evidence,
             control=control,
             clock=clock,
-            ledger=DurableToolLedger(
-                store,
-                lease,
-                max_operations=MAX_OPERATIONS_PER_RUN,
-                max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
-            ),
+            ledger=DurableToolLedger(store, lease),
             token_counter=counter,
             overflow_summary=overflow_summary,
         )

@@ -146,8 +146,6 @@ class _SampleStore:
         operation_id: str,
         seconds: float,
         *,
-        max_operations: int,
-        max_tool_seconds: float,
         dispatch_id: UUID,
     ) -> None:
         key = str(dispatch_id)
