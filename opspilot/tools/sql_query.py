@@ -1020,28 +1020,36 @@ _MSSQL_DATABASE_ROLES = (
     "db_accessadmin",
     "db_backupoperator",
 )
+
+
 #: C6b: SQL Server -- one problem code per row, none is a pass.
+def _ms_text(expr: str) -> str:
+    """One problem code in one collation: SQL Server refuses a UNION whose
+    branches mix catalog and database collations (error 451)."""
+    return f"CAST({expr} AS NVARCHAR(300)) COLLATE DATABASE_DEFAULT"
+
+
 _MSSQL_ACCOUNT_CHECK = (
     ACCOUNT_CHECK_MARKER + " SELECT p FROM ("
-    "SELECT 'server_role:' + r AS p FROM (VALUES "
+    f"SELECT {_ms_text(''''server_role:' + r''')} AS p FROM (VALUES "
     + ", ".join(f"('{name}')" for name in _MSSQL_SERVER_ROLES)
     + ") v(r) WHERE IS_SRVROLEMEMBER(r) = 1 "
-    "UNION ALL SELECT 'database_role:' + r FROM (VALUES "
+    f"UNION ALL SELECT {_ms_text(''''database_role:' + r''')} FROM (VALUES "
     + ", ".join(f"('{name}')" for name in _MSSQL_DATABASE_ROLES)
     + ") v(r) WHERE IS_ROLEMEMBER(r) = 1 "
-    "UNION ALL SELECT 'server_permission:' + permission_name FROM "
+    f"UNION ALL SELECT {_ms_text(''''server_permission:' + permission_name''')} FROM "
     "sys.fn_my_permissions(NULL, 'SERVER') WHERE permission_name NOT IN "
     "('CONNECT SQL', 'VIEW ANY DATABASE') AND permission_name NOT LIKE 'VIEW %' "
-    "UNION ALL SELECT 'database_permission:' + permission_name FROM "
+    f"UNION ALL SELECT {_ms_text(''''database_permission:' + permission_name''')} FROM "
     "sys.fn_my_permissions(NULL, 'DATABASE') WHERE permission_name NOT IN "
     "('CONNECT', 'SELECT', 'SHOWPLAN') AND permission_name NOT LIKE 'VIEW %' "
-    "UNION ALL SELECT 'granted_permission:' + dp.permission_name FROM "
+    f"UNION ALL SELECT {_ms_text(''''granted_permission:' + dp.permission_name''')} FROM "
     "sys.database_permissions dp JOIN sys.database_principals pr ON "
     "pr.principal_id = dp.grantee_principal_id WHERE dp.state IN ('G', 'W') AND "
     "(dp.grantee_principal_id = DATABASE_PRINCIPAL_ID() OR IS_MEMBER(pr.name) = 1) "
     "AND dp.permission_name NOT IN ('CONNECT', 'SELECT', 'SHOWPLAN') AND "
     "dp.permission_name NOT LIKE 'VIEW %' "
-    "UNION ALL SELECT 'schema_owner:' + s.name FROM sys.schemas s JOIN "
+    f"UNION ALL SELECT {_ms_text(''''schema_owner:' + s.name''')} FROM sys.schemas s JOIN "
     "sys.database_principals pr ON pr.principal_id = s.principal_id WHERE "
     "(s.principal_id = DATABASE_PRINCIPAL_ID() OR (pr.type = 'R' AND "
     "pr.is_fixed_role = 0 AND IS_MEMBER(pr.name) = 1))"
@@ -1630,7 +1638,17 @@ class _ClickHouseConnection:
         left = self._deadline - time.monotonic()
         if left <= 0:
             raise SqlDriverError("timeout")
-        keys = [("query", statement), *self._settings()]
+        if statement.startswith(ACCOUNT_CHECK_MARKER):
+            # no settings at all: an account with readonly=1 refuses any, and
+            # the check must still read its grants and readonly value
+            keys = [
+                ("query", statement),
+                ("database", self._config.database),
+                ("default_format", "JSONCompactEachRowWithNames"),
+                ("query_id", f"opspilot-{uuid.uuid4()}"),
+            ]
+        else:
+            keys = [("query", statement), *self._settings()]
         keys += [
             (f"param_p{i}", "" if v is None else str(v)) for i, v in enumerate(params)
         ]
