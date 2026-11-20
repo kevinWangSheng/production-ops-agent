@@ -74,7 +74,7 @@ FIELD_NAMES = "victorialogs_field_names"
 FIELD_VALUES = "victorialogs_field_values"
 HITS = "victorialogs_hits"
 
-APP = {"namespace": "c5", "app": "c5-app", "pod": "checkout-7b9899-x2km9"}
+APP = {"namespace": "c5i", "app": "c5i-app", "pod": "checkout-7b9899-x2km9"}
 ENTRIES = {
     "a1": (NOW - timedelta(minutes=50), "error", "payment declined"),
     "a2": (NOW - timedelta(minutes=30), "warn", "payment slow"),
@@ -176,8 +176,8 @@ def seeded() -> Iterator[None]:
             {
                 "_time": _z(NOW - timedelta(minutes=12)),
                 "_msg": "rare field line",
-                "namespace": "c5",
-                "app": "c5-rare",
+                "namespace": "c5i",
+                "app": "c5i-rare",
                 "opspilot_c5_shard": "s1",
             }
         ]
@@ -188,8 +188,8 @@ def seeded() -> Iterator[None]:
             {
                 "_time": _z(bulk_start + timedelta(seconds=5 * n)),
                 "_msg": f"bulk line {n:03d}",
-                "namespace": "c5",
-                "app": "c5-bulk",
+                "namespace": "c5i",
+                "app": "c5i-bulk",
             }
             for n in range(BULK)
         ]
@@ -200,8 +200,8 @@ def seeded() -> Iterator[None]:
             {
                 "_time": _z(big_start + timedelta(seconds=6 * n)),
                 "_msg": _big(n),
-                "namespace": "c5",
-                "app": "c5-big",
+                "namespace": "c5i",
+                "app": "c5i-big",
             }
             for n in range(BIG)
         ]
@@ -213,15 +213,15 @@ def seeded() -> Iterator[None]:
             {
                 "_time": _z(NOW - timedelta(minutes=8)),
                 "_msg": "probe inside",
-                "namespace": "c5",
-                "app": "c5-probe",
+                "namespace": "c5i",
+                "app": "c5i-probe",
                 "trace": "T2",
             },
             {
                 "_time": _z(NOW - timedelta(hours=30)),
                 "_msg": "probe outside",
-                "namespace": "c5",
-                "app": "c5-probe",
+                "namespace": "c5i",
+                "app": "c5i-probe",
                 "trace": "T2",
                 "marker": "old",
             },
@@ -237,8 +237,19 @@ def seeded() -> Iterator[None]:
         ],
         account=OTHER_ACCOUNT,
     )
+    # Make every batch searchable (force_flush is POST-only), then wait for
+    # each one -- the last insert included -- before any test reads.
+    _http("POST", f"{DIRECT}/internal/force_flush")
+    expected = [
+        ('app:"c5i-app"', len(ENTRIES), None),
+        ('app:"c5i-rare"', 1, None),
+        ('app:"c5i-bulk"', BULK, None),
+        ('app:"c5i-big"', BIG, None),
+        ('app:"c5i-probe"', 2, None),
+        ('app:"c5i-app"', 1, OTHER_ACCOUNT),
+    ]
     deadline = time.monotonic() + 60
-    while _count('app:"c5-probe"') < 2 or _count('app:"c5-big"') < BIG:
+    while any(_count(q, account=a) < n for q, n, a in expected):
         assert time.monotonic() < deadline, "VictoriaLogs never served the seed"
         time.sleep(1)
     yield
@@ -300,7 +311,7 @@ def _gateway_requests() -> int:
 
 
 def test_query_returns_default_window_newest_first(tools):
-    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5-app"'}))
+    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5i-app"'}))
     assert outcome.status == "ok", _view(outcome)
     rows = _rows(outcome)
     assert set(_keys(outcome)) == IN_DEFAULT_WINDOW
@@ -315,7 +326,7 @@ def test_explicit_window_reaches_older_entries_but_never_the_future(tools):
         _call(
             QUERY,
             {
-                "query": '{namespace="c5",app="c5-app"} level:error',
+                "query": '{namespace="c5i",app="c5i-app"} level:error',
                 "start": _z(NOW - timedelta(hours=23)),
                 "end": _z(NOW),
             },
@@ -331,7 +342,7 @@ def test_time_filter_in_the_query_only_narrows(tools):
         _call(
             QUERY,
             {
-                "query": 'app:"c5-app" _time:3h',
+                "query": 'app:"c5i-app" _time:3h',
                 "start": _z(NOW - timedelta(minutes=40)),
                 "end": _z(NOW),
             },
@@ -346,7 +357,7 @@ def test_limit_marks_incomplete_and_keeps_the_newest(tools):
     status, body = _direct(
         "/select/logsql/query",
         {
-            "query": 'app:"c5-bulk"',
+            "query": 'app:"c5i-bulk"',
             "start": _z(NOW - timedelta(hours=1)),
             "end": _z(NOW),
             "limit": "5",
@@ -355,7 +366,7 @@ def test_limit_marks_incomplete_and_keeps_the_newest(tools):
     assert status == 200
     raw = [json.loads(line)["_msg"] for line in str(body).splitlines() if line]
     print(f"victorialogs limit=5 raw order: {raw}")
-    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5-bulk"'}))
+    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5i-bulk"'}))
     assert outcome.status == "ok", _view(outcome)
     msgs = [row["_msg"] for row in _rows(outcome)]
     assert len(msgs) == 100
@@ -367,17 +378,17 @@ def test_limit_marks_incomplete_and_keeps_the_newest(tools):
 
 
 def test_oversized_answers_are_refused_whole(tools):
-    raw = tools.execute(_call(QUERY, {"query": 'app:"c5-big"', "limit": BIG}))
+    raw = tools.execute(_call(QUERY, {"query": 'app:"c5i-big"', "limit": BIG}))
     assert (raw.status, raw.reason) == ("error", "RESULT_TOO_LARGE")
-    view = tools.execute(_call(QUERY, {"query": 'app:"c5-big"', "limit": 100}))
+    view = tools.execute(_call(QUERY, {"query": 'app:"c5i-big"', "limit": 100}))
     assert (view.status, view.reason) == ("error", "RESULT_TOO_LARGE")
-    small = tools.execute(_call(QUERY, {"query": 'app:"c5-big"', "limit": 5}))
+    small = tools.execute(_call(QUERY, {"query": 'app:"c5i-big"', "limit": 5}))
     assert small.status == "ok", _view(small)
     assert all(len(row["_msg"]) == 2000 for row in _rows(small))
 
 
 def test_long_values_are_cut_and_credentials_redacted(tools):
-    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5-app"'}))
+    outcome = tools.execute(_call(QUERY, {"query": 'app:"c5i-app"'}))
     assert outcome.status == "ok"
     text = _text(outcome)
     assert "L" * 2000 in text and "L" * 2001 not in text
@@ -390,11 +401,11 @@ def test_long_values_are_cut_and_credentials_redacted(tools):
 
 
 def test_streams_field_names_and_values_are_real(tools):
-    streams = tools.execute(_call(STREAMS, {"query": 'namespace:"c5"'}))
+    streams = tools.execute(_call(STREAMS, {"query": 'namespace:"c5i"'}))
     assert streams.status == "ok", _view(streams)
     names = [row["stream"] for row in _rows(streams)]
-    assert any("c5-app" in name for name in names)
-    assert any("c5-rare" in name for name in names)
+    assert any("c5i-app" in name for name in names)
+    assert any("c5i-rare" in name for name in names)
     hits = [row["hits"] for row in _rows(streams)]
     assert hits == sorted(hits, reverse=True)
 
@@ -403,7 +414,7 @@ def test_streams_field_names_and_values_are_real(tools):
     assert "opspilot_c5_shard" in {row["field"] for row in _rows(fields)}
 
     values = tools.execute(
-        _call(FIELD_VALUES, {"field": "level", "query": 'app:"c5-app"'})
+        _call(FIELD_VALUES, {"field": "level", "query": 'app:"c5i-app"'})
     )
     assert values.status == "ok", _view(values)
     # Inside the default hour only: a-old/a-30h (error) are outside it.
@@ -417,7 +428,7 @@ def test_streams_field_names_and_values_are_real(tools):
 
 def test_hits_counts_only_the_window(tools):
     outcome = tools.execute(
-        _call(HITS, {"query": 'app:"c5-app"', "step": "10m", "field": "level"})
+        _call(HITS, {"query": 'app:"c5i-app"', "step": "10m", "field": "level"})
     )
     assert outcome.status == "ok", _view(outcome)
     totals = {row["fields"].get("level"): row["total"] for row in _rows(outcome)}
@@ -432,11 +443,11 @@ def test_hits_counts_only_the_window(tools):
 def test_refusals_are_never_sent(tools):
     before = _gateway_requests()
     refused = [
-        (QUERY, {"query": 'app:"c5-app" | join by (key) (app:"c5-probe")'}),
+        (QUERY, {"query": 'app:"c5i-app" | join by (key) (app:"c5i-probe")'}),
         (QUERY, {"query": "trace:in(marker:old | fields trace)"}),
         (QUERY, {"query": "options(ignore_global_time_filter=true) error"}),
-        (QUERY, {"query": 'app:"c5-app" | stream_context before 3'}),
-        (QUERY, {"query": 'app:"c5-app" | union (app:"c5-probe")'}),
+        (QUERY, {"query": 'app:"c5i-app" | stream_context before 3'}),
+        (QUERY, {"query": 'app:"c5i-app" | union (app:"c5i-probe")'}),
         (QUERY, {"query": "'quoted' error"}),
         (
             QUERY,
@@ -455,7 +466,7 @@ def test_refusals_are_never_sent(tools):
         assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS"), params
         assert _view(outcome)["source_contact"] == "none", params
     assert _gateway_requests() == before
-    sent = tools.execute(_call(QUERY, {"query": 'app:"c5-app"'}))
+    sent = tools.execute(_call(QUERY, {"query": 'app:"c5i-app"'}))
     assert sent.status == "ok"
     deadline = time.monotonic() + 5
     while _gateway_requests() == before and time.monotonic() < deadline:
@@ -465,7 +476,7 @@ def test_refusals_are_never_sent(tools):
 
 def test_error_classes_come_from_real_responses(seeded, k8s_ca):
     tools = _executor(_env(GATEWAY, k8s_ca))
-    bad_query = 'app:"c5-app" | nosuchpipe'
+    bad_query = 'app:"c5i-app" | nosuchpipe'
     status, _ = _direct(
         "/select/logsql/query",
         {"query": bad_query, "start": _z(NOW - timedelta(hours=1)), "end": _z(NOW)},
@@ -475,7 +486,7 @@ def test_error_classes_come_from_real_responses(seeded, k8s_ca):
     assert (bad.status, bad.reason) == ("error", "INVALID_PARAMS")
     assert _view(bad)["source_error"]["http_status"] == 400
 
-    nothing = tools.execute(_call(QUERY, {"query": 'app:"c5-nothing-here"'}))
+    nothing = tools.execute(_call(QUERY, {"query": 'app:"c5i-nothing-here"'}))
     assert (nothing.status, nothing.reason) == ("no_data", "NO_DATA")
 
     wrong = _executor(_env(GATEWAY, k8s_ca, OPSPILOT_VICTORIALOGS_PASSWORD="wrong569"))
@@ -495,7 +506,7 @@ def test_error_classes_come_from_real_responses(seeded, k8s_ca):
 
 def test_tenant_comes_from_configuration_only(seeded, k8s_ca):
     default = _executor(_env(GATEWAY, k8s_ca))
-    query = {"query": 'app:"c5-app"'}
+    query = {"query": 'app:"c5i-app"'}
     msgs = [r["_msg"] for r in _rows(default.execute(_call(QUERY, query)))]
     assert "account seven only" not in msgs
     seven = _executor(
@@ -515,7 +526,7 @@ def test_tenant_comes_from_configuration_only(seeded, k8s_ca):
 
 
 def test_read_only_account_cannot_write_through_the_gateway(seeded):
-    before = _count('app:"c5-app"')
+    before = _count('app:"c5i-app"')
     reader = {"Authorization": _basic(READER, READER_PASSWORD)}
     line = json.dumps({"_msg": "injected via gateway", **APP}).encode()
     attempts = [
@@ -533,12 +544,14 @@ def test_read_only_account_cannot_write_through_the_gateway(seeded):
         status, answer = _http(method, GATEWAY + path, body, headers=reader)
         assert status == 403, (method, path, status, answer)
     time.sleep(2)
-    assert _count('app:"c5-app"') == before
+    assert _count('app:"c5i-app"') == before
     # The engineer port still accepts writes: the refusal is the gateway's.
     status, _ = _http(
         "POST",
         f"{DIRECT}/insert/jsonline?_stream_fields=namespace,app",
-        json.dumps({"_msg": "direct write", "namespace": "c5", "app": "c5-w"}).encode(),
+        json.dumps(
+            {"_msg": "direct write", "namespace": "c5i", "app": "c5i-w"}
+        ).encode(),
     )
     assert status in (200, 204)
 
@@ -552,9 +565,9 @@ def test_subquery_probe_is_recorded(seeded):
     window = {"start": _z(NOW - timedelta(hours=1)), "end": _z(NOW)}
     results: dict[str, Any] = {}
     probes = {
-        "in_subquery": 'app:"c5-probe" trace:in(marker:old | fields trace)',
+        "in_subquery": 'app:"c5i-probe" trace:in(marker:old | fields trace)',
         "options_ignore_global_time_filter": (
-            'options(ignore_global_time_filter=true) app:"c5-probe" marker:old'
+            'options(ignore_global_time_filter=true) app:"c5i-probe" marker:old'
         ),
     }
     for name, query in probes.items():
