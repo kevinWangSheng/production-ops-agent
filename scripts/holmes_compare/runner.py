@@ -59,11 +59,13 @@ from scripts.holmes_compare.records import (
 )
 from scripts.holmes_evals.judge import JUDGE_MODEL, ZAI_BASE, ZAI_KEY_NAMES
 from scripts.holmes_evals.log_backends import (
+    KNOWLEDGE_QUESTIONS,
     LOG_QUESTIONS,
     RELEASE_WAIT_S,
     VICTORIALOGS_IMAGE,
     backend_of,
     namespace_gone,
+    namespaces_with_prefix,
     start_victorialogs,
 )
 from scripts.holmes_evals.questions import (
@@ -331,6 +333,17 @@ def _sha256_file(path: Path) -> str | None:
         return None
 
 
+def _enable_todo(cfg: Config, qid: str) -> bool | None:
+    """The question's ``enable_todo`` (a whitelisted loader field); None when
+    the question cannot be loaded (the merge then has nothing to compare)."""
+    from scripts.holmes_evals.questions import load_question
+
+    try:
+        return bool(load_question(cfg.upstream, qid).enable_todo)
+    except Exception:  # noqa: BLE001 - a broken question dir is recorded elsewhere
+        return None
+
+
 def release_state(cfg: Config, qid: str, *, sleep: Any = time.sleep) -> dict[str, Any]:
     """C5: the question's namespace gone (up to ``RELEASE_WAIT_S``) and its
     host ports free; ``ok`` false is a failed purge."""
@@ -345,13 +358,28 @@ def release_state(cfg: Config, qid: str, *, sleep: Any = time.sleep) -> dict[str
             if time.monotonic() >= deadline:
                 break
             sleep(2)
+    left: list[str] | None = None
+    if gone and spec.namespace_prefix is not None:
+        # PR-E (283): every ``app-283-*`` namespace gone; no answer from
+        # kubectl is not released.
+        deadline = time.monotonic() + RELEASE_WAIT_S
+        while True:
+            left = namespaces_with_prefix(spec.namespace_prefix, env)
+            gone = left == []
+            if gone or time.monotonic() >= deadline:
+                break
+            sleep(2)
     busy = [p for p in spec.host_ports if port_in_use(p)]
-    return {
+    state: dict[str, Any] = {
         "namespace": spec.namespace,
         "namespace_gone": gone,
         "busy_ports": busy,
         "ok": gone and not busy,
     }
+    if spec.namespace_prefix is not None:
+        # Public evidence: the count only (None: kubectl did not answer).
+        state["namespaces_left"] = None if left is None else len(left)
+    return state
 
 
 def _purge(cfg: Config, qid: str) -> list[str]:
@@ -550,7 +578,7 @@ def build_summary(
     mode: str | None = None
     if spec is None:
         disclosures = list(DISCLOSURES)
-    elif spec.backend == "kubernetes":
+    elif qid in KNOWLEDGE_QUESTIONS:
         disclosures = list(C2_DISCLOSURES)
         mode = holmes_run_mode(cfg, qid)
         if mode == "cli" and not any(
@@ -583,6 +611,13 @@ def build_summary(
     }
     if mode is not None:
         block["run_mode"] = mode
+    # PR-E: upstream's harness turns TodoWrite on from the question's own
+    # ``enable_todo``; the runner never forces it.
+    block["todo"] = {
+        "mode": "question",
+        "enabled": _enable_todo(cfg, qid),
+        "source": "question",
+    }
     if not missing:
         block.update(
             {

@@ -118,13 +118,28 @@ C2_QUESTIONS: tuple[str, ...] = (
     "96_no_matching_skill",
     "162_get_skills",
 )
+#: C1 (#565, PR-E): the one upstream question that turns ``TodoWrite`` on
+#: (``enable_todo``); a Kubernetes question.
+C1_QUESTIONS: tuple[str, ...] = ("283_todowrite_multistep_audit",)
+#: C1-U2 (r11): the four B1 questions tagged ``hard``, run again with the
+#: task list on (selected by the C1 pre-review from the tags).
+TODO_HARD_QUESTIONS: tuple[str, ...] = (
+    "184_elasticsearch_index_explosion",
+    "185_elasticsearch_cross_region_search",
+    "193_elasticsearch_large_mapping_search",
+    "280_es_multi_quirk",
+)
 #: Every question the drivers accept (B1 first, the order rounds run in).
-ALL_QUESTIONS: tuple[str, ...] = B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS
+ALL_QUESTIONS: tuple[str, ...] = (
+    B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS + C1_QUESTIONS
+)
 #: ``--questions`` group names.
 QUESTION_GROUPS: dict[str, tuple[str, ...]] = {
     "b1": B1_QUESTIONS,
     "c5": C5_QUESTIONS,
     "c2": C2_QUESTIONS,
+    "c1": C1_QUESTIONS,
+    "todo-hard": TODO_HARD_QUESTIONS,
 }
 
 

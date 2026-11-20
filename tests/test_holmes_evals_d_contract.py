@@ -121,11 +121,13 @@ SECRETS = {"DEEPSEEK_API_KEY": "model-fake-value-4"}
 def test_c2_questions_and_groups() -> None:
     q = mod("questions")
     assert tuple(q.C2_QUESTIONS) == C2_ALL
+    # PR-E (lead ruling): C1 (283) follows C2; groups c1 and todo-hard.
     assert tuple(q.ALL_QUESTIONS) == (
         tuple(q.B1_QUESTIONS) + tuple(q.C5_QUESTIONS) + C2_ALL
-    )
+        + tuple(q.C1_QUESTIONS)
+    )  # fmt: skip
     assert tuple(q.QUESTION_GROUPS["c2"]) == C2_ALL
-    assert set(q.QUESTION_GROUPS) >= {"b1", "c5", "c2"}
+    assert set(q.QUESTION_GROUPS) >= {"b1", "c5", "c2", "c1", "todo-hard"}
     assert len(set(q.ALL_QUESTIONS)) == len(q.ALL_QUESTIONS)
     # B1 / C5 unchanged.
     assert len(q.B1_QUESTIONS) == 30 and tuple(q.C5_QUESTIONS) == C5_ALL
@@ -227,7 +229,10 @@ def test_log_questions_kubernetes_specs() -> None:
     assert lb.backend_of(Q275) == "elasticsearch"
     assert lb.backend_of(Q100A) == "loki"
     assert lb.backend_of(Q257) == "victorialogs"
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL)
+    # PR-E (lead ruling): plus C1 (283).
+    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL) | {
+        "283_todowrite_multistep_audit"
+    }
 
 
 def test_knowledge_questions() -> None:

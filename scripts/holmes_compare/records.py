@@ -37,6 +37,10 @@ class TrialRow:
     tool_calls: int | None
     shift_applied: bool
     judge_path: str | None = None  # Holmes only: opspilot | upstream
+    #: PR-E: whether TodoWrite was on, and ``question`` or ``forced``
+    #: (None for summaries written before PR-E).
+    todo_enabled: bool | None = None
+    todo_source: str | None = None
 
     def as_scoring(self) -> Trial:
         return Trial(
@@ -60,6 +64,15 @@ def _code(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _todo(block: Mapping[str, Any]) -> tuple[bool | None, str | None]:
+    todo = _map(block.get("todo"))
+    enabled = todo.get("enabled")
+    return (
+        enabled if isinstance(enabled, bool) else None,
+        _code(todo.get("source")),
+    )
+
+
 def opspilot_row(summary: Mapping[str, Any]) -> TrialRow:
     from scripts.holmes_evals.driver import trial_record
 
@@ -80,6 +93,8 @@ def opspilot_row(summary: Mapping[str, Any]) -> TrialRow:
         seconds=_num(wait.get("seconds")),
         tool_calls=len(requests) if isinstance(requests, list) else None,
         shift_applied=bool(shift.get("applied")),
+        todo_enabled=_todo(block)[0],
+        todo_source=_todo(block)[1],
     )
 
 
@@ -113,6 +128,8 @@ def holmes_row(summary: Mapping[str, Any]) -> TrialRow:
         else None,
         shift_applied=bool(shift.get("applied")),
         judge_path=_code(judge.get("path")),
+        todo_enabled=_todo(block)[0],
+        todo_source=_todo(block)[1],
     )
 
 
