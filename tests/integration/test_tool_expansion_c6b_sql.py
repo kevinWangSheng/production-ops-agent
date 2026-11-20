@@ -1023,7 +1023,8 @@ HEAVY = {
     "WHERE (number * 7919) % 1000003 = 1",
     "mssql": "SELECT COUNT_BIG(*) AS n FROM sys.all_objects a CROSS JOIN sys.all_objects b "
     "CROSS JOIN sys.all_objects c CROSS JOIN sys.all_objects d "
-    "WHERE a.object_id + b.object_id + c.object_id + d.object_id = -1 AND '{m}' <> ''",
+    "WHERE CAST(a.object_id AS BIGINT) + CAST(b.object_id AS BIGINT) "
+    "+ CAST(c.object_id AS BIGINT) + CAST(d.object_id AS BIGINT) = -1 AND '{m}' <> ''",
 }
 
 
