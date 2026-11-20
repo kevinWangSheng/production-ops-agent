@@ -65,7 +65,8 @@ OTHER_ACCOUNT = "7"
 CANARY = "aaaaaaaa569"
 
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
-FRAME = Window(NOW - timedelta(hours=40), NOW)
+# The extension profile's longest window is 24 h (OBSERVATION_SECONDS).
+FRAME = Window(NOW - timedelta(hours=24), NOW)
 
 QUERY = "victorialogs_query"
 STREAMS = "victorialogs_streams"
@@ -139,6 +140,8 @@ def _count(query: str, *, account: str | None = None) -> int:
     assert status == 200, (status, body)
     if isinstance(body, dict):
         return int(body["n"])
+    if body is None:
+        return 0
     lines = [json.loads(line) for line in str(body).splitlines() if line.strip()]
     return int(lines[0]["n"]) if lines else 0
 
@@ -313,13 +316,14 @@ def test_explicit_window_reaches_older_entries_but_never_the_future(tools):
             QUERY,
             {
                 "query": '{namespace="c5",app="c5-app"} level:error',
-                "start": _z(NOW - timedelta(hours=31)),
+                "start": _z(NOW - timedelta(hours=23)),
                 "end": _z(NOW),
             },
         )
     )
     assert outcome.status == "ok", _view(outcome)
-    assert set(_keys(outcome)) == {"a1", "a-old", "a-30h"}
+    # a-30h lies outside the 24 h frame, a-future after its end.
+    assert set(_keys(outcome)) == {"a1", "a-old"}
 
 
 def test_time_filter_in_the_query_only_narrows(tools):
@@ -555,11 +559,12 @@ def test_subquery_probe_is_recorded(seeded):
     }
     for name, query in probes.items():
         status, body = _direct("/select/logsql/query", {"query": query, **window})
-        rows = (
-            [json.loads(line) for line in str(body).splitlines() if line.strip()]
-            if status == 200 and not isinstance(body, dict)
-            else ([body] if isinstance(body, dict) else [])
-        )
+        if isinstance(body, dict):
+            rows = [body]
+        elif status == 200 and isinstance(body, str):
+            rows = [json.loads(line) for line in body.splitlines() if line.strip()]
+        else:
+            rows = []  # empty answer (None) or an error status
         msgs = sorted(str(row.get("_msg")) for row in rows)
         results[name] = {
             "status": status,
