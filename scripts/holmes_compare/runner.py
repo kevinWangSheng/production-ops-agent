@@ -9,14 +9,14 @@ the plugin in ``pytest_plugin/``. Upstream code is not modified.
 
     python -m scripts.holmes_compare.runner round --round R --upstream DIR \\
         --holmes-python DIR/.venv/bin/python --env-file F \\
-        --judge-path opspilot|upstream [--questions 254,275] [--trials 1,2,3] \\
+        [--judge-path opspilot|upstream] [--questions 254,275] [--trials 1,2,3] \\
         [--kubeconfig F]
     python -m scripts.holmes_compare.runner scores --round R
 
-``--judge-path`` has no default (lead decision, see the task record):
-``opspilot`` judges upstream's judge text with OpsPilot's #666 judge
-(``scripts.holmes_evals.judge_run``); ``upstream`` uses upstream's autoevals
-classifier pointed at the same receiver and model.
+``--judge-path`` defaults to ``opspilot`` (lead ruling): upstream's judge
+text judged by OpsPilot's #666 judge (``scripts.holmes_evals.judge_run``),
+the same judge for both agents. ``upstream`` (optional comparison) uses
+upstream's autoevals classifier pointed at the same receiver and model.
 
 Raw files: ``tmp/holmes-compare/<round>/<qid>/trial-<n>/chance-<k>/`` (judge
 input, the plugin's ``harness.json``, the shift record; the pytest log and
@@ -52,7 +52,7 @@ from scripts.holmes_compare.records import (
 from scripts.holmes_evals.judge import JUDGE_MODEL, ZAI_BASE, ZAI_KEY_NAMES
 from scripts.holmes_evals.questions import (
     B1_QUESTIONS,
-    SKILL_ASSERTION_DROPPED,
+    R8_13_SKILL_ASSERTION_DROPPED,
     UPSTREAM_COMMIT,
     UpstreamMismatch,
     verify_upstream,
@@ -81,6 +81,9 @@ ES_PASSTHRU = (
     re.compile(r"^https://[^/]*\.es\.amazonaws\.com(?:[:/]|$)"),
 )
 JUDGE_PATHS = ("opspilot", "upstream")
+#: Lead ruling 2026-11-19: upstream's judge text, #666 ``judge_trial`` (R8-3);
+#: ``upstream`` (autoevals as shipped, endpoint and model swapped) is optional.
+DEFAULT_JUDGE_PATH = "opspilot"
 DISCLOSURES = (
     "TOOL_FACE_UPSTREAM_DEFAULT",
     "UPSTREAM_HARNESS_JUDGE_TEXT",  # intermediate outputs + tool-call block, upstream's own
@@ -91,8 +94,9 @@ DISCLOSURES = (
 
 
 class RoundAbort(RuntimeError):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, hint: str | None = None) -> None:
         self.code = code
+        self.hint = hint
         super().__init__(code)
 
 
@@ -127,8 +131,15 @@ def load_env_file(path: Path) -> dict[str, str]:
 
 
 def check_es_url(url: str) -> None:
-    if not any(p.match(url) for p in ES_PASSTHRU):
-        raise RoundAbort("ES_URL_NOT_PASSTHRU")
+    if any(p.match(url) for p in ES_PASSTHRU):
+        return
+    if re.match(r"^https?://(127\.0\.0\.1|\[::1\])(?::\d+)?(?:/|$)", url):
+        raise RoundAbort(
+            "ES_URL_USE_LOCALHOST",
+            "upstream's responses fixture only passes http://localhost through; "
+            "use http://localhost:<port> for the same ES",
+        )
+    raise RoundAbort("ES_URL_NOT_PASSTHRU")
 
 
 def _zai_key(secrets: Mapping[str, str]) -> str:
@@ -191,7 +202,7 @@ def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
             "OHC_JUDGE": cfg.judge_path,
             "OHC_STEP_PYTHON": sys.executable,
             "OHC_REPO": str(ROOT),
-            "OHC_DROP_SKILL": "1" if qid in SKILL_ASSERTION_DROPPED else "0",
+            "OHC_DROP_SKILL": "1" if qid in R8_13_SKILL_ASSERTION_DROPPED else "0",
         }
     )
     if cfg.judge_path == "upstream":
@@ -392,7 +403,7 @@ def build_summary(
     harness = last.get("harness") or {}
     shift = _read_json(chance_dir / "shift.json")
     disclosures = list(DISCLOSURES)
-    if qid in SKILL_ASSERTION_DROPPED:
+    if qid in R8_13_SKILL_ASSERTION_DROPPED:
         disclosures.append("SKILL_ASSERTION_DROPPED")
     if cfg.judge_path == "opspilot":
         disclosures.append("JUDGE_DIFFERS_FROM_UPSTREAM")
@@ -521,7 +532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     r.add_argument("--upstream", type=Path, required=True)
     r.add_argument("--holmes-python", type=Path, required=True)
     r.add_argument("--env-file", type=Path, required=True)
-    r.add_argument("--judge-path", choices=JUDGE_PATHS, required=True)
+    r.add_argument("--judge-path", choices=JUDGE_PATHS, default=DEFAULT_JUDGE_PATH)
     r.add_argument("--questions")
     r.add_argument("--trials", default="1,2,3")
     r.add_argument("--kubeconfig", type=Path)
@@ -559,7 +570,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             cfg.evidence_root = args.evidence_root.resolve()
         run_round(cfg)
     except RoundAbort as exc:
-        print(json.dumps({"status": "aborted", "code": exc.code}), flush=True)
+        out = {"status": "aborted", "code": exc.code}
+        if exc.hint:
+            out["hint"] = exc.hint
+        print(json.dumps(out), flush=True)
         return 2
     except Exception as exc:  # noqa: BLE001 - resolve_questions raises driver's RoundAbort
         code = getattr(exc, "code", None)

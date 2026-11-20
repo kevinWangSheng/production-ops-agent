@@ -36,6 +36,7 @@ class TrialRow:
     seconds: float | None
     tool_calls: int | None
     shift_applied: bool
+    judge_path: str | None = None  # Holmes only: opspilot | upstream
 
     def as_scoring(self) -> Trial:
         return Trial(
@@ -111,6 +112,7 @@ def holmes_row(summary: Mapping[str, Any]) -> TrialRow:
         if isinstance(calls, int) and not isinstance(calls, bool)
         else None,
         shift_applied=bool(shift.get("applied")),
+        judge_path=_code(judge.get("path")),
     )
 
 

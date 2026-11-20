@@ -20,12 +20,17 @@ from typing import Any
 import pytest
 
 from scripts.holmes_compare import merge, records, runner
-from scripts.holmes_evals.questions import B1_QUESTIONS, SKILL_ASSERTION_DROPPED
+from scripts.holmes_evals.questions import (
+    B1_QUESTIONS,
+    R8_13_SKILL_ASSERTION_DROPPED,
+    SKILL_ASSERTION_DROPPED,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 Q_REL = "254_elasticsearch_dr_test_log_check"  # relative time, not R8-13
 Q_SKILL = "275_es_field_name_correction"  # R8-13, fixed time
 Q_OTHER = "183b_elasticsearch_index_discovery"
+Q_LOKI = "282_loki_custom_stream_label"  # R8-13, C5
 POISON = (
     "EXPECTED-ANSWER-7x9k",
     "RATIONALE-TEXT-q2",
@@ -84,6 +89,7 @@ def holmes_summary(
     category: str = "ok",
     missing: bool = False,
     passed: bool | None = None,
+    judge_path: str = "opspilot",
 ) -> dict[str, Any]:
     block: dict[str, Any] = {
         "qid": qid,
@@ -98,6 +104,7 @@ def holmes_summary(
             tool_calls=5,
             shift={"applied": qid != Q_REL},
             judge={
+                "path": judge_path,
                 "choice": choice,
                 "passed": choice == "A" if passed is None else passed,
                 "error_code": None if choice else "JUDGE_NO_CHOICE",
@@ -125,6 +132,7 @@ def table(
     ops: list[dict[str, Any]],
     hol: list[dict[str, Any]],
     questions: tuple[str, ...] = B1_QUESTIONS,
+    es_mode: str = "external",
 ) -> tuple[dict[str, Any], str]:
     o, h = tmp_path / "ops", tmp_path / "hol"
     for s in ops:
@@ -143,6 +151,8 @@ def table(
                 str(out_md),
                 "--out-json",
                 str(out_json),
+                "--opspilot-es-mode",
+                es_mode,
                 *(
                     ["--questions", ",".join(questions)]
                     if questions != B1_QUESTIONS
@@ -238,8 +248,11 @@ def test_skill_assertion_questions_are_flagged_and_dropped(tmp_path: Path) -> No
         }
     )
     assert any("R8-13" in n for n in result["notes"])
+    # R8-13 counts 6 across tracks: the B1 five plus C5's 282 (lead, 2026-11-19).
+    assert R8_13_SKILL_ASSERTION_DROPPED == set(SKILL_ASSERTION_DROPPED) | {Q_LOKI}
     cfg = _cfg(tmp_path)
     assert runner.pytest_env(cfg, Q_SKILL, tmp_path)["OHC_DROP_SKILL"] == "1"
+    assert runner.pytest_env(cfg, Q_LOKI, tmp_path)["OHC_DROP_SKILL"] == "1"
     assert runner.pytest_env(cfg, Q_REL, tmp_path)["OHC_DROP_SKILL"] == "0"
 
 
@@ -325,23 +338,73 @@ def test_judge_key_reaches_the_harness_only_in_upstream_judge_mode(
 
 
 @pytest.mark.parametrize(
-    ("url", "ok"),
+    ("url", "code"),
     [
-        ("http://localhost:9200", True),
-        ("http://localhost", True),
-        ("https://abc.us-east-1.aws.cloud.es.io", True),
-        ("http://127.0.0.1:9200", False),
-        ("https://localhost:9200", False),
-        ("http://localhost.evil.example:9200", False),
+        ("http://localhost:9200", None),
+        ("http://localhost", None),
+        ("https://abc.us-east-1.aws.cloud.es.io", None),
+        ("http://127.0.0.1:9200", "ES_URL_USE_LOCALHOST"),
+        ("https://localhost:9200", "ES_URL_NOT_PASSTHRU"),
+        ("http://localhost.evil.example:9200", "ES_URL_NOT_PASSTHRU"),
     ],
 )
-def test_es_url_must_be_on_upstreams_passthru_list(url: str, ok: bool) -> None:
-    if ok:
+def test_es_url_must_be_on_upstreams_passthru_list(url: str, code: str | None) -> None:
+    if code is None:
         runner.check_es_url(url)
     else:
         with pytest.raises(runner.RoundAbort) as exc:
             runner.check_es_url(url)
-        assert exc.value.code == "ES_URL_NOT_PASSTHRU"
+        assert exc.value.code == code
+        if code == "ES_URL_USE_LOCALHOST":
+            assert exc.value.hint and "http://localhost:<port>" in exc.value.hint
+
+
+def test_judge_path_defaults_to_opspilot_and_is_named_on_the_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(
+        runner, "run_round", lambda cfg: seen.setdefault("p", cfg.judge_path)
+    )
+    monkeypatch.setattr(runner, "load_env_file", lambda path: {})
+    argv = [
+        "round",
+        "--round",
+        "r1",
+        "--upstream",
+        str(tmp_path),
+        "--holmes-python",
+        str(tmp_path / "py"),
+        "--env-file",
+        str(tmp_path / "e"),
+    ]
+    assert runner.main(argv) == 0 and seen["p"] == "opspilot"
+    result, md = table(tmp_path, [], [holmes_summary(Q_REL, 1, "A")], (Q_REL,))
+    assert result["holmes_judge_path"] == "opspilot"
+    assert "默认 opspilot" in md.split("|", 1)[0]  # in the page header
+    up, md_up = table(
+        tmp_path / "u",
+        [],
+        [holmes_summary(Q_REL, 1, "A", judge_path="upstream")],
+        (Q_REL,),
+    )
+    assert up["holmes_judge_path"] == "upstream" and "可选对照" in md_up
+
+
+def test_merge_refuses_fake_es_and_mixed_judge_paths(tmp_path: Path) -> None:
+    hol = [holmes_summary(Q_REL, 1, "A")]
+    with pytest.raises(AssertionError):
+        table(
+            tmp_path / "f", [ops_summary(Q_REL, 1, "A")], hol, (Q_REL,), es_mode="fake"
+        )
+    assert not (tmp_path / "f" / "t.json").exists()
+    mixed = [
+        holmes_summary(Q_REL, 1, "A"),
+        holmes_summary(Q_REL, 2, "A", judge_path="upstream"),
+    ]
+    with pytest.raises(AssertionError):
+        table(tmp_path / "m", [], mixed, (Q_REL,))
+    assert not (tmp_path / "m" / "t.json").exists()
 
 
 # -- attempt classification ------------------------------------------------------------------

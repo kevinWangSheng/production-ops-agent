@@ -1,7 +1,12 @@
 """One table for OpsPilot and Holmes on the same questions (#668).
 
     python -m scripts.holmes_compare.merge --opspilot-evidence DIR \\
-        --holmes-evidence DIR --out-md F --out-json F [--questions a,b]
+        --holmes-evidence DIR --out-md F --out-json F --opspilot-es-mode external \\
+        [--questions a,b]
+
+``--opspilot-es-mode fake`` is refused (``DATA_PLANE_DIFFERS``): both agents
+must have run on the same real ES (R8-12). Holmes trials judged on different
+judge paths are refused (``HOLMES_JUDGE_PATH_MIXED``).
 
 Both sides are counted with the same rule (``scripts.holmes_evals.scoring``:
 trials 1-3, only a judged ``A`` passes; a missing trial, no answer, or a judge
@@ -21,11 +26,29 @@ from typing import Any
 
 from scripts.holmes_compare.records import TrialRow, load_rows
 from scripts.holmes_compare.runner import TOOL_FACE_NOTE
-from scripts.holmes_evals.questions import B1_QUESTIONS, SKILL_ASSERTION_DROPPED
+from scripts.holmes_evals.questions import (
+    B1_QUESTIONS,
+    R8_13_SKILL_ASSERTION_DROPPED,
+)
 from scripts.holmes_evals.scoring import MAIN_TRIALS, score
 from scripts.holmes_evals.shift import FIXED_TIME
 
 SCHEMA = "holmes-compare-table-1"
+JUDGE_PATH_NOTES = {
+    "opspilot": "Holmes 判分口径：默认 opspilot（上游 harness 建的 judge 文本，用 OpsPilot #666 "
+    "同一 judge 判分，两家同一 judge 口径）",
+    "upstream": "Holmes 判分口径：upstream（可选对照，上游 autoevals 分类器原样，只换 judge "
+    "端点与模型；默认口径是 opspilot）",
+}
+ES_MODES = ("external", "fake")
+
+
+class MergeRefused(ValueError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 AGENTS = ("opspilot", "holmes")
 LABELS = {"opspilot": "OpsPilot", "holmes": "Holmes"}
 NOTES = (
@@ -81,13 +104,17 @@ def merge(
     holmes: Sequence[TrialRow],
     questions: Sequence[str] = B1_QUESTIONS,
 ) -> dict[str, Any]:
+    paths = sorted({r.judge_path for r in holmes if r.judge_path is not None})
+    if len(paths) > 1:
+        raise MergeRefused("HOLMES_JUDGE_PATH_MIXED")
+    judge_path = paths[0] if paths else None
     sides = {"opspilot": _side(opspilot, questions), "holmes": _side(holmes, questions)}
     table = []
     for qid in questions:
         row: dict[str, Any] = {"qid": qid}
         for agent in AGENTS:
             row[agent] = _cell(qid, sides[agent]["score"], sides[agent]["rows"][qid])
-        row["skill_assertion_dropped"] = qid in SKILL_ASSERTION_DROPPED
+        row["skill_assertion_dropped"] = qid in R8_13_SKILL_ASSERTION_DROPPED
         row["fixed_time"] = qid in FIXED_TIME
         table.append(row)
     totals = {
@@ -105,7 +132,11 @@ def merge(
         "rows": table,
         "totals": totals,
         "totals_merged": False,
-        "notes": list(NOTES),
+        "holmes_judge_path": judge_path,
+        "notes": (
+            [JUDGE_PATH_NOTES[judge_path]] if judge_path in JUDGE_PATH_NOTES else []
+        )
+        + list(NOTES),
     }
 
 
@@ -132,6 +163,11 @@ def to_markdown(result: Mapping[str, Any]) -> str:
         "# HolmesGPT 公开评测集：OpsPilot 与 Holmes 同题同模型对照",
         "",
         f"> {TOOL_FACE_NOTE}",
+        *(
+            [">", f"> {JUDGE_PATH_NOTES[result['holmes_judge_path']]}"]
+            if result.get("holmes_judge_path") in JUDGE_PATH_NOTES
+            else []
+        ),
         "",
         "| 题 | OpsPilot 通过/3 | 通过率 | 标记 | Holmes 通过/3 | 通过率 | 标记 | 去 skill 断言 | 时间平移（O/H） |",
         "|---|---|---|---|---|---|---|---|---|",
@@ -166,17 +202,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out-md", type=Path, required=True)
     parser.add_argument("--out-json", type=Path, required=True)
     parser.add_argument("--questions")
+    # The OpsPilot driver's summary does not record its ES mode; the operator
+    # states it. Lead ruling: with the fake ES the data planes differ, so the
+    # table is refused rather than labelled.
+    parser.add_argument("--opspilot-es-mode", choices=ES_MODES, required=True)
     args = parser.parse_args(argv)
+    if args.opspilot_es_mode != "external":
+        print(json.dumps({"status": "refused", "code": "DATA_PLANE_DIFFERS"}))
+        return 2
     questions: Sequence[str] = B1_QUESTIONS
     if args.questions:
         from scripts.holmes_evals.driver import resolve_questions
 
         questions = resolve_questions(args.questions)
-    result = merge(
-        load_rows(args.opspilot_evidence, "opspilot"),
-        load_rows(args.holmes_evidence, "holmes"),
-        questions,
-    )
+    try:
+        result = merge(
+            load_rows(args.opspilot_evidence, "opspilot"),
+            load_rows(args.holmes_evidence, "holmes"),
+            questions,
+        )
+    except MergeRefused as exc:
+        print(json.dumps({"status": "refused", "code": exc.code}))
+        return 2
     args.out_json.write_text(json.dumps(result, ensure_ascii=False, indent=1) + "\n")
     args.out_md.write_text(to_markdown(result), encoding="utf-8")
     return 0

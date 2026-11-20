@@ -1,6 +1,6 @@
 # #668 Holmes 同题同模型对照（租机前准备）
 
-- 状态：进行中（本机准备完成，等 lead 裁决 judge 路径；真实跑在 #669）
+- 状态：进行中（本机准备完成，lead 裁决已落实，待独立审查；真实跑在 #669）
 - 更新日期：2026-11-19
 - 依据：issue #668；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) R8-3、R8-4、R8-5、R8-13、R8-15、R10-1；[#666 记录](2026-11-18-holmes-evals-666.md)；上游 HolmesGPT `a0009195`
 - 工作区：`../poa-668-compare`，分支 `feature/668-holmes-compare`，起点 `origin/main` `7fe919df`
@@ -12,15 +12,15 @@
 ## 跑法（租机，Linux）
 
 ```
-scripts/holmes_compare/run_rental.sh <轮次> <env 文件> <opspilot|upstream> [--questions 254 --trials 1] [--kubeconfig F]
+scripts/holmes_compare/run_rental.sh <轮次> <env 文件> [--judge-path upstream] [--questions 254 --trials 1] [--kubeconfig F]
 .venv/bin/python -m scripts.holmes_compare.merge --opspilot-evidence docs/evidence/holmes-evals-<轮次> \
-  --holmes-evidence docs/evidence/holmes-compare-<轮次> --out-md <F.md> --out-json <F.json>
+  --holmes-evidence docs/evidence/holmes-compare-<轮次> --opspilot-es-mode external --out-md <F.md> --out-json <F.json>
 ```
 
 - 安装：`install_upstream.sh` 浅取 `a0009195` 到 `tmp/holmes-compare/upstream`，Poetry 1.8.5（上游锁文件版本）装 `--with dev`，最后 `--collect-only` 自检；工作树有改动或有 `.env` 拒绝。
 - env 文件：`DEEPSEEK_API_KEY`、`ELASTICSEARCH_URL`、`ELASTICSEARCH_API_KEY`（工程师 key，上游 `before_test` 与工具集都读它）、`ZAI_API_KEY`/`GLM_API_KEY`；只在 runner 进程内读，不打印。
 - 每题每遍一个 pytest 会话（`-n 0`，`ITERATIONS=1`）：插件 `pytest_plugin/opspilot_holmes_compare.py` 只留该题 → 上游 session 只跑该题 `before_test` → 插件调 OpsPilot 的 `apply_shift` 平移数据并改写 `user_prompt`（R10-1）→ Holmes 跑 → 插件截住上游要送 judge 的文本（含上游默认的中间输出与 `include_tool_calls` 附件），按 OpsPilot 同一规则反平移写 `judge-input.txt` → 会话结束上游 `after_test`，runner 再按名删一次 `app-<题号>-*`（同 #666 H-7）。
-- R8-13：5 题（275–278、280）插件把 `memories_generated` 置空：上游不附「# Suggested Skills」段、不做建议条数硬断言、不跑 replay；SuggestSkills 工具本身照官方注入。
+- R8-13：6 题（B1 的 275–278、280 与 C5 的 282，`questions.R8_13_SKILL_ASSERTION_DROPPED`）插件把 `memories_generated` 置空：上游不附「# Suggested Skills」段、不做建议条数硬断言、不跑 replay；SuggestSkills 工具本身照官方注入。
 - 环境类失败（setup、平移、harness 起不来）每遍 3 次机会，同 OpsPilot；Holmes 跑了但没有回答记 `no_report`，有文本无结论记 `judge_exhausted`，均记 0。
 - 输出：原始文件在 `tmp/holmes-compare/<轮次>/<题号>/trial-<n>/chance-<k>/`（pytest 日志与 judge 理由在 `answer-derived/`，跑时不读）；证据 `docs/evidence/holmes-compare-<轮次>/<题号>/trial-<n>/summary.json`（schema `holmes-compare-trial-1`），只有类别、judge choice 与错误码、Holmes 耗时、工具调用数、LLM 调用数、平移记录、文本哈希；合表只读这些字段。
 - 合表：两家用同一个 `scoring.score`；表列题号、两家 3 遍通过数与通过率、摇摆/缺遍/无答/判分失败标记、R8-13 标记、平移标记（O/H）；两家总分分列不合并；结果页首行为「Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具」。
@@ -40,19 +40,19 @@ scripts/holmes_compare/run_rental.sh <轮次> <env 文件> <opspilot|upstream> [
 - `opspilot` judge 模式下上游分类器预检指向 DeepSeek 自己的 OpenAI 兼容端点：Z.ai key 不进 Holmes 进程（Holmes 有 bash 等工具）。
 - 平移量各自按运行时刻算：规则相同，数据字节不同（R10-1 要求同一规则）。
 
-## 待决（需 lead 决定）
+## 裁决（lead，2026-11-19，可逆，均在已批准合同内）
 
-1. judge 路径（`--judge-path` 无默认值）。`opspilot`（推荐）：上游 harness 正常建 judge 文本，判分用 #666 同一 `judge_trial`（同提示词、同参数、同解析），两家 judge 只差各自送进去的文本；上游自己的分类器被插件替换，不判分。`upstream`：上游 autoevals 原样、只换端点与模型，口径与 OpsPilot 有上面四处差异，且具名 tool_choice 在 Z.ai 上可能整体失败。
-2. ES：Holmes 必须连 `http://localhost:<端口>` 的 ES（见上）。若 #669 的 OpsPilot 轮用假 ES，两家数据面不同；建议两家都用同一个真实 ES。
-3. 269 需要 K8s：租机若无集群，Holmes 的 `kubernetes/core` 前提检查失败，该题记 `env_broken`。
+- judge 路径默认 `opspilot`：上游 harness 建的 judge 文本用 #666 `judge_trial` 判，两家同一 judge 口径（R8-3）；`--judge-path upstream` 保留为可选对照。结果页表头写明所用口径；同一轮混用两种口径时合表拒绝（`HOLMES_JUDGE_PATH_MIXED`）。
+- ES：两家用同一个真实 ES 8（R8-12），Holmes 侧用 `http://localhost:<端口>`；runner 收到 `127.0.0.1` 时拒绝并提示改用 localhost（`ES_URL_USE_LOCALHOST`）。OpsPilot 的 summary 不记 ES 模式，合表要求操作者声明 `--opspilot-es-mode`，`fake` 直接拒绝（`DATA_PLANE_DIFFERS`）：比在表头标注更简单，也不用改 #666 的 summary schema。
+- 269：租机有 kind 就跑，没有集群照实记 `env_broken`。
+- 282_loki：加入 R8-13 题单。B1 的 `SKILL_ASSERTION_DROPPED` 被 #666 合同测试钉成 B1 五题且是 B1 子集，所以另加 `R8_13_SKILL_ASSERTION_DROPPED`（B1 五题 + 282），对照侧读它；只改数据，不读答案。282 要等 C5 题进入题单（runner 目前只认 B1）才会实际跑到。
 
 ## 未确认
 
 - 上游 harness 在租机上的单题耗时、安装时长与磁盘占用；首跑先 `--questions 254 --trials 1` 冒烟。
 - 上游 `additional_system_prompt` 夹具在含 frontend 工具的题（R8-13 五题）会从上游默认 URL 拉附加提示词，需要租机能出网。
 - Z.ai 对 autoevals 强制 tool call 的兼容性（只影响 `upstream` 路径）。
-- R8-13 写的是 6 题；B1 内只有 5 题，第 6 题 `282_loki_custom_stream_label` 属 C5，接入时 `SKILL_ASSERTION_DROPPED` 随题单扩充。
 
 ## 证据
 
-- 本机：`tests/test_holmes_compare_contract.py` 29 passed（合成两家记录；插件在上游测试模块替身上端到端跑两种 judge 路径）；ruff、`mypy --strict` 干净；`opspilot/` 0 行改动。
+- 本机：`tests/test_holmes_compare_contract.py` 31 passed（合成两家记录；插件在上游测试模块替身上端到端跑两种 judge 路径；裁决后加默认口径、ES 提示、合表拒绝、282）；ruff、`mypy --strict` 干净；`opspilot/` 0 行改动。
