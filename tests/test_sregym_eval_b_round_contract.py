@@ -126,6 +126,13 @@ def _write_csv(path: Path) -> None:
         w.writerow(row)
 
 
+def _hosts(tmp: Path) -> Path:
+    """A temp hosts file with the Kafka advertised name (Kafka wiring interface)."""
+    path = tmp / "hosts"
+    path.write_text("127.0.0.1 kafka\n")
+    return path
+
+
 class DriverHost:
     def __init__(self, tmp: Path, upstream: Path) -> None:
         self.tmp = tmp
@@ -304,8 +311,7 @@ class Round:
         baseline = tmp / "cache_dir" / "cluster_baseline_state.json"
         # Kafka wiring interface: prepare_round checks a hosts file; a temp one
         # with the advertised name keeps these passes off the real /etc/hosts.
-        self.hosts_file = tmp / "hosts"
-        self.hosts_file.write_text("127.0.0.1 localhost\n127.0.0.1 kafka\n")
+        self.hosts_file = _hosts(tmp)
         fields: dict[str, Any] = {
             "round": "r1",
             "upstream": self.upstream,
@@ -358,7 +364,11 @@ def test_main_env_sets_the_cluster_registry_judge_and_job(
     d = mod("driver")
     kc = tmp_path / "sregym.kubeconfig"
     cfg = d.Config(
-        round="r1", upstream=tmp_path / "up", kubeconfig=kc, tmp_root=tmp_path / "tmp"
+        round="r1",
+        upstream=tmp_path / "up",
+        kubeconfig=kc,
+        tmp_root=tmp_path / "tmp",
+        hosts_file=_hosts(tmp_path),
     )
     job = tmp_path / "job.json"
     env = d.main_env(cfg, JUDGE_KEY, job)
@@ -384,6 +394,7 @@ def test_main_env_refuses_an_empty_judge_key(tmp_path: Path) -> None:
         upstream=tmp_path / "up",
         kubeconfig=tmp_path / "kc",
         tmp_root=tmp_path / "t",
+        hosts_file=_hosts(tmp_path),
     )
     with pytest.raises(_round_abort()) as info:
         d.main_env(cfg, "", tmp_path / "job.json")
