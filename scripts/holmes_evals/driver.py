@@ -17,6 +17,10 @@ kubeconfig reach only the setup/cleanup scripts and the shift client; the
 worker gets the product's read-only ``es-ro`` identity and its model key; the
 web gets neither; the judge key reaches only the judging process. A private
 ``--env-file`` is read in this process, never printed or written anywhere.
+With ``--es external`` and no ``--es-readonly-env``, the read-only key is
+created with the admin's ``ELASTICSEARCH_USERNAME``/``ELASTICSEARCH_PASSWORD``
+(basic auth; Elasticsearch 8 refuses to derive it from an API key); they
+reach only that one setup subprocess.
 
 Usage (repository root)::
 
@@ -168,6 +172,11 @@ _ROUND = re.compile(r"^[a-z0-9][a-z0-9.-]{0,40}$")
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 ENGINEER_KEY = "ELASTICSEARCH_API_KEY"
+#: ``--es external``: the admin's basic credentials, used only to create the
+#: product's read-only key (real Elasticsearch 8 refuses to derive a key with
+#: privileges from an API key). Never stored on ``Config``.
+ADMIN_USER = "ELASTICSEARCH_USERNAME"
+ADMIN_PASSWORD = "ELASTICSEARCH_PASSWORD"
 K8S_NAMESPACE = "otel-demo"
 #: The judge's own key names; checked for in web/worker environments.
 _JUDGE_SECRET_KEYS = ("ZAI_API_KEY", "GLM_API_KEY")
@@ -675,12 +684,27 @@ def start_fake_es(port: int, work_dir: Path) -> tuple[Started, str]:
     return started, key
 
 
-def readonly_identity(es_url: str, engineer_key: str, out: Path) -> dict[str, str]:
-    """``scripts/es_readonly_identity.py`` (B1-5) with the engineer key in
-    its environment only; returns the product's ``OPSPILOT_ES_*`` values."""
+def readonly_identity(
+    es_url: str,
+    engineer_key: str,
+    out: Path,
+    *,
+    admin: tuple[str, str] | None = None,
+) -> dict[str, str]:
+    """``scripts/es_readonly_identity.py`` (B1-5) with the creating credential
+    in its environment only; returns the product's ``OPSPILOT_ES_*`` values.
+
+    ``admin`` (user, password) authenticates with basic auth instead of
+    ``engineer_key``: a real cluster refuses an API key creating a key with
+    role descriptors; the stand-in ES accepts only ``ApiKey``."""
+    credential = (
+        {"ELASTICSEARCH_USERNAME": admin[0], "ELASTICSEARCH_PASSWORD": admin[1]}
+        if admin is not None
+        else {"ELASTICSEARCH_API_KEY": engineer_key}
+    )
     env = services.base_env() | {
         "ELASTICSEARCH_URL": es_url,
-        "ELASTICSEARCH_API_KEY": engineer_key,
+        **credential,
         "PYTHON_DOTENV_DISABLED": "1",
     }
     done = subprocess.run(
@@ -718,7 +742,7 @@ class Backends:
     judge: Callable[[Mapping[str, Any]], int] = run_judge
     port_in_use: Callable[[int], bool] = services.port_in_use
     start_fake_es: Callable[[int, Path], tuple[Started, str]] = start_fake_es
-    readonly_identity: Callable[[str, str, Path], dict[str, str]] = readonly_identity
+    readonly_identity: Callable[..., dict[str, str]] = readonly_identity
     unreachable_k8s: Callable[[Path, int], K8sTarget] = unreachable_k8s
     # PR-C (C5 log backends).
     start_gateway: Callable[..., tuple[Started, dict[str, str]]] = start_gateway
@@ -1983,7 +2007,14 @@ def prepare_round(cfg: Config, backends: Backends, round_: Round) -> None:
         raise RoundAbort(error.code) from None
     cfg.git = git_state(cfg.allow_dirty)
     private = load_env_file(cfg.env_file)
-    for name in (*MODEL_KEYS, *LANGSMITH_KEYS, *JUDGE_KEYS, ENGINEER_KEY):
+    for name in (
+        *MODEL_KEYS,
+        *LANGSMITH_KEYS,
+        *JUDGE_KEYS,
+        ENGINEER_KEY,
+        ADMIN_USER,
+        ADMIN_PASSWORD,
+    ):
         if name not in private and os.environ.get(name):
             private[name] = os.environ[name]
     cfg.secrets = {
@@ -2096,8 +2127,18 @@ def _prepare_es(
         if cfg.es_readonly_env is not None:
             cfg.product_es = load_env_file(cfg.es_readonly_env)
         else:
+            user = private.get(ADMIN_USER, "")
+            password = private.get(ADMIN_PASSWORD, "")
+            if not (user and password):
+                raise RoundAbort(
+                    "ES_ADMIN_CREDENTIALS_MISSING",
+                    f"{ADMIN_USER}/{ADMIN_PASSWORD} or --es-readonly-env",
+                )
             cfg.product_es = backends.readonly_identity(
-                cfg.es_url, cfg.engineer_key, cfg.round_dir / "es-readonly.env"
+                cfg.es_url,
+                cfg.engineer_key,
+                cfg.round_dir / "es-readonly.env",
+                admin=(user, password),
             )
     if cfg.product_es.get("OPSPILOT_ES_URL", cfg.es_url).rstrip(
         "/"
