@@ -161,12 +161,17 @@ def todo_block(
     mode: str = "question",
     st: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    """Revision r2 (lead, 2026-11-20): ``offered`` only when the pass was
+    checked (enabled or forced), ``stats`` only when enabled."""
+    block: dict[str, Any] = {
         "mode": mode,
         "enabled": enabled,
         "source": source,
-        "offered": enabled,
         "prompt_revision": "prompt-rev-x",
         "tool_schema_revision": "tools-rev-x",
-        "stats": st if st is not None else stats(),
     }
+    if enabled or source == "forced":
+        block["offered"] = enabled
+    if enabled:
+        block["stats"] = st if st is not None else stats()
+    return block

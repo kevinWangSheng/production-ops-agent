@@ -331,7 +331,6 @@ def test_task_list_stats_counts() -> None:
         step(3, STEP_C, [
             query_ok(0, "ev-4"),
             todo_result(1, later),
-            query_refused(2, "elasticsearch_search", "denied", "DUPLICATE_TOOL_CALL"),
         ]),
         step(1, STEP_A, [
             todo_result(0, first),
@@ -352,8 +351,9 @@ def test_task_list_stats_counts() -> None:
     out = _stats_fn()(steps)
     assert out["calls_ok"] == 2
     assert out["calls_refused"] == 1
-    # ev-1..ev-4, the timeout and the duplicate; TodoWrite never counted.
-    assert out["queries"] == 6
+    # ev-1..ev-4 and the timeout; TodoWrite never counted. (Revision r2:
+    # whether a refused duplicate counts is no longer pinned here.)
+    assert out["queries"] == 5
     assert out["last"] == {
         "total": 5, "completed": 2, "failed": 1, "in_progress": 1, "pending": 1,
     }  # fmt: skip

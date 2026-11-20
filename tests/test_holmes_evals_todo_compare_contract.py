@@ -24,6 +24,11 @@ Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
 * Per-trial columns (``model_requests``, ``queries``, ``seconds``) are
   ``{"values": [...trial order...], "mean": x}``; ``last_completed`` is a
   list with one ``"c/t"`` or ``"—"`` per trial with a summary.
+* Revision r2 (lead, 2026-11-20): the query count is the number of
+  ``run.tool_requests`` entries (gateway audit rows), not
+  ``todo.stats.queries``; an off pass has no ``stats`` (TodoWrite calls 0,
+  ``—``). The synthetic ``stats.queries`` is set off by 100 so reading it
+  instead would fail.
 * ``run.model_requests_used`` is read from the summary's ``run`` block (the
   synthetic summaries carry the value at ``run`` and ``run.run``).
 * A ``status: missing`` summary carries no ``todo`` block in PR-B's shape,
@@ -74,6 +79,7 @@ def summary(
     requests: int = 10,
     st: dict[str, Any] | None = None,
     seconds: float = 40.0,
+    queries: int = 6,
 ) -> dict[str, Any]:
     if kind == "missing":
         return _missing(qid, trial)
@@ -82,6 +88,9 @@ def summary(
         "run_id": "22222222-2222-4222-8222-222222222222",
         "model_requests_used": requests,
         "run": {"model_requests_used": requests},
+        "tool_requests": [
+            {"tool": "elasticsearch_search", "n": i} for i in range(queries)
+        ],
     }
     he = s["holmes_eval"]
     he["run_wait"] = {"seconds": seconds}
@@ -105,7 +114,7 @@ def _st(ok: int, refused: int, queries: int, done: int, total: int) -> dict:
     if ok:
         last = {"total": total, "completed": done, "failed": 0,
                 "in_progress": total - done, "pending": 0}  # fmt: skip
-    return stats(ok, refused, queries, last)
+    return stats(ok, refused, queries + 100, last)  # not the table's measure
 
 
 def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> None:
@@ -115,14 +124,15 @@ def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> 
     for qid in HARD:
         for t, kind in ((1, "pass"), (2, "fail"), (3, "pass")):
             put(root, MAIN, summary(qid, t, kind, enabled=False, requests=20 + t,
-                                    st=_st(0, 0, 10 + t, 0, 0), seconds=60.0 + t,
+                                    queries=10 + t, seconds=60.0 + t,
                                     **q))  # fmt: skip
     # A swing trial (4) of 184: never in the table.
     put(root, MAIN, summary(Q184, 4, "pass", enabled=False, **q))
     # Trial 3 left no summary (see the module docstring on missing trials).
     for t, kind in ((1, "pass"), (2, "exhausted")):
         put(root, MAIN, summary(Q283, t, kind, enabled=True, requests=30 + t,
-                                st=_st(2, 1, 8 + t, 3, 4), seconds=90.0, **q))  # fmt: skip
+                                st=_st(2, 1, 8 + t, 3, 4), queries=8 + t,
+                                seconds=90.0, **q))  # fmt: skip
     for t in (1, 2, 3):
         put(root, MAIN, summary(Q275, t, "pass", enabled=False, **q))
     if duplicate:
@@ -131,7 +141,7 @@ def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> 
     f_off = dict(source="forced", mode="off")
     for t, kind in ((1, "fail"), (2, "fail"), (3, "no_report")):
         put(root, OFF, summary(Q283, t, kind, enabled=False, requests=12,
-                               st=_st(0, 0, 5, 0, 0), **f_off))  # fmt: skip
+                               queries=5, **f_off))  # fmt: skip
     # Hard questions on (forced); 185 never called the list in trial 2.
     f_on = dict(source="forced", mode="on")
     for qid in HARD:
@@ -140,6 +150,7 @@ def build(root: Path, *, duplicate: bool = False, drop_193_on: bool = False) -> 
         for t in (1, 2, 3):
             st = _st(0, 0, 9, 0, 0) if (qid == Q185 and t == 2) else _st(1, 0, 9, 2, 5)
             put(root, ON, summary(qid, t, "pass", enabled=True, st=st, requests=40,
+                                  queries=9,
                                   **f_on))  # fmt: skip
 
 
