@@ -1000,8 +1000,17 @@ jobs:
           SUMS
           # The Application CRD is 416 KB, past the client-side apply annotation.
           kubectl apply --server-side -f "$RUNNER_TEMP/c4/"
-          kubectl wait --for=condition=Established --timeout=60s \
-            crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
+          # kubectl wait errors on a CRD whose status has no conditions yet.
+          for crd in applications applicationsets appprojects; do
+            ok=
+            for _ in $(seq 1 60); do
+              state=$(kubectl get crd "$crd.argoproj.io" \
+                -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true)
+              if [ "$state" = "True" ]; then ok=1; break; fi
+              sleep 1
+            done
+            [ -n "$ok" ] || { echo "CRD $crd.argoproj.io not established" >&2; exit 1; }
+          done
           kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac-argocd.yaml
           {
             echo "C4_CANARIES=tests/fixtures/c4_argocd/canaries.txt"

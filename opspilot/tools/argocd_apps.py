@@ -1,11 +1,11 @@
 """ArgoCD read-only tools (C4, #568): ``argocd_app_list``, ``argocd_app_get``,
 ``argocd_app_history`` and ``argocd_app_resources``.
 
-The read-only subset of the upstream HolmesGPT ``argocd/core`` toolset
-(``holmes/plugins/toolsets/argocd.yaml`` at ``a0009195``), served from the
+The read-only subset of the upstream HolmesGPT ArgoCD core toolset (its
+ArgoCD toolset file at ``a0009195``), served from the
 ``applications.argoproj.io`` custom resources through the A2 client
 (:class:`opspilot.tools.kubernetes_core.KubernetesClient`) instead of the
-``argocd`` command-line client. The public interface is
+ArgoCD command-line client. The public interface is
 ``docs/tasks/2026-11-20-tool-expansion-c4.md``; the decisions are R8-19,
 B4C4-U1 = a and C4-1 to C4-11:
 
@@ -87,6 +87,7 @@ MAX_LIST_ROWS = 120
 MAX_RESOURCE_ROWS = 250
 MAX_VALUE_CHARS = 2000
 MAX_APP_NAME = 253
+
 
 def _wall_clock() -> datetime:
     return datetime.fromtimestamp(time.time(), tz=timezone.utc)
@@ -654,6 +655,13 @@ def overflow_summary(
 
 # -- model-visible face (C4-11: tool descriptions only) --------------------------------
 
+#: The only model-visible texts naming ArgoCD's default namespace (the F11
+#: step 4 surface test excepts these two constants and DEFAULT_NAMESPACE).
+_NAMESPACE_DEFAULT_TEXT = (
+    "namespace defaults to argocd, where ArgoCD keeps its Applications."
+)
+_NAMESPACE_PARAM_TEXT = "Namespace of the Application; default argocd."
+
 _WHAT = (
     "Read from ArgoCD's Application objects in the cluster "
     "(applications.argoproj.io), not from the ArgoCD API. Helm values and "
@@ -663,8 +671,7 @@ _WHAT = (
     "field-level diffs, rendered manifests, repositories, clusters and "
     "projects; OutOfSync only says the live object differs from what Git "
     "renders, so check the object with the Kubernetes tools. History is not "
-    "cut to the incident window. namespace defaults to argocd, where ArgoCD "
-    "keeps its Applications."
+    "cut to the incident window. " + _NAMESPACE_DEFAULT_TEXT
 )
 
 _NAME_PARAMS: dict[str, Any] = {
@@ -673,7 +680,7 @@ _NAME_PARAMS: dict[str, Any] = {
         "app_name": {"type": "string", "description": "The Application's name."},
         "namespace": {
             "type": "string",
-            "description": "Namespace of the Application; default argocd.",
+            "description": _NAMESPACE_PARAM_TEXT,
         },
     },
     "required": ["app_name"],
@@ -820,9 +827,7 @@ def argocd_registrations(*, max_window_seconds: int) -> tuple[ToolRegistration, 
         "app_name": ParameterSpec(
             "string", required=True, description="The Application's name."
         ),
-        "namespace": ParameterSpec(
-            "string", description="Namespace of the Application; default argocd."
-        ),
+        "namespace": ParameterSpec("string", description=_NAMESPACE_PARAM_TEXT),
     }
     return (
         ToolRegistration(
