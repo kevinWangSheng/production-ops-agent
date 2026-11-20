@@ -1,9 +1,9 @@
 # 工具面拓展 C6：数据库只读查询
 
-- 状态：进行中（C6a 实现与本机单测完成，等测试作者提交与 CI；C6b ClickHouse/SQL Server、C6c MongoDB 另开）
+- 状态：进行中（C6a 已合并 #746；C6b ClickHouse/SQL Server 公开接口已定，等测试作者；C6c MongoDB 另开）
 - 更新日期：2026-11-20
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-15、R8-16、R8-25 与 r11（C6-U1=a；C6-0 至 C6-22 可逆默认全部采纳）；PRODUCT-CONSTRAINTS 第 18 行（模型自写查询只在注册的只读工具里跑，SQL 以只读账号为第一道、语句检查为第二道）；C3 第 3、8 节；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/database/`。issue #570。预审全文在仓库外（`~/.agent/handoffs/opspilot-c6-prereview-2026-11-19.md`），细节以它和 r11 为准
-- 工作区：C6a 实现 `../poa-570-sql`，分支 `feature/570-sql-a`（起点 `75dfb490`）
+- 工作区：C6a 实现 `../poa-570-sql`，分支 `feature/570-sql-a`（已合并，worktree 已删）；C6b 实现 `../poa-570-sqlb`，分支 `feature/570-sql-b`（起点 `0c0492f1`）
 
 ## 目标
 
@@ -102,6 +102,100 @@
 - MySQL/MariaDB 读到 `limit+1` 行或 2 MiB 后，另开一条连接 `KILL QUERY` 再丢弃剩余行；模型语句后的 `ROLLBACK` 尽力发送，失败不改变已得的结果。
 - 扩展档位 revision：仅 Postgres `otel-demo-ext-be3a9913af82`，仅 MySQL/MariaDB `otel-demo-ext-ffed48334876`；不设 `OPSPILOT_SQL_URL` 时无后端 `c63f058afb18`、仅 ES `4f7faf728706` 等现有值不变（本分支实测）。
 - CI 镜像 digest（2026-11-20 从 Docker Hub 读取）：`postgres@sha256:7e5df973…`、`mysql@sha256:d58ac933…`、`mariadb@sha256:bfb1298c…`。
+
+## C6b 公开接口（ClickHouse、SQL Server，2026-11-20）
+
+在 C6a 主体上加两个方言，工具名、参数、投影、上限、错误分类表与 C6a 相同，只列不同处。PG 与 MySQL/MariaDB 的行为、描述与 revision 字节不变（下面的新词、新函数只对新方言生效）。
+
+### 方言与配置
+
+- 前缀：`clickhouse+http://`、`clickhouse+https://` → `clickhouse`；`mssql://`、`mssql+pytds://` → `mssql`。地址规则同 C6a（单主机、一段库名、无 userinfo/查询串/片段）。缺省端口 ClickHouse 8123（https 8443）、SQL Server 1433，参与 C6-8 第一层比对。
+- TLS：`clickhouse+http` 只许 `OPSPILOT_SQL_TLS=disable`，`clickhouse+https` 只许 `verify-full`（默认）或 `require`，不一致报 `SQL_CONFIG_INVALID`。SQL Server 在 C6b 只许 `disable`：驱动 python-tds 的 TLS 要 pyOpenSSL（连带 cryptography），不引入；租机上题目库经 port-forward 走回环、lab 闸门只放回环与 `*.svc`，残余风险是集群内这一跳与登录包不加密，写进记录。
+- 依赖：SQL Server 加 `python-tds==1.17.1`（MIT，纯 Python，无必需依赖，2025-09-13 发布，上游同款）；ClickHouse 走标准库 HTTP，不加依赖。
+- 凭据仍是 `sql-ro` 槽。ClickHouse 用请求头 `X-ClickHouse-User`、`X-ClickHouse-Key` 送凭据（不进 URL），不跟重定向、不走代理。
+- revision：`tool_schema_revision(sql="clickhouse" | "mssql")` 两个新值，常量 `SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION`、`SQL_MSSQL_TOOL_SCHEMA_REVISION`，实现后实测写进记录；`postgresql`、`mysql` 与未设地址的值不变。
+
+### 会话只读这一层（各方言最接近的手段）
+
+- ClickHouse：工具只发 HTTP GET。ClickHouse 对非 POST 请求在账号 `readonly=0` 时强制 `readonly=2`（源码 `src/Server/HTTPHandler.cpp`，v24.1 第 750–755 行），即只许读、可改除 `readonly` 外的设置；工具不发 `readonly` 参数（`readonly>0` 时改它会被拒，`SettingsConstraints.cpp:406`）。CI ⑥ 用管理员账号经工具发 `INSERT` 验证被 `READONLY`（164）拒。
+- SQL Server：没有只读会话。`ApplicationIntent=ReadOnly`（pytds `readonly=True`）只在可用性组里把连接路由到只读副本，单实例上不起作用，不采用。工具改用回滚兜底：模型语句一律在 `BEGIN TRANSACTION` 里执行、结束一律 `ROLLBACK TRANSACTION`，并 `SET XACT_ABORT ON`、`SET IMPLICIT_TRANSACTIONS OFF`。这一层不阻止写入，只撤销事务性写入；非事务性副作用（扩展存储过程、发邮件、序列取号等）撤销不了，所以语句检查把这些构造全部拒掉，真正挡写的是账号与 C6-U1 自查。宣称里写明：SQL Server 的只读靠只读账号、工具自查与语句检查，回滚只是兜底。
+
+### 语句检查（在 C6a 规则上，按方言）
+
+- 非 ASCII 规则、一条语句、首词白名单、C6a 的禁用词与禁用函数照旧适用。
+- ClickHouse 词法：`'…'`（反斜杠转义与 `''` 都认，只按反斜杠读法一遍，与服务器一致）、`"…"` 与 `` `…` `` 标识符（同样两种转义）；`--` 到行尾是注释；`/* … */` 不嵌套，注释里再出现 `/*` 拒绝；字面量之外出现 `#` 或 `$`（heredoc `$tag$…$tag$` 与 `#` 注释的写法不核实，fail-closed）拒绝。另拒整词：`SETTINGS`、`FORMAT`、`SYSTEM`、`KILL`、`OPTIMIZE`、`ATTACH`、`DETACH`、`RENAME`、`EXCHANGE`、`UNDROP`、`BACKUP`、`RESTORE`、`WATCH`、`MOVE`、`COMMIT`、`ROLLBACK`。另拒调用（表函数与副作用函数，不分大小写）：`url`、`urlCluster`、`file`、`fileCluster`、`s3`、`s3Cluster`、`gcs`、`azureBlobStorage`、`azureBlobStorageCluster`、`hdfs`、`hdfsCluster`、`remote`、`remoteSecure`、`cluster`、`clusterAllReplicas`、`mysql`、`postgresql`、`sqlite`、`mongodb`、`redis`、`odbc`、`jdbc`、`executable`、`input`、`iceberg`、`icebergS3`、`icebergAzure`、`icebergHDFS`、`deltaLake`、`hudi`、`sleep`、`sleepEachRow`。
+- SQL Server 词法：`'…'` 与 `N'…'`（`''` 转义，不认反斜杠，只一遍）；`"…"`（`""` 转义）与 `[…]`（`]]` 转义）标识符；`--` 到行尾；`/* … */` 可嵌套（与 T-SQL 相同）。T-SQL 不需要 `;` 分隔多条语句，所以另拒整词：`DECLARE`、`EXEC`、`EXECUTE`（C6a 已有）、`WAITFOR`、`BEGIN`、`COMMIT`、`ROLLBACK`、`SAVE`、`GO`、`GOTO`、`USE`、`DBCC`、`KILL`、`SHUTDOWN`、`RECONFIGURE`、`CHECKPOINT`、`BACKUP`、`RESTORE`、`BULK`、`DENY`、`ENABLE`、`DISABLE`、`WRITETEXT`、`UPDATETEXT`、`READTEXT`、`RAISERROR`、`THROW`、`REVERT`、`SETUSER`、`OPENXML`，以及词序列 `NEXT VALUE`（取序列号）。函数照 C6a（`xp_*`、`sp_*`、`OPENROWSET`、`OPENQUERY`、`OPENDATASOURCE`）。首词仍是 C6a 白名单（`SHOW`、`DESCRIBE`、`EXPLAIN` 在 SQL Server 上由服务器报语法错）。
+- 拒绝码同 C6a（`QUERY_CONSTRUCT_NOT_ALLOWED`、`INVALID_QUERY`），notes 写命中的词。
+
+### 每次调用的请求序列
+
+- ClickHouse（每一步是一个独立的 GET，无会话、无事务）：① `/* opspilot:account-check */ SHOW GRANTS`；② `/* opspilot:account-check */ SELECT getSetting('readonly'), version()`；③ 模型语句或目录查询（`/* opspilot:catalog */`，参数用 ClickHouse 查询参数 `{p0:String}` 加 URL 参数 `param_p0`，不拼字符串）。每个 GET 的查询键固定为：`query`、`database`（配置的库）、`default_format=JSONCompactEachRowWithNames`、`max_execution_time`（剩余期限减 2 秒，整数秒，至少 1）、`timeout_overflow_mode=throw`、`cancel_http_readonly_queries_on_client_close=1`、`output_format_json_quote_64bit_integers=0`、`query_id=opspilot-<uuid4>`，以及目录查询的 `param_*`；不发 `readonly`。结果按行流式读，第一行是列名数组，之后每行一个值数组；读够 `limit+1` 行或 2 MiB 即关连接（服务器因 `cancel_http_readonly_queries_on_client_close` 取消查询）；流中途出现非 JSON 行（ClickHouse 把异常文本写进 200 的正文）按错误处理。
+- SQL Server（pytds，`autocommit=True`、`appname=opspilot-sql-tool`、`login_timeout` 取剩余期限、`timeout` 取剩余期限减 2 秒、不传 `cafile`）：`SET LOCK_TIMEOUT <ms>` → `SET XACT_ABORT ON` → `SET IMPLICIT_TRANSACTIONS OFF` → 自查（`/* opspilot:account-check */`）→ `BEGIN TRANSACTION` → 模型语句或目录查询 → `ROLLBACK TRANSACTION` → 关连接。只读第一个结果集。到期由看门狗调连接的 `cancel()`（pytds 发 attention 取消）。
+- 驱动接缝不变：`SqlTransport(config, *, connector=None, request_timeout_seconds=30.0)`，替身 connector 看到上面每一条语句（ClickHouse 每个 GET 是一次 `query`）。ClickHouse 的真实连接另可用本地 `http.server` 替身按上面的 HTTP 形状测试。SQL Server 驱动原始异常由传输层分类（读消息号），ClickHouse 连接自己抛 `SqlDriverError`。
+
+### 账号自查（C6-U1，按方言写死）
+
+- ClickHouse：`SHOW GRANTS` 每一行必须是 `GRANT <权限> ON <范围> TO <账号>`，权限 ⊆ {`SELECT`（含列级）、`SHOW`、`SHOW DATABASES`、`SHOW TABLES`、`SHOW COLUMNS`、`SHOW DICTIONARIES`}，不带 `WITH GRANT OPTION`；角色授予、`ALL`、`REVOKE` 行、含 `;` 或多个 `GRANT` 的行与解析不了的行一律不通过（`default` 账号是 `GRANT ALL ON *.* … WITH GRANT OPTION`，必拒）。`getSetting('readonly')` 为 `1` 时报 `SQL_ACCOUNT_UNSUPPORTED`（新码，归 `SOURCE_FORBIDDEN`，notes：账号的 `readonly=1` 会挡住工具自己的超时设置，请改用 `readonly=2` 或不设）；为 `2`（即账号 `0` 或 `2`）通过。
+- SQL Server：一条查询，每行一个问题码，0 行通过：`IS_SRVROLEMEMBER` 属于 `sysadmin`、`serveradmin`、`securityadmin`、`processadmin`、`setupadmin`、`bulkadmin`、`diskadmin`、`dbcreator` 任一；`IS_ROLEMEMBER` 属于 `db_owner`、`db_datawriter`、`db_ddladmin`、`db_securityadmin`、`db_accessadmin`、`db_backupoperator` 任一；`fn_my_permissions(NULL, 'SERVER')` 里有 `CONNECT SQL`、`VIEW ANY DATABASE` 与 `VIEW %` 之外的权限；`fn_my_permissions(NULL, 'DATABASE')` 里有 `CONNECT`、`SELECT`、`SHOWPLAN` 与 `VIEW %` 之外的权限；`sys.database_permissions` 里授给本用户或其所属角色（`IS_MEMBER`）、状态为 G/W、权限不在上述白名单的任一行（含列级与对象级）；本用户或其所属角色拥有任一 schema。命中报 `SQL_ACCOUNT_NOT_READ_ONLY`，模型语句不发。白名单名称以 CI 实测为准，只能收窄不能放宽。
+
+### 目录查询
+
+- ClickHouse：表 `system.tables`（`database = {p0:String}`，缺省 `currentDatabase()`；`engine` 含 `View` 的为 `view`，`MaterializedView` 为 `materialized_view`，其余 `table`）；列 `system.columns`（`nullable` 看类型是否 `Nullable(…)`，`default` 取 `default_expression`），`primary_key` 取 `is_in_primary_key` 的列；`foreign_keys` 为空；`indexes` 为 `system.data_skipping_indices` 各行加一项排序键 `{name: "sorting_key", columns, unique: false, primary: true, definition: <sorting_key>}`。
+- SQL Server：`sys.objects`/`sys.schemas`（`U` 为 table、`V` 为 view），缺省 schema 为 `SCHEMA_NAME()`；列 `sys.columns` + `TYPE_NAME`、`sys.default_constraints`；主键与索引 `sys.indexes`/`sys.index_columns`（`definition` 为 `null`）；外键 `sys.foreign_keys`/`sys.foreign_key_columns`。
+- 执行计划：ClickHouse 用 `EXPLAIN`/`EXPLAIN PIPELINE`；SQL Server 没有 `EXPLAIN`、`SET SHOWPLAN_*` 被拒，描述里引导用 `sys.dm_exec_query_stats`、`sys.dm_exec_query_plan` 等 DMV（需要 `VIEW SERVER STATE`/`VIEW DATABASE STATE`）。描述里写 SQL Server 用 `TOP` 而非 `LIMIT`。
+
+### 错误分类（补 C6a 表）
+
+| 情况 | 结果 |
+|---|---|
+| ClickHouse 异常码 62、60、47、46、81、16、43、53、42、6、27、38、41、69、70、72 一类语法/对象/类型错；SQL Server 消息号 102、156、170、207、208、4104、8134、245、8114 | `INVALID_PARAMS`（`SQL_INVALID`，回显截短脱敏的库文本） |
+| ClickHouse 497、516、192、194 与 HTTP 401/403；SQL Server 229、230、262、297、300、18456 | `SOURCE_FORBIDDEN`（`SQL_FORBIDDEN`，不回显） |
+| ClickHouse 164（READONLY） | `SOURCE_FORBIDDEN`（`SESSION_READ_ONLY`） |
+| ClickHouse 159、394；SQL Server 1222（锁超时）与驱动超时；任一方言到期后的失败 | `TOOL_TIMEOUT` |
+| ClickHouse 241、202、210 与 HTTP 5xx、连不上；SQL Server 连接断开或登录前失败（18456 除外） | `SOURCE_UNAVAILABLE` |
+| 其他 | `SOURCE_ERROR` |
+
+### CI（写死，测试作者与实现者共用）
+
+- 同一个 job `db-backends`，在 C6a 三个容器之外加：
+  - `c6-clickhouse`：`clickhouse/clickhouse-server@sha256:360a13d58afe559036b13ae5e21ba361d990081c93987d3fef0e5d7ea2dcd074`（24.1-alpine 多架构索引，2026-11-20 读取），`--cpus=1 --memory=1g --ulimit nofile=262144:262144`，`-e CLICKHOUSE_PASSWORD=$C6_ADMIN_PASSWORD -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1`，`-p 127.0.0.1:53204:8123`；就绪看 `GET /ping`。管理员是 `default`，口令 `C6_ADMIN_PASSWORD`；`log_queries` 用镜像默认（开）。
+  - `c6-mssql`：`mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f`（2022-latest，只有 amd64，2026-11-20 读取），`--cpus=2 --memory=2560m`，`-e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD=$C6_MSSQL_ADMIN_PASSWORD`，`-p 127.0.0.1:53205:1433`；就绪看 `docker exec c6-mssql /opt/mssql-tools18/bin/sqlcmd -C -No -S localhost -U sa -P "$C6_MSSQL_ADMIN_PASSWORD" -Q "SELECT 1"`，最长等 180 秒。
+- pytest 步骤新增环境变量（C6a 的全部保留）：`C6_CLICKHOUSE_PORT=53204`、`C6_MSSQL_PORT=53205`、`C6_CLICKHOUSE_ADMIN_USER=default`（口令仍是 `C6_ADMIN_PASSWORD`）、`C6_MSSQL_ADMIN_USER=sa`、`C6_MSSQL_ADMIN_PASSWORD=Changeme570!`（SQL Server 口令复杂度要求，CI 专用低熵串）、`C6_CLICKHOUSE_CONTAINER=c6-clickhouse`、`C6_MSSQL_CONTAINER=c6-mssql`。门控仍是 `OPSPILOT_DB_BACKENDS=1`。
+- 文件与命名：测试作者 `tests/integration/test_tool_expansion_c6b_sql.py`，用库 `c6b_tests`、只读账号 `c6b_tests_ro`、其他账号前缀 `c6b_tests_`；实现者 `tests/integration/test_tool_expansion_c6b_sql_impl.py`，用 `c6b_impl`、`c6b_impl_ro`、前缀 `c6b_impl_`。运行顺序：C6a 两个文件之后，先测试作者、后实现者，同一个 pytest 步骤。工具侧 TLS：ClickHouse 用 `clickhouse+http://127.0.0.1:53204/<库>` 加 `OPSPILOT_SQL_TLS=disable`；SQL Server 用 `mssql://127.0.0.1:53205/<库>` 加 `disable`。工程师侧 SQL Server 连接用 pytds（实现提交后已在依赖里），不传 `cafile`；ClickHouse 工程师侧用 POST（写入、建账号）。
+- 只读账号授权（C6-21，CI 夹具与租机共用）：ClickHouse `CREATE USER <ro> IDENTIFIED WITH sha256_password BY '<口令>' SETTINGS readonly = 2`、`GRANT SELECT ON <库>.* TO <ro>`、`GRANT SELECT ON system.* TO <ro>`（读 `system.query_log`）。SQL Server `CREATE LOGIN <ro> WITH PASSWORD = '<口令>', CHECK_POLICY = OFF`、库内 `CREATE USER <ro> FOR LOGIN <ro>`、`ALTER ROLE db_datareader ADD MEMBER <ro>`、`GRANT SHOWPLAN TO <ro>`、`GRANT VIEW DATABASE STATE TO <ro>`、`GRANT VIEW DEFINITION TO <ro>`（没有它 `sys.default_constraints` 等元数据对账号不可见，describe 的默认值为空；CI 实测），服务器级 `GRANT VIEW SERVER PERFORMANCE STATE TO <ro>`（2022 起；不够再加 `VIEW SERVER STATE`）。
+- 语句是否到达服务器（⑨）：ClickHouse 管理员 `SYSTEM FLUSH LOGS` 后查 `system.query_log` 的 `query` 含标记；SQL Server 查 `sys.dm_exec_query_stats` CROSS APPLY `sys.dm_exec_sql_text` 含标记（计划缓存，【CI 实测】是否缓存这类即席语句；不缓存则改用 `sys.dm_exec_requests` 加长语句的在途观察，测试作者与实现者按实测一起改）。
+- 断言（与 C6a ①–⑪ 对应）：① 三个工具在两库都有真实返回；② ClickHouse `EXPLAIN` 有返回，SQL Server 用 DMV 查到计划；③ 截断、长值、2 MiB 与视图超限；④ 按列名脱敏；⑤ 语句检查代表语句（含 ClickHouse 表函数、`SETTINGS`、`FORMAT`，SQL Server `EXEC`、`WAITFOR`、`DECLARE`、`SELECT … INTO`、`BEGIN`/`COMMIT`）在真实库上被拒、不到达服务器；⑥ 会话层：ClickHouse 管理员经工具（跳过语句检查与自查）`INSERT` 被 164 拒、行数不变；SQL Server 管理员经工具 `INSERT` 后行数不变（回滚兜底），结果不是 `ok` 带数据；⑦ 只读账号直连写入被拒（ClickHouse 用 POST 也拒、SQL Server 拒）；⑧ 超时：重查询报 `TOOL_TIMEOUT`，之后 `system.processes` 与 `sys.dm_exec_requests` 里没有这条；⑨ 管理员账号（ClickHouse `default`、SQL Server `sa`）报 `SQL_ACCOUNT_NOT_READ_ONLY` 且模型语句未到达；ClickHouse 账号 `readonly=1` 报 `SQL_ACCOUNT_UNSUPPORTED`；SQL Server 只授 `db_datawriter`、列级 `UPDATE`、拥有 schema 的账号都被拒；⑩ `OPSPILOT_WORKER_DSN` 同主机同端口时启动失败；⑪ 错误分类用真实响应（语法错、表不存在、密码错、无权限的表、端口无人监听）。
+
+### 实现决定（C6b，实现者自定，可逆，2026-11-20）
+
+- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-418f6da11d43`，仅 SQL Server `otel-demo-ext-a50c45b8f95e`（PR #749 审查修复后的描述）；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
+- ClickHouse 连接用标准库 `http.client`（不读代理环境变量、不跟重定向），到期由看门狗关掉套接字（`cancel()` 对正在读的连接 `shutdown`）；`clickhouse+https` 的 `require` 用不校验证书的 SSL 上下文。连接自己把 HTTP 状态与 `X-ClickHouse-Exception-Code`（没有时取正文里的 `Code: N`）分类成 `SqlDriverError`。
+- SQL Server 连接用 python-tds `autocommit=True`、`disable_connect_retry=True`；没有参数时传 `None`（不是 `()`），否则 python-tds 会对模型 SQL 里的 `%` 做格式化。驱动原始异常由传输层按消息号分类；裸的 `TimeoutError`（驱动查询超时）归 `TOOL_TIMEOUT`。读到 `limit+1` 行后调 `cursor.cancel()` 再 `ROLLBACK TRANSACTION`。
+- 到期后任何来源的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`（看门狗取消后连接报出的断开属于超时）。
+- 本仓库 C6a 合同测试 `test_web_refuses_an_unknown_prefix` 的 `clickhouse+http`、`mssql` 两例按 C6a 范围写，C6b 之后这两个前缀合法，由测试作者按 C6b 接口改（实现者不改断言）。
+
+### 裁决补充（lead 2026-11-20，测试作者提问后）
+
+- TLS 不设时按默认 `verify-full`，所以 `clickhouse+http` 与 `mssql` 不显式设 `OPSPILOT_SQL_TLS=disable` 就报 `SQL_CONFIG_INVALID`。
+- ClickHouse 错误先看异常码（`X-ClickHouse-Exception-Code`，没有时取正文 `Code: N`），再看 HTTP 状态。
+- ClickHouse 的 `system` 库必须写成反引号 `` `system` ``：未加引号的 `SYSTEM` 一律按整词拒绝（含 `FROM system.tables`），描述里告诉模型这样写；工具自己的目录查询也写 `` `system` ``。
+- SQL Server 另拒整词 `WHILE`、`IF`、`PRINT`，以及锁提示 `UPDLOCK`、`XLOCK`、`HOLDLOCK`、`TABLOCK`、`TABLOCKX`、`PAGLOCK`、`ROWLOCK`、`SERIALIZABLE`、`REPEATABLEREAD`、`READPAST`：在字符串与带引号标识符之外作为整词出现就拒，不论是否在 `WITH (…)` 里（覆盖老式 `FROM t (UPDLOCK)` 与裸用）；`NOLOCK`、`READUNCOMMITTED` 放行，`[updlock]`、`rowlock_id` 放行。
+- ClickHouse `getSetting('readonly')` 返回数字：`2` 通过；`1` 报 `SQL_ACCOUNT_UNSUPPORTED`；其他值（含 `0`，GET 下正常不会出现）报 `SQL_ACCOUNT_NOT_READ_ONLY`。账号 `readonly=1` 时，第一个自查 GET 就会因工具自己的设置被拒（164），工具把自查阶段的 164 也报成 `SQL_ACCOUNT_UNSUPPORTED`；所有 GET 都带固定的查询键（接口原样）。
+- PR #749 审查修复（lead 定，全部 fail-closed，四种方言一致）：
+  - 词法器按服务器的形状先读掉数字字面量（`\d+(\.\d*)?([eE][+-]?\d*)?`、`\.\d+…`、`0x[0-9A-Fa-f]*`），数字后紧跟字母、`_` 或 `$` 一律 `QUERY_CONSTRUCT_NOT_ALLOWED`（SQL Server 把 `1e1EXEC` 读成数字加 `EXEC`，CI 实测见 `_impl` 文件的 `C6B-EVIDENCE` 行；PG 16 的 `1_000` 写法因此也被拒）。
+  - `--` 注释在 `\r` 或 `\n` 先到者结束（裸 `\r` 也结束注释，与服务器一致）。
+  - SQL Server：任何位置出现以 `sp_`、`xp_` 开头的名字（带不带括号、带不带方括号）都拒；三段及以上的点分名字与 `..` 都拒（自查只覆盖配置的库；列请用表别名，`dbo.t.col` 也被拒）；另拒 `RECEIVE`、`SEND`、`MOVE`、`CONVERSATION`、`OPEN`、`RETURN`、`BREAK`、`CONTINUE`、`FETCH`（`OFFSET n ROWS FETCH NEXT m ROWS ONLY` 的分页放行：`FETCH` 前一个词是 `ROW`/`ROWS` 时不拒，与测试作者的放行用例一致）、`CLOSE`、`DEALLOCATE`、`ADD SIGNATURE`，锁提示补 `READCOMMITTEDLOCK`、`NOWAIT`。**`END` 不拒**：拒了会拒掉所有 `CASE … END`，而 `BEGIN … END` 块已因 `BEGIN` 被拒，lead 不同意可再加。
+  - SQL Server 自查补：账号直接拥有的对象（`sys.objects.principal_id`）、服务器级对登录的 `IMPERSONATE`/`CONTROL`/`ALTER`/`TAKE OWNERSHIP`（`sys.server_permissions`）。
+  - ClickHouse 表函数补 `cosn`、`oss`、`hive`、`paimon`、`deltaLakeS3`、`deltaLakeCluster`、`hudiCluster`、`icebergCluster`。已知限制：`merge()` 因整词 `MERGE` 被拒（只会误拒）。
+  - 非阻塞：`_MSSQL_INVALID` 去掉重复的 102；ClickHouse 流中途的异常行按码分类（无码记 `SOURCE_ERROR`）、SQL Server 4060（库打不开）记 `SOURCE_FORBIDDEN`，两者照旧，记为已知取舍。
+- 聚焦复审补一处（lead 2026-11-20）：SQL Server 里前面不是标识符字符的 `$` 后跟数字按 money 字面量读（`$1.50`），所以 `$1e1EXEC` 也落到「数字后紧跟字母」被拒。lead 同意 `END` 不拒、`ROW`/`ROWS` 后的 `FETCH` 放行。
+- 已知误拒（只会多拒，不修）：ClickHouse 的 `1_000`、`0b101` 数字写法；MySQL 以数字开头、不加反引号的标识符（如 `2fa_codes`）；SQL Server 三段列引用（`dbo.t.col`，用别名）；SQL Server 以 `sp_`/`xp_` 开头的列名或表名（加方括号也拒）；ClickHouse `merge()`（整词 `MERGE`）。
+- 常量 `SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION`、`SQL_MSSQL_TOOL_SCHEMA_REVISION` 已加到 `otel_demo_ext`。SQL Server 连接中途断开（python-tds `ClosedConnectionError`，消息号 0）报 `SOURCE_UNAVAILABLE`。
+
+### 交给 #669
+
+- 222（ClickHouse）：题目自带 `default` 无口令账号是管理员，会被 C6-U1 拒；评测脚本按上面的 C6-21 用 `kubectl exec … clickhouse-client` 建只读账号，地址 `clickhouse+http://127.0.0.1:10222/default`、`OPSPILOT_SQL_TLS=disable`。
+- 223（SQL Server）：题目用 `sa`，同样被拒；用 `sqlcmd` 建只读登录与库用户，地址 `mssql://127.0.0.1:10223/testdb`、`disable`；租机选 amd64、给 3 GB。
 
 ## 交给 #669 租机
 

@@ -903,6 +903,13 @@ jobs:
           PG_IMAGE: postgres@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
           MYSQL_IMAGE: mysql@sha256:d58ac93387f644e4e040c636b8f50494e78e5afc27ca0a87348b2f577da2b7ff
           MARIADB_IMAGE: mariadb@sha256:bfb1298c06cd15f446f1c59600b3a856dae861705d1a2bd2a00edbd6c74ba748
+          # C6b: clickhouse/clickhouse-server:24.1-alpine (multi-platform index)
+          # and mcr.microsoft.com/mssql/server:2022-latest (amd64 only), read on
+          # 2026-11-20.
+          CLICKHOUSE_IMAGE: clickhouse/clickhouse-server@sha256:360a13d58afe559036b13ae5e21ba361d990081c93987d3fef0e5d7ea2dcd074
+          MSSQL_IMAGE: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+          # SQL Server requires a complex password; CI only, never a real secret.
+          C6_MSSQL_ADMIN_PASSWORD: Changeme570!
           # A CI-only admin password, never a real secret.
           C6_ADMIN_PASSWORD: changeme570
         run: |
@@ -914,6 +921,13 @@ jobs:
           docker run -d --name c6-mysql --cpus=1 --memory=1g \
             -e MYSQL_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53202:3306 "$MYSQL_IMAGE" --general-log=1 --log-output=TABLE
+          docker run -d --name c6-clickhouse --cpus=1 --memory=1g \
+            --ulimit nofile=262144:262144 \
+            -e CLICKHOUSE_PASSWORD="$C6_ADMIN_PASSWORD" -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+            -p 127.0.0.1:53204:8123 "$CLICKHOUSE_IMAGE"
+          docker run -d --name c6-mssql --cpus=2 --memory=2560m \
+            -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$C6_MSSQL_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53205:1433 "$MSSQL_IMAGE"
           docker run -d --name c6-mariadb --cpus=1 --memory=512m \
             -e MARIADB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53203:3306 "$MARIADB_IMAGE" --general-log=1 --log-output=TABLE
@@ -940,7 +954,28 @@ jobs:
             done
             [ -n "$ready" ] || { docker logs "$name" >&2; exit 1; }
           done
+          ready=
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://127.0.0.1:53204/ping > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-clickhouse >&2; exit 1; }
+          ready=
+          for _ in $(seq 1 90); do
+            if docker exec c6-mssql /opt/mssql-tools18/bin/sqlcmd -C -No -S localhost \
+                -U sa -P "$C6_MSSQL_ADMIN_PASSWORD" -Q 'SELECT 1' > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-mssql >&2; exit 1; }
           docker exec c6-postgres psql -U postgres -tAc 'SELECT version()'
+          curl -fsS -H "X-ClickHouse-User: default" -H "X-ClickHouse-Key: $C6_ADMIN_PASSWORD" \
+            'http://127.0.0.1:53204/?query=SELECT%20version()'
+          docker exec c6-mssql /opt/mssql-tools18/bin/sqlcmd -C -No -S localhost -U sa \
+            -P "$C6_MSSQL_ADMIN_PASSWORD" -h -1 -Q 'SET NOCOUNT ON; SELECT @@VERSION'
           docker exec c6-mysql mysql -uroot -p"$C6_ADMIN_PASSWORD" -NBe 'SELECT VERSION()' 2>/dev/null
           docker exec c6-mariadb mariadb -uroot -p"$C6_ADMIN_PASSWORD" -NBe 'SELECT VERSION()' 2>/dev/null
       - name: Set up uv and Python
@@ -969,11 +1004,20 @@ jobs:
           C6_PG_CONTAINER: c6-postgres
           C6_MYSQL_CONTAINER: c6-mysql
           C6_MARIADB_CONTAINER: c6-mariadb
+          C6_CLICKHOUSE_PORT: "53204"
+          C6_MSSQL_PORT: "53205"
+          C6_CLICKHOUSE_ADMIN_USER: default
+          C6_MSSQL_ADMIN_USER: sa
+          C6_MSSQL_ADMIN_PASSWORD: Changeme570!
+          C6_CLICKHOUSE_CONTAINER: c6-clickhouse
+          C6_MSSQL_CONTAINER: c6-mssql
         run: |
           jq --version
           files=""
           for name in tests/integration/test_tool_expansion_c6a_sql.py \
-              tests/integration/test_tool_expansion_c6a_sql_impl.py; do
+              tests/integration/test_tool_expansion_c6a_sql_impl.py \
+              tests/integration/test_tool_expansion_c6b_sql.py \
+              tests/integration/test_tool_expansion_c6b_sql_impl.py; do
             [ -f "$name" ] && files="$files $name"
           done
           [ -n "$files" ] || { echo "no C6a integration test file" >&2; exit 1; }
@@ -982,7 +1026,7 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: |
-          for name in c6-postgres c6-mysql c6-mariadb; do
+          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql; do
             echo "--- $name"
             docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
             docker logs --tail 200 "$name" 2>&1 || true
