@@ -437,6 +437,9 @@ class Entry:
             errors = self.cleanup.close()
             if errors:
                 self.record.setdefault("cleanup_errors", []).extend(errors)
+            if TERMINATED.is_set() and exit_code != EXIT_TERMINATED:
+                self.record.setdefault("terminated", "SystemExit")
+                exit_code = EXIT_TERMINATED
             self.record["exit_code"] = exit_code
             self.record["ended_at"] = self.host.now().isoformat()
             self._write_record()
@@ -497,6 +500,12 @@ class Entry:
         errors = self.cleanup.close()
         if errors:
             self.record["cleanup_errors"] = errors
+        else:
+            # Everything registered is stopped: nothing is signalled later.
+            self.procs.clear()
+        if TERMINATED.is_set():
+            # Cleanup swallows a SIGTERM raised inside a stop callback.
+            raise SystemExit(128 + signal.SIGTERM)
         if exit_code == EXIT_OK or self.record.get("submission"):
             exit_code = self._wait_done(exit_code)
         return exit_code
@@ -601,12 +610,13 @@ class Entry:
         self.cleanup.push("pg", lambda: host.stop_pg(pg))
         postmaster = postmaster_pid(pg)
         if postmaster is not None:
-            # SIGINT is PostgreSQL's fast shutdown.
-            self.procs.append(
-                ProcTarget(
-                    "pg", postmaster, lambda: _pid_alive(postmaster), signal.SIGINT
-                )
-            )
+            # SIGINT is PostgreSQL's fast shutdown. Alive only while this
+            # instance's own postmaster.pid still names this pid (re-read
+            # before every signal), so a reused pid is never signalled.
+            def pg_alive(pid: int = postmaster) -> bool:
+                return postmaster_pid(pg) == pid and _pid_alive(pid)
+
+            self.procs.append(ProcTarget("pg", postmaster, pg_alive, signal.SIGINT))
         identities = self.dir / "target_identities.json"
         write_identities(identities, namespace)
         account = new_account()
@@ -704,6 +714,7 @@ def main(
     except JobError:
         return EXIT_BAD_JOB
     entry = Entry(job, host or EntryHost(), environ)
+    TERMINATED.clear()
     previous = _install_sigterm()
     try:
         return entry.run()
@@ -712,7 +723,13 @@ def main(
             signal.signal(signal.SIGTERM, previous)
 
 
+#: Set by the SIGTERM handler; survives a ``SystemExit`` that a stop
+#: callback's error handling swallowed.
+TERMINATED = threading.Event()
+
+
 def _sigterm(signum: int, frame: object) -> None:
+    TERMINATED.set()
     raise SystemExit(128 + signum)
 
 

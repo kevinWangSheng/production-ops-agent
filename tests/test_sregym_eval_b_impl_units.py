@@ -471,6 +471,7 @@ def test_missing_entry_record_with_judged_csv_counts_by_verdict(
     assert block["category"] == "ok" and block["passed"] is True
     assert block["submission"]["error_code"] == "ENTRY_RECORD_MISSING"
     assert "ENTRY_RECORD_MISSING" in block["disclosures"]
+    assert block["submission"]["empty"] is None
 
 
 _IGNORES_TERM = (
@@ -574,3 +575,103 @@ def test_port_owner_reads_lsof() -> None:
         port = listener.getsockname()[1]
         assert driver.port_owner(port).startswith(f"pid={os.getpid()}")
     assert driver.port_owner(port) == "pid=unknown"
+
+
+def _pg_host(
+    tmp_path: Path, url: str, calls: list[str], pid: int
+) -> agent_entry.EntryHost:
+    """Stand-in PG with this instance's own postmaster.pid; stop removes it."""
+    pg_dir = tmp_path / "work" / "pg"
+    pg_dir.mkdir(parents=True)
+    pidfile = pg_dir / "postmaster.pid"
+    pidfile.write_text(f"{pid}\n{pg_dir}\n0\n{Ports().pg}\n")
+    host = _entry_host(url, calls)
+    host.start_pg = lambda d, p: _Pg(  # type: ignore[assignment]
+        directory=pg_dir, port=Ports().pg, owner_dsn="o", web_dsn="w", runtime_dsn="r"
+    )
+
+    def stop_pg(pg: Any) -> None:
+        calls.append("stop:pg")
+        pidfile.unlink()
+
+    host.stop_pg = stop_pg  # type: ignore[assignment]
+    return host
+
+
+def test_sigterm_after_normal_pg_stop_signals_no_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    calls: list[str] = []
+    sent: list[tuple[int, int]] = []
+    reused = 999_999  # pretend a stranger now owns the old postmaster pid
+    monkeypatch.setattr(agent_entry, "_pid_alive", lambda pid: True)
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path, done_wait_s=60.0))
+        host = _pg_host(tmp_path, url, calls, reused)
+        host.kill = lambda pid, sig: sent.append((pid, sig))  # type: ignore[assignment]
+        # SIGTERM while waiting for ``done``, after the normal cleanup.
+        host.sleep = lambda s: agent_entry._sigterm(15, None)  # type: ignore[assignment]
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+    finally:
+        server.shutdown()
+    assert code == agent_entry.EXIT_TERMINATED
+    assert "stop:pg" in calls
+    assert sent == []
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["termination"]["processes"] == {}
+
+
+def test_reused_postmaster_pid_is_not_signalled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    sent: list[tuple[int, int]] = []
+    monkeypatch.setattr(agent_entry, "_pid_alive", lambda pid: True)
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path))
+        host = _pg_host(tmp_path, url, [], 999_998)
+        host.kill = lambda pid, sig: sent.append((pid, sig))  # type: ignore[assignment]
+        pidfile = tmp_path / "work" / "pg" / "postmaster.pid"
+
+        def run_state(dsn: str, run_id: str) -> str | None:
+            # Another instance's file now (different pid): ours is gone.
+            pidfile.write_text(f"123\n{pidfile.parent}\n0\n{Ports().pg}\n")
+            agent_entry._sigterm(15, None)
+            return None
+
+        host.run_state = run_state  # type: ignore[assignment]
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+    finally:
+        server.shutdown()
+    assert code == agent_entry.EXIT_TERMINATED
+    assert all(pid != 999_998 for pid, _ in sent)
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["termination"]["processes"]["pg"] == "gone"
+
+
+def test_sigterm_swallowed_by_a_stop_callback_still_exits_7(tmp_path: Path) -> None:
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path, done_wait_s=60.0))
+        host = _entry_host(url, [])
+        host.stop_pg = lambda pg: agent_entry._sigterm(15, None)  # type: ignore[assignment]
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+    finally:
+        server.shutdown()
+    assert code == agent_entry.EXIT_TERMINATED
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["exit_code"] == 7 and "done_seen" not in record
+    assert record["submission"]["submitted"] is True

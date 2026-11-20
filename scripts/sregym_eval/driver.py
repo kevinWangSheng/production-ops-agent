@@ -619,6 +619,8 @@ def _freeze(
     )
     if submission.error_code == ENTRY_RECORD_MISSING:
         block["disclosures"].append(ENTRY_RECORD_MISSING)
+        # Whether the lost submission was empty is not known.
+        block["submission"]["empty"] = None
     run_id = record.get("run_id")
     run_block = _read_json(work / RUN_FILE)
     ledger = _read_json(work / LEDGER_FILE)
