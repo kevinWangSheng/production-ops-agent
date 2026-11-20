@@ -471,3 +471,106 @@ def test_missing_entry_record_with_judged_csv_counts_by_verdict(
     assert block["category"] == "ok" and block["passed"] is True
     assert block["submission"]["error_code"] == "ENTRY_RECORD_MISSING"
     assert "ENTRY_RECORD_MISSING" in block["disclosures"]
+
+
+_IGNORES_TERM = (
+    "import signal, time\n"
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+    "print('ready', flush=True)\n"
+    "time.sleep(600)\n"
+)
+
+
+def _stubborn_child() -> subprocess.Popen[str]:
+    import sys
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _IGNORES_TERM], stdout=subprocess.PIPE, text=True
+    )
+    assert proc.stdout is not None and proc.stdout.readline().strip() == "ready"
+    return proc
+
+
+def test_terminate_all_kills_a_process_ignoring_sigterm() -> None:
+    import time
+
+    proc = _stubborn_child()
+    try:
+        target = agent_entry.ProcTarget("worker", proc.pid, lambda: proc.poll() is None)
+        began = time.monotonic()
+        states = agent_entry.terminate_all([target], wait_s=0.5)
+        elapsed = time.monotonic() - began
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(5)
+    assert states == {"worker": "killed"}
+    assert proc.returncode == -9
+    assert elapsed < 0.5 + agent_entry.KILL_WAIT_S
+
+
+def test_sigterm_path_stops_stubborn_worker_within_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import signal
+    import time
+
+    monkeypatch.setattr(agent_entry, "TERM_WAIT_S", 0.5)
+    _files(tmp_path)
+    fake = FakeConductor(APP)
+    fake.advance("diagnosis")
+    server = serve(fake)
+    proc = _stubborn_child()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        write_job(tmp_path / "job.json", _job(tmp_path))
+        host = _entry_host(url, [])
+        host.start_worker = lambda env, log, settle_seconds: Started(  # type: ignore[assignment]
+            "worker",
+            lambda: None,
+            info={"pid": proc.pid},
+            alive=lambda: proc.poll() is None,
+        )
+        host.run_state = lambda dsn, run_id: os.kill(os.getpid(), signal.SIGTERM)  # type: ignore[assignment,func-returns-value]
+        began = time.monotonic()
+        code = agent_entry.main({"SREGYM_EVAL_JOB": str(tmp_path / "job.json")}, host)
+        elapsed = time.monotonic() - began
+    finally:
+        server.shutdown()
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait(5)
+    assert code == agent_entry.EXIT_TERMINATED
+    assert proc.returncode == -9
+    assert elapsed < agent_entry.CLEANUP_BUDGET_S
+    record = json.loads((tmp_path / "work" / "entry-record.json").read_text())
+    assert record["termination"]["processes"]["worker"] == "killed"
+    assert record["termination"]["stop_callbacks"] == "done"
+
+
+def test_port_busy_names_port_and_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(driver, "verify_upstream", lambda root: None)
+    cfg = _cfg(tmp_path)
+    host = _driver_host(tmp_path, {c.label: c.expect for c in CAN_I_CHECKS})
+    host.port_in_use = lambda port: port == cfg.ports.web
+    host.port_owner = lambda port: "pid=4242 cmd=python"
+    with pytest.raises(RoundAbort) as info:
+        driver.run_round(cfg, host, (1,))
+    assert info.value.code == "PORT_BUSY"
+    assert info.value.detail == "web:29580(pid=4242 cmd=python)"
+
+
+def test_port_owner_reads_lsof() -> None:
+    import shutil
+    import socket
+
+    if shutil.which("lsof") is None:
+        pytest.skip("lsof not installed")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        assert driver.port_owner(port).startswith(f"pid={os.getpid()}")
+    assert driver.port_owner(port) == "pid=unknown"

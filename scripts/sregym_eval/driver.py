@@ -149,6 +149,28 @@ def _trace_roots(
     )
 
 
+def port_owner(port: int) -> str:
+    """``pid=<n> cmd=<name>`` of the process listening on ``port`` (``lsof``,
+    read-only); ``pid=unknown`` when it cannot be told."""
+    try:
+        done = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fpc"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            timeout=10, check=False,
+        )  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return "pid=unknown"
+    pid = cmd = ""
+    for line in done.stdout.splitlines():
+        if line.startswith("p") and not pid:
+            pid = line[1:]
+        elif line.startswith("c") and not cmd:
+            cmd = line[1:]
+    if not pid.isdigit():
+        return "pid=unknown"
+    return f"pid={pid} cmd={cmd}" if cmd else f"pid={pid}"
+
+
 @dataclass
 class Host:
     """Everything that touches the host; tests replace any of these."""
@@ -161,6 +183,7 @@ class Host:
     start_gateway: Callable[..., tuple[Started, dict[str, str]]] = start_gateway
     spawn: Callable[..., Any] = services.spawn
     port_in_use: Callable[[int], bool] = services.port_in_use
+    port_owner: Callable[[int], str] = lambda port: port_owner(port)
     http_probe: Callable[..., int] = filter_proxy.http_probe
     trace_roots: Callable[[str | None, str, Mapping[str, str]], dict[str, Any]] = (
         _trace_roots
@@ -426,9 +449,14 @@ def run_trial(cfg: Config, host: Host, problem_id: str, trial: int) -> TrialOutc
             str(work), str(work.with_name(f"{work.name}.old-{int(time.time())}"))
         )
     work.mkdir(parents=True)
-    busy = [n for n, p in cfg.ports.per_trial().items() if host.port_in_use(p)]
+    busy = [(n, p) for n, p in cfg.ports.per_trial().items() if host.port_in_use(p)]
     if busy:
-        raise RoundAbort("PORT_BUSY", ",".join(busy))
+        # Report only (a previous trial's product process, most likely);
+        # nothing is killed here.
+        raise RoundAbort(
+            "PORT_BUSY",
+            ",".join(f"{n}:{p}({host.port_owner(p)})" for n, p in busy),
+        )
     timings: dict[str, Any] = {"started_at": host.now().isoformat()}
     boundary: dict[str, Any] = {"rbac": [], "env_isolation": None}
     with ResultsLock(cfg.results_root):

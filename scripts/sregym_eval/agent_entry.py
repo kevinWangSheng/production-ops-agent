@@ -130,6 +130,110 @@ class EntryHost:
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
+    kill: Callable[[int, int], None] = os.kill
+
+
+# -- SIGTERM path ----------------------------------------------------------------------------------
+
+#: SREGym SIGKILLs the entry 60 s after its SIGTERM (``main.py:671-711``).
+#: All product processes get the signal at once and this long together...
+TERM_WAIT_S = 25.0
+#: ...and the whole termination (signals, SIGKILL, stop callbacks) this long.
+CLEANUP_BUDGET_S = 40.0
+KILL_WAIT_S = 3.0
+
+
+@dataclass(frozen=True)
+class ProcTarget:
+    name: str
+    pid: int
+    alive: Callable[[], bool]
+    sig: int = signal.SIGTERM
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def postmaster_pid(pg: Any) -> int | None:
+    """The postmaster of this attempt's own PG (``postmaster.pid`` line 1,
+    checked against the instance's directory and port like ``LocalPgLauncher.stop``)."""
+    directory = getattr(pg, "directory", None)
+    port = getattr(pg, "port", None)
+    if directory is None or port is None:
+        return None
+    try:
+        lines = (Path(directory) / "postmaster.pid").read_text().splitlines()
+    except OSError:
+        return None
+    if len(lines) < 4 or Path(lines[1]) != Path(directory) or lines[3] != str(port):
+        return None
+    try:
+        pid = int(lines[0])
+    except ValueError:
+        return None
+    return pid if pid > 0 else None
+
+
+def terminate_all(
+    targets: list[ProcTarget],
+    *,
+    wait_s: float = TERM_WAIT_S,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+    kill: Callable[[int, int], None] = os.kill,
+) -> dict[str, str]:
+    """Signal every live target at once, wait ``wait_s`` for all of them
+    together, then SIGKILL the rest. Returns ``name -> gone | terminated |
+    killed | survived``. Only the registered positive pids are signalled."""
+    states: dict[str, str] = {}
+    live: list[ProcTarget] = []
+    for target in targets:
+        if target.pid <= 0 or not target.alive():
+            states[target.name] = "gone"
+            continue
+        try:
+            kill(target.pid, target.sig)
+            live.append(target)
+        except ProcessLookupError:
+            states[target.name] = "gone"
+    deadline = clock() + wait_s
+    while live and clock() < deadline:
+        still: list[ProcTarget] = []
+        for target in live:
+            if target.alive():
+                still.append(target)
+            else:
+                states[target.name] = "terminated"
+        live = still
+        if live:
+            sleep(0.2)
+    for target in live:
+        if not target.alive():
+            states[target.name] = "terminated"
+            continue
+        try:
+            kill(target.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            states[target.name] = "terminated"
+            continue
+        states[target.name] = "killed"
+    end = clock() + KILL_WAIT_S
+    while (
+        any(states.get(t.name) == "killed" and t.alive() for t in live)
+        and clock() < end
+    ):
+        sleep(0.1)
+    for target in live:
+        if states.get(target.name) == "killed" and target.alive():
+            states[target.name] = "survived"
+    return states
 
 
 def _sha256(text: str) -> str:
@@ -275,6 +379,7 @@ class Entry:
     cleanup: Cleanup = field(default_factory=Cleanup)
     client: ConductorClient | None = None
     submitted: bool = False
+    procs: list[ProcTarget] = field(default_factory=list)
 
     @property
     def dir(self) -> Path:
@@ -327,6 +432,7 @@ class Entry:
         except (SystemExit, KeyboardInterrupt) as stop:
             self.record["terminated"] = type(stop).__name__
             exit_code = EXIT_TERMINATED
+            self.record["termination"] = self._terminate()
         finally:
             errors = self.cleanup.close()
             if errors:
@@ -335,6 +441,38 @@ class Entry:
             self.record["ended_at"] = self.host.now().isoformat()
             self._write_record()
         return exit_code
+
+    def _own(self, name: str, started: Started, sig: int = signal.SIGTERM) -> None:
+        """Register a started process for the SIGTERM path (its own pid,
+        from the handle that started it)."""
+        self.cleanup.push(started.name, started.stop)
+        pid = started.info.get("pid") if isinstance(started.info, dict) else None
+        if isinstance(pid, int) and pid > 0:
+            self.procs.append(ProcTarget(name, pid, started.alive, sig))
+
+    def _terminate(self) -> dict[str, Any]:
+        """SIGTERM path: signal every product process at once, wait at most
+        ``TERM_WAIT_S`` together, SIGKILL what is left, then run the stop
+        callbacks (now quick) within what remains of ``CLEANUP_BUDGET_S``."""
+        began = self.host.monotonic()
+        states = terminate_all(
+            self.procs, wait_s=TERM_WAIT_S, clock=self.host.monotonic,
+            sleep=self.host.sleep, kill=self.host.kill,
+        )  # fmt: skip
+        remaining = max(0.0, CLEANUP_BUDGET_S - (self.host.monotonic() - began))
+        cleanup, self.cleanup = self.cleanup, Cleanup()
+        errors: list[str] = []
+        closer = threading.Thread(
+            target=lambda: errors.extend(cleanup.close()), daemon=True
+        )
+        closer.start()
+        closer.join(remaining)
+        return {
+            "processes": states,
+            "stop_callbacks": "done" if not closer.is_alive() else "budget_exceeded",
+            "errors": errors,
+            "seconds": round(self.host.monotonic() - began, 3),
+        }
 
     def _run_steps(self) -> int:
         try:
@@ -355,10 +493,10 @@ class Entry:
                     self.submit("")
                 except EntryFailure as late:
                     self.record["failure_after"] = late.code
-        finally:
-            errors = self.cleanup.close()
-            if errors:
-                self.record["cleanup_errors"] = errors
+        # Not in a ``finally``: on SIGTERM ``run`` stops everything at once.
+        errors = self.cleanup.close()
+        if errors:
+            self.record["cleanup_errors"] = errors
         if exit_code == EXIT_OK or self.record.get("submission"):
             exit_code = self._wait_done(exit_code)
         return exit_code
@@ -430,7 +568,7 @@ class Entry:
                 missing.add(name)
                 self.record["observability"][name] = "missing"
                 continue
-            self.cleanup.push(started.name, started.stop)
+            self._own(f"port-forward:{name}", started)
             self.record["observability"][name] = "forwarded"
         return missing
 
@@ -461,6 +599,14 @@ class Entry:
                 raise  # unexpected: ENTRY_CRASHED in run()
             raise EntryFailure(code, EXIT_PRODUCT) from None
         self.cleanup.push("pg", lambda: host.stop_pg(pg))
+        postmaster = postmaster_pid(pg)
+        if postmaster is not None:
+            # SIGINT is PostgreSQL's fast shutdown.
+            self.procs.append(
+                ProcTarget(
+                    "pg", postmaster, lambda: _pid_alive(postmaster), signal.SIGINT
+                )
+            )
         identities = self.dir / "target_identities.json"
         write_identities(identities, namespace)
         account = new_account()
@@ -490,13 +636,11 @@ class Entry:
             raise EntryFailure(error.code, EXIT_PRODUCT) from None
         self.record["leak_check"] = "ok"
         try:
-            self.cleanup.push(
-                "web", host.start_web(wenv, job.ports.web, self.dir / "web.log").stop
-            )
+            self._own("web", host.start_web(wenv, job.ports.web, self.dir / "web.log"))
             worker = host.start_worker(
                 kenv, self.dir / "worker.log", settle_seconds=WORKER_SETTLE_S
             )
-            self.cleanup.push("worker", worker.stop)
+            self._own("worker", worker)
         except services.ServiceError as error:
             raise EntryFailure(error.code, EXIT_PRODUCT) from None
         try:
