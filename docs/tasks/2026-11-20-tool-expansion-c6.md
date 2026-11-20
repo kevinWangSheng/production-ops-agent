@@ -1,6 +1,6 @@
 # 工具面拓展 C6：数据库只读查询
 
-- 状态：进行中（C6a 公开接口已定，等测试作者；C6b ClickHouse/SQL Server、C6c MongoDB 另开）
+- 状态：进行中（C6a 实现与本机单测完成，等测试作者提交与 CI；C6b ClickHouse/SQL Server、C6c MongoDB 另开）
 - 更新日期：2026-11-20
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-15、R8-16、R8-25 与 r11（C6-U1=a；C6-0 至 C6-22 可逆默认全部采纳）；PRODUCT-CONSTRAINTS 第 18 行（模型自写查询只在注册的只读工具里跑，SQL 以只读账号为第一道、语句检查为第二道）；C3 第 3、8 节；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/database/`。issue #570。预审全文在仓库外（`~/.agent/handoffs/opspilot-c6-prereview-2026-11-19.md`），细节以它和 r11 为准
 - 工作区：C6a 实现 `../poa-570-sql`，分支 `feature/570-sql-a`（起点 `75dfb490`）
@@ -18,8 +18,8 @@
 | `database_sql_describe_table` | **`table_name`**、`schema` | 写死的目录查询 | 每列 `{name, type, nullable, default, ordinal}`，按 `ordinal`；视图另带 `primary_key`（列名数组）、`foreign_keys`（`{name, columns, referred_schema, referred_table, referred_columns}`）、`indexes`（`{name, columns, unique, primary, definition}`，`definition` Postgres 为 `pg_get_indexdef`，MySQL 为 `null`） | `columns` | `get` |
 
 - 方言（C6-7、C6-13）：URL 前缀定方言，不连库。`postgresql://`、`postgres://` → `postgresql`；`mysql://`、`mariadb://` → `mysql`（MySQL 与 MariaDB 共用方言与描述，连上后按 `VERSION()` 是否含 `MariaDB` 选超时语法）。C6a 里 `clickhouse+http://`、`mssql://` 与其他前缀报 `SQL_CONFIG_INVALID`（C6b 再开）。方言写进 `database_sql_query` 的描述，所以每种方言一个 revision。
-- `schema` 缺省：Postgres 列表取所有用户 schema（去掉 `pg_catalog`、`information_schema`、`pg_toast*`、`pg_temp*`），describe 按 `search_path` 解析（`to_regclass`）；MySQL/MariaDB 取 `DATABASE()`。`table_name` 含一个 `.` 且没给 `schema` 时按 `schema.table` 拆。`schema`、`table_name` 只接受 `[A-Za-z0-9_.$-]`、1–128 字符，否则 `INVALID_IDENTIFIER`；目录查询一律参数绑定，不拼字符串。describe 查不到列报 `INVALID_PARAMS`，notes 开头 `TABLE_NOT_FOUND`。
-- 时间（C3 §8 当前状态类）：读的是查询时刻的库内状态。来源时间留空（同 B3-U1）；notes 第一条写查询时刻；`cannot_prove`：查询时刻的数据，不能证明事故窗内的状态。工具不接受 `start`/`end`，不替模型加时间过滤。
+- `schema` 缺省：Postgres 列表取所有用户 schema（去掉 `pg_catalog`、`information_schema`、`pg_toast*`、`pg_temp*`），describe 按 `search_path` 解析（`pg_table_is_visible`）；MySQL/MariaDB 取 `DATABASE()`。`table_name` 含一个 `.` 且没给 `schema` 时按 `schema.table` 拆。`schema`、`table_name` 只接受 `[A-Za-z0-9_.$-]`、1–128 字符，否则 `INVALID_IDENTIFIER`；目录查询一律参数绑定，不拼字符串。describe 查不到列报 `INVALID_PARAMS`，notes 开头 `TABLE_NOT_FOUND`。
+- 时间（C3 §8 当前状态类）：读的是查询时刻的库内状态。来源时间留空（同 B3-U1）；notes 第一条写「查询时刻读取（即本次调用的观察时间），不是授权窗口内的状态」；`cannot_prove`：查询时刻的数据，不能证明事故窗内的状态。工具不接受 `start`/`end`，不替模型加时间过滤。
 
 ### 语句检查（第二道，C6-3，发请求前；拒绝时替身驱动收到 0 条语句）
 
@@ -87,13 +87,22 @@
 - 夹具用管理员账号建表灌合成数据（含 600 行表、5000 字符长值、`password`/`api_token` 列、视图、主外键与索引、另建一个含 `opspilot_runs` 表的库），按 C6-21 建 `opspilot_ro`；工具只用只读账号。
 - 断言：① 三个工具对三种库都返回真实数据（视图、主键、外键、索引）；② `EXPLAIN`、`EXPLAIN ANALYZE SELECT` 返回计划；③ 600 行按 limit 截断并标不完整，长值截断，2 MiB 与视图超限整条拒；④ `password`/`api_token` 列脱敏，起别名的情况照实记录（残余风险证据，不断言）；⑤ 语句检查的代表语句在真实库上被拒，前后行数与表清单不变；⑥ 会话只读：monkeypatch 跳过 `sql_statement_problem` 与 `session_problem`、用管理员账号执行 `INSERT`，三库都被只读事务拒（`SOURCE_FORBIDDEN`/`SESSION_READ_ONLY`），行数不变；⑦ 身份层：绕开工具，只读账号直连 `INSERT`/`UPDATE`/`DELETE`/`CREATE`/`DROP` 全被权限错误拒，行数不变；⑧ 超时：低期限下跑重查询报 `TOOL_TIMEOUT`，之后管理员查 `pg_stat_activity`/`SHOW PROCESSLIST` 确认已无这条查询；⑨ C6-U1：管理员账号配给工具报 `SQL_ACCOUNT_NOT_READ_ONLY`，带标记注释的模型语句不出现在 Postgres 语句日志与 MySQL/MariaDB `general_log` 里；⑩ C6-8：`OPSPILOT_WORKER_DSN` 与工具地址同主机同端口时启动失败 `SQL_TARGETS_OPSPILOT_DB`；地址指向含 `opspilot_runs` 的库报同码；⑪ 错误分类用真实响应验证（语法错、表不存在、密码错、无权限的表、库不可达；MySQL 8 上 `require` 能连、`verify-full` 无 CA 报 `SOURCE_UNAVAILABLE`）。不调模型、不跑题。
 
+## 实现决定（实现者自定，可逆，2026-11-20）
+
+- MySQL 8 的默认认证插件 `caching_sha2_password` 在明文连接上要 `cryptography` 包做 RSA 交换；不加这个依赖，MySQL 8 须配 `OPSPILOT_SQL_TLS=require`（镜像首次启动自带自签证书）或 `verify-full` 加 CA；配 `disable` 时登录失败报 `SOURCE_UNAVAILABLE`。MariaDB 默认 `mysql_native_password`，`disable` 可用。理由：强制加密，不新增依赖。
+- 产品代码禁用进程墙钟（`datetime.now`），视图不带 `read_at`；查询时刻即执行器记录的本次调用观察时间。
+- 驱动错误统一成 `SqlDriverError(kind, code, message)`，`kind` ∈ `invalid`、`forbidden`、`read_only`、`unavailable`、`timeout`、`error`，替身 connector 抛它模拟库错误。refusal 码：库侧语法/对象错 `SQL_INVALID`（回显截短脱敏的库文本，`http_status=400` 走现有 `source_error` 通道）、`SQL_FORBIDDEN`、`SESSION_READ_ONLY`、`SQL_SOURCE_ERROR`、`TABLE_NOT_FOUND`，分别归 `INVALID_PARAMS`、`SOURCE_FORBIDDEN`、`SOURCE_FORBIDDEN`、`SOURCE_ERROR`、`INVALID_PARAMS`。
+- MySQL/MariaDB 读到 `limit+1` 行或 2 MiB 后，另开一条连接 `KILL QUERY` 再丢弃剩余行；模型语句后的 `ROLLBACK` 尽力发送，失败不改变已得的结果。
+- 扩展档位 revision：仅 Postgres `otel-demo-ext-be3a9913af82`，仅 MySQL/MariaDB `otel-demo-ext-ffed48334876`；不设 `OPSPILOT_SQL_URL` 时无后端 `c63f058afb18`、仅 ES `4f7faf728706` 等现有值不变（本分支实测）。
+- CI 镜像 digest（2026-11-20 从 Docker Hub 读取）：`postgres@sha256:7e5df973…`、`mysql@sha256:d58ac933…`、`mariadb@sha256:bfb1298c…`。
+
 ## 交给 #669 租机
 
 建只读账号与切换配置按预审「交给 #669」节；方言变了要同时重启 web 与 worker。
 
 ## 证据
 
-（实现后补）
+- 本机：实现者单测 `tests/test_sql_query.py` 81 passed；B1、C5a、C5b、B3、C2b 合同测试与相邻单测 1204 passed（revision 钉值不变）；ruff、mypy 干净。真实库集成测试交 CI `db-backends`。
 
 ## 待决
 

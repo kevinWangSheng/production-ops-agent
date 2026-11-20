@@ -60,6 +60,7 @@ if [ -n "$env_file" ]; then
                 OPSPILOT_OTEL_PROMETHEUS_PASSWORD | LANGSMITH_PROJECT | \
                 LANGSMITH_ENDPOINT | LANGSMITH_WORKSPACE_ID) ;;
             OPSPILOT_K8S_* | OPSPILOT_ES_* | OPSPILOT_LOKI_* | OPSPILOT_VICTORIALOGS_* | \
+                OPSPILOT_SQL_* | \
                 OPSPILOT_KNOWLEDGE_TOOL)
                 # a name, never shell text: it reaches eval below
                 case "$name" in *[!A-Z0-9_]*) continue ;; esac

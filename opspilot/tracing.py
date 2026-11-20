@@ -217,6 +217,10 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     victorialogs_url = env.get("OPSPILOT_VICTORIALOGS_URL") or ""
     if victorialogs_url and not _is_lab_host(victorialogs_url):
         failures.append("VICTORIALOGS_NOT_LAB")
+    # C6-9: the SQL database address, whenever it is set.
+    sql_url = env.get("OPSPILOT_SQL_URL") or ""
+    if sql_url and not _is_lab_host(sql_url):
+        failures.append("SQL_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
