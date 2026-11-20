@@ -80,6 +80,7 @@ from opspilot.tools.fixture import (
     fixture_face,
     fixture_versions,
 )
+from opspilot.tools.kafka_admin import KafkaConfig, kafka_enabled
 from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
 from opspilot.tools.kubernetes_core import KubernetesConfig
 from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
@@ -95,7 +96,6 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_face,
     otel_demo_ext_versions,
 )
-from opspilot.tools.kafka_admin import KafkaConfig, kafka_enabled
 from opspilot.tools.registry import ToolContractError
 from opspilot.tools.sql_query import SqlConfig, sql_dialect
 from opspilot.tools.victorialogs_logs import (

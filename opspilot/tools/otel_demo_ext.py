@@ -93,8 +93,8 @@ from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
     elasticsearch_logs,
-    kafka_admin,
     jaeger_query,
+    kafka_admin,
     knowledge_fetch,
     kubernetes_core,
     kubernetes_live_metrics,
@@ -597,9 +597,7 @@ def otel_demo_ext_registrations(
             kafka=kafka is not None,
         ),
         targets=(
-            _target(
-                config, kubernetes, elasticsearch, loki, victorialogs, sql, kafka
-            ),
+            _target(config, kubernetes, elasticsearch, loki, victorialogs, sql, kafka),
         ),
     )
 

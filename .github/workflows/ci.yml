@@ -987,3 +987,136 @@ jobs:
             docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
             docker logs --tail 200 "$name" 2>&1 || true
           done
+  kafka-backend:
+    name: kafka-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      # Same scope pre-check as the jobs above: only a PR whose every change is
+      # an added or edited regular *.md file may skip the run.
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start Kafka (KRaft, SASL and anonymous listeners)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # apache/kafka:4.3.2 multi-platform index, read from Docker Hub on
+          # 2026-11-20 (C3-16).
+          KAFKA_IMAGE: apache/kafka@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+        run: |
+          # CI-only SASL PLAIN users (C3-17), never real secrets.
+          jaas='org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin-pass" user_admin="admin-pass" user_opspilot="opspilot-pass" user_nobody="nobody-pass";'
+          docker run -d --name opspilot-ci-kafka --cpus=1 --memory=768m \
+            -p 127.0.0.1:19092:19092 -p 127.0.0.1:19094:19094 \
+            -e KAFKA_HEAP_OPTS="-Xms384m -Xmx384m" \
+            -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
+            -e KAFKA_NODE_ID=1 \
+            -e KAFKA_PROCESS_ROLES=broker,controller \
+            -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:19093 \
+            -e KAFKA_LISTENERS=SASL_PLAINTEXT://:19092,NOAUTH://:19094,CONTROLLER://:19093 \
+            -e KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://localhost:19092,NOAUTH://localhost:19094 \
+            -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=SASL_PLAINTEXT:SASL_PLAINTEXT,NOAUTH:PLAINTEXT,CONTROLLER:PLAINTEXT \
+            -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_INTER_BROKER_LISTENER_NAME=NOAUTH \
+            -e KAFKA_SASL_ENABLED_MECHANISMS=PLAIN \
+            -e KAFKA_LISTENER_NAME_SASL_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG="$jaas" \
+            -e KAFKA_AUTHORIZER_CLASS_NAME=org.apache.kafka.metadata.authorizer.StandardAuthorizer \
+            -e "KAFKA_SUPER_USERS=User:admin;User:ANONYMOUS" \
+            -e KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false \
+            -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+            -e KAFKA_NUM_PARTITIONS=1 \
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+            "$KAFKA_IMAGE"
+          ready=
+          for _ in $(seq 1 90); do
+            if docker exec opspilot-ci-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
+                --bootstrap-server localhost:19094 > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs opspilot-ci-kafka >&2; exit 1; }
+          docker exec opspilot-ci-kafka /opt/kafka/bin/kafka-topics.sh --version
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Kafka tools against a real broker (independent author)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_KAFKA_BACKEND: "1"
+          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
+          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_ADMIN_USER: admin
+          KAFKA_IT_ADMIN_PASSWORD: admin-pass
+          KAFKA_IT_READONLY_USER: opspilot
+          KAFKA_IT_READONLY_PASSWORD: opspilot-pass
+          KAFKA_IT_NOACL_USER: nobody
+          KAFKA_IT_NOACL_PASSWORD: nobody-pass
+        run: |
+          jq --version
+          KAFKA_IT_PROBE_OUT="$RUNNER_TEMP/kafka-probe.jsonl" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c3_kafka.py -q -rs
+      - name: Kafka tools against a real broker (implementer)
+        if: steps.scope.outputs.full != 'false' && (success() || failure())
+        env:
+          OPSPILOT_KAFKA_BACKEND: "1"
+          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
+          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_ADMIN_USER: admin
+          KAFKA_IT_ADMIN_PASSWORD: admin-pass
+          KAFKA_IT_READONLY_USER: opspilot
+          KAFKA_IT_READONLY_PASSWORD: opspilot-pass
+          KAFKA_IT_NOACL_USER: nobody
+          KAFKA_IT_NOACL_PASSWORD: nobody-pass
+        run: |
+          KAFKA_IT_PROBE_OUT="$RUNNER_TEMP/kafka-probe.jsonl" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c3_kafka_impl.py -q -rs
+      - name: Recorded observations
+        if: always() && steps.scope.outputs.full != 'false'
+        run: cat "$RUNNER_TEMP/kafka-probe.jsonl" 2>/dev/null || echo "no observations"
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' opspilot-ci-kafka 2>&1 || true
+          docker logs --tail 300 opspilot-ci-kafka 2>&1 || true

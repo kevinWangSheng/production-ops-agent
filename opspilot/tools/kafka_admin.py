@@ -325,6 +325,8 @@ def _classify(error: BaseException, missing: str | None) -> BaseException:
             )
         )
     label = name or type(error).__name__
+    if not name:
+        _LOG.warning("kafka tool failure: %s", type(error).__name__)
     return _Refusal(
         TransportResponse(
             body=canonical({"error": ERROR_CODE}).encode(),
@@ -423,8 +425,7 @@ def _lag_rows(
     """One row per partition of (assigned ∪ committed), sorted by topic and
     partition, with committed, end and log-start offsets, the lag and its
     flags. The commit metadata string is never read into a row."""
-    from confluent_kafka import ConsumerGroupTopicPartitions, IsolationLevel
-    from confluent_kafka.admin import OffsetSpec
+    from confluent_kafka import ConsumerGroupTopicPartitions
 
     futures = call.client.list_consumer_group_offsets(
         [ConsumerGroupTopicPartitions(group_id)], **call.kwargs()
@@ -437,10 +438,8 @@ def _lag_rows(
     keys = sorted(set(assigned) | set(committed))
     if not keys:
         return []
-    ends = _bounds(call, keys, OffsetSpec.latest(), IsolationLevel.READ_UNCOMMITTED)
-    starts = _bounds(
-        call, keys, OffsetSpec.earliest(), IsolationLevel.READ_UNCOMMITTED
-    )
+    ends = _bounds(call, keys, "latest")
+    starts = _bounds(call, keys, "earliest")
     rows: list[dict[str, Any]] = []
     for topic, partition in keys:
         done = committed.get((topic, partition))
@@ -476,10 +475,19 @@ def _lag_rows(
 
 
 def _bounds(
-    call: _Call, keys: Sequence[tuple[str, int]], spec: Any, isolation: Any
+    call: _Call, keys: Sequence[tuple[str, int]], kind: str
 ) -> dict[tuple[str, int], int | None]:
-    from confluent_kafka import TopicPartition
+    """Each partition's end (``latest``, high watermark, read_uncommitted) or
+    log start (``earliest``) offset; ``None`` where the partition is gone."""
+    from confluent_kafka import IsolationLevel, TopicPartition
+    from confluent_kafka.admin import OffsetSpec  # type: ignore[attr-defined]
 
+    spec = (
+        OffsetSpec.latest()  # type: ignore[no-untyped-call]
+        if kind == "latest"
+        else OffsetSpec.earliest()  # type: ignore[no-untyped-call]
+    )
+    isolation = IsolationLevel.READ_UNCOMMITTED
     request = {TopicPartition(topic, partition): spec for topic, partition in keys}
     futures = call.client.list_offsets(
         request, isolation_level=isolation, **call.kwargs()
@@ -700,9 +708,7 @@ def _capped(
     notes = list(notes or [])
     incomplete = len(rows) > MAX_ROWS
     if incomplete:
-        notes.append(
-            f"{len(rows)} {unit}; the first {MAX_ROWS} by name are shown."
-        )
+        notes.append(f"{len(rows)} {unit}; the first {MAX_ROWS} by name are shown.")
     return _Answer(
         rows=rows[:MAX_ROWS],
         unit=unit,
@@ -841,7 +847,10 @@ def _describe_topic(call: _Call, params: Mapping[str, object]) -> _Answer:
 
 
 def _configs(call: _Call, kind: str, name: str) -> list[dict[str, Any]]:
-    from confluent_kafka.admin import ConfigResource, ResourceType
+    from confluent_kafka.admin import (  # type: ignore[attr-defined]
+        ConfigResource,
+        ResourceType,
+    )
 
     restype = ResourceType.TOPIC if kind == "topic" else ResourceType.BROKER
     futures = call.client.describe_configs(
@@ -909,15 +918,7 @@ def _find_groups(call: _Call, params: Mapping[str, object]) -> _Answer:
             if not assigned and not committed:
                 continue
             if ends is None:
-                from confluent_kafka import IsolationLevel
-                from confluent_kafka.admin import OffsetSpec
-
-                ends = _bounds(
-                    call,
-                    [(topic, p) for p in partitions],
-                    OffsetSpec.latest(),
-                    IsolationLevel.READ_UNCOMMITTED,
-                )
+                ends = _bounds(call, [(topic, p) for p in partitions], "latest")
             total = 0
             for key in sorted(set(assigned) | set(committed)):
                 done = committed.get(key)

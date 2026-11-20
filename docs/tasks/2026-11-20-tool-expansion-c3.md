@@ -1,6 +1,6 @@
 # 工具面拓展 C3：Kafka 只读（主题、消费组与滞后、broker）
 
-- 状态：公开接口已定（本记录），实现等 C6a（#570）合并后 merge `origin/main` 再开工
+- 状态：实现中（C6a 已合并，`origin/main` `0c0492f1` 已 merge 入本分支）；独立测试作者 tests-567 的合同与集成测试已 cherry-pick；Draft PR 待 CI
 - 更新日期：2026-11-20
 - 依据：issue #567；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) r8（R8-7、R8-9、R8-20、R8-25、R8-27）与 r11（C3-U1 = a、C3-U2 = a、C3-1 至 C3-14 可逆默认全部采纳）；C3 第 8、12 节。预审全文在仓库外：`~/.agent/handoffs/opspilot-c3-prereview-2026-11-19.md`（细节以它和 r11 为准）。上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/kafka.py`（`kafka/admin`）
 - 工作区：`../poa-567-kafka`，分支 `feature/567-kafka`，起点 `origin/main` `d28b4631`
@@ -102,6 +102,22 @@
 - `describe_topic` 保留上游的 `fetch_configuration`（默认 false），走 `describe_configs`。理由：照上游参数面。
 - `find_consumer_groups_by_topic` 先确认主题存在。理由：不存在时不扫组，直接给出 `TOPIC_NOT_FOUND` 这个事实。
 
+- `describe_consumer_group` 的分区行在 `list_offsets` 里某分区报错（如该主题已删）时，该行 `end_offset` 为空、`lag` 为空、标 `end_offset_unavailable`，不让整条调用失败。理由：组还提交着已删主题的位点是常见情形，整条失败会让这个组无法查看。
+- 不带 Kafka 错误名的异常（例如客户端库自身的类型错误）归 `SOURCE_ERROR`，notes 只写异常类型名；worker 日志只记类型名，不记异常文本。理由：异常文本可能带请求内容。
+- `coordinator` 投影为 broker ID（整数）。理由：host/port 已在 `list_brokers`。
+- 扩展档位 revision（本分支实测）：仅 Kafka `otel-demo-ext-96b75ab08269`；SQL（postgresql）加 Kafka `otel-demo-ext-4ffb41544b2a`；不设 Kafka 地址时现有值不变（无后端 `otel-demo-ext-c63f058afb18`，合同测试钉的 8 个值全过）。
+- CI `kafka-backend`：`CLUSTER_ID` 用 Kafka 快速入门的 22 字符示例值；两个集成文件分两步顺序跑，第二步在第一步失败时也跑；观测写 `$RUNNER_TEMP/kafka-probe.jsonl`（`KAFKA_IT_PROBE_OUT`），最后一步打印。
+
+## 执行进展与证据
+
+- 2026-11-20 本机（`.venv` 装了 confluent-kafka 2.16.1）：ruff、ruff format、mypy strict 干净；扩展档位、lab 闸门、入口脚本相关的 12 个现有测试文件 1833 passed、1 skipped；`uv lock` 只新增 confluent-kafka 一项。
+- 独立合同测试 `tests/test_tool_expansion_c3_kafka_contract.py`：194 个中 179 过、15 失败，测试断言未改，已报 lead：
+  1. 夹具 `Models.tp` 给真包的 `TopicPartition` 传 `metadata=None`，真包报 `TypeError`（9 个失败）；
+  2. 夹具 `_sasl_env(**overrides)` 重复关键字参数（3 个失败）；
+  3. 接口内部冲突（4 个失败）：1000 行上限与 25k token 视图上限放不下同一张表——1000 个组 26,432 token、1000 个 topic 分区行 38,470、1000 个滞后行 34,528（`list_topics` 1000 行放得下）。待 lead 裁决上限数字。
+  临时副本只修 1、2 两处夹具时 190 过，只剩 3 的 4 个。
+- 真实 broker 集成测试交 CI（本机不起容器）。
+
 ## 下一步
 
-C6a（#570）合并后 merge `origin/main`，按本接口实现；合同测试与集成测试交未参与实现的测试作者；Draft PR 交 CI 跑 `tests/acceptance` 与 `kafka-backend`。
+lead 裁决行数上限后改实现与本记录；推送开 Draft PR，CI 跑 `kafka-backend` 与 `tests/acceptance`；`list_consumer_group_offsets` 是否需要 Group READ 以 CI 观测为准，照实报。
