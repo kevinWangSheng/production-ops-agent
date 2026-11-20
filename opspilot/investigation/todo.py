@@ -125,7 +125,7 @@ def _problem(arguments: object) -> str | None:
         if not isinstance(item, Mapping):
             return f"task {number} must be an object"
         task_id = item.get("id")
-        if not _text(task_id, MAX_ID_CHARS):
+        if not isinstance(task_id, str) or not _text(task_id, MAX_ID_CHARS):
             return f"task {number}: id must be 1-{MAX_ID_CHARS} printable characters"
         if task_id in seen:
             return f"task {number}: id repeats an earlier task's id"

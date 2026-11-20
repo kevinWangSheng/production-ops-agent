@@ -1,6 +1,6 @@
 # 工具面拓展 C1：调查任务清单工具 `TodoWrite`
 
-- 状态：进行中（公开接口已写；实现等 C2b（PR #741）合并后 merge `origin/main` 再开工；#722（PR #725）晚于 C1 合并，变体冲突由后合者解决）
+- 状态：进行中（实现与合同测试完成，Draft PR 待 CI 与独立审查；#722（PR #725）晚于 C1 合并，变体冲突由后合者解决）
 - 更新日期：2026-11-20
 - 依据：issue #565；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) r11 C1-U1=a、C1-U2=a，R8-3、R8-4、R8-9；C3 §5（指令分层与 revision）、§8（工具网关）。预审全文在仓库外 `~/.agent/handoffs/opspilot-c1-prereview-2026-11-19.md`，可逆默认 C1-0 至 C1-14 采纳，偏离两处见「合同（r11）」末两行
 - 上游：HolmesGPT `a0009195` `holmes/plugins/toolsets/investigator/{core_investigation.py,model.py,investigator_instructions.jinja2}`、`holmes/plugins/prompts/generic_ask.jinja2:33-43`、`tests/llm/utils/test_toolset.py:178-190`
@@ -119,6 +119,10 @@ R8-25 集成测试不适用（无后端容器）；R8-9 的「报告引用其证
 ## 执行进展与证据
 
 - 2026-11-20：公开接口写完（本节以上）。未跑任何测试（本步只写接口；本机内存紧，不跑全量）。答案隔离：没读任何题的 `expected_output`。
+- 2026-11-20：C2b（#741）合并后 merge `origin/main`，按接口实现：`opspilot/investigation/todo.py`；`loop.py` 串行/并行分流与 `todo_view`、`runner.py` 补跑分流；`discipline.py` 的 `TODO_GUIDANCE` 与 `-todo` 后缀变体；`otel_demo_ext.py`/`profiles.py` 的 `todo=` 与开关；entrypoint 白名单；`web/service.py` 把任务清单投影成 `task_list` 项，`incident_view.py`/模板画计划卡片与「Plan updated」行；C3 §8 加一句；B/C 记录登记一行。
+- 独立测试作者提交 `88cefa0c`（cherry-pick 为本分支的测试提交，断言未改）：单元/合同 91 过 1 跳（集群名组合等 #725）、safety 4 过；PG 10 过（本机临时 PG 17 实例，端口 55565，用后停止，未碰 55431 lab）；相关回归 `tests/test_tool_expansion_*`、`test_m1_otel_demo_contract`、`test_architecture`、`test_tracing`、报告契约、`tests/contracts`、`tests/safety`、两个工作台非 PG 文件共 1668 过；ruff、mypy 通过；其余 PG 测试交 CI。变异 M38（去掉清单内容脱敏）被 `tests/safety/test_safety_todo_write_inputs.py` 抓到。
+- 实现补充（可逆，理由各一行）：清单项多余字段丢弃不拒绝（上游说明里有 `priority`，模型可能带上）；span 只记工具名与参数名，不记参数值（沿用 trace 白名单，比「脱敏后的参数」更严）；执行器工厂的 `todo=` 只为签名对称，不登记任何东西；步骤摘要在只有清单时写「plan only」。
+- 合并前不跑真实 Run（用户 2026-11-20 裁决）：租机首个检查点开开关补 trace 与 `summary.json`。
 
 ## 下一步与交接
 
