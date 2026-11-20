@@ -84,6 +84,12 @@ SKILL_ASSERTION_DROPPED: frozenset[str] = frozenset(
         "280_es_multi_quirk",
     }
 )
+#: All 6 R8-13 questions across tracks: the B1 five plus C5's
+#: ``282_loki_custom_stream_label`` (C5a, #569). The B1 set above stays the B1
+#: subset its contract pins; tracks beyond B1 read this one.
+R8_13_SKILL_ASSERTION_DROPPED: frozenset[str] = SKILL_ASSERTION_DROPPED | {
+    "282_loki_custom_stream_label"
+}
 
 
 class UpstreamMismatch(RuntimeError):
