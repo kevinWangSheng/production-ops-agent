@@ -108,7 +108,7 @@ def prompt_revision_versions(
     variant_id: str = DISCIPLINE_VARIANT,
     *,
     report_contract: str = REPORT_CONTRACT,
-    runbook_catalog: bool = False,
+    knowledge_tool: bool = False,
 ) -> dict[str, str]:
     """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
     ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
@@ -146,7 +146,7 @@ def prompt_revision_versions(
             knowledge_template=KNOWLEDGE_BOUNDARY,
             release_context_template=RELEASE_CONTEXT_BOUNDARY,
             runbook_catalog_template=RUNBOOK_CATALOG_BOUNDARY
-            if runbook_catalog
+            if knowledge_tool
             else None,
         )
     }
@@ -179,7 +179,7 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
 def investigation_versions(
-    variant_id: str = DISCIPLINE_VARIANT, *, runbook_catalog: bool = False
+    variant_id: str = DISCIPLINE_VARIANT, *, knowledge_tool: bool = False
 ) -> dict[str, str]:
     """Every ``versions`` key the loop's behaviour depends on (C3 §5).
 
@@ -188,7 +188,7 @@ def investigation_versions(
     is merged in by the caller that builds the Run's ``versions``.
     """
     return {
-        **prompt_revision_versions(variant_id, runbook_catalog=runbook_catalog),
+        **prompt_revision_versions(variant_id, knowledge_tool=knowledge_tool),
         **context_policy_versions(),
     }
 
@@ -519,7 +519,7 @@ class InvestigationLoop:
             # C2b: a Run whose input carries the runbook list was created
             # with the switch on, so its revision includes that wording.
             revision=prompt_revision_versions(
-                request.variant_id, runbook_catalog=runbook_catalog
+                request.variant_id, knowledge_tool=runbook_catalog
             )["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),

@@ -12,6 +12,7 @@ Pure shaping, bounds and validation; the SQL is ``RunbookStore.active_catalog``.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -154,9 +155,15 @@ def valid_catalog(value: object) -> bool:
         return value["retrieved_at"] is None and not entries and omitted == 0
     if not _timestamp(value["retrieved_at"]):
         return False
+    retrieved = datetime.fromisoformat(value["retrieved_at"])
     names: list[str] = []
     for entry in entries:
         if not _valid_entry(entry, maximum):
+            return False
+        # The age is the whole seconds from approval to retrieval, as the
+        # read computed it; an edited age or timestamp no longer agrees.
+        approved = datetime.fromisoformat(entry["approved_at"])
+        if entry["age_seconds"] != math.floor((retrieved - approved).total_seconds()):
             return False
         names.append(entry["skill_id"])
     if names != sorted(names) or len(set(names)) != len(names):

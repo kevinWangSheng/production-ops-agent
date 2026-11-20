@@ -157,9 +157,9 @@ def test_a_v7_row_with_a_bad_catalog_is_refused() -> None:
 
 
 def test_switch_off_keeps_every_revision() -> None:
-    assert prompt_revision_versions() == prompt_revision_versions(runbook_catalog=False)
+    assert prompt_revision_versions() == prompt_revision_versions(knowledge_tool=False)
     assert (
-        prompt_revision_versions(runbook_catalog=True)["prompt_revision"]
+        prompt_revision_versions(knowledge_tool=True)["prompt_revision"]
         != prompt_revision_versions()["prompt_revision"]
     )
     assert otel_demo_ext.tool_schema_revision() == otel_demo_ext.TOOL_SCHEMA_REVISION
@@ -268,7 +268,9 @@ def test_not_found_lists_the_available_names() -> None:
     assert response.source_status == "KNOWLEDGE_NOT_FOUND"
     assert reader.calls == [("checkout", "custom-crd")]
     assert response.view_fields is not None
-    assert "a, b" in response.view_fields["notes"][1]
+    notes = response.view_fields["notes"]
+    assert notes[0].startswith("KNOWLEDGE_NOT_FOUND: ")
+    assert "a, b" in notes[1]
 
 
 def test_not_available_returns_no_content() -> None:

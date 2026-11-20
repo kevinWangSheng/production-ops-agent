@@ -363,7 +363,7 @@ def otel_demo_ext_versions(
     ``OPSPILOT_KNOWLEDGE_TOOL=1`` (C2b), which also adds the runbook list's
     boundary wording to ``prompt_revision``."""
     return {
-        **investigation_versions(DISCIPLINE_VARIANT, runbook_catalog=knowledge),
+        **investigation_versions(DISCIPLINE_VARIANT, knowledge_tool=knowledge),
         "tool_schema_revision": tool_schema_revision(
             elasticsearch=elasticsearch,
             loki=loki,
@@ -543,7 +543,9 @@ def otel_demo_ext_executor_factory(
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (
-        knowledge_fetch.KnowledgeReader(store.dsn, pool=store.pool_config)
+        knowledge_fetch.KnowledgeReader(
+            store.dsn, pool=getattr(store, "pool_config", None)
+        )
         if knowledge
         else None
     )

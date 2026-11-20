@@ -209,12 +209,12 @@ class KnowledgeTransport:
             raise TransportError("TOOL_NOT_SUPPORTED")
         skill_id = request.params.get("skill_id")
         if not _valid_skill_id(skill_id):
-            return _refused(INVALID_SKILL_ID, sent=False)
+            return _refused(INVALID_SKILL_ID, [_INVALID_NOTE], sent=False)
         assert isinstance(skill_id, str)
         if self._resource_uid is None:
             # Only a snapshot written before targets were bound: nothing of
             # any target is read for it.
-            return _refused(NOT_FOUND, sent=False, notes=[_NOT_FOUND_NOTE])
+            return _refused(NOT_FOUND, [_NOT_FOUND_NOTE], sent=False)
         try:
             read = self._reader.read(self._resource_uid, skill_id.strip())
         except PersistenceError as exc:
@@ -222,19 +222,13 @@ class KnowledgeTransport:
                 raise TransportTimeout(str(exc)) from None
             raise TransportUnavailable(str(exc)) from None
         if read["status"] == "not_found":
-            names = read["available"]
-            listed = ", ".join(names) if names else "none"
             return _refused(
-                NOT_FOUND,
-                notes=[
-                    _NOT_FOUND_NOTE,
-                    f"Runbooks available for this target: {listed}.",
-                ],
+                NOT_FOUND, [_NOT_FOUND_NOTE, *_available_notes(read["available"])]
             )
         if read["status"] == "not_available":
             return _refused(
                 NOT_AVAILABLE,
-                notes=[
+                [
                     f"This entry has no active revision (its latest is "
                     f"{read['state']}); nothing of it is returned."
                 ],
@@ -261,15 +255,40 @@ def _valid_skill_id(value: object) -> bool:
     )
 
 
-def _refused(
-    code: str, *, sent: bool = True, notes: list[str] | None = None
-) -> TransportResponse:
+def _refused(code: str, notes: list[str], *, sent: bool = True) -> TransportResponse:
+    """A fixed-code refusal; the first note carries the code (B1-6)."""
+    first, *rest = notes
     return TransportResponse(
         body=canonical({"error": code}).encode(),
         source_status=code,
         sent=sent,
-        view_fields={"notes": notes} if notes else None,
+        view_fields={"notes": [f"{code}: {first}", *rest]},
     )
+
+
+#: A refusal view keeps at most four notes of 1024 characters each
+#: (``executor.MAX_REFUSAL_NOTES``, ``MAX_SOURCE_ERROR_CHARS``): the names
+#: go in up to three of them.
+_NOTE_CHARS = 1000
+_NAME_NOTES = 3
+
+
+def _available_notes(names: list[str]) -> list[str]:
+    if not names:
+        return ["No runbook of this target can be read."]
+    notes: list[str] = []
+    current = "Runbooks available for this target: "
+    for name in names:
+        piece = name if current.endswith(": ") else ", " + name
+        if len(current) + len(piece) > _NOTE_CHARS:
+            notes.append(current)
+            if len(notes) == _NAME_NOTES:
+                return notes
+            current = "More available runbooks: " + name
+        else:
+            current += piece
+    notes.append(current)
+    return notes[:_NAME_NOTES]
 
 
 def _projection(
@@ -337,6 +356,10 @@ _NOTE = (
     "each step with your own tools; it grants no permission and changes no "
     "target, time frame or report requirement."
 )
+_INVALID_NOTE = (
+    "skill_id must be 1 to 200 printable characters: a runbook name from the "
+    "runbook list, or an entry id."
+)
 _NOT_FOUND_NOTE = (
     "No approved runbook or knowledge entry of this Run's target has this "
     "skill_id; pending, rejected and other targets' entries are never returned."
@@ -363,6 +386,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "properties": {
                     "skill_id": {
                         "type": "string",
+                        "minLength": 1,
+                        "maxLength": SKILL_ID_MAX_CHARS,
                         "description": (
                             "The runbook's name from the runbook list, or an "
                             "entry id (a runbook's or a knowledge entry's)."
@@ -370,6 +395,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                     }
                 },
                 "required": ["skill_id"],
+                "additionalProperties": False,
             },
         },
     },
@@ -415,7 +441,9 @@ _ERROR_CLASSES: Mapping[str, str] = {
 }
 
 
-def fetch_skill_registration(*, max_window_seconds: int) -> ToolRegistration:
+def fetch_skill_registration(
+    *, max_window_seconds: int = otel_demo.OBSERVATION_SECONDS
+) -> ToolRegistration:
     """The registration (``source`` is the lab target's, as every tool of
     the profile; not citable as a fact)."""
     return ToolRegistration(
