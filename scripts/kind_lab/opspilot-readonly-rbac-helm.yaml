@@ -1,0 +1,35 @@
+# Helm release history overlay for OpsPilot's read-only identity (B4, #563;
+# decision table R8-18, r11 B4 residual risk, pre-review B4-4). Apply it only
+# where OPSPILOT_HELM_RELEASES=1 runs against a synthetic cluster (the rental
+# host, CI k8s-backends), after opspilot-readonly-rbac.yaml, which it does not
+# change.
+#
+# RBAC cannot grant Secrets by type, so this is `list` on every Secret (no
+# get, no watch). RESIDUAL RISK: the identity can read the content of every
+# Secret in the synthetic environment; only the OpsPilot gateway narrows it
+# to Helm release records (fieldSelector=type=helm.sh/release.v1).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opspilot-investigator-helm-releases
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opspilot-investigator-helm-releases
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opspilot-investigator-helm-releases
+subjects:
+  - kind: ServiceAccount
+    name: opspilot-investigator
+    namespace: opspilot-readonly

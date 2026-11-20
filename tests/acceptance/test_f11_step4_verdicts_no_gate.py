@@ -23,6 +23,19 @@ contract test records that web face/version construction works without
 that reads them.  Item 4 still rejects KUBECONFIG, service-account token paths,
 CI/forge credentials and credential files for every product entry point.
 
+Extended 2026-11-20 for B4 (#563, lead ruling, on the A2 precedent): the Helm
+release history tools read Helm's own release records (Secrets of type
+``helm.sh/release.v1``) through the same GET-only Kubernetes transport.  Three
+string constants must therefore name Helm or kubectl, and only these three are
+excepted, by module and constant name and for the one matched word each:
+``kubernetes_core.HELM_FIELD_SELECTOR`` and ``kubernetes_core.HELM_OWNER``
+(``helm``: the identifiers of the read-only release records), and
+``helm_releases._CANNOT_PROVE`` (``kubectl``: model-visible text saying that
+changes made with kubectl outside Helm are not in the records).  They are
+identifiers and explanatory text for reading release metadata, not a call to
+a deployment or release tool.  The step's wording and the intent of every
+assertion are unchanged.
+
 PostgreSQL tests use ``tests/acceptance/f11_steps_support.py``; the code
 surface tests need no database.
 """
@@ -369,6 +382,37 @@ KUBERNETES_CORE_RELATIVE = "opspilot/tools/kubernetes_core.py"
 KUBERNETES_READ_API_PATH = re.compile(
     r"^/api/v1(?:/[^\s\"']*)?$|^/apis/[A-Za-z0-9_.-]+/v1(?:/[^\s\"']*)?$"
 )
+#: B4 (#563): (module, module-level constant) -> the one forbidden word its
+#: string literals may contain (see the module docstring).
+HELM_TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    ("opspilot/tools/kubernetes_core.py", "HELM_FIELD_SELECTOR"): "helm",
+    ("opspilot/tools/kubernetes_core.py", "HELM_OWNER"): "helm",
+    ("opspilot/tools/helm_releases.py", "_CANNOT_PROVE"): "kubectl",
+}
+
+
+def _excepted_constants(path: Path, tree: ast.AST) -> dict[int, str]:
+    """``id(node) -> allowed word`` for the string literals inside the value
+    of an excepted module-level assignment."""
+    relative = str(path.relative_to(REPO))
+    allowed: dict[int, str] = {}
+    for statement in getattr(tree, "body", []):
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            word = HELM_TEXT_EXCEPTIONS.get((relative, target.id))
+            if word is None:
+                continue
+            for node in ast.walk(value):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    allowed[id(node)] = word
+    return allowed
 
 
 def _imported(tree: ast.AST) -> list[str]:
@@ -404,7 +448,7 @@ def test_item3_no_product_module_imports_a_kubernetes_forge_or_ci_client() -> No
 
 
 def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() -> None:
-    def forbidden(path: Path, value: str) -> str | None:
+    def forbidden(path: Path, value: str, excepted: str | None) -> str | None:
         relative = str(path.relative_to(REPO))
         for match in FORBIDDEN_TEXT.finditer(value):
             if (
@@ -412,17 +456,21 @@ def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() ->
                 and KUBERNETES_READ_API_PATH.fullmatch(match.group())
             ):
                 continue
+            if excepted is not None and match.group() == excepted:
+                continue  # B4: only this word, only in this constant
             return match.group()
         return None
 
-    offenders = [
-        (str(path.relative_to(REPO)), node.value[:80])
-        for path, tree in _trees()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and forbidden(path, node.value) is not None
-    ]
+    offenders = []
+    for path, tree in _trees():
+        excepted = _excepted_constants(path, tree)
+        offenders += [
+            (str(path.relative_to(REPO)), node.value[:80])
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and forbidden(path, node.value, excepted.get(id(node))) is not None
+        ]
     assert offenders == []
 
 

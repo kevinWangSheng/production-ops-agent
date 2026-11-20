@@ -206,13 +206,17 @@ def _utf8_text(value: str) -> bool:
 # the cluster query's two denials: a Secret asked for (refused before sending)
 # and an HTTP 401/403 from the API server. ``INVALID_TAGS`` (tool expansion
 # A4-2) is the trace tag search's fixed input code: a tags string that does
-# not parse as logfmt, refused before sending.
+# not parse as logfmt, refused before sending. ``RESULT_TOO_LARGE`` (tool
+# expansion B4-9): an adapter that read past its own read budget reports it
+# as a source status so its refusal can carry a note on how to narrow the
+# call (the generic transport refusal has no such note).
 SOURCE_ERROR_REASONS = frozenset(
     {
         "EVIDENCE_NOT_READABLE",
         "INVALID_PARAMS",
         "INVALID_TAGS",
         "RESOURCE_NOT_ALLOWED",
+        "RESULT_TOO_LARGE",
         "SOURCE_ERROR",
         "SOURCE_FORBIDDEN",
         "SOURCE_UNAVAILABLE",

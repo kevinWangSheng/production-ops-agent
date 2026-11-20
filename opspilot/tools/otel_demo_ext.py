@@ -74,6 +74,15 @@ listed under ``kafka`` in ``data_sources.available``; every set without the
 address is byte for byte what it was before C3. The worker routes them to
 their own ``KafkaTransport`` (``kafka-ro`` slot, address in the selector
 ``kafka_bootstrap``).
+
+B4 (#563): ``helm_list``, ``helm_history`` and ``helm_status`` of
+:mod:`opspilot.tools.helm_releases` join when ``OPSPILOT_HELM_RELEASES=1``,
+after the live usage tools and before ``fetch_skill`` and ``TodoWrite`` (the
+SQL and Kafka tools stay after those two), listed under ``change_history``
+in ``data_sources.available``, which then leaves ``not_integrated``; every
+set without the switch is byte for byte what it was before B4. The worker
+routes them to the same ``KubernetesTransport`` (``k8s-ro`` slot), built
+with the Helm switch so the Secret gateway passes Helm release pages.
 """
 
 from __future__ import annotations
@@ -93,6 +102,7 @@ from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
     elasticsearch_logs,
+    helm_releases,
     jaeger_query,
     kafka_admin,
     knowledge_fetch,
@@ -122,16 +132,20 @@ from opspilot.tools.outcomes import PROJECTION_REVISION, Window
 from opspilot.tools.registry import (
     RegisteredTarget,
     TargetRegistry,
+    ToolContractError,
     ToolRegistration,
     ToolRegistry,
     canonical_hash,
 )
 from opspilot.tools.tokens import TokenCounter, default_counter
+from opspilot.tracing import _is_lab_host
 
 __all__ = [
     "ES_TOOL_NAMES",
     "ES_TOOL_SCHEMAS",
     "ES_TOOL_SCHEMA_REVISION",
+    "HELM_TOOL_NAMES",
+    "HELM_TOOL_SCHEMA_REVISION",
     "LIVE_METRICS_TOOL_NAMES",
     "LIVE_METRICS_TOOL_SCHEMA_REVISION",
     "LOKI_TOOL_NAMES",
@@ -195,6 +209,7 @@ def _tool_schemas(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
     fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1), the
@@ -206,6 +221,11 @@ def _tool_schemas(
         schemas = (*schemas, *victorialogs_logs.TOOL_SCHEMAS)
     if live_metrics:
         schemas = (*schemas, *kubernetes_live_metrics.TOOL_SCHEMAS)
+    if helm:
+        # B4-2 (#563): after the backends that come before the knowledge
+        # tool and the task list; the SQL and Kafka tools, added after
+        # those two, stay after them so their revisions do not move.
+        schemas = (*schemas, *helm_releases.TOOL_SCHEMAS)
     if knowledge:
         # C2b (#566): last in the fixed order
         schemas = (*schemas, *knowledge_fetch.TOOL_SCHEMAS)
@@ -240,6 +260,7 @@ def _data_sources(
     knowledge: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
@@ -259,6 +280,9 @@ def _data_sources(
         available["loki"] = sorted(loki_logs.TOOL_NAMES)
     if victorialogs:
         available["victorialogs"] = sorted(victorialogs_logs.TOOL_NAMES)
+    if helm:
+        # B4-14: change history moves from not integrated to available.
+        available["change_history"] = sorted(helm_releases.TOOL_NAMES)
     if knowledge:
         available["knowledge"] = list(knowledge_fetch.TOOL_NAMES)
     if sql is not None:
@@ -267,7 +291,9 @@ def _data_sources(
         available["kafka"] = sorted(kafka_admin.TOOL_NAMES)
     return {
         "available": available,
-        "not_integrated": list(_NOT_INTEGRATED),
+        "not_integrated": [
+            name for name in _NOT_INTEGRATED if not (helm and name == "change_history")
+        ],
         "instruction": DATA_SOURCES_INSTRUCTION,
     }
 
@@ -280,6 +306,7 @@ def _registrations(
     knowledge: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -325,6 +352,13 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if helm:
+        base = (
+            *base,
+            *helm_releases.helm_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     if knowledge:
         base = (
             *base,
@@ -359,6 +393,7 @@ def tool_schema_revision(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -379,6 +414,7 @@ def tool_schema_revision(
                     todo,
                     sql=sql,
                     kafka=kafka,
+                    helm=helm,
                 )
             ],
             "registry": ToolRegistry(
@@ -390,6 +426,7 @@ def tool_schema_revision(
                     knowledge,
                     sql=sql,
                     kafka=kafka,
+                    helm=helm,
                 )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
@@ -402,6 +439,7 @@ def tool_schema_revision(
                 knowledge,
                 sql=sql,
                 kafka=kafka,
+                helm=helm,
             ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
@@ -451,6 +489,11 @@ KAFKA_TOOL_SCHEMA_REVISION = tool_schema_revision(kafka=True)
 KAFKA_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(kafka=True)
 )
+#: B4-2: the same with only ``OPSPILOT_HELM_RELEASES=1``.
+HELM_TOOL_SCHEMA_REVISION = tool_schema_revision(helm=True)
+HELM_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(helm=True)
+)
 
 
 def otel_demo_ext_versions(
@@ -463,6 +506,7 @@ def otel_demo_ext_versions(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -483,6 +527,7 @@ def otel_demo_ext_versions(
             todo=todo,
             sql=sql,
             kafka=kafka,
+            helm=helm,
         ),
     }
 
@@ -498,6 +543,7 @@ def otel_demo_ext_face(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    helm: bool = False,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -516,6 +562,7 @@ def otel_demo_ext_face(
             knowledge,
             sql=sql,
             kafka=kafka,
+            helm=helm,
         )
         return context
 
@@ -529,6 +576,7 @@ def otel_demo_ext_face(
             todo,
             sql=sql,
             kafka=kafka,
+            helm=helm,
         ),
         variant_id=_variant(todo),
         evidence_context=evidence_context,
@@ -588,6 +636,7 @@ def otel_demo_ext_registrations(
     knowledge: bool = False,
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
+    helm: bool = False,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
@@ -599,6 +648,7 @@ def otel_demo_ext_registrations(
             knowledge,
             sql=None if sql is None else sql.dialect,
             kafka=kafka is not None,
+            helm=helm,
         ),
         targets=(
             _target(config, kubernetes, elasticsearch, loki, victorialogs, sql, kafka),
@@ -631,6 +681,10 @@ def _overflow_summary(
         return {"row_unit": "pods"}
     if tool == kubernetes_live_metrics.NODES_TOOL:
         return {"row_unit": "nodes"}
+    if tool == helm_releases.HISTORY_TOOL:
+        return {"row_unit": "revisions"}
+    if tool in helm_releases.TOOL_NAMES:
+        return {"row_unit": "releases"}
     if tool in sql_query.TOOL_NAMES:
         return sql_query.overflow_summary(tool, rows, query)
     if tool in kafka_admin.TOOL_NAMES:
@@ -653,6 +707,7 @@ def otel_demo_ext_executor_factory(
     todo: bool = False,
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
+    helm: bool = False,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -682,12 +737,21 @@ def otel_demo_ext_executor_factory(
     bound to that Run's own target and catalog threshold (the registered
     target is the fixed lab target, never the Run's ``resource_uid``).
 
+    The Helm switch (B4): ``OPSPILOT_HELM_RELEASES=1``; the three Helm tools are
+    registered and routed to the cluster transport, whose client then lets
+    Helm release pages through the Secret gateway. With a cluster address
+    that is not a lab host the worker does not start (``HELM_NOT_LAB``).
+
     ``todo`` (C1): ``OPSPILOT_TODO_WRITE=1``. Accepted for symmetry with the
     face and versions and deliberately unused: ``TodoWrite`` is not a gateway
     tool, so nothing is registered or routed; the loop answers it from the
     Run input's tools.
     """
     del todo
+    if helm and not _is_lab_host(kubernetes.api_url):
+        # B4-3: with Helm on, the identity can read every Secret's content;
+        # only a synthetic (lab) cluster may be read this way.
+        raise ToolContractError(helm_releases.NOT_LAB_CODE)
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
@@ -702,6 +766,7 @@ def otel_demo_ext_executor_factory(
         knowledge,
         sql=sql,
         kafka=kafka,
+        helm=helm,
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (
@@ -732,6 +797,10 @@ def otel_demo_ext_executor_factory(
         jq_path=jq,
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
+        # B4-5: only then may the gateway pass a Helm release page.
+        helm_releases=helm,
+        # B4-11: the "queried at" note reads the executor's clock.
+        now=clock.now,
     )
     routes: dict[str, Any] = {
         **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
@@ -744,6 +813,9 @@ def otel_demo_ext_executor_factory(
     if live_metrics:
         # B3-9: the same cluster transport, ``k8s-ro`` slot.
         routes.update(dict.fromkeys(kubernetes_live_metrics.TOOL_NAMES, cluster))
+    if helm:
+        # B4-15: the same cluster transport and ``k8s-ro`` slot.
+        routes.update(dict.fromkeys(helm_releases.TOOL_NAMES, cluster))
     if elasticsearch is not None:
         # B1-4: its own slot, never another backend's credential.
         search = elasticsearch_logs.ElasticsearchTransport(
