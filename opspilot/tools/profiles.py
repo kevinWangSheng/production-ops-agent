@@ -169,6 +169,7 @@ _STARTUP_CODES = frozenset(
         "SQL_TARGETS_OPSPILOT_DB",
         "KAFKA_CONFIG_MISSING",
         "KAFKA_CONFIG_INVALID",
+        "ARGOCD_INVALID",
         "HELM_NOT_LAB",
     }
 )

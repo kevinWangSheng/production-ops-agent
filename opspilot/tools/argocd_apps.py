@@ -23,7 +23,6 @@ B4C4-U1 = a and C4-1 to C4-11:
 from __future__ import annotations
 
 import json
-import re
 import time
 import urllib.parse
 from collections.abc import Callable, Mapping, Sequence
@@ -42,6 +41,7 @@ from opspilot.tools.kubernetes_core import (
     MAX_SOURCE_READ_BYTES,
     KubernetesClient,
     check_namespace,
+    check_object_name,
 )
 from opspilot.tools.kubernetes_core import _monotonic as _monotonic
 from opspilot.tools.kubernetes_core import _page as _page
@@ -88,11 +88,6 @@ MAX_RESOURCE_ROWS = 250
 MAX_VALUE_CHARS = 2000
 MAX_APP_NAME = 253
 
-_APP_NAME = re.compile(
-    r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*"
-)
-
-
 def _wall_clock() -> datetime:
     return datetime.fromtimestamp(time.time(), tz=timezone.utc)
 
@@ -109,11 +104,9 @@ def argocd_enabled(env: Mapping[str, str]) -> bool:
 
 
 def check_app_name(name: object) -> bool:
-    return (
-        isinstance(name, str)
-        and 0 < len(name) <= MAX_APP_NAME
-        and _APP_NAME.fullmatch(name) is not None
-    )
+    """A DNS-1123 subdomain: the A3-6 object-name rule (every dot-separated
+    part a DNS label of at most 63 characters, 253 in all)."""
+    return check_object_name(name)
 
 
 # -- projection (C4-6) ------------------------------------------------------------
