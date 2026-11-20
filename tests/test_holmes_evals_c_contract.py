@@ -400,7 +400,24 @@ def test_b1_default_envs_byte_identical_to_explicit_elasticsearch(
         k for k in t0 if k.startswith(("OPSPILOT_LOKI_", "OPSPILOT_VICTORIALOGS_"))
     ]
     w1 = driver.web_env(cfg, _pg(), tmp_path / "ids.json", a0, backend="elasticsearch")
+    # OPSPILOT_UI_USERS is salted per call (PR-B UiAccount.users_env), so it
+    # is compared by meaning: same user names, both verify the same password.
+    users0, users1 = w0.pop("OPSPILOT_UI_USERS"), w1.pop("OPSPILOT_UI_USERS")
     assert w1 == w0
+    assert json.dumps(w1, sort_keys=True) == json.dumps(w0, sort_keys=True)
+    from opspilot.web.auth import verify_password
+
+    def names(users: str) -> list[str]:
+        return sorted(e.partition("=")[0] for e in users.split(","))
+
+    def verifies(users: str) -> bool:
+        return any(
+            sep and verify_password(a0.password, encoded)
+            for _, sep, encoded in (e.partition("=") for e in users.split(","))
+        )
+
+    assert names(users0) == names(users1)
+    assert verifies(users0) and verifies(users1)
     product_es = {"OPSPILOT_ES_URL": cfg.es_url, "OPSPILOT_ES_API_KEY": "ro-3"}
     k1 = driver.worker_env(
         cfg, _pg(), product_es, _k8s(tmp_path), None, {"DEEPSEEK_API_KEY": "m-4"},
