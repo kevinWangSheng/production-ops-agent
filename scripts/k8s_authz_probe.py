@@ -238,6 +238,9 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
         ("list replicasets", "GET", "/apis/apps/v1/replicasets"),
         ("list services", "GET", "/api/v1/services"),
         ("read a kube-system pod log", "GET", pod + "/log" + log_query),
+        # B3 (#562): the live usage tools' metrics.k8s.io reads.
+        ("list pods.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/pods"),
+        ("list nodes.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/nodes"),
     ]
     table: list[dict[str, Any]] = [
         {"name": n, "method": m, "path": p, "expected": 200} for n, m, p in allowed

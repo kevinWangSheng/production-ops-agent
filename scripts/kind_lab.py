@@ -793,6 +793,9 @@ def _private_write(path: Path, content: str) -> None:
 #: The identity's manifest, namespace, ServiceAccount and ClusterRole /
 #: ClusterRoleBinding name (A1-1).
 K8S_RBAC_MANIFEST = CONFIG / "opspilot-readonly-rbac.yaml"
+#: B3 (#562): the metrics API behind ``kubectl_top_pods``/``kubectl_top_nodes``;
+#: the same vendored file the CI job ``k8s-live-metrics`` applies.
+METRICS_SERVER_MANIFEST = CONFIG / "metrics-server-v0.8.1.yaml"
 K8S_IDENTITY_NAMESPACE = "opspilot-readonly"
 K8S_SERVICE_ACCOUNT = "opspilot-investigator"
 K8S_CLUSTER_ROLE = "opspilot-investigator-readonly"
@@ -911,6 +914,24 @@ def lab_kubeconfig_cluster() -> tuple[str, bytes] | None:
         print("lab kubeconfig: empty certificate-authority-data", file=sys.stderr)
         return None
     return server, ca
+
+
+def install_metrics_server(timeout_seconds: int = 180) -> int:
+    """Apply the vendored metrics-server manifest (idempotent) and wait for
+    its Deployment (B3-12)."""
+    proc = run(kubectl("apply", "-f", str(METRICS_SERVER_MANIFEST)))
+    if proc.returncode != 0:
+        return proc.returncode
+    return run(
+        kubectl(
+            "-n",
+            "kube-system",
+            "wait",
+            "--for=condition=Available",
+            "deployment/metrics-server",
+            f"--timeout={timeout_seconds}s",
+        )
+    ).returncode
 
 
 def apply_k8s_identity() -> int:
@@ -2049,6 +2070,11 @@ def cmd_up(args: argparse.Namespace) -> int:
     proc = run(kubectl("apply", "-f", str(CONFIG / "jaeger-nodeport.yaml")))
     if proc.returncode != 0:
         return proc.returncode
+    # B3-12: metrics-server before the read-only identity, so the live usage
+    # tools (and the authz probe's two metrics rows) work after ``up``.
+    code = install_metrics_server()
+    if code != 0:
+        return code
     # The read-only cluster identity and a fresh token (A1-1, A1-3): every
     # ``up`` re-issues it, before the waits so a slow demo still gets one.
     code = apply_k8s_identity()
