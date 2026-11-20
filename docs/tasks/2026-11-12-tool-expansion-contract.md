@@ -382,3 +382,38 @@ Agent 自定（可逆）：去掉每 Run 工具调用次数旧上限（#500）�
 | H-U1 | 10 道多集群题的「本地集群名」 | **放进调查提示词，参考上游**（#722）：新增配置 `OPSPILOT_CLUSTER_NAME`，设了才在提示词里加多集群提醒（对标上游 `generic_ask.jinja2:7-17`），未设时提示词字节不变。产品改动单独一个 PR，开工前预审；#666 不改题面，部署时给 worker 设集群名 |
 
 C5 可逆默认（Agent 自定，理由见预审全文）：C5-0 租户由运维配置，模型不选租户；C5-1 拆两个 PR，C5a Loki 先（7 题）、C5b VictoriaLogs 后（2 题）；C5-2 工具名照上游（Loki 只有 `grafana_loki_query`，VictoriaLogs 五个）；C5-3 只发 GET、路径写死、不新增 POST；C5-4 凭据槽 `loki-ro`、`vlogs-ro` 与 `OPSPILOT_LOKI_*`、`OPSPILOT_VICTORIALOGS_*`；C5-5 lab 闸门加 `LOKI_NOT_LAB`、`VICTORIALOGS_NOT_LAB`；C5-6 LogQL 拒 `offset`、拒超出查询窗的范围选择器、求值起点后推（照 PromQL 规则）；C5-7 LogsQL fail-closed 清单（`options(`、`join`、`union`、`stream_context`、子查询）待 CI 实测再放；C5-8 参数 `start`/`end` 走 `_query_window`；C5-9 元数据类返回的来源时间为查询窗；C5-10 投影与上限沿用 B1；C5-11 错误分类；C5-12 只改工具描述、不改调查提示词；C5-13 新模块 `loki_logs.py`、`victorialogs_logs.py`；C5-14 扩展档位按已配置后端集合计算，无后端与仅 ES 的 revision 字节不变；C5-15 合同测试清单；C5-16 至 C5-21 R8-25 集成测试（CI job `log-backends`、Loki 2.9.0 与最新 3.x、VictoriaLogs、nginx 只读网关、合成数据与断言清单）。
+
+## r11（2026-11-19）：B3、C1、C2、C3、C4、C6、B4 与 #667 预审裁决
+
+7 份预审由未参与实现的 Agent 完成，全文在仓库外：`~/.agent/handoffs/opspilot-{b3,c1,c2,c3,c6,b4c4,667}-prereview-2026-11-19.md`（各稿的「需用户裁决」表与「可逆默认」表）。用户 2026-11-19 PT 对 12 个待裁决项全部选推荐（原话「yes for all with recommend」）。r8–r10 继续有效，本节只修改 R8-14、修正 R8-18 措辞（见文末「与旧裁决的修改」）；C3 修订随各工具 PR。
+
+| 编号 | 问题 | 裁决要点 |
+|---|---|---|
+| C6-U1 | 配进来的数据库账号其实有写权限怎么办 | 每次连接后、执行模型语句前，工具用写死的语句核对当前账号权限（白名单），不像只读就整条报 `SQL_ACCOUNT_NOT_READ_ONLY`，语句不发；评测脚本按预审授权清单建只读账号 |
+| B3-U1 | 实时用量的采样时刻总晚于授权框末尾，能否当事实引用 | 归「当前状态类」：来源时间留空，每行带采样时刻与窗口，notes 写比框末尾晚多少，`cannot_prove` 写不能证明事故窗内的用量；C3 §8 那一条补半句「实时用量同属此类」 |
+| C3-U1 | 计分的 SREGym Kafka 题没有认证，只读身份从哪来 | 该题匿名连，只读只靠工具层（只用管理客户端的 8 个只读调用、关自动建主题），结果页照实披露；CI 与自建场景用 SASL 账号加只给 Describe 的 ACL 证明两层只读 |
+| C3-U2 | 自建 Kafka 功能验收用什么场景 | 一个场景：租机单节点 Kafka，`orders` 主题、停住的消费组 `order-processor` 滞后已知值（如 1100），另一个追平的组；网页问「订单主题的消费滞后是多少」，证据里有滞后数与组名算过；跑 1 遍 |
+| C2-U1 | 上游 runbook 在现有知识库里没地方放 | 新增知识来源「导入的 runbook」：登录用户提交，独立的批准、驳回、撤销（记审核人、时间、原因，批准版本不可改，撤销后取不到），新迁移；复盘知识与其读取规则不变；C3 §10 随 C2 PR 修订；F13 第 2–3 步、F7 第 2 步须在新来源上重证。**修改 R8-14**，见下 |
+| C2-U2 | 模型怎么知道有哪些 runbook | 照上游：建 Run 时把本目标已批准的 runbook 目录写进输入快照（新输入版本），作为一条不可信数据消息发给模型；只在 C2 开关打开时出现，开关关时提示词、输入版本、revision 字节不变 |
+| B4C4-U1 | Helm 与 ArgoCD 历史要不要按事故时间框裁剪 | 不裁剪，按对象当前状态返回全部保留的历史，每条带自己的时间；来源时间留空，`cannot_prove` 写明框外条目也列出 |
+| B4-残余风险 | R8-18 的残余风险怎么写、怎么收住 | 措辞改为「身份可读取合成环境内全部 Secret 的内容，只靠网关收窄到 Helm 记录」；只在扩展档位且 K8s 地址是 lab 主机（闸门 `HELM_NOT_LAB`）；网关解码后查询参数键集合固定、每键恰一次、值全等；CI 用同一 token 直接 list secrets 证明风险存在。**修正 R8-18 措辞**，见下 |
+| C1-U1 | 任务清单工具要不要绕开只读网关 | 不经网关，由调查循环直接处理（串行、并行、故障补跑三处），结果存同一步的工具结果、受同一控制检查；不产生证据编号、报告不能引用；C3 §8 末尾加一句「调查行为工具」 |
+| C1-U2 | 开关对照做多大 | 小对照：主跑照上游（283 开、其余关），另加 283 关着 3 遍、4 道 `hard` 题开着 3 遍，共多 15 次；单独成表、不设门槛，产品默认开不开看表后另开 issue |
+| S-U1 | SREGym 没有题面原文怎么提问 | 固定模板，只填 `/get_app` 给的应用名、namespace、简介，句子取自上游 claudecode 驱动诊断段原话；模板钉 sha256，结果页贴全文；R8-2 在本轨读作「固定模板加上游三个字段」 |
+| S-U2 | OpsPilot 走哪条路读 SREGym 集群 | 评测脚本另起一份 SREGym 同款过滤代理，上游凭据换成只读身份，OpsPilot 连这个代理（预审稿选项 c，即推荐项）；冒烟时一小时内跑不通就退到直连只读身份并披露可见范围差异；不走 SREGym 原代理 |
+
+### 与旧裁决的修改
+
+- **修改 R8-14**（C2-U1）：R8-14 要求上游 runbook「走现有审核流程入库」，但现有审核流程只收已批准复盘来源（`opspilot/migrations/versions/0008_postmortem_knowledge.py:339,348,556`：`source_postmortem_id` NOT NULL、外键指向复盘提议、触发器要求来源复盘版本已批准）。改为新增「导入的 runbook」来源与独立审核流程，来源仍标「HolmesGPT 评测夹具」；C3 §10 随 C2 PR 修订。r8 表原文不改。
+- **修正 R8-18 措辞**（B4 残余风险）：Kubernetes 的 `list` 返回对象全文，原文「身份可列全部 Secret」改为「身份可读取合成环境内全部 Secret 的内容，只靠网关收窄到 Helm 记录」；加 `HELM_NOT_LAB` 闸门；网关解码后键集合固定、每键恰一次、值全等；CI 用同一 token 直接 list secrets 证明风险存在。r8 表原文不改。
+
+### 可逆默认（Agent 自定，理由见预审全文）
+
+- **B3**：B3-1 开关 `OPSPILOT_K8S_LIVE_METRICS=1`，按已配置后端集合算 revision；B3-2 工具名照上游 `kubectl_top_pods`、`kubectl_top_nodes`；B3-3 Pod 工具加可选 `namespace`；B3-4 只 GET、路径写死（metrics.k8s.io 与节点 allocatable）；B3-5 Pod 行含容器明细、节点行含百分比；B3-6 按 K8s 数量语法换算毫核与字节，解析失败 `MALFORMED_RESULT`；B3-7 来源时间与 `data_as_of` 留空，加 `sampled_at`；B3-8 独立错误映射（无 metrics-server 报 `SOURCE_ERROR`）；B3-9 新模块 `kubernetes_live_metrics.py`；B3-10 只改工具描述；B3-11 合同测试清单；B3-12 kind lab 装 vendored metrics-server。
+- **C1**：C1-0 结果不是证据（无 `evidence_id`，不可引用）；C1-1 工具名 `TodoWrite`、参数 `todos`；C1-2 部署配置 `OPSPILOT_TODO_WRITE=on`；C1-3 提示词变体按已开段组合；C1-4 打开时才加的 `TODO_GUIDANCE` 段；C1-5 校验与上限（50 项等）；C1-6 纯函数生成结果，三处调用点接入；C1-7 返回内容；C1-8 工具描述改写自上游；C1-9 不计入查询数与工具调用数；C1-10 工作台显示为「Plan updated」行；C1-11 新 Run 从空清单开始；C1-12 只回复与最后一轮不带；C1-13 新模块 `investigation/todo.py`；C1-14 #666 驱动按 `enable_todo` 分批。
+- **C2**：C2-0 一个工具 `fetch_skill(skill_id)`；C2-1 开关 `OPSPILOT_KNOWLEDGE_TOOL=on`，只在扩展档位；C2-2 能取当前有效的导入 runbook 与复盘知识；C2-3 只取本 Run 目标下的知识；C2-4 名字规范化照上游；C2-5 目录上限（50 条、8 KB）；C2-6 拒绝与「取不到」时列出可取名字；C2-7 证据投影含版本与内容哈希；C2-8 `citable_as_fact: false`；C2-9 工具描述；C2-10 正文最长 32 KiB；C2-11 新表与复盘知识分开、审核动作沿用 F13 请求与审计；C2-12 评测逐题导入、跑完撤销；C2-13 导入脚本在 #666 侧；C2-14 合同测试清单。
+- **C3**：C3-1 依赖 `confluent-kafka==2.16.1`（运行时组 `m0`）；C3-2 搬上游 8 个工具、名字不改；C3-3 只用 `AdminClient` 的 8 个只读方法，不读消息；C3-4 `OPSPILOT_KAFKA_*` 配置与凭据槽；C3-5 有认证环境用 SASL 加 Describe ACL；C3-6 lab 闸门加 Kafka 项；C3-7 滞后算法与投影；C3-8 主题名、组名校验与返回上限；C3-9 每次调用一个短命客户端；C3-10 `KafkaError` 错误分类；C3-11 只改工具描述；C3-12 新模块 `kafka_admin.py`；C3-13 一个 PR；C3-14 合同测试清单。
+- **C6**：C6-0 覆盖 7 题的 Postgres、MySQL、MariaDB、ClickHouse、SQL Server、MongoDB；C6-1 拆 C6a/C6b/C6c 三个 PR；C6-2 用上游默认工具名；C6-3 自写分词器做 SQL 语句检查；C6-4 会话只读事务（能做的方言）；C6-5 Mongo 各层拒 `$out`、`$merge` 与服务端 JS；C6-6 30 秒总期限与库侧语句超时；C6-7 `OPSPILOT_SQL_*`、`OPSPILOT_MONGODB_*` 配置，URL 不许带凭据；C6-8 与 OpsPilot 业务库三层隔离（`SQL_TARGETS_OPSPILOT_DB`）；C6-9 lab 闸门 `SQL_NOT_LAB`、`MONGODB_NOT_LAB`；C6-10 行对象投影与上限；C6-11 目录查询按方言写死；C6-12 驱动依赖各在引入它的 PR 里加；C6-13 扩展档位按后端集合算；C6-14 错误分类；C6-15 只改工具描述；C6-16 新模块 `sql_query.py`、`mongodb_query.py`；C6-17 合同测试清单。
+- **B4**：B4-1 `helm_list`、`helm_history`、`helm_status`；B4-2 开关 `OPSPILOT_HELM_RELEASES=on`；B4-3 合成环境靠 lab 主机闸门；B4-4 不改现有只读 RBAC，另加 Helm 追加 ClusterRole；B4-5 网关放在唯一出口 `KubernetesClient.get`；B4-6 查询参数恰好一个、完全相等的理由；B4-7 URL 全由代码拼；B4-8 两层 base64 解码与输出白名单；B4-9 体积上限与专用读取循环；B4-10 坏条目丢弃并计数；B4-11 时间按 B4C4-U1；B4-12 错误分类；B4-13 残余风险原文（见上）；B4-14 覆盖页 `change_history`；B4-15 新模块 `helm_releases.py`；B4-16 工具描述。
+- **C4**：C4-1 四个 `argocd_app_*` 工具；C4-2 开关 `OPSPILOT_ARGOCD=on`；C4-3 只读 `applications`，不含 `applicationsets`、`appprojects`；C4-4 另加 ArgoCD 追加 ClusterRole；C4-5 不进通用 `RESOURCES` 表；C4-6 白名单投影剔除 values 等敏感字段；C4-7 时间按 B4C4-U1；C4-8 不做 diff；C4-9 CRD 未装报 `SOURCE_ERROR`；C4-10 新模块 `argocd_apps.py`；C4-11 不加 lab-only 闸门。
+- **#667 SREGym**：S-1 钉上游版本并启动时核对；S-2 回合脚本逐次调用上游入口；S-3 题目 ID 不进产品；S-4 只读身份在建集群后、首跑前建好；S-5 四层只读边界检查；S-6 单次尝试用上游默认 1800 秒；S-7 计分口径复用 #666，无报告提交空串；S-8 上游输出与判分理由留 `tmp/`，summary 按白名单取；S-9 不用上游可调旋钮；S-10 报告转文本复用 #666；S-11 沿用扩展档位唯一目标；S-12 指标、链路、日志经 port-forward 直连；S-13 `--internet-access open`；S-14 显式 `KUBECONFIG` 防指错集群；S-15 端口分配；S-16 结果页披露清单。

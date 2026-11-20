@@ -30,6 +30,8 @@ from opspilot.investigation.context import (
     KNOWLEDGE_BOUNDARY,
     PRIOR_REPLIES,
     RELEASE_CONTEXT_BOUNDARY,
+    RUNBOOK_CATALOG,
+    RUNBOOK_CATALOG_BOUNDARY,
     InvestigationInput,
     Transcript,
     calibrated,
@@ -84,6 +86,12 @@ from opspilot.investigation.store import (
     StepStoreError,
     reservation_id_for,
 )
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
+from opspilot.investigation.todo import (
+    is_todo_write_call,
+    offers_todo_write,
+    todo_write_view,
+)
 from opspilot.tools.executor import Clock, QueryScope, ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.outcomes import ToolOutcome
 from opspilot.tools.registry import canonical
@@ -104,7 +112,10 @@ LoopExecution = Literal[
 
 
 def prompt_revision_versions(
-    variant_id: str = DISCIPLINE_VARIANT, *, report_contract: str = REPORT_CONTRACT
+    variant_id: str = DISCIPLINE_VARIANT,
+    *,
+    report_contract: str = REPORT_CONTRACT,
+    knowledge_tool: bool = False,
 ) -> dict[str, str]:
     """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
     ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
@@ -141,6 +152,9 @@ def prompt_revision_versions(
             alert_context_template=ALERT_CONTEXT_BOUNDARY,
             knowledge_template=KNOWLEDGE_BOUNDARY,
             release_context_template=RELEASE_CONTEXT_BOUNDARY,
+            runbook_catalog_template=RUNBOOK_CATALOG_BOUNDARY
+            if knowledge_tool
+            else None,
         )
     }
 
@@ -171,14 +185,19 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
-def investigation_versions(variant_id: str = DISCIPLINE_VARIANT) -> dict[str, str]:
+def investigation_versions(
+    variant_id: str = DISCIPLINE_VARIANT, *, knowledge_tool: bool = False
+) -> dict[str, str]:
     """Every ``versions`` key the loop's behaviour depends on (C3 §5).
 
     ``prompt_revision`` (L1a + L2) and ``context_policy_revision`` (the
     compaction path). ``tool_schema_revision`` belongs to the tool registry and
     is merged in by the caller that builds the Run's ``versions``.
     """
-    return {**prompt_revision_versions(variant_id), **context_policy_versions()}
+    return {
+        **prompt_revision_versions(variant_id, knowledge_tool=knowledge_tool),
+        **context_policy_versions(),
+    }
 
 
 _STORE_REFUSALS = frozenset(
@@ -485,6 +504,7 @@ class InvestigationLoop:
         folded_since: Sequence[UUID] = (),
         compactions: int = 0,
         compaction_attempts: int = 0,
+        runbook_catalog: bool = False,
     ) -> _State:
         usage = self.store.usage()
         floor, mode = conversation_of(
@@ -509,7 +529,11 @@ class InvestigationLoop:
             prior_model_seconds=usage.model_seconds_used,
             tool_seconds_at_open=self.executor.tool_seconds_used,
             attempt_started=self.clock.monotonic(),
-            revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
+            # C2b: a Run whose input carries the runbook list was created
+            # with the switch on, so its revision includes that wording.
+            revision=prompt_revision_versions(
+                request.variant_id, knowledge_tool=runbook_catalog
+            )["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
             prefix_len=prefix_len,
@@ -591,6 +615,7 @@ class InvestigationLoop:
             folded_since=transcript.folded_since,
             compactions=transcript.compactions,
             compaction_attempts=transcript.compaction_attempts,
+            runbook_catalog=RUNBOOK_CATALOG in input.scope_facts,
         )
         state.last_step_id = transcript.last_step_id
         state.message_sequences = set(transcript.message_sequences)
@@ -968,6 +993,12 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
+            if self._answers_locally(state, call):
+                # C1 (#565): the task list never reaches the gateway.
+                self._renew_before_dispatch()
+                view = todo_view(step_id, index, call)
+                self._deliver(state, step_id, index, call, view, results)
+                continue
             fingerprint = _fingerprint_of(call, target_id)
             duplicate_of = state.seen_tool_calls.get(fingerprint)
             if duplicate_of is not None:
@@ -1049,6 +1080,9 @@ class InvestigationLoop:
             previous.append(last.get(fingerprint))
             last[fingerprint] = index
         dispatched: dict[int, Future[ToolOutcome]] = {}
+        # C1 (#565): ``TodoWrite`` views, built on this thread at their
+        # dispatch turn; they take no pool slot and commit at their own turn.
+        local: dict[int, dict[str, Any]] = {}
         stop: Exception | None = None
         next_dispatch = 0  # dispatch is strictly in index order
         next_commit = 0
@@ -1071,6 +1105,15 @@ class InvestigationLoop:
                 earlier = previous[index]
                 if earlier is not None and earlier >= next_commit:
                     return  # undecided until the earlier same call commits
+                if self._answers_locally(state, calls[index]):
+                    try:
+                        self._renew_before_dispatch()
+                    except Exception as exc:  # raised at this call's turn
+                        stop = exc
+                        return
+                    local[index] = todo_view(step_id, index, calls[index])
+                    next_dispatch += 1
+                    continue
                 if fingerprints[index] in state.seen_tool_calls:
                     next_dispatch += 1  # a duplicate view at its turn
                     continue
@@ -1124,6 +1167,9 @@ class InvestigationLoop:
                 next_commit = index
                 fill(pool)
                 fingerprint = fingerprints[index]
+                if index in local:
+                    self._deliver(state, step_id, index, call, local[index], results)
+                    continue
                 if index not in dispatched and index < next_dispatch:
                     view = _duplicate_call_view(
                         f"{step_id}-t{index}",
@@ -1145,6 +1191,15 @@ class InvestigationLoop:
                 else:
                     self._deliver(state, step_id, index, call, view, results)
         return results
+
+    @staticmethod
+    def _answers_locally(state: _State, call: Mapping[str, Any]) -> bool:
+        """C1 (#565): a ``TodoWrite`` call of a Run whose recorded tools offer
+        it. Decided from the Run input, never the environment; without the
+        schema the name goes to the gateway like any unregistered tool."""
+        return is_todo_write_call(call) and offers_todo_write(
+            state.request.tool_schemas
+        )
 
     def _renew_before_dispatch(self) -> None:
         try:
@@ -1759,6 +1814,17 @@ def _call_fingerprint(name: object, arguments: object, target_ref: str | None) -
         # ``canonical()`` call refuses it properly a moment later as an
         # ordinary INVALID_PARAMS.
         return f"__unfingerprintable__:{uuid4()}"
+
+
+def todo_view(
+    step_id: UUID | str, index: int, call: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The loop's own answer to one ``TodoWrite`` call (C1, #565): the same
+    operation id and parsed arguments the gateway request would carry, one
+    tool span naming the tool (parameter names only, never their values)."""
+    request = tool_request_for(step_id, index, call, target_ref=None, window={})
+    with tracer().tool_call(request, tool_name=TODO_TOOL_NAME):
+        return todo_write_view(request.operation_id, request.params)
 
 
 def _duplicate_call_view(operation_id: str, *, evidence_id: str) -> dict[str, Any]:

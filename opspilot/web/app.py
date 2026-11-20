@@ -68,6 +68,8 @@ from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_list import parse_query
 from opspilot.web.incident_view import LIVE_KINDS, handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
+from opspilot.web.runbooks import MAX_FORM_BYTES as RUNBOOK_FORM_BYTES
+from opspilot.web.runbooks import RunbookReview, RunbookStoreSurface
 from opspilot.web.service import (
     MESSAGE_ACTIONS,
     Workbench,
@@ -262,6 +264,7 @@ def create_app(
     sse_repair_seconds: float = 5.0,
     review: PostmortemReview | None = None,
     releases: ReleaseStore | None = None,
+    runbooks: RunbookStoreSurface | None = None,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -424,11 +427,11 @@ def create_app(
             chunks.append(chunk)
         return b"".join(chunks)
 
-    async def form_of(request: Request) -> dict[str, str]:
+    async def form_of(request: Request, limit: int = MAX_BODY_BYTES) -> dict[str, str]:
         content_type = request.headers.get("content-type", "").split(";")[0].strip()
         if content_type != _FORM:
             raise _Refusal(415, "FORM_REQUIRED")
-        body = await body_of(request)
+        body = await body_of(request, limit)
         try:
             fields = parse_qs(
                 body.decode("utf-8"), keep_blank_values=True, strict_parsing=False
@@ -502,6 +505,24 @@ def create_app(
         if review is None:
             raise _Refusal(404, "NOT_FOUND")
         return review
+
+    # C2a (#566): the registry's targets, or any target an intake accepts
+    # when no registry is configured
+    runbook_review = (
+        None
+        if runbooks is None
+        else RunbookReview(
+            store=runbooks,
+            target_keys=lambda: (
+                None if workbench.targets is None else workbench.targets.keys()
+            ),
+        )
+    )
+
+    def runbooks_of() -> RunbookReview:
+        if runbook_review is None:
+            raise _Refusal(404, "NOT_FOUND")
+        return runbook_review
 
     # -- sign-in (#682) ----------------------------------------------------
 
@@ -818,6 +839,135 @@ def create_app(
             )
         if wants_html(request):
             return RedirectResponse(f"/knowledge/{subject}", status_code=303)
+        return JSONResponse(result)
+
+    # -- imported runbooks (C2a, #566) ----------------------------------------
+
+    def render_runbooks(
+        principal: Principal,
+        template: str,
+        *,
+        error: Any = None,
+        status: int = 200,
+        **context: Any,
+    ) -> HTMLResponse:
+        response = render(
+            template,
+            principal=principal,
+            error=error,
+            form_nonce=uuid4().hex,
+            **context,
+        )
+        response.status_code = status
+        return response
+
+    @app.get("/runbooks", response_class=HTMLResponse)
+    async def runbooks_page(request: Request) -> Response:
+        principal = await ui(request)
+        page = await reviewed(runbooks_of().overview)
+        return render_runbooks(principal, "runbooks.html", page=page)
+
+    @app.get("/runbooks/new", response_class=HTMLResponse)
+    async def runbook_new(request: Request) -> Response:
+        principal = await ui(request)
+        service = runbooks_of()
+        return render_runbooks(
+            principal,
+            "runbook_new.html",
+            known_targets=service.known_targets(),
+            fields={},
+        )
+
+    @app.post("/runbooks")
+    async def runbook_submit(request: Request) -> Response:
+        principal = await ui_mutation(request)
+        service = runbooks_of()
+        fields = await form_of(request, RUNBOOK_FORM_BYTES)
+        try:
+            result = await asyncio.to_thread(service.submit, fields, principal.actor_id)
+        except ReviewError as exc:
+            if not wants_html(request):
+                raise _Refusal(
+                    _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+                ) from None
+            return render_runbooks(
+                principal,
+                "runbook_new.html",
+                error=exc,
+                status=_REVIEW_STATUS[exc.error_class],
+                known_targets=service.known_targets(),
+                fields=fields,
+            )
+        if wants_html(request):
+            return RedirectResponse(
+                f"/runbooks/submissions/{result['submission_id']}", status_code=303
+            )
+        return JSONResponse(result)
+
+    @app.get("/runbooks/submissions/{submission_id}", response_class=HTMLResponse)
+    async def runbook_submission_page(request: Request, submission_id: str) -> Response:
+        principal = await ui(request)
+        page = await reviewed(runbooks_of().submission, _uuid_path(submission_id))
+        return render_runbooks(principal, "runbook_submission.html", page=page)
+
+    @app.post("/runbooks/submissions/{submission_id}/review")
+    async def runbook_decide(request: Request, submission_id: str) -> Response:
+        principal = await ui_mutation(request)
+        service = runbooks_of()
+        subject = _uuid_path(submission_id)
+        fields = await form_of(request)
+        try:
+            result = await asyncio.to_thread(
+                service.decide, subject, fields, principal.actor_id
+            )
+        except ReviewError as exc:
+            if not wants_html(request):
+                raise _Refusal(
+                    _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+                ) from None
+            page = await reviewed(service.submission, subject)
+            return render_runbooks(
+                principal,
+                "runbook_submission.html",
+                page=page,
+                error=exc,
+                status=_REVIEW_STATUS[exc.error_class],
+            )
+        if wants_html(request):
+            return RedirectResponse(f"/runbooks/submissions/{subject}", status_code=303)
+        return JSONResponse(result)
+
+    @app.get("/runbooks/{entry_id}", response_class=HTMLResponse)
+    async def runbook_entry_page(request: Request, entry_id: str) -> Response:
+        principal = await ui(request)
+        page = await reviewed(runbooks_of().entry, _uuid_path(entry_id))
+        return render_runbooks(principal, "runbook_entry.html", page=page)
+
+    @app.post("/runbooks/{entry_id}/revoke")
+    async def runbook_revoke(request: Request, entry_id: str) -> Response:
+        principal = await ui_mutation(request)
+        service = runbooks_of()
+        subject = _uuid_path(entry_id)
+        fields = await form_of(request)
+        try:
+            result = await asyncio.to_thread(
+                service.revoke, subject, fields, principal.actor_id
+            )
+        except ReviewError as exc:
+            if not wants_html(request):
+                raise _Refusal(
+                    _REVIEW_STATUS[exc.error_class], exc.code, **_review_extra(exc)
+                ) from None
+            page = await reviewed(service.entry, subject)
+            return render_runbooks(
+                principal,
+                "runbook_entry.html",
+                page=page,
+                error=exc,
+                status=_REVIEW_STATUS[exc.error_class],
+            )
+        if wants_html(request):
+            return RedirectResponse(f"/runbooks/{subject}", status_code=303)
         return JSONResponse(result)
 
     # -- intake ---------------------------------------------------------

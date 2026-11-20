@@ -1,0 +1,34 @@
+# CI k8s-backends (B4, #563): the kind cluster `b4`, apiserver pinned to
+# https://127.0.0.1:36443, audit log of Secret requests (Metadata level) on
+# the node at /var/log/kubernetes/audit/audit.log. kind needs an absolute
+# hostPath: the job replaces __REPO__ with the checkout directory.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: 127.0.0.1
+  apiServerPort: 36443
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __REPO__/tests/fixtures/b4_helm/audit-policy.yaml
+        containerPath: /etc/kubernetes/audit/audit-policy.yaml
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-policy-file: /etc/kubernetes/audit/audit-policy.yaml
+            audit-log-path: /var/log/kubernetes/audit/audit.log
+            audit-log-mode: blocking
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/audit/audit-policy.yaml
+              mountPath: /etc/kubernetes/audit/audit-policy.yaml
+              readOnly: true
+              pathType: File
+            - name: audit-log
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              readOnly: false
+              pathType: DirectoryOrCreate

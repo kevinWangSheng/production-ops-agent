@@ -195,6 +195,39 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         # human controls and the deadline sweep clear owner/lease_until; no
         # epoch, so the web cannot issue a lease of its own (claim() sets it)
+        # 0028 (C2a, user r11 C2-U1=a 2026-11-19): imported runbooks are
+        # submitted, decided and revoked only by a signed-in user
+        "opspilot_runbook_audit": _g(
+            "SELECT",
+            "INSERT(action,actor_id,event_id,expected_generation,idempotency_key,"
+            "object_id,object_kind,principal_kind,reason,resulting_generation,revision)",
+        ),
+        "opspilot_runbook_decisions": _g(
+            "SELECT", "INSERT(decided_by,decision,event_id,reason,submission_id)"
+        ),
+        "opspilot_runbook_entries": _g(
+            "SELECT",
+            "INSERT(entry_id,resource_uid)",
+            "UPDATE(generation,latest_revision,updated_at)",
+        ),
+        "opspilot_runbook_requests": _g(
+            "SELECT", "INSERT(action,idempotency_key,request_sha256,result)"
+        ),
+        "opspilot_runbook_revision_states": S,
+        "opspilot_runbook_revisions": _g(
+            "SELECT",
+            "INSERT(approved_by,content,content_sha256,description,entry_id,event_id,"
+            "name,resource_uid,revision,source_label,source_ref,submission_id,"
+            "supersedes_revision)",
+        ),
+        "opspilot_runbook_revocations": _g(
+            "SELECT", "INSERT(entry_id,event_id,reason,revision,revoked_by)"
+        ),
+        "opspilot_runbook_submissions": _g(
+            "SELECT",
+            "INSERT(content,content_sha256,description,event_id,name,resource_uid,"
+            "source_label,source_ref,submission_id,submitted_by,supersedes_entry_id)",
+        ),
         "opspilot_runs": _g(
             "SELECT",
             "INSERT(budget_limit,control_generation,deadline,incident_id,input,run_id,"
@@ -349,6 +382,16 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_release_events": NONE,
         "opspilot_release_observations": NONE,
+        # 0028 (C2a): fetch_skill (C2b) reads only approved revisions and
+        # their state; submissions, decisions and the audit stay unreadable
+        "opspilot_runbook_audit": NONE,
+        "opspilot_runbook_decisions": NONE,
+        "opspilot_runbook_entries": NONE,
+        "opspilot_runbook_requests": NONE,
+        "opspilot_runbook_revision_states": S,
+        "opspilot_runbook_revisions": S,
+        "opspilot_runbook_revocations": NONE,
+        "opspilot_runbook_submissions": NONE,
         "opspilot_runs": _g(
             "SELECT",
             "UPDATE(budget_reserved,budget_spent,budget_unknown,control_generation,epoch,"

@@ -84,6 +84,78 @@ SKILL_ASSERTION_DROPPED: frozenset[str] = frozenset(
         "280_es_multi_quirk",
     }
 )
+#: All 6 R8-13 questions across tracks: the B1 five plus C5's
+#: ``282_loki_custom_stream_label`` (C5a, #569). The B1 set above stays the B1
+#: subset its contract pins; tracks beyond B1 read this one.
+R8_13_SKILL_ASSERTION_DROPPED: frozenset[str] = SKILL_ASSERTION_DROPPED | {
+    "282_loki_custom_stream_label"
+}
+
+#: C5 (#569, PR-C): log search questions; each brings its own backend.
+C5_LOKI_QUESTIONS: tuple[str, ...] = (
+    "100a_loki_historical_logs",
+    "101_loki_historical_logs_pod_deleted",
+    "102_loki_label_discovery",
+    "102a_loki_logs_transparency",
+    "102b_loki_multiple_pods",
+    "259_loki_historical_logs_pod_deleted_docker",
+    "282_loki_custom_stream_label",
+)
+C5_VICTORIALOGS_QUESTIONS: tuple[str, ...] = (
+    "257_victorialogs_log_search",
+    "258_victorialogs_streams",
+)
+C5_QUESTIONS: tuple[str, ...] = C5_LOKI_QUESTIONS + C5_VICTORIALOGS_QUESTIONS
+#: C2 (#566, PR-D): runbook/skill questions; each brings its own knowledge
+#: fixtures (``*/SKILL.md`` or the DAL ``runbook_*.json``), imported through
+#: the workbench review flow for every attempt. Their ``memories_generated``
+#: is empty, so none is an R8-13 question.
+C2_QUESTIONS: tuple[str, ...] = (
+    "89_skill_missing_cloudwatch",
+    "90_skill_basic_selection",
+    "94_skill_transparency",
+    "95_skill_memory_leak_detection",
+    "96_no_matching_skill",
+    "162_get_skills",
+)
+#: C1 (#565, PR-E): the one upstream question that turns ``TodoWrite`` on
+#: (``enable_todo``); a Kubernetes question.
+C1_QUESTIONS: tuple[str, ...] = ("283_todowrite_multistep_audit",)
+#: C1-U2 (r11): the four B1 questions tagged ``hard``, run again with the
+#: task list on (selected by the C1 pre-review from the tags).
+TODO_HARD_QUESTIONS: tuple[str, ...] = (
+    "184_elasticsearch_index_explosion",
+    "185_elasticsearch_cross_region_search",
+    "193_elasticsearch_large_mapping_search",
+    "280_es_multi_quirk",
+)
+#: C6 (#570, PR-F): the five SQL database questions (one per dialect) and
+#: the two MongoDB ones; each brings its own database in its namespace.
+C6_SQL_QUESTIONS: tuple[str, ...] = (
+    "217_database_sql_query",
+    "218_mysql_query_performance",
+    "219_mariadb_query_performance",
+    "222_clickhouse_query_performance",
+    "223_sqlserver_query_performance",
+)
+C6_MONGO_QUESTIONS: tuple[str, ...] = (
+    "229_mongodb_schema_discovery",
+    "230_mongodb_aggregation_analysis",
+)
+C6_QUESTIONS: tuple[str, ...] = C6_SQL_QUESTIONS + C6_MONGO_QUESTIONS
+#: Every question the drivers accept (B1 first, the order rounds run in).
+ALL_QUESTIONS: tuple[str, ...] = (
+    B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS + C1_QUESTIONS + C6_QUESTIONS
+)
+#: ``--questions`` group names.
+QUESTION_GROUPS: dict[str, tuple[str, ...]] = {
+    "b1": B1_QUESTIONS,
+    "c5": C5_QUESTIONS,
+    "c2": C2_QUESTIONS,
+    "c1": C1_QUESTIONS,
+    "todo-hard": TODO_HARD_QUESTIONS,
+    "c6": C6_QUESTIONS,
+}
 
 
 class UpstreamMismatch(RuntimeError):
@@ -178,6 +250,16 @@ def question_dir(root: Path, qid: str) -> Path:
     if not qid or qid in {".", ".."} or "/" in qid or "\\" in qid or "\0" in qid:
         raise ValueError("QUESTION_ID_INVALID")
     return root / QUESTIONS_DIR / qid
+
+
+def run_mode(root: Path, qid: str) -> str | None:
+    """The question's own ``test_type`` (upstream's ``cli``/``server`` run
+    mode), and nothing else of the file. A run mode, not an answer; kept out
+    of :class:`Question` so the PR-A whitelist stays as pinned."""
+    doc = read_test_case(root, qid)
+    value = doc.get("test_type")
+    del doc
+    return value if isinstance(value, str) else None
 
 
 def read_test_case(root: Path, qid: str) -> Mapping[str, Any]:

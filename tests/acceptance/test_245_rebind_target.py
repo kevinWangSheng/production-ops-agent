@@ -604,14 +604,14 @@ def test_pr1_head_is_0022_and_clean_downgrade_upgrade_round_trips(isolated_datab
     """PR-1 AC8: 0022 sits in the chain (head 0024 since #427) and a clean downgrade/upgrade is reversible."""
     pg_dump = os.environ["OPSPILOT_PG_DUMP"]
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0027_investigation_feedback"
+        assert schema.current_revision(conn) == "0028_runbook_imports"
     before = schema.schema_dump(isolated_database, pg_dump=pg_dump)
     command.downgrade(schema._config(isolated_database), "0021_release_incident_links")
     with psycopg.connect(isolated_database) as conn:
         assert schema.current_revision(conn) == "0021_release_incident_links"
     schema.upgrade_head(isolated_database)
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0027_investigation_feedback"
+        assert schema.current_revision(conn) == "0028_runbook_imports"
     assert schema.schema_dump(isolated_database, pg_dump=pg_dump) == before
 
 
@@ -620,7 +620,7 @@ def test_pr1_downgrade_refuses_nonnull_merge_pointer(isolated_database):
     first_id = uuid4()
     second_id = uuid4()
     with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == "0027_investigation_feedback"
+        assert schema.current_revision(conn) == "0028_runbook_imports"
         conn.execute(
             "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,"
             "control_generation,observation_generation) "

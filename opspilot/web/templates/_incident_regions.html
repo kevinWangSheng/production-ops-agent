@@ -300,14 +300,23 @@
 {{ log.steps }} step{{ "" if log.steps == 1 else "s" }} · {{ log.calls }} quer{{ "y" if log.calls == 1 else "ies" }} · {{ log.problems }} with a problem{% if log.runs > 1 %} · {{ log.runs }} Runs{% endif %}
 {%- endmacro %}
 
+{% macro plan_list(plan) -%}
+<ul class="plan-list">{% for t in plan.todos %}<li class="plan-{{ t.status }}"><span class="mono plan-mark" aria-hidden="true">{{ log.plan_marks.get(t.status, "[ ]") }}</span> <span>{{ t.content }}</span><span class="vh"> ({{ t.status | replace("_", " ") }})</span></li>{% endfor %}</ul>
+{%- endmacro %}
+
+{% macro plan_update(plan) -%}
+<details class="plan-line"><summary><span class="small">Plan updated · {{ plan.done }} of {{ plan.total }} done</span></summary>{{ plan_list(plan) }}</details>
+{%- endmacro %}
+
 {% macro log_entries() -%}
       {%- for e in log.entries %}
       {%- if e.kind == "step" %}
-      <details class="step" id="{{ e.id }}" data-key="{{ e.key }}" data-k="step" data-p="{{ 1 if e.problem else 0 }}"><summary><span class="t">{{ e.time or "" }}</span><span><b>{% if e.number %}Step {{ e.number }}{% else %}Late result{% endif %}</b>{% if e.note %} · {{ e.note }}{% endif %}{% if e.history_only %} <span class="chip">late result, history only</span>{% endif %}</span><span class="small nowrap">{% if e.calls %}{{ e.calls | length }} quer{{ "y" if e.calls | length == 1 else "ies" }}{% else %}no queries{% endif %} <span aria-hidden="true">›</span></span>
+      <details class="step" id="{{ e.id }}" data-key="{{ e.key }}" data-k="step" data-p="{{ 1 if e.problem else 0 }}"><summary><span class="t">{{ e.time or "" }}</span><span><b>{% if e.number %}Step {{ e.number }}{% else %}Late result{% endif %}</b>{% if e.note %} · {{ e.note }}{% endif %}{% if e.history_only %} <span class="chip">late result, history only</span>{% endif %}</span><span class="small nowrap">{% if e.calls %}{{ e.calls | length }} quer{{ "y" if e.calls | length == 1 else "ies" }}{% elif e.plan or e.plan_rejected %}plan only{% else %}no queries{% endif %} <span aria-hidden="true">›</span></span>
         {%- if e.calls %}<span class="sumtools">{% for c in e.calls %}<span><span class="mono">{{ c.tool }}</span> <span class="{{ 'st-ok' if c.ok else 'st-err' }}">{% if c.ok %}<span aria-hidden="true">✓</span><span class="vh">ok</span>{% else %}<span aria-hidden="true">✗</span> {{ c.reason or c.status }}{% endif %}</span></span>{% endfor %}</span>{% endif %}</summary>
         <div class="calls">
+          {%- if e.plan %}{{ plan_update(e.plan) }}{% elif e.plan_rejected %}<p class="small plan-line">Plan update refused · the list broke the limits; the previous plan stays</p>{% endif %}
           {%- for c in e.calls %}{{ call_row(c, "call-" ~ e.id ~ "-" ~ loop.index) }}{% endfor %}
-          {%- if not e.calls %}<p class="small">This step made no tool calls.</p>{% endif %}
+          {%- if not e.calls and not e.plan and not e.plan_rejected %}<p class="small">This step made no tool calls.</p>{% endif %}
         </div>
       </details>
       {%- elif e.kind == "reply" %}
@@ -327,6 +336,9 @@
       <div class="ev live" data-key="{{ e.key }}" data-k="event"><span class="t"><span class="dot pulse" aria-hidden="true"></span></span><span>{{ e.title }}{% if e.since %} · <span data-since="{{ e.since }}"></span>{% endif %}</span></div>
       {%- else %}
       <div class="ev{% if e.problem %} prob{% endif %}{% if e.kind == 'run' %} run-row{% endif %}" data-key="{{ e.key }}" data-k="event" data-p="{{ 1 if e.problem else 0 }}"{% if e.run_id %} title="Run {{ e.run_id }}"{% endif %}><span class="t">{{ e.time or "" }}</span><span>{% if e.problem %}<span class="st-err" aria-hidden="true">✗ </span>{% endif %}<b>{{ e.title }}</b>{% if e.detail %} <span class="muted">· {{ e.detail }}</span>{% endif %}{% if e.anchor %} <a href="{{ e.anchor }}">View</a>{% endif %}</span></div>
+      {%- if e.kind == "run" and e.plan %}
+      <div class="ev plan-card" data-key="plan-{{ e.run_id }}" data-k="event"><span class="t"></span><div class="evb"><span><b>Investigation plan</b> <span class="muted">· {{ e.plan.done }} of {{ e.plan.total }} done · the Agent's own task list, not evidence</span></span>{{ plan_list(e.plan) }}</div></div>
+      {%- endif %}
       {%- endif %}
       {%- endfor %}
 {%- endmacro %}

@@ -212,9 +212,29 @@ def _q(value: str | None) -> str:
     return urllib.parse.quote(value or "undiscovered", safe="")
 
 
-def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
+#: C4 (#568): with the ArgoCD overlay, Applications are readable and the other
+#: two ArgoCD resources must still be refused by RBAC.
+ARGOCD_APPLICATIONS = "/apis/argoproj.io/v1alpha1/applications"
+ARGOCD_DENIED = (
+    "/apis/argoproj.io/v1alpha1/applicationsets",
+    "/apis/argoproj.io/v1alpha1/appprojects",
+)
+
+
+def rows(
+    namespace: str,
+    found: dict[str, str | None],
+    *,
+    helm_overlay: bool = False,
+    argocd_overlay: bool = False,
+) -> list[dict[str, Any]]:
     """The probe table: ``name``, ``method``, ``path``, ``expected`` and,
-    for some, request ``headers`` and a JSON ``body``."""
+    for some, request ``headers`` and a JSON ``body``.
+
+    ``helm_overlay`` (B4-4, #563): the identity also has the Helm overlay
+    ClusterRole (``secrets`` ``list`` only), so the three Secret lists are
+    expected to answer 200 -- the residual risk, recorded as a status only --
+    while getting one Secret and watching Secrets stay 403."""
     ns = _q(namespace)
     pod = f"/api/v1/namespaces/kube-system/pods/{_q(found['pod'])}"
     log_query = "?tailLines=1" + (
@@ -238,20 +258,45 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
         ("list replicasets", "GET", "/apis/apps/v1/replicasets"),
         ("list services", "GET", "/api/v1/services"),
         ("read a kube-system pod log", "GET", pod + "/log" + log_query),
+        # B3 (#562): the live usage tools' metrics.k8s.io reads.
+        ("list pods.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/pods"),
+        ("list nodes.metrics.k8s.io", "GET", "/apis/metrics.k8s.io/v1beta1/nodes"),
     ]
+    secret_lists = [
+        ("list secrets, all namespaces", "GET", "/api/v1/secrets"),
+        ("list kube-system secrets", "GET", "/api/v1/namespaces/kube-system/secrets"),
+        ("list app secrets", "GET", f"/api/v1/namespaces/{ns}/secrets"),
+    ]
+    if helm_overlay:
+        allowed = [*allowed, *secret_lists]
+    if argocd_overlay:
+        allowed = [
+            *allowed,
+            ("list ArgoCD applications (C4)", "GET", ARGOCD_APPLICATIONS),
+        ]
     table: list[dict[str, Any]] = [
         {"name": n, "method": m, "path": p, "expected": 200} for n, m, p in allowed
     ]
     denied: list[tuple[str, str, str, dict[str, str], Any]] = [
-        ("list secrets, all namespaces", "GET", "/api/v1/secrets", {}, None),
-        (
-            "list kube-system secrets",
-            "GET",
-            "/api/v1/namespaces/kube-system/secrets",
-            {},
-            None,
+        *(
+            []
+            if helm_overlay
+            else [(name, method, path, {}, None) for name, method, path in secret_lists]
         ),
-        ("list app secrets", "GET", f"/api/v1/namespaces/{ns}/secrets", {}, None),
+        *(
+            [
+                (
+                    "get one kube-system secret",
+                    "GET",
+                    "/api/v1/namespaces/kube-system/secrets/bootstrap-token-probe",
+                    {},
+                    None,
+                ),
+                ("watch secrets", "GET", "/api/v1/secrets?watch=true", {}, None),
+            ]
+            if helm_overlay
+            else []
+        ),
         ("watch pods", "GET", "/api/v1/pods?watch=true", {}, None),
         (
             "exec (GET)",
@@ -375,12 +420,19 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
     ] + [
         (f"list custom resource {path.split('/')[2]}", "GET", path, {}, None)
         for path in CUSTOM_RESOURCES
+        if not (argocd_overlay and path == ARGOCD_APPLICATIONS)
     ]
+    if argocd_overlay:
+        denied += [
+            (f"list ArgoCD {path.rsplit('/', 1)[1]}", "GET", path, {}, None)
+            for path in ARGOCD_DENIED
+        ]
     for name, method, path, headers, body in denied:
         row: dict[str, Any] = {
             "name": name,
             "method": method,
             "path": path,
+            # The overlay's CRDs are installed: RBAC itself must refuse.
             "expected": [403, 404] if path in CUSTOM_RESOURCES else 403,
         }
         if headers:
@@ -493,6 +545,8 @@ def probe(
     namespace: str = DEFAULT_NAMESPACE,
     known_secrets: list[str] | tuple[str, ...] = (),
     known: list[str] | tuple[str, ...] = (),
+    helm_overlay: bool = False,
+    argocd_overlay: bool = False,
 ) -> dict[str, Any]:
     """The probe table and the ConfigMap search, through ``request``; the
     report's ``ok`` also needs known lab secret values to have been given.
@@ -503,7 +557,9 @@ def probe(
     needles = [auth.removeprefix("Bearer "), *known]
     found = discover(send)
     results = []
-    for row in rows(namespace, found):
+    for row in rows(
+        namespace, found, helm_overlay=helm_overlay, argocd_overlay=argocd_overlay
+    ):
         status = _send_row(send, row)
         expected = row["expected"]
         accepted = expected if isinstance(expected, list) else [expected]
@@ -566,6 +622,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out-dir", type=Path, help="write probe.json and rules.json here"
     )
+    parser.add_argument(
+        "--expect-helm-overlay",
+        action="store_true",
+        help="the Helm overlay ClusterRole is applied (B4): expect the Secret "
+        "lists to answer 200 (status only; bodies are discarded) and getting "
+        "or watching a Secret to stay 403",
+    )
+    parser.add_argument(
+        "--expect-argocd-overlay",
+        action="store_true",
+        help="the ArgoCD overlay ClusterRole is applied (C4): expect ArgoCD "
+        "Applications to answer 200 and ApplicationSets and AppProjects 403",
+    )
     args = parser.parse_args(argv)
     try:
         env = read_env(args.env_file)
@@ -575,7 +644,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     token = env["OPSPILOT_K8S_TOKEN"]
     report = probe(
-        env_file=args.env_file, namespace=args.namespace, known_secrets=known
+        env_file=args.env_file,
+        namespace=args.namespace,
+        known_secrets=known,
+        helm_overlay=args.expect_helm_overlay,
+        argocd_overlay=args.expect_argocd_overlay,
     )
     report = {
         "side": args.side,

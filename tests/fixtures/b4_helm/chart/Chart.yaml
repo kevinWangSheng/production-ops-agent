@@ -1,0 +1,6 @@
+apiVersion: v2
+name: b4-fixture
+description: Synthetic chart for the B4 Helm release history tests (no images)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

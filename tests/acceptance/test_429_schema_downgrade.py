@@ -20,15 +20,24 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0027_investigation_feedback"
+CURRENT = "0028_runbook_imports"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
-# 0026 (workbench P7) and 0027 (P5) sit above PREVIOUS too: their chat and
-# feedback tables go with them.
+# 0026 (workbench P7), 0027 (P5) and 0028 (C2a runbooks) sit above PREVIOUS
+# too: their chat, feedback and runbook tables (and the runbook state view)
+# go with them.
 CHAT_TABLES = (
     "opspilot_chat_sessions",
     "opspilot_chat_turns",
     "opspilot_investigation_feedback",
+    "opspilot_runbook_audit",
+    "opspilot_runbook_decisions",
+    "opspilot_runbook_entries",
+    "opspilot_runbook_requests",
+    "opspilot_runbook_revision_states",
+    "opspilot_runbook_revisions",
+    "opspilot_runbook_revocations",
+    "opspilot_runbook_submissions",
 )
 
 pytestmark = pytest.mark.skipif(

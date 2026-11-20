@@ -23,6 +23,33 @@ contract test records that web face/version construction works without
 that reads them.  Item 4 still rejects KUBECONFIG, service-account token paths,
 CI/forge credentials and credential files for every product entry point.
 
+Extended 2026-11-20 for B4 (#563, lead ruling, on the A2 precedent): the Helm
+release history tools read Helm's own release records (Secrets of type
+``helm.sh/release.v1``) through the same GET-only Kubernetes transport.  Three
+string constants must therefore name Helm or kubectl, and only these three are
+excepted, by module and constant name and for the one matched word each:
+``kubernetes_core.HELM_FIELD_SELECTOR`` and ``kubernetes_core.HELM_OWNER``
+(``helm``: the identifiers of the read-only release records), and
+``helm_releases._CANNOT_PROVE`` (``kubectl``: model-visible text saying that
+changes made with kubectl outside Helm are not in the records).  They are
+identifiers and explanatory text for reading release metadata, not a call to
+a deployment or release tool.  The step's wording and the intent of every
+assertion are unchanged.
+
+Extended 2026-11-20 for C4 (#568, lead ruling, on the B4 precedent): the ArgoCD
+tools read ArgoCD's Application objects (``applications.argoproj.io``) through
+the same GET-only Kubernetes transport.  Three string constants of
+``argocd_apps`` must name ``argocd`` and are excepted for that one word only:
+``DEFAULT_NAMESPACE`` (the value ``argocd``, the namespace ArgoCD keeps its
+Applications in), ``_NAMESPACE_DEFAULT_TEXT`` and ``_NAMESPACE_PARAM_TEXT``
+(model-visible text saying that namespace is the default).  Item 4 excepts
+exactly four names containing ``ARGO``, by full match: the switch
+``OPSPILOT_ARGOCD``, its startup code ``ARGOCD_INVALID``, and the profile
+constants ``ARGOCD_TOOL_NAMES`` and ``ARGOCD_TOOL_SCHEMA_REVISION``.  They are
+identifiers and explanatory text for reading Application objects, not a call
+to a deployment tool or an ArgoCD credential.  The step's wording and the
+intent of every assertion are unchanged.
+
 PostgreSQL tests use ``tests/acceptance/f11_steps_support.py``; the code
 surface tests need no database.
 """
@@ -369,6 +396,47 @@ KUBERNETES_CORE_RELATIVE = "opspilot/tools/kubernetes_core.py"
 KUBERNETES_READ_API_PATH = re.compile(
     r"^/api/v1(?:/[^\s\"']*)?$|^/apis/[A-Za-z0-9_.-]+/v1(?:/[^\s\"']*)?$"
 )
+#: B4 (#563): (module, module-level constant) -> the one forbidden word its
+#: string literals may contain (see the module docstring).
+HELM_TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    ("opspilot/tools/kubernetes_core.py", "HELM_FIELD_SELECTOR"): "helm",
+    ("opspilot/tools/kubernetes_core.py", "HELM_OWNER"): "helm",
+    ("opspilot/tools/helm_releases.py", "_CANNOT_PROVE"): "kubectl",
+}
+#: C4 (#568): the same, for the ArgoCD Application tools (module docstring).
+ARGOCD_TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    ("opspilot/tools/argocd_apps.py", "DEFAULT_NAMESPACE"): "argocd",
+    ("opspilot/tools/argocd_apps.py", "_NAMESPACE_DEFAULT_TEXT"): "argocd",
+    ("opspilot/tools/argocd_apps.py", "_NAMESPACE_PARAM_TEXT"): "argocd",
+}
+TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    **HELM_TEXT_EXCEPTIONS,
+    **ARGOCD_TEXT_EXCEPTIONS,
+}
+
+
+def _excepted_constants(path: Path, tree: ast.AST) -> dict[int, str]:
+    """``id(node) -> allowed word`` for the string literals inside the value
+    of an excepted module-level assignment."""
+    relative = str(path.relative_to(REPO))
+    allowed: dict[int, str] = {}
+    for statement in getattr(tree, "body", []):
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            word = TEXT_EXCEPTIONS.get((relative, target.id))
+            if word is None:
+                continue
+            for node in ast.walk(value):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    allowed[id(node)] = word
+    return allowed
 
 
 def _imported(tree: ast.AST) -> list[str]:
@@ -404,7 +472,7 @@ def test_item3_no_product_module_imports_a_kubernetes_forge_or_ci_client() -> No
 
 
 def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() -> None:
-    def forbidden(path: Path, value: str) -> str | None:
+    def forbidden(path: Path, value: str, excepted: str | None) -> str | None:
         relative = str(path.relative_to(REPO))
         for match in FORBIDDEN_TEXT.finditer(value):
             if (
@@ -412,17 +480,21 @@ def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() ->
                 and KUBERNETES_READ_API_PATH.fullmatch(match.group())
             ):
                 continue
+            if excepted is not None and match.group() == excepted:
+                continue  # B4/C4: only this word, only in this constant
             return match.group()
         return None
 
-    offenders = [
-        (str(path.relative_to(REPO)), node.value[:80])
-        for path, tree in _trees()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and forbidden(path, node.value) is not None
-    ]
+    offenders = []
+    for path, tree in _trees():
+        excepted = _excepted_constants(path, tree)
+        offenders += [
+            (str(path.relative_to(REPO)), node.value[:80])
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and forbidden(path, node.value, excepted.get(id(node))) is not None
+        ]
     assert offenders == []
 
 
@@ -1051,6 +1123,16 @@ FORBIDDEN_ENV = re.compile(
 )
 ALLOWED_K8S_ENV = re.compile(r"^OPSPILOT_K8S_[A-Z0-9_]+$")
 ALLOWED_K8S_LAB_CODE = "KUBERNETES_NOT_LAB"
+#: C4 (#568): the only names containing ``ARGO`` allowed, by full match
+#: (module docstring).
+ALLOWED_ARGOCD_NAMES = frozenset(
+    {
+        "OPSPILOT_ARGOCD",
+        "ARGOCD_INVALID",
+        "ARGOCD_TOOL_NAMES",
+        "ARGOCD_TOOL_SCHEMA_REVISION",
+    }
+)
 ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]+$")
 CREDENTIAL_PATHS = re.compile(
     r"/var/run/secrets/kubernetes\.io|serviceaccount/token|\.kube/config"
@@ -1146,6 +1228,7 @@ def test_item4_an_entry_point_reads_no_cluster_ci_or_forge_credential(
         if FORBIDDEN_ENV.search(n)
         and not ALLOWED_K8S_ENV.fullmatch(n)
         and n != ALLOWED_K8S_LAB_CODE
+        and n not in ALLOWED_ARGOCD_NAMES
     } == {}
     assert paths == []
 

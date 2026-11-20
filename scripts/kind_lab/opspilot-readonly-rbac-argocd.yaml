@@ -1,0 +1,30 @@
+# ArgoCD Application overlay for OpsPilot's read-only identity (C4, #568;
+# decision table R8-19, pre-review C4-3/C4-4). Apply it where
+# OPSPILOT_ARGOCD=1 runs, after opspilot-readonly-rbac.yaml, which it does not
+# change. Only ArgoCD Applications, get and list (no watch); ApplicationSets,
+# AppProjects and every other argoproj.io resource stay unauthorized.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opspilot-investigator-argocd
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opspilot-investigator-argocd
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opspilot-investigator-argocd
+subjects:
+  - kind: ServiceAccount
+    name: opspilot-investigator
+    namespace: opspilot-readonly

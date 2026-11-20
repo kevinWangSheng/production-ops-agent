@@ -62,6 +62,7 @@ from opspilot.investigation.context import (
     KNOWLEDGE,
     PRIOR_REPLIES,
     RELEASE_OBSERVATION,
+    RUNBOOK_CATALOG,
     ContextError,
     conclusion_answered,
     conclusion_publishable,
@@ -101,6 +102,9 @@ from opspilot.investigation.reports import (
     parse_report,
 )
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.investigation.todo import REFUSAL as TODO_REFUSAL
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
+from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.release_commands import (
     ReleaseCommandReceipt,
@@ -498,6 +502,10 @@ class Workbench:
     targets: TargetRegistry | None = None
     knowledge: Any = None
     knowledge_max_age_seconds: int = 2592000
+    #: C2b (#566): the ``RunbookStore`` new Runs read the approved-runbook
+    #: list from (input v7); ``None`` -- the switch off -- leaves every input
+    #: as before.
+    runbook_catalog: Any = None
     #: The ``ReleaseStore`` the anomaly consumption pass and release
     #: rebuilds use (F11 PR-4b); ``None`` derives one on first use from the
     #: durable incident store's DSN and pool settings, as the release intake
@@ -1964,7 +1972,29 @@ class Workbench:
                 fresh,
                 scope_facts={**fresh.scope_facts, KNOWLEDGE: self._knowledge(request)},
             )
+        if self.runbook_catalog is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={
+                    **fresh.scope_facts,
+                    RUNBOOK_CATALOG: self._runbook_catalog(request),
+                },
+            )
         return fresh.as_json()
+
+    def _runbook_catalog(self, request: IntakeRequest) -> dict[str, Any]:
+        """The approved-runbook list a new Run starts with (C2b, C2-5):
+        read per Run in its own snapshot; a storage failure records
+        ``unavailable`` instead of blocking the Run, as knowledge hints do."""
+        try:
+            return catalog_for_target(
+                self.runbook_catalog,
+                request.target_id,
+                max_age_seconds=self.knowledge_max_age_seconds,
+            )
+        except (PersistenceError, DatabaseError, OSError, TimeoutError):
+            _log.warning("runbook catalog retrieval unavailable")
+            return unavailable_catalog(self.knowledge_max_age_seconds)
 
     def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
         """The approved knowledge a new Run of ``request`` starts with (F13
@@ -2083,6 +2113,11 @@ class Workbench:
             facts.pop(KNOWLEDGE, None)
             if self.knowledge is not None:
                 facts[KNOWLEDGE] = self._knowledge(request)
+            # C2b: re-read like knowledge, never carried; with the switch off
+            # an earlier Run's list does not reach the successor.
+            facts.pop(RUNBOOK_CATALOG, None)
+            if self.runbook_catalog is not None:
+                facts[RUNBOOK_CATALOG] = self._runbook_catalog(request)
             return replace(fresh, scope_facts=facts).as_json()
         except ContextError as exc:
             if exc.code != "INPUT_MISSING":
@@ -4510,6 +4545,28 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
+        if _is_task_list(result):
+            # C1 (#565): the loop's own task list, not a query; the page
+            # draws it as the plan (content was redacted before storing).
+            tools.append(
+                {
+                    "ordinal": item.get("ordinal"),
+                    "tool": TODO_TOOL_NAME,
+                    "status": result.get("status"),
+                    "reason": result.get("reason"),
+                    "task_list": True,
+                    "todos": [
+                        {
+                            "id": str(t.get("id")),
+                            "content": redact_credentials(str(t.get("content"))),
+                            "status": str(t.get("status")),
+                        }
+                        for t in result.get("todos") or []
+                        if isinstance(t, Mapping)
+                    ],
+                }
+            )
+            continue
         # #311 U6: the source's own 4xx answer -- status, and the redacted,
         # bounded envelope text the executor already put on the view.
         source_error = result.get("source_error")
@@ -4617,6 +4674,20 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(replies, list)
         else [],
     }
+
+
+def _is_task_list(result: Mapping[str, Any]) -> bool:
+    """C1 (#565): a committed ``TodoWrite`` view the loop answered itself --
+    never a gateway result (an unregistered ``TodoWrite`` refused by the
+    gateway stays a query row)."""
+    return (
+        result.get("tool") == TODO_TOOL_NAME
+        and "evidence_id" not in result
+        and (
+            isinstance(result.get("todos"), list)
+            or result.get("reason") == TODO_REFUSAL
+        )
+    )
 
 
 def _planned_name(planned: list[Any], ordinal: Any) -> str | None:

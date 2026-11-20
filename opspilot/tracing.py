@@ -213,6 +213,26 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     loki_url = env.get("OPSPILOT_LOKI_URL") or ""
     if loki_url and not _is_lab_host(loki_url):
         failures.append("LOKI_NOT_LAB")
+    # C5-5: likewise the VictoriaLogs address.
+    victorialogs_url = env.get("OPSPILOT_VICTORIALOGS_URL") or ""
+    if victorialogs_url and not _is_lab_host(victorialogs_url):
+        failures.append("VICTORIALOGS_NOT_LAB")
+    # C6-9: the SQL database address, whenever it is set.
+    sql_url = env.get("OPSPILOT_SQL_URL") or ""
+    if sql_url and not _is_lab_host(sql_url):
+        failures.append("SQL_NOT_LAB")
+    # C3-6: every Kafka bootstrap address, whenever any is set (the tools
+    # exist only then). Brokers the client is redirected to by metadata are
+    # outside this check (a known limit, listed in the C3 task record).
+    # C6c: the MongoDB address, whenever it is set.
+    mongodb_url = env.get("OPSPILOT_MONGODB_URL") or ""
+    if mongodb_url and not _is_lab_host(mongodb_url):
+        failures.append("MONGODB_NOT_LAB")
+    kafka_servers = env.get("OPSPILOT_KAFKA_BOOTSTRAP_SERVERS") or ""
+    if kafka_servers and not all(
+        _is_lab_host(f"kafka://{server}") for server in kafka_servers.split(",")
+    ):
+        failures.append("KAFKA_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")

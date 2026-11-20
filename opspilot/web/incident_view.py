@@ -705,6 +705,34 @@ def _message_status(
     return out
 
 
+#: Upstream's status marks (``core_investigation.py:67-72``).
+PLAN_MARKS: dict[str, str] = {
+    "pending": "[ ]",
+    "in_progress": "[~]",
+    "completed": "[✓]",
+    "failed": "[✗]",
+}
+
+
+def _plan(todos: Any) -> dict[str, Any]:
+    """One accepted ``TodoWrite`` list for the page, in the model's order;
+    ``done`` counts completed tasks. The template draws :data:`PLAN_MARKS`."""
+    items = [
+        {
+            "id": t.get("id"),
+            "content": t.get("content"),
+            "status": t.get("status"),
+        }
+        for t in todos or []
+        if isinstance(t, Mapping)
+    ]
+    return {
+        "done": sum(1 for t in items if t["status"] == "completed"),
+        "total": len(items),
+        "todos": items,
+    }
+
+
 def _log(
     snapshot: Mapping[str, Any],
     calls_by_eid: dict[str, dict[str, Any]],
@@ -792,6 +820,7 @@ def _log(
         is_current = bool(item.get("current"))
         steps = [(s, n) for r, s, n in numbered if r is item]
         run_entries: list[tuple[Any, dict[str, Any]]] = []
+        run_plan: dict[str, Any] | None = None
         first_step_at = next(
             (s.get("observed_at") for s, _ in steps if s.get("observed_at")), None
         )
@@ -938,7 +967,17 @@ def _log(
                     )
                 continue
             calls = []
+            plan: dict[str, Any] | None = None
+            plan_rejected = False
             for tool in step.get("tools") or []:
+                if tool.get("task_list"):
+                    # C1 (#565): the Agent's plan, not a query.
+                    if tool.get("status") == "ok":
+                        plan, plan_rejected = _plan(tool.get("todos")), False
+                        run_plan = plan
+                    else:
+                        plan_rejected = plan is None
+                    continue
                 call = _call(tool, day)
                 eid = call["evidence_id"]
                 if (
@@ -974,6 +1013,8 @@ def _log(
                         "history_only": bool(step.get("history_only")),
                         "planned": step.get("planned_tools") or 0,
                         "earlier_run": not is_current,
+                        "plan": plan,
+                        "plan_rejected": plan_rejected,
                     },
                 )
             )
@@ -982,6 +1023,8 @@ def _log(
                 reply_entry(
                     run_entries, reply, at, number, False, f"reply-{sid}-{index}"
                 )
+        # C1 (#565): the Run's plan is its last accepted task list.
+        run_entries[0][1]["plan"] = run_plan
         # P3-4: an entry without a time takes the time of the one before it
         # in its Run; a Run start without one takes its first dated entry.
         carry = next((at for at, _ in run_entries if at), None)
@@ -1168,6 +1211,7 @@ def _log(
         "started_at": iso(started_at),
         "messages": sum(1 for e in ordered if e["kind"] in ("human", "reply")),
         "runs": len(runs),
+        "plan_marks": PLAN_MARKS,
     }
 
 

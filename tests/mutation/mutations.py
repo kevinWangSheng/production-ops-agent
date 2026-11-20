@@ -327,4 +327,37 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    redacted = _redact_escaped_quotes(redacted)\n",
         "    pass\n",
     ),
+    Mutation(
+        "M37",
+        "credentials: runbook catalog descriptions are redacted before the v7 fact (#566 C2b)",
+        # ASSUMPTION (test author, implementation unseen): catalog.py calls
+        # ``redact_credentials(`` exactly once, on the description; the
+        # runner reports ``stale`` otherwise and the implementer pins the
+        # exact line.
+        "opspilot/knowledge/catalog.py",
+        "redact_credentials(",
+        "str(",
+        pg=True,
+    ),
+    Mutation(
+        "M38",
+        "credentials: TodoWrite task content is redacted before it is stored or returned (#565 C1)",
+        "opspilot/investigation/todo.py",
+        '            "content": redact_credentials(item["content"]),\n',
+        '            "content": item["content"],\n',
+    ),
+    Mutation(
+        "M39",
+        "scope: with Helm on, only the exact Helm release page of Secrets is sent (#563 B4-5)",
+        "opspilot/tools/kubernetes_core.py",
+        '    if resource != "secrets":\n        return None\n',
+        "    if True:\n        return None\n",
+    ),
+    Mutation(
+        "M40",
+        "credentials: Helm values, manifest and notes never leave the Helm tools (#563 R8-18)",
+        "opspilot/tools/helm_releases.py",
+        '        "rollback_revision": rollback,\n    }\n',
+        '        "rollback_revision": rollback,\n        "config": record.get("config"),\n    }\n',
+    ),
 )

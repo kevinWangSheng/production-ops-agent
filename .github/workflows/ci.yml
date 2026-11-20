@@ -623,6 +623,45 @@ jobs:
           [ "$status" = "401" ] || { docker logs loki-gateway >&2; exit 1; }
           curl -fsS http://127.0.0.1:53111/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
           curl -fsS http://127.0.0.1:53110/loki/api/v1/status/buildinfo | jq -r '"loki " + .version'
+      - name: Start VictoriaLogs and its read-only gateway
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # victoriametrics/victoria-logs:v1.54.0 multi-platform index, read
+          # from Docker Hub on 2026-11-19; same nginx digest as above.
+          VLOGS_IMAGE: victoriametrics/victoria-logs@sha256:ee4e820cac3721f5f5d91641b950c22439593adc4224f9655e5333d5a84c1dfe
+          NGINX_IMAGE: nginx@sha256:b24de00298eb7fb23839442d46c780991be7bc7ddb081b6c0876ac777012e352
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          docker run -d --name vlogs --network c5-logs --cpus=1 --memory=256m \
+            -p 127.0.0.1:53113:9428 "$VLOGS_IMAGE" -retentionPeriod=7d
+          ready=
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://127.0.0.1:53113/health > /dev/null; then
+              ready=1; break
+            fi
+            sleep 1
+          done
+          [ -n "$ready" ] || { docker logs vlogs >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/c5b-gateway" "$RUNNER_TEMP/c5b-gateway-logs"
+          chmod 0777 "$RUNNER_TEMP/c5b-gateway-logs"
+          python3 -I scripts/loki_readonly_gateway.py render --backend victorialogs \
+            --server 8080=vlogs:9428 --deny-port 8081 \
+            --bind 0.0.0.0 --access-log /var/log/opspilot/access.log \
+            > "$RUNNER_TEMP/c5b-gateway/nginx.conf"
+          cp "$RUNNER_TEMP/c5-gateway/htpasswd" "$RUNNER_TEMP/c5b-gateway/htpasswd"
+          chmod 0644 "$RUNNER_TEMP/c5b-gateway/nginx.conf" "$RUNNER_TEMP/c5b-gateway/htpasswd"
+          docker run -d --name vlogs-gateway --network c5-logs --cpus=0.5 --memory=64m \
+            -p 127.0.0.1:53103:8080 -p 127.0.0.1:53104:8081 \
+            -v "$RUNNER_TEMP/c5b-gateway:/etc/opspilot-gateway:ro" \
+            -v "$RUNNER_TEMP/c5b-gateway-logs:/var/log/opspilot" \
+            "$NGINX_IMAGE" nginx -g 'daemon off;' -c /etc/opspilot-gateway/nginx.conf
+          for _ in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:53103/" || true)
+            [ "$status" = "401" ] && break
+            sleep 1
+          done
+          [ "$status" = "401" ] || { docker logs vlogs-gateway >&2; exit 1; }
+          curl -fsS http://127.0.0.1:53113/metrics | grep -m1 '^vm_app_version' || true
       - name: Set up uv and Python
         if: steps.scope.outputs.full != 'false'
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -642,11 +681,720 @@ jobs:
           jq --version
           C5_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5-gateway-logs/access.log" \
             .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5_log_backends.py -q -rs
+      - name: VictoriaLogs tools against a real backend
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_LOG_BACKENDS: "1"
+          C5_GATEWAY_PASSWORD: changeme569
+        run: |
+          C5B_VLOGS_URL=http://127.0.0.1:53113 \
+          C5B_GATEWAY_VLOGS_URL=http://127.0.0.1:53103 \
+          C5B_GATEWAY_URL=http://127.0.0.1:53103 \
+          C5_GATEWAY_DENY_URL=http://127.0.0.1:53102 \
+          C5B_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5b-gateway-logs/access.log" \
+          C5B_PROBE_OUT="$RUNNER_TEMP/c5b-probe.json" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5b_victorialogs*.py -q -rs -s
+          cat "$RUNNER_TEMP/c5b-probe.json"
       - name: Container logs on failure
         if: failure()
         run: |
-          for name in loki3 loki29 loki-gateway; do
+          for name in loki3 loki29 loki-gateway vlogs vlogs-gateway; do
             echo "--- $name"
             docker logs --tail 200 "$name" 2>&1 || true
           done
           tail -n 50 "$RUNNER_TEMP/c5-gateway-logs/access.log" 2>/dev/null || true
+          tail -n 50 "$RUNNER_TEMP/c5b-gateway-logs/access.log" 2>/dev/null || true
+
+  # B3 (#562, R8-25): the live usage tools against a real API server and
+  # metrics-server -- a single-node kind cluster with the same vendored
+  # metrics-server manifest the lab applies, the A1 read-only identity and a
+  # token issued for it, and synthetic load. No model. The tests are gated
+  # by OPSPILOT_K8S_LIVE=1; the independent author's file runs first, then
+  # metrics-server is restored, then the implementer's _impl file (both end by
+  # scaling metrics-server to 0 and deleting its APIService for the real
+  # 503/404; the _impl file restores them itself).
+  k8s-live-metrics:
+    name: k8s-live-metrics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start kind with metrics-server and the read-only identity
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # kind v0.31.0 (the version upstream HolmesGPT's eval CI uses) and
+          # its default node image, digests from the v0.31.0 release notes.
+          KIND_VERSION: v0.31.0
+          KIND_SHA256: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+          KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kind" \
+            "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/kind" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kind"
+          "$RUNNER_TEMP/kind" create cluster --name b3 --image "$KIND_NODE_IMAGE" --wait 120s
+          kubectl version
+          kubectl apply -f scripts/kind_lab/metrics-server-v0.8.1.yaml
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac.yaml
+          kubectl apply -f tests/fixtures/b3_live_metrics/workloads.yaml
+          kubectl -n kube-system wait --for=condition=Available deployment/metrics-server --timeout=180s
+          kubectl -n ns-a wait --for=condition=Ready pod --all --timeout=120s
+          kubectl -n ns-b wait --for=condition=Ready pod --all --timeout=120s
+          # The first scrape takes one or two metric-resolution periods.
+          for _ in $(seq 1 60); do
+            rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
+            idle=$(kubectl top pods -n ns-b --no-headers 2>/dev/null | grep -c '^idle ' || true)
+            nodes=$(kubectl top nodes --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && [ "$idle" = "1" ] && [ "$nodes" -ge 1 ] && break
+            sleep 3
+          done
+          kubectl top pods -n ns-a
+          kubectl top nodes
+          [ "$rows" = "3" ] && [ "$idle" = "1" ] || { echo "metrics never covered ns-a and ns-b" >&2; exit 1; }
+          mkdir -p "$RUNNER_TEMP/b3"
+          kubectl config view --raw --minify \
+            -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+            | base64 -d > "$RUNNER_TEMP/b3/ca.crt"
+          server=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
+          # Tokens go to files, never to the log.
+          kubectl -n opspilot-readonly create token opspilot-investigator --duration=1h \
+            > "$RUNNER_TEMP/b3/readonly.token"
+          kubectl -n ns-b create token no-metrics --duration=1h \
+            > "$RUNNER_TEMP/b3/no-metrics.token"
+          chmod 0600 "$RUNNER_TEMP/b3/"*.token
+          {
+            echo "B3_K8S_API_URL=$server"
+            echo "B3_K8S_CA_FILE=$RUNNER_TEMP/b3/ca.crt"
+            echo "B3_K8S_TOKEN_FILE=$RUNNER_TEMP/b3/readonly.token"
+            echo "B3_K8S_NO_METRICS_TOKEN_FILE=$RUNNER_TEMP/b3/no-metrics.token"
+          } >> "$GITHUB_ENV"
+          kubectl -n kube-system get deployment metrics-server \
+            -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Live usage tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_K8S_LIVE: "1"
+          B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b3_live_metrics.py -q -rs
+      # Both files end by removing metrics-server's replica and APIService and
+      # restore them themselves; this re-checks before the next file runs.
+      - name: Restore metrics-server
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: |
+          kubectl apply -f scripts/kind_lab/metrics-server-v0.8.1.yaml
+          kubectl -n kube-system scale deployment/metrics-server --replicas=1
+          kubectl -n kube-system wait --for=condition=Available deployment/metrics-server --timeout=180s
+          kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
+          for _ in $(seq 1 60); do
+            rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
+            idle=$(kubectl top pods -n ns-b --no-headers 2>/dev/null | grep -c '^idle ' || true)
+            nodes=$(kubectl top nodes --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && [ "$idle" = "1" ] && [ "$nodes" -ge 1 ] && break
+            sleep 3
+          done
+          [ "$rows" = "3" ] && [ "$idle" = "1" ] || { echo "metrics did not come back" >&2; exit 1; }
+      - name: Live usage tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_LIVE: "1"
+          B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b3_live_metrics_impl.py -q -rs
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide 2>&1 || true
+          kubectl get apiservice v1beta1.metrics.k8s.io -o yaml 2>&1 || true
+          kubectl -n kube-system logs deployment/metrics-server --tail=200 2>&1 || true
+
+  # B4 (#563, R8-25): the Helm release history tools against a real kind
+  # cluster `b4` (apiserver pinned to 127.0.0.1:36443, Secret requests in an
+  # audit log at Metadata level), release records written by real Helm 3 and
+  # Helm 4, and only the read-only identity's tokens. No model. Names and
+  # variables are fixed by docs/tasks/2026-11-20-tool-expansion-b4.md; C4 adds
+  # its steps here. Gated by OPSPILOT_K8S_BACKENDS_LIVE=1; the independent
+  # author's file runs first, then the implementer's _impl file.
+  k8s-backends:
+    name: k8s-backends
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Install kind and Helm 3 and 4
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # kind v0.31.0 and its node image, as k8s-live-metrics.
+          KIND_VERSION: v0.31.0
+          KIND_SHA256: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+          # Helm v3.22.1 and v4.3.1 (2026-10-15; v4.3.2 is under two weeks
+          # old), sha256 from the release notes' checksum links.
+          HELM3_VERSION: v3.22.1
+          HELM3_SHA256: 896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea
+          HELM4_VERSION: v4.3.1
+          HELM4_SHA256: 0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kind" \
+            "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256}  $RUNNER_TEMP/kind" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/kind"
+          for pair in "helm3 ${HELM3_VERSION} ${HELM3_SHA256}" "helm4 ${HELM4_VERSION} ${HELM4_SHA256}"; do
+            set -- $pair
+            curl -fsSL -o "$RUNNER_TEMP/$1.tar.gz" "https://get.helm.sh/helm-$2-linux-amd64.tar.gz"
+            echo "$3  $RUNNER_TEMP/$1.tar.gz" | sha256sum -c -
+            mkdir -p "$RUNNER_TEMP/$1"
+            tar -xzf "$RUNNER_TEMP/$1.tar.gz" -C "$RUNNER_TEMP/$1" --strip-components=1 linux-amd64/helm
+            "$RUNNER_TEMP/$1/helm" version --short
+          done
+          {
+            echo "B4_HELM3_BIN=$RUNNER_TEMP/helm3/helm"
+            echo "B4_HELM4_BIN=$RUNNER_TEMP/helm4/helm"
+          } >> "$GITHUB_ENV"
+      - name: Start kind b4 with the audit log and the read-only identities
+        if: steps.scope.outputs.full != 'false'
+        env:
+          KIND_NODE_IMAGE: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+        run: |
+          sed "s|__REPO__|$GITHUB_WORKSPACE|" tests/fixtures/b4_helm/kind-config.yaml \
+            > "$RUNNER_TEMP/b4-kind-config.yaml"
+          "$RUNNER_TEMP/kind" create cluster --name b4 --image "$KIND_NODE_IMAGE" \
+            --config "$RUNNER_TEMP/b4-kind-config.yaml" --wait 120s
+          kubectl version
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac.yaml
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac-helm.yaml
+          kubectl apply -f tests/fixtures/b4_helm/base-only-sa.yaml
+          mkdir -p "$RUNNER_TEMP/b4"
+          kubectl config view --raw --minify \
+            -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+            | base64 -d > "$RUNNER_TEMP/b4/ca.crt"
+          server=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
+          [ "$server" = "https://127.0.0.1:36443" ] || { echo "unexpected apiserver $server" >&2; exit 1; }
+          # Tokens go to files, never to the log.
+          kubectl -n opspilot-readonly create token opspilot-investigator --duration=1h \
+            > "$RUNNER_TEMP/b4/readonly.token"
+          kubectl -n opspilot-readonly create token opspilot-investigator-base --duration=1h \
+            > "$RUNNER_TEMP/b4/base-only.token"
+          chmod 0600 "$RUNNER_TEMP/b4/"*.token
+          docker exec b4-control-plane test -f /var/log/kubernetes/audit/audit.log
+          {
+            echo "B4_K8S_API_URL=$server"
+            echo "B4_K8S_CA_FILE=$RUNNER_TEMP/b4/ca.crt"
+            echo "B4_K8S_TOKEN_FILE=$RUNNER_TEMP/b4/readonly.token"
+            echo "B4_K8S_BASE_TOKEN_FILE=$RUNNER_TEMP/b4/base-only.token"
+            echo "B4_KIND_NODE=b4-control-plane"
+            echo "B4_AUDIT_LOG=/var/log/kubernetes/audit/audit.log"
+            echo "B4_CANARIES=tests/fixtures/b4_helm/canaries.txt"
+          } >> "$GITHUB_ENV"
+      - name: Seed the synthetic Helm release history
+        if: steps.scope.outputs.full != 'false'
+        run: bash tests/fixtures/b4_helm/seed.sh
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Helm release tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b4_helm.py -q -rs
+      - name: Helm release tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b4_helm_impl.py -q -rs
+      # C4 (#568): ArgoCD CRDs only (no controller; the Application CRD has no
+      # status subresource, so the seed writes status directly), the ArgoCD
+      # overlay on the same read-only identity, then the two test files.
+      - name: Install the ArgoCD v3.6.1 CRDs and the ArgoCD overlay
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: |
+          base=https://raw.githubusercontent.com/argoproj/argo-cd/v3.6.1/manifests/crds
+          mkdir -p "$RUNNER_TEMP/c4"
+          while read -r sum file; do
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/c4/$file" "$base/$file"
+            echo "$sum  $RUNNER_TEMP/c4/$file" | sha256sum -c -
+          done <<'SUMS'
+          9fd0da3e7097ad6d1af614fabd5c960bc7ddb00d768c3ef485a2fda6e9460df8 application-crd.yaml
+          980128848a8d2152b946aec6a11cdd1174b38b04587f4fba94537c040fd84202 applicationset-crd.yaml
+          084150a2feccd188a1dee09cd8a3a259dfacecdfb7e10037df78900f60816482 appproject-crd.yaml
+          SUMS
+          # The Application CRD is 416 KB, past the client-side apply annotation.
+          kubectl apply --server-side -f "$RUNNER_TEMP/c4/"
+          # kubectl wait errors on a CRD whose status has no conditions yet.
+          for crd in applications applicationsets appprojects; do
+            ok=
+            for _ in $(seq 1 60); do
+              state=$(kubectl get crd "$crd.argoproj.io" \
+                -o jsonpath='{.status.conditions[?(@.type=="Established")].status}' 2>/dev/null || true)
+              if [ "$state" = "True" ]; then ok=1; break; fi
+              sleep 1
+            done
+            [ -n "$ok" ] || { echo "CRD $crd.argoproj.io not established" >&2; exit 1; }
+          done
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac-argocd.yaml
+          {
+            echo "C4_CANARIES=tests/fixtures/c4_argocd/canaries.txt"
+            echo "C4_ARGOCD_NAMESPACE=argocd"
+          } >> "$GITHUB_ENV"
+      - name: Seed the synthetic ArgoCD Applications
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: bash tests/fixtures/c4_argocd/seed.sh
+      - name: ArgoCD tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd.py -q -rs
+      - name: ArgoCD tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd_impl.py -q -rs
+      - name: ArgoCD tools with the Application CRD removed
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+          C4_ARGOCD_CRD_REMOVED: "1"
+        run: |
+          kubectl delete crd applications.argoproj.io --wait=true
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd.py \
+            tests/integration/test_tool_expansion_c4_argocd_impl.py -q -rs
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide 2>&1 || true
+          kubectl get applications -A -o name 2>&1 || true
+          # Names only, never a Secret body.
+          kubectl get secrets -A --field-selector type=helm.sh/release.v1 -o name 2>&1 || true
+
+  # C6a (#570, R8-25): the SQL tools against real PostgreSQL 17, MySQL 8.0
+  # and MariaDB 11 (the HolmesGPT database tasks' images), synthetic data and
+  # a read-only account each test file creates for itself. No model. Not
+  # OpsPilot's own PostgreSQL. PostgreSQL logs every statement and
+  # MySQL/MariaDB keep a general_log table, so a test can prove a statement
+  # never reached the server. Gated by OPSPILOT_DB_BACKENDS=1; the
+  # independent author's file runs first, then the implementer's _impl file.
+  db-backends:
+    name: db-backends
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      # Same scope pre-check as the jobs above: only a PR whose every change is
+      # an added or edited regular *.md file may skip the run.
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start PostgreSQL, MySQL and MariaDB
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # postgres:17.2-alpine, mysql:8.0.40 and mariadb:11.6.2 multi-platform
+          # indexes, read from Docker Hub on 2026-11-20.
+          PG_IMAGE: postgres@sha256:7e5df973a74872482e320dcbdeb055e178d6f42de0558b083892c50cda833c96
+          MYSQL_IMAGE: mysql@sha256:d58ac93387f644e4e040c636b8f50494e78e5afc27ca0a87348b2f577da2b7ff
+          MARIADB_IMAGE: mariadb@sha256:bfb1298c06cd15f446f1c59600b3a856dae861705d1a2bd2a00edbd6c74ba748
+          # C6b: clickhouse/clickhouse-server:24.1-alpine (multi-platform index)
+          # and mcr.microsoft.com/mssql/server:2022-latest (amd64 only), read on
+          # 2026-11-20.
+          CLICKHOUSE_IMAGE: clickhouse/clickhouse-server@sha256:360a13d58afe559036b13ae5e21ba361d990081c93987d3fef0e5d7ea2dcd074
+          # C6c: mongo:7.0.17 multi-platform index, read on 2026-11-20.
+          MONGO_IMAGE: mongo@sha256:ac9e83c57e32bf767f875ac2b9a9d87800d2d91a7829180c3a4826e0599698e8
+          MSSQL_IMAGE: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
+          # SQL Server requires a complex password; CI only, never a real secret.
+          C6_MSSQL_ADMIN_PASSWORD: Changeme570!
+          # A CI-only admin password, never a real secret.
+          C6_ADMIN_PASSWORD: changeme570
+        run: |
+          docker run -d --name c6-postgres --cpus=1 --memory=256m \
+            -e POSTGRES_PASSWORD="$C6_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53201:5432 "$PG_IMAGE" -c log_statement=all
+          # MySQL 8 with the general log table needs headroom past 512m: the
+          # second CI run of PR #746 lost mysqld mid-run at 512m.
+          docker run -d --name c6-mysql --cpus=1 --memory=1g \
+            -e MYSQL_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53202:3306 "$MYSQL_IMAGE" --general-log=1 --log-output=TABLE
+          docker run -d --name c6-clickhouse --cpus=1 --memory=1g \
+            --ulimit nofile=262144:262144 \
+            -e CLICKHOUSE_PASSWORD="$C6_ADMIN_PASSWORD" -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+            -p 127.0.0.1:53204:8123 "$CLICKHOUSE_IMAGE"
+          docker run -d --name c6-mssql --cpus=2 --memory=2560m \
+            -e ACCEPT_EULA=Y -e MSSQL_PID=Developer -e MSSQL_SA_PASSWORD="$C6_MSSQL_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53205:1433 "$MSSQL_IMAGE"
+          docker run -d --name c6-mongo --cpus=1 --memory=512m \
+            -e MONGO_INITDB_ROOT_USERNAME=root -e MONGO_INITDB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53206:27017 "$MONGO_IMAGE"
+          docker run -d --name c6-mariadb --cpus=1 --memory=512m \
+            -e MARIADB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
+            -p 127.0.0.1:53203:3306 "$MARIADB_IMAGE" --general-log=1 --log-output=TABLE
+          ready=
+          for _ in $(seq 1 90); do
+            if docker exec c6-postgres pg_isready -U postgres -h 127.0.0.1 > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-postgres >&2; exit 1; }
+          # The entrypoints restart the server once after initialising; wait
+          # for a TCP query, not the socket.
+          for name in c6-mysql c6-mariadb; do
+            client=mysql
+            [ "$name" = c6-mariadb ] && client=mariadb
+            ready=
+            for _ in $(seq 1 90); do
+              if docker exec "$name" "$client" -h127.0.0.1 -uroot -p"$C6_ADMIN_PASSWORD" \
+                  -e 'SELECT 1' > /dev/null 2>&1; then
+                ready=1; break
+              fi
+              sleep 2
+            done
+            [ -n "$ready" ] || { docker logs "$name" >&2; exit 1; }
+          done
+          ready=
+          for _ in $(seq 1 60); do
+            if curl -fsS --max-time 3 http://127.0.0.1:53204/ping > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-clickhouse >&2; exit 1; }
+          ready=
+          for _ in $(seq 1 90); do
+            if docker exec c6-mssql /opt/mssql-tools18/bin/sqlcmd -C -No -S localhost \
+                -U sa -P "$C6_MSSQL_ADMIN_PASSWORD" -Q 'SELECT 1' > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-mssql >&2; exit 1; }
+          ready=
+          for _ in $(seq 1 60); do
+            if docker exec c6-mongo mongosh --quiet -u root -p "$C6_ADMIN_PASSWORD" \
+                --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' \
+                > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs c6-mongo >&2; exit 1; }
+          docker exec c6-postgres psql -U postgres -tAc 'SELECT version()'
+          curl -fsS -H "X-ClickHouse-User: default" -H "X-ClickHouse-Key: $C6_ADMIN_PASSWORD" \
+            'http://127.0.0.1:53204/?query=SELECT%20version()'
+          docker exec c6-mssql /opt/mssql-tools18/bin/sqlcmd -C -No -S localhost -U sa \
+            -P "$C6_MSSQL_ADMIN_PASSWORD" -h -1 -Q 'SET NOCOUNT ON; SELECT @@VERSION'
+          docker exec c6-mysql mysql -uroot -p"$C6_ADMIN_PASSWORD" -NBe 'SELECT VERSION()' 2>/dev/null
+          docker exec c6-mariadb mariadb -uroot -p"$C6_ADMIN_PASSWORD" -NBe 'SELECT VERSION()' 2>/dev/null
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: SQL tools against real databases
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_DB_BACKENDS: "1"
+          C6_DB_HOST: 127.0.0.1
+          C6_PG_PORT: "53201"
+          C6_MYSQL_PORT: "53202"
+          C6_MARIADB_PORT: "53203"
+          C6_UNREACHABLE_PORT: "53209"
+          C6_PG_ADMIN_USER: postgres
+          C6_MYSQL_ADMIN_USER: root
+          C6_MARIADB_ADMIN_USER: root
+          C6_ADMIN_PASSWORD: changeme570
+          C6_PG_CONTAINER: c6-postgres
+          C6_MYSQL_CONTAINER: c6-mysql
+          C6_MARIADB_CONTAINER: c6-mariadb
+          C6_CLICKHOUSE_PORT: "53204"
+          C6_MSSQL_PORT: "53205"
+          C6_CLICKHOUSE_ADMIN_USER: default
+          C6_MSSQL_ADMIN_USER: sa
+          C6_MSSQL_ADMIN_PASSWORD: Changeme570!
+          C6_CLICKHOUSE_CONTAINER: c6-clickhouse
+          C6_MSSQL_CONTAINER: c6-mssql
+          C6_MONGO_PORT: "53206"
+          C6_MONGO_ADMIN_USER: root
+          C6_MONGO_CONTAINER: c6-mongo
+        run: |
+          jq --version
+          files=""
+          for name in tests/integration/test_tool_expansion_c6a_sql.py \
+              tests/integration/test_tool_expansion_c6a_sql_impl.py \
+              tests/integration/test_tool_expansion_c6b_sql.py \
+              tests/integration/test_tool_expansion_c6b_sql_impl.py \
+              tests/integration/test_tool_expansion_c6c_mongo.py \
+              tests/integration/test_tool_expansion_c6c_mongo_impl.py; do
+            [ -f "$name" ] && files="$files $name"
+          done
+          [ -n "$files" ] || { echo "no C6a integration test file" >&2; exit 1; }
+          # shellcheck disable=SC2086
+          .venv/bin/python -m pytest $files -q -rs
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql c6-mongo; do
+            echo "--- $name"
+            docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
+            docker logs --tail 200 "$name" 2>&1 || true
+          done
+  kafka-backend:
+    name: kafka-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      # Same scope pre-check as the jobs above: only a PR whose every change is
+      # an added or edited regular *.md file may skip the run.
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
+      - name: Start Kafka (KRaft, SASL and anonymous listeners)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          # apache/kafka:4.3.2 multi-platform index, read from Docker Hub on
+          # 2026-11-20 (C3-16).
+          KAFKA_IMAGE: apache/kafka@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+        run: |
+          # CI-only SASL PLAIN users (C3-17), never real secrets. The image's
+          # configure script requires the JAAS file in KAFKA_OPTS for SASL.
+          jaas_dir="$RUNNER_TEMP/kafka-jaas"
+          mkdir -p "$jaas_dir"
+          cat > "$jaas_dir/server_jaas.conf" <<'JAAS'
+          KafkaServer {
+            org.apache.kafka.common.security.plain.PlainLoginModule required
+            username="admin" password="admin-pass"
+            user_admin="admin-pass" user_opspilot="opspilot-pass" user_nobody="nobody-pass";
+          };
+          JAAS
+          chmod 755 "$jaas_dir"; chmod 644 "$jaas_dir/server_jaas.conf"
+          docker run -d --name opspilot-ci-kafka --cpus=1 --memory=768m \
+            -p 127.0.0.1:19092:19092 -p 127.0.0.1:19094:19094 \
+            -v "$jaas_dir:/etc/kafka/opspilot:ro" \
+            -e KAFKA_OPTS=-Djava.security.auth.login.config=/etc/kafka/opspilot/server_jaas.conf \
+            -e KAFKA_HEAP_OPTS="-Xms384m -Xmx384m" \
+            -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
+            -e KAFKA_NODE_ID=1 \
+            -e KAFKA_PROCESS_ROLES=broker,controller \
+            -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:19093 \
+            -e KAFKA_LISTENERS=SASL_PLAINTEXT://:19092,NOAUTH://:19094,CONTROLLER://:19093 \
+            -e KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://localhost:19092,NOAUTH://localhost:19094 \
+            -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=SASL_PLAINTEXT:SASL_PLAINTEXT,NOAUTH:PLAINTEXT,CONTROLLER:PLAINTEXT \
+            -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_INTER_BROKER_LISTENER_NAME=NOAUTH \
+            -e KAFKA_SASL_ENABLED_MECHANISMS=PLAIN \
+            -e KAFKA_AUTHORIZER_CLASS_NAME=org.apache.kafka.metadata.authorizer.StandardAuthorizer \
+            -e "KAFKA_SUPER_USERS=User:admin;User:ANONYMOUS" \
+            -e KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND=false \
+            -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=true \
+            -e KAFKA_NUM_PARTITIONS=1 \
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+            "$KAFKA_IMAGE"
+          ready=
+          for _ in $(seq 1 90); do
+            # A CLI JVM of its own beside the broker: keep it small.
+            if docker exec -e KAFKA_HEAP_OPTS=-Xmx64m -e KAFKA_OPTS= opspilot-ci-kafka \
+                /opt/kafka/bin/kafka-broker-api-versions.sh \
+                --bootstrap-server localhost:19094 > /dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs opspilot-ci-kafka >&2; exit 1; }
+          docker exec -e KAFKA_HEAP_OPTS=-Xmx64m -e KAFKA_OPTS= opspilot-ci-kafka \
+            /opt/kafka/bin/kafka-topics.sh --version
+      - name: Set up uv and Python
+        if: steps.scope.outputs.full != 'false'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.10.8"
+          python-version: "3.12.13"
+          enable-cache: false
+      - name: Install locked development dependencies
+        id: setup
+        if: steps.scope.outputs.full != 'false'
+        run: make setup
+      - name: Kafka tools against a real broker (independent author)
+        if: steps.scope.outputs.full != 'false'
+        env:
+          OPSPILOT_KAFKA_BACKEND: "1"
+          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
+          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_ADMIN_USER: admin
+          KAFKA_IT_ADMIN_PASSWORD: admin-pass
+          KAFKA_IT_READONLY_USER: opspilot
+          KAFKA_IT_READONLY_PASSWORD: opspilot-pass
+          KAFKA_IT_NOACL_USER: nobody
+          KAFKA_IT_NOACL_PASSWORD: nobody-pass
+        run: |
+          jq --version
+          KAFKA_IT_PROBE_OUT="$RUNNER_TEMP/kafka-probe.jsonl" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c3_kafka.py -q -rs
+      - name: Kafka tools against a real broker (implementer)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          OPSPILOT_KAFKA_BACKEND: "1"
+          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
+          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_ADMIN_USER: admin
+          KAFKA_IT_ADMIN_PASSWORD: admin-pass
+          KAFKA_IT_READONLY_USER: opspilot
+          KAFKA_IT_READONLY_PASSWORD: opspilot-pass
+          KAFKA_IT_NOACL_USER: nobody
+          KAFKA_IT_NOACL_PASSWORD: nobody-pass
+        run: |
+          KAFKA_IT_PROBE_OUT="$RUNNER_TEMP/kafka-probe.jsonl" \
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c3_kafka_impl.py -q -rs
+      - name: Recorded observations
+        if: always() && steps.scope.outputs.full != 'false'
+        run: cat "$RUNNER_TEMP/kafka-probe.jsonl" 2>/dev/null || echo "no observations"
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' opspilot-ci-kafka 2>&1 || true
+          docker logs --tail 300 opspilot-ci-kafka 2>&1 || true
