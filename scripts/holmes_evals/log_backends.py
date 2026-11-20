@@ -153,12 +153,22 @@ def start_port_forward(
 
 
 def namespace_gone(namespace: str, env: Mapping[str, str]) -> bool:
-    """True when the namespace does not exist. A cluster kubectl cannot reach
-    counts as gone (nothing of ours can be left there for the next attempt;
-    ``before_test`` fails on such a host anyway)."""
+    """True only when kubectl answered and the namespace does not exist
+    (``--ignore-not-found``: exit 0 with empty output). Any failure -- no
+    kubectl, a timeout, an unreachable API, another error -- is *not*
+    released (fail closed, PR #733 review): a namespace that may still hold
+    the previous attempt's Loki must never be reused."""
     try:
         done = subprocess.run(
-            ["kubectl", "get", "namespace", namespace, "-o", "name"],
+            [
+                "kubectl",
+                "get",
+                "namespace",
+                namespace,
+                "--ignore-not-found",
+                "-o",
+                "name",
+            ],
             env=dict(env),
             stdin=subprocess.DEVNULL,
             capture_output=True,
@@ -167,8 +177,8 @@ def namespace_gone(namespace: str, env: Mapping[str, str]) -> bool:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return True
-    return done.returncode != 0
+        return False
+    return done.returncode == 0 and not done.stdout.strip()
 
 
 def _gateway(argv: list[str]) -> None:

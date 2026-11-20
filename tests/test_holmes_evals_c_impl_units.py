@@ -554,3 +554,43 @@ def test_runner_accepts_c5_and_sets_backend_env(tmp_path: Path) -> None:
         runner.preflight(cfg)
     # Past the question check and the ES requirement (no ES question chosen).
     assert err.value.code.startswith("UPSTREAM_")
+
+
+# -- PR #733 review: the namespace check fails closed ------------------------------------
+
+
+def _kubectl(tmp_path: Path, body: str) -> dict[str, str]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    tool = bin_dir / "kubectl"
+    tool.write_text("#!/bin/sh\n" + body + "\n")
+    tool.chmod(0o755)
+    return {"PATH": f"{bin_dir}:/usr/bin:/bin"}
+
+
+@pytest.mark.parametrize(
+    ("body", "gone"),
+    [
+        ("exit 0", True),  # --ignore-not-found: absent
+        ("echo namespace/app-101; exit 0", False),  # still there
+        ("echo 'Unable to connect to the server' >&2; exit 1", False),
+    ],
+)
+def test_namespace_gone_only_on_clean_empty_answer(
+    tmp_path: Path, body: str, gone: bool
+) -> None:
+    assert log_backends.namespace_gone("app-101", _kubectl(tmp_path, body)) is gone
+
+
+def test_namespace_gone_without_kubectl_or_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert log_backends.namespace_gone("app-101", {"PATH": str(empty)}) is False
+
+    def slow(*args: Any, **kwargs: Any) -> Any:
+        raise log_backends.subprocess.TimeoutExpired("kubectl", 30)
+
+    monkeypatch.setattr(log_backends.subprocess, "run", slow)
+    assert log_backends.namespace_gone("app-101", {"PATH": "/bin"}) is False
