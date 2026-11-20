@@ -9,7 +9,9 @@ each round's ``*/trial-*/summary.json`` and writes one row per
 ``(question, task list on/off)``: the main run gives 283 on and the hard
 questions off; ``c1-todo-off-283`` gives 283 off; ``c1-todo-on-hard`` the
 hard questions on. A row found in two rounds is refused
-(``TODO_ROW_DUPLICATE``). Pass counts use the driver's ``trial_record`` rule
+(``TODO_ROW_DUPLICATE``); a round whose trials of one question disagree
+on the switch is refused (``TODO_ROW_MIXED``). Rows are located by round and
+question; a missing trial counts in its row and never passes. Pass counts use the driver's ``trial_record`` rule
 (R8-3: only a judged A passes; missing and judge-exhausted trials score 0).
 No score threshold and no significance test: the table is reported as it
 is, on its own, never folded into the data-source tool scores.
@@ -31,7 +33,7 @@ SCHEMA = "holmes-evals-todo-compare-1"
 QUESTIONS: tuple[str, ...] = C1_QUESTIONS + TODO_HARD_QUESTIONS
 NOTES = (
     "调查行为工具（TodoWrite）的开关对照，单独成表，不并入数据源工具的分数（范围原则 1）。",
-    "通过：同一 judge、R8-3 口径，只有 judge 判 A 算通过；缺遍与 judge 无结论记 0，分母恒为 3。",
+    "通过：同一 judge、R8-3 口径，只有 judge 判 A 算通过；缺遍与 judge 无结论记 0，分母恒为 3。行按轮名加题号定位；缺遍计入该行遍数，不算通过。",
     "查询数为审计记录的网关查询条数（run.tool_requests），TodoWrite 不经网关、不计入，被拒的重复调用也不计入；模型请求数取 Run 行的 model_requests_used。",
     "耗时为驱动从投递到终态的等待秒数，按约 5 秒轮询，粒度约 5 秒。",
     "每格 3 遍，样本小，只照实报告，不设门槛、不做显著性判断。",
@@ -60,6 +62,8 @@ def _mean(values: Sequence[float | None]) -> float | None:
 
 
 def _trial(summary: Mapping[str, Any]) -> dict[str, Any] | None:
+    """One main trial of a compared question; a missing trial (no ``todo``
+    block) is kept with ``todo`` None: it counts in its row and never passes."""
     from scripts.holmes_evals.driver import trial_record  # noqa: PLC0415 - heavy
 
     block = _map(summary.get("holmes_eval"))
@@ -69,19 +73,19 @@ def _trial(summary: Mapping[str, Any]) -> dict[str, Any] | None:
         return None
     todo = _map(block.get("todo"))
     enabled = todo.get("enabled")
-    if not isinstance(enabled, bool):
-        return None
     record = trial_record(summary)
     stats = _map(todo.get("stats"))
     last = stats.get("last")
-    requests = _map(summary.get("run")).get("tool_requests")
+    run = _map(summary.get("run"))
+    requests = run.get("tool_requests")
     return {
         "qid": record.qid,
         "trial": record.index,
-        "todo": enabled,
+        "todo": enabled if isinstance(enabled, bool) else None,
         "source": todo.get("source"),
+        "missing": summary.get("status") == "missing",
         "passed": record.passed,
-        "model_requests": _num(_map(summary.get("run")).get("model_requests_used")),
+        "model_requests": _num(run.get("model_requests_used")),
         # Gateway queries the audit recorded; TodoWrite never reaches the
         # gateway, so both on and off rows count the same way.
         "queries": _num(len(requests)) if isinstance(requests, list) else None,
@@ -112,51 +116,76 @@ def collect(evidence_root: Path, rounds: Sequence[str]) -> list[dict[str, Any]]:
     return out
 
 
+def _row(
+    qid: str, round_: str | None, enabled: bool | None, members: list[Mapping[str, Any]]
+) -> dict[str, Any]:
+    members = sorted(members, key=lambda t: t["trial"])
+    present = [t for t in members if not t["missing"]]
+    passes = sum(1 for t in members if t["passed"])
+    requests = [t["model_requests"] for t in present]
+    queries = [t["queries"] for t in present]
+    seconds = [t["seconds"] for t in present]
+    sources = [t["source"] for t in present if t["source"]]
+    return {
+        "qid": qid,
+        "todo": enabled,
+        "round": round_,
+        "source": sources[0] if sources else None,
+        "trials": len(members),
+        "missing": len(members) - len(present),
+        "passes": passes,
+        "pass_rate": passes / len(MAIN_TRIALS),
+        "model_requests": requests,
+        "model_requests_mean": _mean(requests),
+        "queries": queries,
+        "queries_mean": _mean(queries),
+        "todo_calls_ok": sum(t["calls_ok"] for t in present),
+        "todo_calls_refused": sum(t["calls_refused"] for t in present),
+        "trials_with_todo": sum(1 for t in present if t["calls_ok"] > 0),
+        "last_completed": [
+            None
+            if t["last"] is None
+            else f"{t['last'].get('completed', 0)}/{t['last'].get('total', 0)}"
+            for t in present
+        ],
+        "seconds": seconds,
+        "seconds_mean": _mean(seconds),
+    }
+
+
 def table(trials: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    groups: dict[tuple[str, bool], list[Mapping[str, Any]]] = {}
-    rounds: dict[tuple[str, bool], set[str]] = {}
+    """Rows located by round and question (lead ruling 2026-11-20); a
+    missing trial counts in its row's ``trials`` and never passes."""
+    order: list[str] = []
+    groups: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
     for t in trials:
-        key = (str(t["qid"]), bool(t["todo"]))
+        key = (str(t["round"]), str(t["qid"]))
+        if key[0] not in order:
+            order.append(key[0])
         groups.setdefault(key, []).append(t)
-        rounds.setdefault(key, set()).add(str(t["round"]))
-    for key, names in rounds.items():
-        if len(names) > 1:
-            raise CompareRefused(
-                "TODO_ROW_DUPLICATE", f"{key[0]} todo={key[1]}: {sorted(names)}"
-            )
     rows = []
+    seen: dict[tuple[str, bool], str] = {}
     for qid in QUESTIONS:
+        for round_ in order:
+            members = groups.get((round_, qid))
+            if not members:
+                continue
+            states = {t["todo"] for t in members if t["todo"] is not None}
+            if len(states) > 1:
+                raise CompareRefused("TODO_ROW_MIXED", f"{round_} {qid}")
+            enabled = next(iter(states)) if states else None
+            if enabled is not None:
+                if (qid, enabled) in seen:
+                    raise CompareRefused(
+                        "TODO_ROW_DUPLICATE",
+                        f"{qid} todo={enabled}: {seen[(qid, enabled)]}, {round_}",
+                    )
+                seen[(qid, enabled)] = round_
+            rows.append(_row(qid, round_, enabled, members))
         for enabled in (True, False):
-            members = sorted(groups.get((qid, enabled), []), key=lambda t: t["trial"])
-            passes = sum(1 for t in members if t["passed"])
-            requests = [t["model_requests"] for t in members]
-            queries = [t["queries"] for t in members]
-            rows.append(
-                {
-                    "qid": qid,
-                    "todo": enabled,
-                    "round": next(iter(rounds.get((qid, enabled), {None}))),
-                    "source": members[0]["source"] if members else None,
-                    "trials": len(members),
-                    "passes": passes,
-                    "pass_rate": passes / len(MAIN_TRIALS),
-                    "model_requests": requests,
-                    "model_requests_mean": _mean(requests),
-                    "queries": queries,
-                    "queries_mean": _mean(queries),
-                    "todo_calls_ok": sum(t["calls_ok"] for t in members),
-                    "todo_calls_refused": sum(t["calls_refused"] for t in members),
-                    "trials_with_todo": sum(1 for t in members if t["calls_ok"] > 0),
-                    "last_completed": [
-                        None
-                        if t["last"] is None
-                        else f"{t['last'].get('completed', 0)}/{t['last'].get('total', 0)}"
-                        for t in members
-                    ],
-                    "seconds": [t["seconds"] for t in members],
-                    "seconds_mean": _mean([t["seconds"] for t in members]),
-                }
-            )
+            if (qid, enabled) not in seen:
+                # An expected cell no round produced: shown, never filled in.
+                rows.append(_row(qid, None, enabled, []))
     return {
         "schema": SCHEMA,
         "questions": list(QUESTIONS),
@@ -169,6 +198,10 @@ def table(trials: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 def _cell(values: Sequence[Any]) -> str:
     return " / ".join("—" if v is None else f"{v:g}" if isinstance(v, float) else str(v)
                       for v in values) or "—"  # fmt: skip
+
+
+def _switch(value: bool | None) -> str:
+    return "—" if value is None else "开" if value else "关"
 
 
 def _mean_text(value: float | None) -> str:
@@ -185,8 +218,8 @@ def to_markdown(result: Mapping[str, Any]) -> str:
     ]
     for r in result["rows"]:
         lines.append(
-            f"| {r['qid']} | {'开' if r['todo'] else '关'} | {r['round'] or '—'} "
-            f"| {r['trials']} | {r['passes']} "
+            f"| {r['qid']} | {_switch(r['todo'])} | {r['round'] or '—'} "
+            f"| {r['trials']}（缺 {r['missing']}） | {r['passes']} "
             f"| {_cell(r['model_requests'])}；{_mean_text(r['model_requests_mean'])} "
             f"| {_cell(r['queries'])}；{_mean_text(r['queries_mean'])} "
             f"| {r['todo_calls_ok']}/{r['todo_calls_refused']} | {r['trials_with_todo']} "

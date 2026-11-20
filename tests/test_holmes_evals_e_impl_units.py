@@ -210,6 +210,15 @@ def test_compare_table_rows_and_duplicates(tmp_path: Path) -> None:
         _summary(ev, "main", hard, t, mode="question", enabled=False, source="question")
         _summary(ev, "off283", q283, t, mode="off", enabled=False, source="forced")
     _summary(ev, "main", "254_elasticsearch_dr_test_log_check", 1)  # not compared
+    missing = ev / "holmes-evals-off283" / q283 / "trial-3" / "summary.json"
+    missing.write_text(
+        json.dumps(
+            {
+                "status": "missing",
+                "holmes_eval": {"qid": q283, "trial": 3, "category": "env_broken"},
+            }
+        )
+    )
     result = todo_compare.table(todo_compare.collect(ev, ["main", "off283"]))
     rows = {(r["qid"], r["todo"]): r for r in result["rows"]}
     on = rows[(q283, True)]
@@ -217,9 +226,16 @@ def test_compare_table_rows_and_duplicates(tmp_path: Path) -> None:
     assert on["model_requests"] == [6.0, 7.0, 8.0] and on["queries"] == [1.0, 2.0, 3.0]
     assert on["todo_calls_ok"] == 6 and on["trials_with_todo"] == 3
     assert on["last_completed"] == ["3/4"] * 3
-    assert rows[(q283, False)]["round"] == "off283"
+    off = rows[(q283, False)]
+    assert (off["round"], off["trials"], off["missing"], off["passes"]) == (
+        "off283",
+        3,
+        1,
+        1,
+    )
+    assert off["queries"] == [1.0, 2.0]
     assert rows[(hard, False)]["last_completed"] == [None] * 3
-    assert rows[(hard, True)]["trials"] == 0 and rows[(hard, True)]["passes"] == 0
+    assert rows[(hard, True)]["round"] is None and rows[(hard, True)]["trials"] == 0
     assert "TodoWrite" in todo_compare.to_markdown(result)
     _summary(ev, "again", q283, 1, mode="question", enabled=True, source="question")
     with pytest.raises(todo_compare.CompareRefused, match="TODO_ROW_DUPLICATE"):
