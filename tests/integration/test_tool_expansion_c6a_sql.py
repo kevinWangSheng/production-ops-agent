@@ -29,6 +29,8 @@ them or uses the defaults:
   started with ``-c log_statement=all``; ``docker logs`` of it is the
   statement log for ⑨. MySQL and MariaDB run with
   ``--general-log=1 --log-output=TABLE`` (read from ``mysql.general_log``).
+* ``C6_MYSQL_CONTAINER`` (``c6-mysql``): the MySQL 8 container; the PROXY
+  grant runs there as root@localhost (``docker exec``).
 * This file creates its own database ``c6_tests``, read-only account
   ``c6_tests_ro`` (C6-21 grants), the stand-in OpsPilot database
   ``c6_tests_opspilot`` (with ``opspilot_runs``) and ``c6_tests_*`` test
