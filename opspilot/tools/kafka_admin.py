@@ -273,6 +273,14 @@ class _Missing(Exception):
         self.code = code
 
 
+class _HandleGone(TransportUnavailable):
+    """``_DESTROY_BROKER``: librdkafka retired the broker handle a request
+    was waiting on -- the bootstrap handle is replaced once the first
+    metadata names the brokers, which a request sent by a brand-new client
+    can race (CI, PR #748). Nothing reached a broker's state; the call's
+    reads are re-run once on the same client (C3 implementation decision)."""
+
+
 class _Refusal(Exception):
     def __init__(self, response: TransportResponse) -> None:
         super().__init__()
@@ -304,6 +312,8 @@ def _classify(error: object, missing: str | None) -> BaseException:
         return _Missing("TOPIC_NOT_FOUND" if missing == "topic" else missing)
     if name in _GROUP_MISSING:
         return _Missing("GROUP_NOT_FOUND")
+    if name == "_DESTROY_BROKER":
+        return _HandleGone(name)
     if name in _UNAVAILABLE:
         return TransportUnavailable(name)
     if name in _TIMED_OUT:
@@ -583,7 +593,11 @@ class KafkaTransport:
         try:
             with self._factory(conf) as client:
                 call = _Call(client, deadline, self._monotonic)
-                answer = _HANDLERS[request.tool](call, request.params)
+                try:
+                    answer = _HANDLERS[request.tool](call, request.params)
+                except _HandleGone:
+                    # Once only, within the same deadline; read-only reads.
+                    answer = _HANDLERS[request.tool](call, request.params)
         except _Missing as missing:
             answer = _Answer(
                 rows=[],

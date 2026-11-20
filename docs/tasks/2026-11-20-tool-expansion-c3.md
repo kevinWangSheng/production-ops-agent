@@ -103,6 +103,7 @@
 - `find_consumer_groups_by_topic` 先确认主题存在。理由：不存在时不扫组，直接给出 `TOPIC_NOT_FOUND` 这个事实。
 
 - `describe_consumer_group` 的分区行在 `list_offsets` 里某分区报错（如该主题已删）时，该行 `end_offset` 为空、`lag` 为空、标 `end_offset_unavailable`，不让整条调用失败。理由：组还提交着已删主题的位点是常见情形，整条失败会让这个组无法查看。
+- `_DESTROY_BROKER`（「Broker handle destroyed without termination」）时，同一客户端、同一期限内把本次调用的只读请求重跑一次，再失败报 `SOURCE_UNAVAILABLE`。理由：CI 实测（PR #748 第 7 轮）新建客户端发出的第一个请求会撞上 librdkafka 用首份元数据替换 bootstrap 句柄，`describe_topic` 与 `find_consumer_groups_by_topic` 偶发失败；这是客户端内部句柄被回收，不是 broker 拒绝，重跑只读请求无副作用。C3-10 的「不重试」对其余错误照旧（合同测试断言单次请求的错误码都不重试）。
 - 不带 Kafka 错误名的异常（例如客户端库自身的类型错误）归 `SOURCE_ERROR`，notes 只写异常类型名；worker 日志只记类型名，不记异常文本。理由：异常文本可能带请求内容。
 - `coordinator` 投影为 broker ID（整数）。理由：host/port 已在 `list_brokers`。
 - 扩展档位 revision（本分支实测）：仅 Kafka `otel-demo-ext-96b75ab08269`；SQL（postgresql）加 Kafka `otel-demo-ext-4ffb41544b2a`；不设 Kafka 地址时现有值不变（无后端 `otel-demo-ext-c63f058afb18`，合同测试钉的 8 个值全过）。
