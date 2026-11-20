@@ -12,4 +12,13 @@ UP=tmp/holmes-compare/upstream
 scripts/holmes_compare/install_upstream.sh "$UP"
 .venv/bin/python -m scripts.holmes_compare.runner round --round "$ROUND" --upstream "$UP" \
   --holmes-python "$UP/.venv/bin/python" --env-file "$ENV_FILE" "$@"
-.venv/bin/python -m scripts.holmes_compare.runner scores --round "$ROUND"
+# scores reads the round's own evidence and questions (default B1 / docs/evidence)
+SCORE_ARGS=()
+while (($#)); do
+  case $1 in
+    --evidence-root|--questions) SCORE_ARGS+=("$1" "$2"); shift 2 ;;
+    --evidence-root=*|--questions=*) SCORE_ARGS+=("${1%%=*}" "${1#*=}"); shift ;;
+    *) shift ;;
+  esac
+done
+.venv/bin/python -m scripts.holmes_compare.runner scores --round "$ROUND" ${SCORE_ARGS[@]+"${SCORE_ARGS[@]}"}
