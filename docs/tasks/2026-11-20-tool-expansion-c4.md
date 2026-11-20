@@ -112,6 +112,7 @@
 - 行数上限：接口原估计 300/500，实测（DeepSeek 计数器，合成数据的典型行）摘要行约 154 token、资源行约 74 token，改为 120/250，留出视图其他字段的余量。
 - 开关值用 `1`（预审写的是 `on`），与 B4 的 `OPSPILOT_HELM_RELEASES` 一致。
 - lead 裁决（2026-11-20，测试作者歧义）：`app_name` 用 `check_object_name`（A3-6，每段 DNS label ≤63、总长 ≤253）；list 触到 50 页上限按 `RESULT_TOO_LARGE`（同 B4 的 200 页）；`ARGOCD_INVALID` 进 `_STARTUP_CODES`；`status.operationState.syncResult.source(s)` 是 status 里第 4 份 source 副本，白名单本来就排除。
+- 资源行与 `sync_result.resources` 的 `group` 缺省为空串（Kubernetes 核心组的写法；ArgoCD 对核心组省略该字段），不为 `null`。理由：按 group 排序的行键要可比较（CI 实测测试作者 A-1）。
 - 合成数据比接口多一个金丝雀位置：`status.operationState.syncResult.source`（同一 `ApplicationSource` 的第四处副本，CRD 里有这个字段），`CANARY-C4-SYNCRESULT`。
 - 合成数据文件是 JSON 写的 `apps.yaml`（kubectl 当 YAML 读）：由脚本生成、字段多，JSON 便于核对。
 

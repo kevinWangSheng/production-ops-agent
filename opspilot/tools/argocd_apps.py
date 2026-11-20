@@ -262,7 +262,7 @@ def _sync_result(state: Mapping[str, Any]) -> dict[str, Any] | None:
         **_revisions(result),
         "resources": [
             {
-                "group": _text(item.get("group")),
+                "group": _text(item.get("group")) or "",
                 "kind": _text(item.get("kind")),
                 "namespace": _text(item.get("namespace")),
                 "name": _text(item.get("name")),
@@ -355,7 +355,7 @@ def _resources(app: Mapping[str, Any]) -> list[dict[str, Any]]:
         health = _map(item.get("health"))
         rows.append(
             {
-                "group": _text(item.get("group")),
+                "group": _text(item.get("group")) or "",
                 "version": _text(item.get("version")),
                 "kind": _text(item.get("kind")),
                 "namespace": _text(item.get("namespace")),
