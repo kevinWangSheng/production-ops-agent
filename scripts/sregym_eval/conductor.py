@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from scripts.itbench_lite.traces import require_loopback
 DIAGNOSIS = "diagnosis"
 _WAITING = frozenset({"setup", None})
 _PASSED = frozenset({"tearing_down", "done", "mitigation"})
+#: Upstream ``conductor.py`` marks an abandoned attempt ``aborted``.
+ABORTED = "aborted"
 
 
 class ConductorError(RuntimeError):
@@ -70,6 +73,8 @@ class ConductorClient:
     ) -> None:
         base = base_url.rstrip("/")
         try:
+            if urllib.parse.urlsplit(base).scheme != "http":
+                raise ValueError("http only")
             require_loopback(base)
         except ValueError:
             raise ConductorError("CONDUCTOR_NOT_LOOPBACK") from None
@@ -186,7 +191,7 @@ class ConductorClient:
     ) -> Status:
         """Poll until the stage is ``diagnosis``. ``setup``/None and
         unreachable or not-started conductors keep waiting; a passed stage
-        raises ``STAGE_PASSED``."""
+        raises ``STAGE_PASSED``; ``aborted`` raises ``CONDUCTOR_ABORTED``."""
         deadline = clock() + timeout_s
         while True:
             try:
@@ -195,6 +200,8 @@ class ConductorClient:
                 if error.code not in ("CONDUCTOR_UNREACHABLE", "CONDUCTOR_NOT_STARTED"):
                     raise
             else:
+                if current.stage == ABORTED:
+                    raise ConductorError("CONDUCTOR_ABORTED")
                 if current.stage == DIAGNOSIS:
                     return current
                 if current.stage in _PASSED:
@@ -214,7 +221,8 @@ class ConductorClient:
         sleep: Callable[[float], None] = time.sleep,
     ) -> Status:
         """Poll until ``done``; a conductor that answers "not started" has
-        already closed the attempt and counts as done."""
+        already closed the attempt and counts as done; ``aborted`` raises
+        ``CONDUCTOR_ABORTED`` at once."""
         deadline = clock() + timeout_s
         while True:
             try:
@@ -225,6 +233,8 @@ class ConductorClient:
                 if error.code != "CONDUCTOR_UNREACHABLE":
                     raise
             else:
+                if current.stage == ABORTED:
+                    raise ConductorError("CONDUCTOR_ABORTED")
                 if current.stage == "done":
                     return current
             if clock() >= deadline:

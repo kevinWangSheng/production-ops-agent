@@ -163,3 +163,41 @@ def test_categories() -> None:
         "env_broken",
         False,
     )
+
+
+def test_problem_id_variants_and_no_false_positive() -> None:
+    pid = "network_policy_block"
+    for variant in (
+        "network-policy-block",
+        "Network Policy Block",
+        "NETWORKPOLICYBLOCK",
+    ):
+        with pytest.raises(question.AnswerLeak, match="PROBLEM_ID_IN:q"):
+            question.check_no_problem_id(pid, {"q": f"see {variant} now"})
+    other = "duplicate_pvc_mounts_social_network"
+    question.check_no_problem_id(
+        other, {"q": "Application: social_network, Social Network"}
+    )
+
+
+@pytest.mark.parametrize(
+    "url", ["file://localhost/etc/passwd", "https://localhost:8000", "ftp://127.0.0.1"]
+)
+def test_conductor_http_only(url: str) -> None:
+    with pytest.raises(ConductorError, match="CONDUCTOR_NOT_LOOPBACK"):
+        ConductorClient(url)
+
+
+def test_aborted_is_terminal() -> None:
+    fake = FakeConductor(APP)
+    server = serve(fake)
+    calls: list[float] = []
+    try:
+        client = ConductorClient(f"http://127.0.0.1:{server.server_address[1]}")
+        fake.advance("aborted")
+        for wait in (client.wait_for_diagnosis, client.wait_for_done):
+            with pytest.raises(ConductorError, match="CONDUCTOR_ABORTED"):
+                wait(timeout_s=60, poll_s=0, sleep=calls.append)
+        assert calls == []  # no polling round before giving up
+    finally:
+        server.shutdown()

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 
 from scripts.sregym_eval.conductor import AppInfo
@@ -103,14 +104,23 @@ def idempotency_key(round: str, seq: int, trial: int) -> str:  # noqa: A002
     return f"sregym-{round}-p{seq:02d}-t{trial}"
 
 
-def check_no_problem_id(problem_id: str, fields: Mapping[str, str]) -> None:
-    """Refuse when any value contains the whole problem id (case-insensitive).
+_SEPARATORS = re.compile(r"[-_\s]+")
 
-    Only the whole id is matched: its words (``social``, ``network``...) also
-    appear in app names."""
-    needle = problem_id.lower()
+
+def _squash(text: str) -> str:
+    return _SEPARATORS.sub("", text.lower())
+
+
+def check_no_problem_id(problem_id: str, fields: Mapping[str, str]) -> None:
+    """Refuse when any value contains the whole problem id.
+
+    Both sides are lower-cased with ``-``, ``_`` and whitespace removed, so
+    ``network-policy-block``, ``Network Policy Block`` and
+    ``networkpolicyblock`` all match. Only the whole id is matched: its words
+    (``social``, ``network``...) also appear in app names."""
+    needle = _squash(problem_id)
     if not needle:
         raise ValueError("PROBLEM_ID_EMPTY")
     for name, value in fields.items():
-        if needle in str(value).lower():
+        if needle in _squash(str(value)):
             raise AnswerLeak(f"PROBLEM_ID_IN:{name}")
