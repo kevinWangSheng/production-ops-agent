@@ -139,7 +139,7 @@ def parse_quantity(value: object) -> Decimal | None:
     number, suffix = match.group(1), match.group(2) or ""
     try:
         amount = Decimal(number)
-        if len(suffix) > 1 and suffix[0] in ("e", "E"):
+        if suffix not in _SUFFIXES:  # a decimal exponent, e.g. e3 or E-2
             exponent = int(suffix[1:])
             if abs(exponent) > 40:
                 return None
@@ -302,10 +302,21 @@ def _allocatable(
             table[name] = (None, None)
             continue
         table[name] = (
-            parse_quantity(allocatable.get("cpu")),
-            parse_quantity(allocatable.get("memory")),
+            _optional_quantity(allocatable.get("cpu")),
+            _optional_quantity(allocatable.get("memory")),
         )
     return table
+
+
+def _optional_quantity(value: object) -> Decimal | None:
+    """A missing allocatable value is ``None`` (the percentage is null); one
+    that is present but does not parse fails the whole call (B3-6)."""
+    if value is None:
+        return None
+    amount = parse_quantity(value)
+    if amount is None:
+        raise _Malformed
+    return amount
 
 
 def _percent(usage: int, capacity: int) -> int | None:

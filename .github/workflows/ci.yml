@@ -709,9 +709,10 @@ jobs:
   # metrics-server -- a single-node kind cluster with the same vendored
   # metrics-server manifest the lab applies, the A1 read-only identity and a
   # token issued for it, and synthetic load. No model. The tests are gated
-  # by OPSPILOT_K8S_LIVE=1; the independent author's file runs first, the
-  # implementer's _impl file last (it scales metrics-server to 0 and deletes
-  # its APIService for the real 503/404, then restores them).
+  # by OPSPILOT_K8S_LIVE=1; the independent author's file runs first, then
+  # metrics-server is restored, then the implementer's _impl file (both end by
+  # scaling metrics-server to 0 and deleting its APIService for the real
+  # 503/404; the _impl file restores them itself).
   k8s-live-metrics:
     name: k8s-live-metrics
     runs-on: ubuntu-24.04
@@ -790,7 +791,10 @@ jobs:
           kubectl -n ns-b create token no-metrics --duration=1h \
             > "$RUNNER_TEMP/b3/no-metrics.token"
           chmod 0600 "$RUNNER_TEMP/b3/"*.token
+          echo "::add-mask::$(cat "$RUNNER_TEMP/b3/readonly.token")"
+          echo "::add-mask::$(cat "$RUNNER_TEMP/b3/no-metrics.token")"
           {
+            echo "B3_READONLY_TOKEN=$(cat "$RUNNER_TEMP/b3/readonly.token")"
             echo "B3_K8S_API_URL=$server"
             echo "B3_K8S_CA_FILE=$RUNNER_TEMP/b3/ca.crt"
             echo "B3_K8S_TOKEN_FILE=$RUNNER_TEMP/b3/readonly.token"
@@ -814,15 +818,24 @@ jobs:
           OPSPILOT_K8S_LIVE: "1"
           B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
         run: |
-          shopt -s nullglob
-          files=()
-          for f in tests/integration/test_tool_expansion_b3*.py; do
-            case "$f" in *_impl.py) ;; *) files+=("$f") ;; esac
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b3_live_metrics.py -q -rs
+      # The independent file's last test removes metrics-server's replica
+      # and APIService without restoring them; put both back before the next.
+      - name: Restore metrics-server
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: |
+          kubectl apply -f scripts/kind_lab/metrics-server-v0.8.1.yaml
+          kubectl -n kube-system scale deployment/metrics-server --replicas=1
+          kubectl -n kube-system wait --for=condition=Available deployment/metrics-server --timeout=180s
+          kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
+          for _ in $(seq 1 60); do
+            rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && break
+            sleep 3
           done
-          if [ ${#files[@]} -eq 0 ]; then echo "no independent B3 integration file yet"; exit 0; fi
-          .venv/bin/python -m pytest "${files[@]}" -q -rs
+          [ "$rows" = "3" ] || { echo "metrics did not come back" >&2; exit 1; }
       - name: Live usage tools against a real cluster (implementer tests)
-        if: steps.scope.outputs.full != 'false'
+        if: steps.scope.outputs.full != 'false' && !cancelled()
         env:
           OPSPILOT_K8S_LIVE: "1"
           B3_METRICS_SERVER_MANIFEST: scripts/kind_lab/metrics-server-v0.8.1.yaml
