@@ -172,7 +172,11 @@ def test_c5_question_lists() -> None:
     assert len(q.C5_QUESTIONS) == 9
     # PR-D (lead ruling): ALL_QUESTIONS gains the six C2 questions after C5;
     # PR-E (lead ruling): then C1 (283).
-    assert tuple(q.ALL_QUESTIONS) == (
+    # PR-F (lead ruling): the seven C6 questions are added; their position is
+    # not pinned here, the order of the others is.
+    c6 = set(q.C6_QUESTIONS)
+    assert c6 <= set(q.ALL_QUESTIONS)
+    assert tuple(x for x in q.ALL_QUESTIONS if x not in c6) == (
         tuple(q.B1_QUESTIONS) + C5_ALL + tuple(q.C2_QUESTIONS)
         + tuple(q.C1_QUESTIONS)
     )  # fmt: skip
@@ -233,7 +237,7 @@ def test_resolve_259_is_ambiguous() -> None:
     assert _abort(mod("driver").resolve_questions, "254,259") == "QUESTION_AMBIGUOUS"
 
 
-@pytest.mark.parametrize("spec", ["999", "c6", "loki", "100", "100a_x"])
+@pytest.mark.parametrize("spec", ["999", "c9", "loki", "100", "100a_x"])
 def test_resolve_unknown(spec: str) -> None:
     assert _abort(mod("driver").resolve_questions, spec) == "QUESTION_UNKNOWN"
 
