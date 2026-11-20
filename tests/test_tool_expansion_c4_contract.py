@@ -180,7 +180,7 @@ def _z(moment: datetime) -> str:
 # ======================================================================================
 
 
-def source(name: str, **extra: Any) -> dict[str, Any]:
+def source(name: str, /, **extra: Any) -> dict[str, Any]:
     body = {
         "repoURL": f"https://git.example.com/org/{name}.git",
         "path": f"apps/{name}",
