@@ -166,6 +166,14 @@
 - 语句是否到达服务器（⑨）：ClickHouse 管理员 `SYSTEM FLUSH LOGS` 后查 `system.query_log` 的 `query` 含标记；SQL Server 查 `sys.dm_exec_query_stats` CROSS APPLY `sys.dm_exec_sql_text` 含标记（计划缓存，【CI 实测】是否缓存这类即席语句；不缓存则改用 `sys.dm_exec_requests` 加长语句的在途观察，测试作者与实现者按实测一起改）。
 - 断言（与 C6a ①–⑪ 对应）：① 三个工具在两库都有真实返回；② ClickHouse `EXPLAIN` 有返回，SQL Server 用 DMV 查到计划；③ 截断、长值、2 MiB 与视图超限；④ 按列名脱敏；⑤ 语句检查代表语句（含 ClickHouse 表函数、`SETTINGS`、`FORMAT`，SQL Server `EXEC`、`WAITFOR`、`DECLARE`、`SELECT … INTO`、`BEGIN`/`COMMIT`）在真实库上被拒、不到达服务器；⑥ 会话层：ClickHouse 管理员经工具（跳过语句检查与自查）`INSERT` 被 164 拒、行数不变；SQL Server 管理员经工具 `INSERT` 后行数不变（回滚兜底），结果不是 `ok` 带数据；⑦ 只读账号直连写入被拒（ClickHouse 用 POST 也拒、SQL Server 拒）；⑧ 超时：重查询报 `TOOL_TIMEOUT`，之后 `system.processes` 与 `sys.dm_exec_requests` 里没有这条；⑨ 管理员账号（ClickHouse `default`、SQL Server `sa`）报 `SQL_ACCOUNT_NOT_READ_ONLY` 且模型语句未到达；ClickHouse 账号 `readonly=1` 报 `SQL_ACCOUNT_UNSUPPORTED`；SQL Server 只授 `db_datawriter`、列级 `UPDATE`、拥有 schema 的账号都被拒；⑩ `OPSPILOT_WORKER_DSN` 同主机同端口时启动失败；⑪ 错误分类用真实响应（语法错、表不存在、密码错、无权限的表、端口无人监听）。
 
+### 实现决定（C6b，实现者自定，可逆，2026-11-20）
+
+- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-a24b3b7f64ab`，仅 SQL Server `otel-demo-ext-3955b33beb0d`；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
+- ClickHouse 连接用标准库 `http.client`（不读代理环境变量、不跟重定向），到期由看门狗关掉套接字（`cancel()` 对正在读的连接 `shutdown`）；`clickhouse+https` 的 `require` 用不校验证书的 SSL 上下文。连接自己把 HTTP 状态与 `X-ClickHouse-Exception-Code`（没有时取正文里的 `Code: N`）分类成 `SqlDriverError`。
+- SQL Server 连接用 python-tds `autocommit=True`、`disable_connect_retry=True`；没有参数时传 `None`（不是 `()`），否则 python-tds 会对模型 SQL 里的 `%` 做格式化。驱动原始异常由传输层按消息号分类；裸的 `TimeoutError`（驱动查询超时）归 `TOOL_TIMEOUT`。读到 `limit+1` 行后调 `cursor.cancel()` 再 `ROLLBACK TRANSACTION`。
+- 到期后任何来源的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`（看门狗取消后连接报出的断开属于超时）。
+- 本仓库 C6a 合同测试 `test_web_refuses_an_unknown_prefix` 的 `clickhouse+http`、`mssql` 两例按 C6a 范围写，C6b 之后这两个前缀合法，由测试作者按 C6b 接口改（实现者不改断言）。
+
 ### 交给 #669
 
 - 222（ClickHouse）：题目自带 `default` 无口令账号是管理员，会被 C6-U1 拒；评测脚本按上面的 C6-21 用 `kubectl exec … clickhouse-client` 建只读账号，地址 `clickhouse+http://127.0.0.1:10222/default`、`OPSPILOT_SQL_TLS=disable`。
