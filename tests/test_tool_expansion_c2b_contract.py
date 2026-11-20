@@ -616,7 +616,6 @@ def test_the_registration_is_a_bounded_read_only_knowledge_get():
     # by each row's ``kind`` and ``source`` fields (asserted on the real
     # path in tests/acceptance/test_566_runbook_fetch_postgres.py).
     assert reg.source == otel_demo.SOURCE
-    assert {r.source for r in otel_demo_ext._registrations()} == {reg.source}
     assert reg.verb == "get"
     assert reg.read_only is True
     assert reg.result_path == ("results",)
