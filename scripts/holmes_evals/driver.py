@@ -396,6 +396,7 @@ def tool_env(
     knowledge: bool = False,
     todo: bool = False,
     db_env: Mapping[str, str] | None = None,
+    cluster_name: str | None = None,
 ) -> dict[str, str]:
     """The tool profile's addresses, the same for web and worker. Only the
     question's own log backend is configured (as upstream's per-question
@@ -429,6 +430,10 @@ def tool_env(
         # PR-E: the task list (C1); web and worker both, or the claim is
         # refused on differing versions.
         env["OPSPILOT_TODO_WRITE"] = "1"
+    if cluster_name:
+        # #722: picks the prompt variant, so web and worker both (or the
+        # claim is refused on differing prompt revisions).
+        env["OPSPILOT_CLUSTER_NAME"] = cluster_name
     return env
 
 
@@ -443,6 +448,7 @@ def web_env(
     import_account: UiAccount | None = None,
     todo: bool = False,
     db_env: Mapping[str, str] | None = None,
+    cluster_name: str | None = None,
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
     users = account.users_env()
@@ -451,7 +457,14 @@ def web_env(
         users += "," + import_account.users_env()
     return _strs(
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge, todo=todo, db_env=db_env)
+        | tool_env(
+            cfg,
+            backend,
+            knowledge=knowledge,
+            todo=todo,
+            db_env=db_env,
+            cluster_name=cluster_name,
+        )
         | {
             "OPSPILOT_WEB_DSN": pg.web_dsn,
             "OPSPILOT_UI_USERS": users,
@@ -498,7 +511,14 @@ def worker_env(
         }
     env = (
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge, todo=todo, db_env=db_env)
+        | tool_env(
+            cfg,
+            backend,
+            knowledge=knowledge,
+            todo=todo,
+            db_env=db_env,
+            cluster_name=cluster_name,
+        )
         | data_plane
         | {
             "OPSPILOT_WORKER_DSN": pg.runtime_dsn,
@@ -515,8 +535,6 @@ def worker_env(
         env.update({k: secrets[k] for k in LANGSMITH_KEYS if secrets.get(k)})
         if cfg.project_name:
             env["LANGSMITH_PROJECT"] = cfg.project_name
-    if cluster_name:
-        env["OPSPILOT_CLUSTER_NAME"] = cluster_name
     return _strs(env)
 
 
@@ -1426,6 +1444,7 @@ class Attempt:
             knowledge=self.knowledge,
             import_account=cfg.import_account if self.knowledge else None,
             todo=self.todo, db_env=self.db_env or None,
+            cluster_name=q.cluster_name,
         )  # fmt: skip
         check_env_isolation(
             wenv, cfg.engineer_key, role="web", backend_addresses=addresses,
