@@ -263,8 +263,12 @@ def world(harness_factory) -> dict[str, Any]:
         h.rb_revoke(w["live"]["entry_id"], 1)
         return assistant(
             tool_calls=[
-                fetch("live-2", NAMES["live"]),
+                # B5 (loop.py): an identical call in the same Run is not
+                # executed again, so the re-fetch is spelled differently
+                # (same name after normalization) or by entry_id.
+                fetch("live-2", NAMES["live"].upper()),
                 fetch("live-2-entry", w["live"]["entry_id"]),
+                fetch("live-dup", NAMES["live"]),
             ]
         )
 
@@ -521,6 +525,15 @@ def test_a_revocation_during_the_run_is_seen_by_the_next_fetch(world):
     for call_id in ("live-2", "live-2-entry"):
         view = _refused(world, call_id, "SOURCE_ERROR", "KNOWLEDGE_NOT_AVAILABLE")
         assert "revoked" in _notes(view), call_id
+        assert view.get("content") is None, call_id
+
+
+def test_an_identical_repeat_fetch_is_a_duplicate_call_not_a_new_read(world):
+    # Known interaction with the existing B5 rule: the exact repeat of
+    # ``live-1`` is refused as a duplicate and points at the earlier
+    # evidence; it is not a fresh lookup of the revoked runbook.
+    view = _view(world, "live-dup")
+    assert "DUPLICATE_TOOL_CALL" in _text(view), view
 
 
 @pytest.mark.parametrize("call_id", ["only-b-name", "only-b-entry", "same-b-entry"])
