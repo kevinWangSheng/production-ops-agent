@@ -85,6 +85,12 @@ from opspilot.investigation.store import (
     StepStoreError,
     reservation_id_for,
 )
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
+from opspilot.investigation.todo import (
+    is_todo_write_call,
+    offers_todo_write,
+    todo_write_view,
+)
 from opspilot.tools.executor import Clock, QueryScope, ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.outcomes import ToolOutcome
 from opspilot.tools.registry import canonical
@@ -979,6 +985,12 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
+            if self._answers_locally(state, call):
+                # C1 (#565): the task list never reaches the gateway.
+                self._renew_before_dispatch()
+                view = todo_view(step_id, index, call)
+                self._deliver(state, step_id, index, call, view, results)
+                continue
             fingerprint = _fingerprint_of(call, target_id)
             duplicate_of = state.seen_tool_calls.get(fingerprint)
             if duplicate_of is not None:
@@ -1060,6 +1072,9 @@ class InvestigationLoop:
             previous.append(last.get(fingerprint))
             last[fingerprint] = index
         dispatched: dict[int, Future[ToolOutcome]] = {}
+        # C1 (#565): ``TodoWrite`` views, built on this thread at their
+        # dispatch turn; they take no pool slot and commit at their own turn.
+        local: dict[int, dict[str, Any]] = {}
         stop: Exception | None = None
         next_dispatch = 0  # dispatch is strictly in index order
         next_commit = 0
@@ -1082,6 +1097,15 @@ class InvestigationLoop:
                 earlier = previous[index]
                 if earlier is not None and earlier >= next_commit:
                     return  # undecided until the earlier same call commits
+                if self._answers_locally(state, calls[index]):
+                    try:
+                        self._renew_before_dispatch()
+                    except Exception as exc:  # raised at this call's turn
+                        stop = exc
+                        return
+                    local[index] = todo_view(step_id, index, calls[index])
+                    next_dispatch += 1
+                    continue
                 if fingerprints[index] in state.seen_tool_calls:
                     next_dispatch += 1  # a duplicate view at its turn
                     continue
@@ -1135,6 +1159,9 @@ class InvestigationLoop:
                 next_commit = index
                 fill(pool)
                 fingerprint = fingerprints[index]
+                if index in local:
+                    self._deliver(state, step_id, index, call, local[index], results)
+                    continue
                 if index not in dispatched and index < next_dispatch:
                     view = _duplicate_call_view(
                         f"{step_id}-t{index}",
@@ -1156,6 +1183,15 @@ class InvestigationLoop:
                 else:
                     self._deliver(state, step_id, index, call, view, results)
         return results
+
+    @staticmethod
+    def _answers_locally(state: _State, call: Mapping[str, Any]) -> bool:
+        """C1 (#565): a ``TodoWrite`` call of a Run whose recorded tools offer
+        it. Decided from the Run input, never the environment; without the
+        schema the name goes to the gateway like any unregistered tool."""
+        return is_todo_write_call(call) and offers_todo_write(
+            state.request.tool_schemas
+        )
 
     def _renew_before_dispatch(self) -> None:
         try:
@@ -1770,6 +1806,17 @@ def _call_fingerprint(name: object, arguments: object, target_ref: str | None) -
         # ``canonical()`` call refuses it properly a moment later as an
         # ordinary INVALID_PARAMS.
         return f"__unfingerprintable__:{uuid4()}"
+
+
+def todo_view(
+    step_id: UUID | str, index: int, call: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The loop's own answer to one ``TodoWrite`` call (C1, #565): the same
+    operation id and parsed arguments the gateway request would carry, one
+    tool span naming the tool (parameter names only, never their values)."""
+    request = tool_request_for(step_id, index, call, target_ref=None, window={})
+    with tracer().tool_call(request, tool_name=TODO_TOOL_NAME):
+        return todo_write_view(request.operation_id, request.params)
 
 
 def _duplicate_call_view(operation_id: str, *, evidence_id: str) -> dict[str, Any]:

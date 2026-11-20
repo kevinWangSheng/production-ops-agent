@@ -102,6 +102,8 @@ from opspilot.investigation.reports import (
     parse_report,
 )
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.investigation.todo import REFUSAL as TODO_REFUSAL
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
 from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.release_commands import (
@@ -4543,6 +4545,28 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
+        if _is_task_list(result):
+            # C1 (#565): the loop's own task list, not a query; the page
+            # draws it as the plan (content was redacted before storing).
+            tools.append(
+                {
+                    "ordinal": item.get("ordinal"),
+                    "tool": TODO_TOOL_NAME,
+                    "status": result.get("status"),
+                    "reason": result.get("reason"),
+                    "task_list": True,
+                    "todos": [
+                        {
+                            "id": str(t.get("id")),
+                            "content": redact_credentials(str(t.get("content"))),
+                            "status": str(t.get("status")),
+                        }
+                        for t in result.get("todos") or []
+                        if isinstance(t, Mapping)
+                    ],
+                }
+            )
+            continue
         # #311 U6: the source's own 4xx answer -- status, and the redacted,
         # bounded envelope text the executor already put on the view.
         source_error = result.get("source_error")
@@ -4650,6 +4674,20 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(replies, list)
         else [],
     }
+
+
+def _is_task_list(result: Mapping[str, Any]) -> bool:
+    """C1 (#565): a committed ``TodoWrite`` view the loop answered itself --
+    never a gateway result (an unregistered ``TodoWrite`` refused by the
+    gateway stays a query row)."""
+    return (
+        result.get("tool") == TODO_TOOL_NAME
+        and "evidence_id" not in result
+        and (
+            isinstance(result.get("todos"), list)
+            or result.get("reason") == TODO_REFUSAL
+        )
+    )
 
 
 def _planned_name(planned: list[Any], ordinal: Any) -> str | None:

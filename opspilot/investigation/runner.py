@@ -52,6 +52,7 @@ from opspilot.investigation.loop import (
     InvestigationLoop,
     LoopOutcome,
     ModelClient,
+    todo_view,
     tool_request_for,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
@@ -73,6 +74,7 @@ from opspilot.investigation.store import (
     StepCommitter,
     StepStoreError,
 )
+from opspilot.investigation.todo import is_todo_write_call, offers_todo_write
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
 from opspilot.tools.registry import ToolContractError
@@ -305,7 +307,15 @@ class InvestigationRunner:
             target_ref = next(iter(executor.scope.target_ids))
         window = executor.scope.window.as_json()
 
+        offers_todo = offers_todo_write(input.tool_schemas)
+
         def execute(item: Mapping[str, Any]) -> Mapping[str, Any]:
+            if offers_todo and is_todo_write_call(item["tool_call"]):
+                # C1 (#565): the same pure view the live loop committed would
+                # have been; the gateway is never asked.
+                return todo_view(
+                    item["step_id"], int(item["ordinal"]), item["tool_call"]
+                )
             outcome = executor.execute(
                 tool_request_for(
                     item["step_id"],

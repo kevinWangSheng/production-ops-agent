@@ -57,6 +57,7 @@ from dataclasses import dataclass
 
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
+from opspilot.investigation.todo import todo_write_enabled
 from opspilot.persistence import DurableStore
 from opspilot.tools.elasticsearch_logs import (
     ElasticsearchConfig,
@@ -162,6 +163,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C2b: the switch only; the worker reads knowledge with its own runtime
     # role, the web adds the runbook list to new Runs.
     knowledge = knowledge_tool_enabled(env)
+    # C1 (#565): the switch only; the loop answers ``TodoWrite`` from the Run
+    # input's tools, so the worker reads it only to record the same versions.
+    todo = todo_write_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -186,6 +190,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 victorialogs=VictoriaLogsConfig.from_env(env),
                 live_metrics=live_metrics,
                 knowledge=knowledge,
+                todo=todo,
             )
         except ToolContractError as error:
             code = str(error)
@@ -202,6 +207,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             victorialogs=victorialogs,
             live_metrics=live_metrics,
             knowledge=knowledge,
+            todo=todo,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -209,6 +215,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             victorialogs=victorialogs,
             live_metrics=live_metrics,
             knowledge=knowledge,
+            todo=todo,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,
