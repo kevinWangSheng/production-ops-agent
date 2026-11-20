@@ -30,9 +30,9 @@ Seams assumed beyond the interface (each also marked ``# ASSUMPTION:``):
 * A pre-request refusal surfaces as the tool's error class with
   ``source_contact: none``; rows are the view's ``content``; the
   ``sync``/``health`` objects of a get row carry ``status`` keys.
-* Row caps (list 300, resources 500) are the interface's estimates; the
-  record says they may be lowered after measuring tokens per row. If that
-  happens it is a contract change and these numbers move with it.
+* Row caps: list 120, resources 250 (lead ruling 2026-11-20, revised from
+  the interface's 300/500 after measuring ~154 and ~74 tokens per row).
+  Hitting the 50-page list cap is ``RESULT_TOO_LARGE`` (lead ruling).
 
 Synthetic credentials and canaries are low-entropy placeholders.
 """
@@ -688,7 +688,8 @@ def test_named_tools_send_one_get_to_the_named_application_path(
 def test_list_pages_with_limit_100_and_the_servers_continue_token(api, params, path):
     api.apps = [_small_app(f"a-{n:03d}", "argocd") for n in range(210)]
     outcome = _run(api, LIST, params)
-    assert len(_rows(outcome)) == 210
+    # Every page is read (sorting needs all), then the first 120 kept.
+    assert len(_rows(outcome)) == LIST_CAP
     assert [r["raw_path"] for r in api.requests] == [path] * 3
     assert [r["query"] for r in api.requests] == [
         {"limit": ["100"]},
@@ -729,6 +730,8 @@ INVALID_APP_NAMES = [
     "a" * 254,
     "c4/../../applicationsets",
     "c4/status",
+    "a" * 64,  # one part over 63 characters (check_object_name's rule)
+    "c4." + "b" * 64,
     "c4?watch=true",
     "c4%2Fx",
     "c4 app",
@@ -1509,7 +1512,7 @@ def test_no_withheld_field_reaches_any_output(api, caplog):
 
 
 def test_an_oversized_view_saves_no_withheld_field_either(api, caplog):
-    # 500 resources with dense 2000-character health messages: the
+    # 500 resources (cap 250) with dense 2000-character health messages: the
     # projection is ~1 MB (under 2 MiB), the view far over 25k tokens, so the
     # whole call is RESULT_TOO_LARGE and the executor keeps the body as raw.
     caplog.set_level(logging.DEBUG)
@@ -1568,39 +1571,54 @@ def _small_app(name: str, namespace: str = "n") -> dict[str, Any]:
     }  # fmt: skip
 
 
-def test_list_keeps_the_first_300_after_sorting_and_marks_incomplete(api):
-    # NOTE: 300 is the interface's estimate (see the module docstring).
-    names = [(f"ns-{n % 3}", f"a-{n:03d}") for n in range(350)]
+LIST_CAP = 120
+RESOURCES_CAP = 250
+
+
+def test_list_keeps_the_first_120_after_sorting_and_marks_incomplete(api):
+    names = [(f"ns-{n % 3}", f"a-{n:03d}") for n in range(LIST_CAP + 30)]
     random.Random(568).shuffle(names)
     api.apps = [_small_app(name, ns) for ns, name in names]
     outcome = _run(api, LIST)
     rows = _rows(outcome)
-    assert [(r["namespace"], r["name"]) for r in rows] == sorted(names)[:300]
+    assert [(r["namespace"], r["name"]) for r in rows] == sorted(names)[:LIST_CAP]
     assert _view(outcome)["incomplete"] is True
 
 
 def test_list_at_the_cap_is_complete(api):
-    api.apps = [_small_app(f"a-{n:03d}") for n in range(300)]
+    api.apps = [_small_app(f"a-{n:03d}") for n in range(LIST_CAP)]
     outcome = _run(api, LIST)
-    assert len(_rows(outcome)) == 300
+    assert len(_rows(outcome)) == LIST_CAP
     assert _view(outcome)["incomplete"] is False
 
 
-def test_resources_keep_the_first_500_after_sorting_and_mark_incomplete(api):
-    # NOTE: 500 is the interface's estimate (see the module docstring).
+def _config_maps(count: int) -> list[dict[str, Any]]:
     entries = [
         {"group": "", "version": "v1", "kind": "ConfigMap", "namespace": "d",
          "name": f"c{n:03d}", "status": "Synced"}
-        for n in range(520)
+        for n in range(count)
     ]  # fmt: skip
     random.Random(568).shuffle(entries)
+    return entries
+
+
+def test_resources_keep_the_first_250_after_sorting_and_mark_incomplete(api):
     item = _small_app("c4-res", "argocd")
-    item["status"]["resources"] = entries
+    item["status"]["resources"] = _config_maps(RESOURCES_CAP + 20)
     api.apps = [item]
     outcome = _run(api, RESOURCES, _named("c4-res"))
     rows = _rows(outcome)
-    assert [r["name"] for r in rows] == [f"c{n:03d}" for n in range(500)]
+    assert [r["name"] for r in rows] == [f"c{n:03d}" for n in range(RESOURCES_CAP)]
     assert _view(outcome)["incomplete"] is True
+
+
+def test_resources_at_the_cap_are_complete(api):
+    item = _small_app("c4-res", "argocd")
+    item["status"]["resources"] = _config_maps(RESOURCES_CAP)
+    api.apps = [item]
+    outcome = _run(api, RESOURCES, _named("c4-res"))
+    assert len(_rows(outcome)) == RESOURCES_CAP
+    assert _view(outcome)["incomplete"] is False
 
 
 def test_history_has_no_row_cap(api):
@@ -1632,19 +1650,18 @@ def test_list_pages_share_one_4_mib_budget(api):
     assert len(api.requests) <= 3
     api.requests.clear()
     api.apps = api.apps[:200]  # ~3 MiB in two pages
-    assert len(_rows(_run(api, LIST))) == 200
+    assert len(_rows(_run(api, LIST))) == LIST_CAP
 
 
-def test_at_most_50_list_pages_are_read(api):
-    api.apps = [_small_app(f"a-{n:04d}") for n in range(5050)]  # 51 pages
+def test_fifty_list_pages_are_read_and_a_51st_is_result_too_large(api):
+    api.apps = [_small_app(f"a-{n:04d}") for n in range(5000)]  # 50 pages
     outcome = _run(api, LIST)
-    assert len(api.requests) <= 50
-    # The interface does not say whether hitting the page cap is
-    # RESULT_TOO_LARGE or an incomplete answer; it is never a complete one.
-    if outcome.status == "ok":
-        assert _view(outcome)["incomplete"] is True
-    else:
-        assert outcome.reason == "RESULT_TOO_LARGE", _view(outcome)
+    assert len(_rows(outcome)) == LIST_CAP
+    assert len(api.requests) == 50
+    api.requests.clear()
+    api.apps.append(_small_app("a-5000"))  # 51 pages
+    _failed(_run(api, LIST), "RESULT_TOO_LARGE")
+    assert len(api.requests) <= 51
 
 
 def test_a_read_past_the_call_deadline_is_a_timeout(api):
