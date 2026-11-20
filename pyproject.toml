@@ -15,6 +15,7 @@ dev = [
 ]
 m0 = [
     "alembic==1.20.0",
+    "confluent-kafka==2.16.1",
     "httpx2==2.12.0",
     "langsmith==0.12.2",
     "openai==3.10.0",
@@ -52,6 +53,12 @@ select = ["E4", "E7", "E9", "F", "I", "TID251"]
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "datetime.datetime.now".msg = "产品代码用数据库时钟：DurableStore._db_now(conn)"
 "datetime.datetime.utcnow".msg = "产品代码用数据库时钟：DurableStore._db_now(conn)"
+# C3（#567）：产品只用 Kafka 管理客户端的只读方法，没有消费者或生产者对象。
+"confluent_kafka.Consumer".msg = "产品不读 Kafka 消息内容：只用 confluent_kafka.admin 的只读方法"
+"confluent_kafka.Producer".msg = "产品不写 Kafka：只用 confluent_kafka.admin 的只读方法"
+"confluent_kafka.DeserializingConsumer".msg = "产品不读 Kafka 消息内容"
+"confluent_kafka.SerializingProducer".msg = "产品不写 Kafka"
+"confluent_kafka.aio".msg = "产品不读写 Kafka 消息"
 
 [tool.ruff.lint.per-file-ignores]
 # 测试与 M0 实验脚本构造输入时间，不做租约判定，不受此限。
