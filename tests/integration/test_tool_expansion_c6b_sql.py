@@ -481,6 +481,9 @@ def _ms_setup() -> None:
             f"ALTER ROLE db_datareader ADD MEMBER [{RO}]",
             f"GRANT SHOWPLAN TO [{RO}]",
             f"GRANT VIEW DATABASE STATE TO [{RO}]",
+            # C6-21 addition from CI: without it sys.default_constraints and
+            # similar metadata are hidden (describe_table defaults read null).
+            f"GRANT VIEW DEFINITION TO [{RO}]",
             # A table the read-only account may not read (⑪).
             f"DENY SELECT ON dbo.c6t_secret TO [{RO}]",
             "CREATE ROLE c6b_tests_writer",
