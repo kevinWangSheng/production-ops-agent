@@ -643,6 +643,14 @@ class VictoriaLogsTransport:
             keys.append(("step", step))
             if field_name is not None:
                 keys.append(("field", field_name))
+            # With a step, VictoriaLogs widens start down and end up to whole
+            # steps before filtering (``alignStartEndToStep`` in
+            # app/vlselect/logsql at v1.54.0), which counted entries outside
+            # the window (PR #731 CI). The same window as a filter of its own
+            # is ANDed after that widening, so only entries inside count.
+            keys.append(
+                ("extra_filters", f"_time:[{_z(window.start)}, {_z(window.end)})")
+            )
         return _Plan(keys=keys, window=window, limit=limit, field=field_name, step=step)
 
     def _entries(

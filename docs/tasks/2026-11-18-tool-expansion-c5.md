@@ -72,6 +72,8 @@
 - 只读网关：`scripts/loki_readonly_gateway.py` 加 `--backend victorialogs`，不另起脚本；默认 `loki` 渲染的配置逐字节不变（本机对照旧版输出 diff 为空）。VictoriaLogs 网关容器 `opspilot-victorialogs-gateway`、默认端口 53103、状态目录 `tmp/m1-kind-lab/victorialogs-gateway`、设置文件 `tmp/m1-kind-lab/victorialogs-readonly.env`，`start` 支持 `--account-id`/`--project-id`。
 - CI：`log-backends` job 加 `victoriametrics/victoria-logs:v1.54.0`（digest `sha256:ee4e820c…`，2026-11-19 从 Docker Hub 读取）与第二个 nginx 网关容器，新步骤跑 `tests/integration/test_tool_expansion_c5b_victorialogs*.py`（测试作者的同名文件与实现者的 `_impl.py`），子查询探针结果写入 job 日志。
 - 扩展档位 revision（本分支实测）：仅 VictoriaLogs `otel-demo-ext-1616059eb3fa`；ES 加 VictoriaLogs `otel-demo-ext-8be0fd839109`；Loki 加 VictoriaLogs `otel-demo-ext-8d5b08e18df7`；三者都有 `otel-demo-ext-1ada4b9c17db`。不含 VictoriaLogs 的四个值不变。
+- hits 另带 `extra_filters=_time:[start, end)`（待 lead 裁决，PR #731）：VictoriaLogs v1.54.0 在带 `step` 时把 start 向下、end 向上对齐到 step 再过滤（源码 `app/vlselect/logsql/logsql.go` `parseCommonArgsExt` 与 `alignStartEndToStep`），CI 实测窗外一条被计入；同一窗口作为额外过滤条件在对齐之后取交集，计数只含窗内，start/end 仍为查询窗。
+- CI 实测（PR #731 第二轮）：select 五条路径接受 GET；`limit=N` 返回最新 N 条且按 `_time` 降序；`in(子查询)` 受 start/end 约束（不泄漏）；`options(ignore_global_time_filter=true)` 读到窗外数据（泄漏），C5-7 继续拒绝；`/internal/force_flush` 只接受 POST。
 
 ## 证据
 

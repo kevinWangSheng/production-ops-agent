@@ -365,7 +365,11 @@ def test_hits_step_and_field_and_zero_series_dropped(fake):
         "end",
         "step",
         "field",
+        "extra_filters",
     ]
+    sent = dict(request["query"])
+    # The window again as a filter: VictoriaLogs widens start/end to the step.
+    assert sent["extra_filters"] == f"_time:[{sent['start']}, {sent['end']})"
     assert outcome.status == "ok", outcome.model_view
     assert [row["fields"] for row in outcome.model_view["content"]] == [
         {"level": "error"}
