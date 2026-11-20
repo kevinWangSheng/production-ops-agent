@@ -116,6 +116,7 @@
 - 合成数据比接口多一个金丝雀位置：`status.operationState.syncResult.source`（同一 `ApplicationSource` 的第四处副本，CRD 里有这个字段），`CANARY-C4-SYNCRESULT`。
 - 工具描述（#757，2026-11-20）：原文说 Helm values 与参数「never returned」，但 Helm 渲染失败时 ArgoCD 写进 condition、health、operationState 的 message 常带完整命令行（含 `--set k=v`），这些 message 字段只做现有的凭据脱敏（合同接受）。改为「never returned as fields」，并写明 message 按 ArgoCD 原文返回、可能引用 Helm 命令行。模型可见文本变了，`ARGOCD_TOOL_SCHEMA_REVISION` 从 `otel-demo-ext-84f2799d2477` 变为 `otel-demo-ext-d46fcce79896`；不开 ArgoCD 时各值不变。
 - 合成数据文件是 JSON 写的 `apps.yaml`（kubectl 当 YAML 读）：由脚本生成、字段多，JSON 便于核对。
+- 自建验收脚本 `scripts/c4_argocd_scenario.py`（2026-11-20 补写，测试 `tests/test_c4_argocd_scenario.py`）：应用 `path` 用 `helm-guestbook` 而不是 `guestbook`——`guestbook` 是纯 YAML 目录，`helm` 块一出现 ArgoCD 就按 Helm 渲染（v3.6.1 `ApplicationSource.ExplicitType`），没有 Chart.yaml 会让两次同步都失败；`helm-guestbook` 在两个 revision 都有 Chart.yaml，金丝雀仍在 `helm.values`。`argocd`/`c4-demo` 两个 namespace 由脚本带 label `app.kubernetes.io/managed-by=c4-argocd-scenario` 创建，已存在且无此 label 时 setup 与 teardown 拒绝执行；teardown 按钉住的 core 清单逐名删除，ArgoCD 只读 ClusterRole 保留（重复 apply 幂等）。check 的判定：`argocd_app_get`/`argocd_app_history` 证据存在、`sync.status` 非空、至少 2 条带 `id`、`revision(s)`、`deployed_at` 的历史行、金丝雀不出现。
 
 ## 下一步
 
