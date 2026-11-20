@@ -854,9 +854,7 @@ class Attempt:
         # The ``todo`` summary block: the comparison questions (the main
         # run's "off" rows come from it) and any attempt with the switch on
         # or forced; other summaries keep their keys.
-        self.todo_recorded = (
-            self.todo or self.todo_source == "forced" or qid in TODO_COMPARED
-        )
+        self.todo_recorded = _todo_block(cfg, qid, question) is not None
         self._imported: list[dict[str, Any]] = []
         self._owner_dsn: str | None = None
         self._revoked = False
@@ -941,7 +939,14 @@ class Attempt:
                 if gone or self.b.now() >= deadline:
                     break
                 self.b.sleep(2)
-            state["namespaces_left"] = left
+            # The summary is public evidence: only how many are left (None:
+            # kubectl did not answer); the names stay in the attempt's local
+            # directory (git-ignored ``tmp/``).
+            state["namespaces_left"] = None if left is None else len(left)
+            if left:
+                self.dir.mkdir(parents=True, exist_ok=True)
+                with (self.dir / "namespaces-left.log").open("a") as log:
+                    log.write(" ".join(left) + "\n")
         state["namespace_gone"] = gone
         busy = [p for p in self.spec.host_ports if self.b.port_in_use(p)]
         state["busy_ports"] = busy
@@ -1628,9 +1633,29 @@ def finish_judging(
 
 
 def _missing(
-    cfg: Config, qid: str, trial: int, reason: str, history: list[dict[str, Any]]
+    cfg: Config,
+    qid: str,
+    trial: int,
+    reason: str,
+    history: list[dict[str, Any]],
+    question: Question | None = None,
 ) -> None:
     path = cfg.summary_path(qid, trial)
+    block: dict[str, Any] = {
+        "schema": SUMMARY_SCHEMA,
+        "qid": qid,
+        "trial": trial,
+        "history": history,
+        "git": cfg.git,
+        "category": "env_broken",
+        "time_box_limited": qid in TIME_BOX_LIMITED,
+    }
+    todo = _todo_block(cfg, qid, question)
+    if todo is not None:
+        # PR-E review B1: a missing trial of a forced round (or a compared
+        # question) records the round's switch too, so resuming checks the
+        # same mode and the comparison table puts the row in its cell.
+        block["todo"] = todo
     _write_json(
         path,
         {
@@ -1638,17 +1663,25 @@ def _missing(
             "status": "missing",
             "reason": reason,
             "frozen_at": datetime.now(UTC).isoformat(),
-            "holmes_eval": {
-                "schema": SUMMARY_SCHEMA,
-                "qid": qid,
-                "trial": trial,
-                "history": history,
-                "git": cfg.git,
-                "category": "env_broken",
-                "time_box_limited": qid in TIME_BOX_LIMITED,
-            },
+            "holmes_eval": block,
         },
     )
+
+
+def _todo_block(
+    cfg: Config, qid: str, question: Question | None
+) -> dict[str, Any] | None:
+    """The ``todo`` block's switch fields, from the config and the question
+    alone (no PG); None where summaries carry no block."""
+    if question is None:
+        if cfg.todo_mode == "question":
+            return None
+        enabled, source = todo_for(cfg.todo_mode, None)
+    else:
+        enabled, source = todo_for(cfg.todo_mode, question)
+    if not (enabled or source == "forced" or qid in TODO_COMPARED):
+        return None
+    return {"mode": cfg.todo_mode, "enabled": enabled, "source": source}
 
 
 def run_trial(
@@ -1679,7 +1712,7 @@ def run_trial(
         }
         record["judge"] = finish_judging(cfg, backends, qid, trial)
         return record
-    _missing(cfg, qid, trial, "CHANCES_EXHAUSTED", history)
+    _missing(cfg, qid, trial, "CHANCES_EXHAUSTED", history, question)
     return {"status": "missing", "history": history}
 
 
@@ -1709,6 +1742,7 @@ def run_question(
                     left,
                     error.code,
                     [{"kind": "deterministic", "code": error.code}],
+                    question,
                 )
                 records[left] = {"status": "missing", "code": error.code}
             break

@@ -377,7 +377,8 @@ def release_state(cfg: Config, qid: str, *, sleep: Any = time.sleep) -> dict[str
         "ok": gone and not busy,
     }
     if spec.namespace_prefix is not None:
-        state["namespaces_left"] = left
+        # Public evidence: the count only (None: kubectl did not answer).
+        state["namespaces_left"] = None if left is None else len(left)
     return state
 
 

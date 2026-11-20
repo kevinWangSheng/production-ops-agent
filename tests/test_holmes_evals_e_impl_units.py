@@ -326,3 +326,41 @@ def test_switch_mismatch_is_deterministic(
     assert report["trials"][1]["status"] == "missing"
     summary = json.loads(cfg.summary_path(QID, 1).read_text())
     assert "TODO_SWITCH_MISMATCH" in json.dumps(summary)
+    # Review B1: the missing trial records the forced switch, so the round
+    # resumes only in its own mode.
+    assert summary["holmes_eval"]["todo"] == {
+        "mode": "on",
+        "enabled": True,
+        "source": "forced",
+    }
+    driver.check_todo_mode(cfg)
+    cfg.todo_mode = "question"
+    with pytest.raises(driver.RoundAbort, match="TODO_MODE_CHANGED"):
+        driver.check_todo_mode(cfg)
+
+
+def test_all_missing_row_lands_in_its_cell(tmp_path: Path) -> None:
+    ev = tmp_path / "ev"
+    hard = questions.TODO_HARD_QUESTIONS[1]
+    for t in (1, 2, 3):
+        path = ev / "holmes-evals-onhard" / hard / f"trial-{t}" / "summary.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "status": "missing",
+                    "holmes_eval": {
+                        "qid": hard,
+                        "trial": t,
+                        "category": "env_broken",
+                        "todo": {"mode": "on", "enabled": True, "source": "forced"},
+                    },
+                }
+            )
+        )
+    result = todo_compare.table(todo_compare.collect(ev, ["onhard"]))
+    cells = [r for r in result["rows"] if r["qid"] == hard]
+    on = [r for r in cells if r["todo"] is True]
+    assert len(on) == 1 and on[0]["round"] == "onhard"
+    assert (on[0]["trials"], on[0]["missing"], on[0]["passes"]) == (3, 3, 0)
+    assert not any(r["todo"] is None for r in cells)
