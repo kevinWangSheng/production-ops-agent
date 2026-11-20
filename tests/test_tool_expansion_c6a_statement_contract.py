@@ -410,14 +410,13 @@ def test_case_lists_have_the_lengths_they_claim():
     assert len("SELECT '" + "a" * 19_986 + "' AS s") == 20_000
 
 
-@pytest.mark.parametrize(("dialect", "sql", "codes"), REFUSED)
-def test_statement_problem_refuses(dialect, sql, codes):
-    assert _problem(sql, dialect) is not None
-
-
-@pytest.mark.parametrize(("dialect", "sql"), ACCEPTED)
-def test_statement_problem_accepts(dialect, sql):
-    assert _problem(sql, dialect) is None
+def test_statement_problem_is_the_module_level_seam():
+    # The integration test monkeypatches this function (⑥); its verdicts
+    # agree with the tool's on a sample of each list.
+    for dialect, sql, _codes in (p.values for p in REFUSED[::25]):
+        assert _problem(sql, dialect) is not None, (dialect, sql)
+    for dialect, sql in (p.values for p in ACCEPTED[::10]):
+        assert _problem(sql, dialect) is None, (dialect, sql)
 
 
 @pytest.mark.parametrize(("dialect", "sql", "codes"), REFUSED)

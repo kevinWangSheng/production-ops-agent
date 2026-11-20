@@ -1141,7 +1141,7 @@ def test_pghost_and_pgport_fill_a_dsn_without_host_or_port(monkeypatch):
             # Neither name ends in DSN: not an OpsPilot connection string.
             {
                 "OPSPILOT_DSN_BACKUP": "postgresql://o@127.0.0.1:5432/x",
-                "OPSPILOT_TEST_DATABASE_URL": "postgresql://o@127.0.0.1:5432/x",
+                "OPSPILOT_REPLICA_DATABASE_URL": "postgresql://o@127.0.0.1:5432/x",
             },
         ),
     ],
