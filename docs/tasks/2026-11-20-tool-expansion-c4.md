@@ -58,7 +58,7 @@
 
 ## 开关、档位与身份
 
-- `OPSPILOT_ARGOCD`：只在 `otel-demo-ext` 读，web 与 worker 启动时各读一次；`1` 开；未设、空串、`0` 关；其他值启动失败 `ARGOCD_INVALID`（加进 `profiles.py` 的 `_STARTUP_CODES`）。写法同 B4 的 `OPSPILOT_HELM_RELEASES`（预审 C4-2 写的 `on` 按 B4 实现决定改为 `1`，同一档位一种写法）。`deploy/docker-entrypoint.sh` 放行列表加 `OPSPILOT_ARGOCD`。不另加 lab 闸门（C4-11）。依据：① 它走扩展档位已有的 K8s 只读客户端（同一 `KubernetesClient`、同一 `OPSPILOT_K8S_API_URL` 与 `k8s-ro` 身份），地址已受 `tracing.check_lab_target` 的 `KUBERNETES_NOT_LAB` 约束（扩展档位必查集群地址，`tracing.py` A2-13），与 A2 的集群对象工具同一道闸门；② 与 B4 不同，它不读 Secret，身份层只多了 `applications` 的 get/list，没有「身份可读全部 Secret」那类残余风险，R8-19 也没有把它限定在合成环境。不新增凭据或地址：同一 `k8s-ro` 槽、同一 `KubernetesClient`。
+- `OPSPILOT_ARGOCD`：只在 `otel-demo-ext` 读，web 与 worker 启动时各读一次；`1` 开；未设、空串、`0` 关；其他值启动失败 `ARGOCD_INVALID`（加进 `profiles.py` 的 `_STARTUP_CODES`）。写法同 B4 的 `OPSPILOT_HELM_RELEASES`（预审 C4-2 写的 `on` 按 B4 实现决定改为 `1`，同一档位一种写法）。`deploy/docker-entrypoint.sh` 放行列表加 `OPSPILOT_ARGOCD`。不另加 lab 闸门（C4-11）。依据：① 它走扩展档位已有的 K8s 只读客户端（同一 `KubernetesClient`、同一 `OPSPILOT_K8S_API_URL` 与 `k8s-ro` 身份），与 A2 的集群对象工具受同一条 `KUBERNETES_NOT_LAB` 检查（`tracing.check_lab_target`，扩展档位必查集群地址，A2-13）。更正（#757）：这条检查只停 lab 模式的 trace 导出，不阻止工具对非 lab 集群运行（B4 的 `HELM_NOT_LAB` 会让 worker 不启动，这里没有对应的一道）；R8-19 没有要求 ArgoCD 加 lab 闸门，所以不加；② 与 B4 不同，它不读 Secret，身份层只多了 `applications` 的 get/list，没有「身份可读全部 Secret」那类残余风险，R8-19 也没有把它限定在合成环境。不新增凭据或地址：同一 `k8s-ro` 槽、同一 `KubernetesClient`。
 - 不进通用 `RESOURCES` 表（C4-5），`resolve_kind` 与 `resource_table()` 不变；jq、count、tabular 工具拿不到 Application。B4 的网关（`KubernetesClient.get`）不改：本模块只拼 `applications` 的固定路径，网关对非 Secret 路径照常放行。
 - 档位：四个工具接在 B4 的 Helm 三个工具之后、`fetch_skill` 与 `TodoWrite` 之前（以 B4 合并后的 main 为准）；`tool_schema_revision(..., argocd=False)` 时现有值字节不变；新常量 `ARGOCD_TOOL_NAMES`、`ARGOCD_TOOL_SCHEMA_REVISION`；`data_sources.available["change_history"]` 追加四个名字（与 Helm 名字一起排序），开关只开 ArgoCD 时 `change_history` 只有这四个，`not_integrated` 同样去掉 `change_history`。web 与 worker 开关不一致时 Run 在认领时被拦。
 - 注册：`source="otel-demo"`、`verb="get"`（list 工具 `"list"`）、`may_contain_secrets=True`、`result_path=("results",)`；新模块 `opspilot/tools/argocd_apps.py`（`ArgoCDTransport`，C4-10）。
@@ -114,6 +114,7 @@
 - lead 裁决（2026-11-20，测试作者歧义）：`app_name` 用 `check_object_name`（A3-6，每段 DNS label ≤63、总长 ≤253）；list 触到 50 页上限按 `RESULT_TOO_LARGE`（同 B4 的 200 页）；`ARGOCD_INVALID` 进 `_STARTUP_CODES`；`status.operationState.syncResult.source(s)` 是 status 里第 4 份 source 副本，白名单本来就排除。
 - 资源行与 `sync_result.resources` 的 `group` 缺省为空串（Kubernetes 核心组的写法；ArgoCD 对核心组省略该字段），不为 `null`。理由：按 group 排序的行键要可比较（CI 实测测试作者 A-1）。
 - 合成数据比接口多一个金丝雀位置：`status.operationState.syncResult.source`（同一 `ApplicationSource` 的第四处副本，CRD 里有这个字段），`CANARY-C4-SYNCRESULT`。
+- 工具描述（#757，2026-11-20）：原文说 Helm values 与参数「never returned」，但 Helm 渲染失败时 ArgoCD 写进 condition、health、operationState 的 message 常带完整命令行（含 `--set k=v`），这些 message 字段只做现有的凭据脱敏（合同接受）。改为「never returned as fields」，并写明 message 按 ArgoCD 原文返回、可能引用 Helm 命令行。模型可见文本变了，`ARGOCD_TOOL_SCHEMA_REVISION` 从 `otel-demo-ext-84f2799d2477` 变为 `otel-demo-ext-d46fcce79896`；不开 ArgoCD 时各值不变。
 - 合成数据文件是 JSON 写的 `apps.yaml`（kubectl 当 YAML 读）：由脚本生成、字段多，JSON 便于核对。
 
 ## 下一步
