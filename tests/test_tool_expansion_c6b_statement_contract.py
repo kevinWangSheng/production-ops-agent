@@ -344,6 +344,19 @@ MS_REFUSED_WORDS = [
     "SELECT a FROM t AS x WITH (TABLOCKX) WHERE a = 1",
     "SELECT * FROM t JOIN u WITH (UPDLOCK) ON t.id = u.id",
     "WITH c AS (SELECT * FROM t WITH (XLOCK)) SELECT * FROM c",
+    # Lead ruling: the ten lock hints refuse as whole words anywhere outside
+    # strings and quoted identifiers, WITH or not (old-style hints).
+    "SELECT * FROM t (UPDLOCK)",
+    "SELECT * FROM t a (XLOCK)",
+    "SELECT * FROM t AS a (HOLDLOCK)",
+    "SELECT * FROM t (NOLOCK, TABLOCKX)",
+    "SELECT * FROM t JOIN u (UPDLOCK) ON t.id = u.id",
+    "SELECT * FROM t JOIN u b (XLOCK) ON t.id = b.id",
+    "SELECT * FROM t LEFT JOIN u AS b (ROWLOCK) ON t.id = b.id",
+    "SELECT * FROM t CROSS JOIN u (PAGLOCK)",
+    "SELECT 1 AS holdlock",
+    "SELECT serializable FROM t",
+    "SELECT * FROM t WHERE readpast = 1",
     # C6a words in T-SQL shapes.
     "SELECT 1 SET NOCOUNT ON",
     "SET SHOWPLAN_XML ON",
