@@ -581,3 +581,20 @@ def test_profile_and_lab_gate(fake_db) -> None:
         select_profile(env).executor_factory(
             None, RecordingSink(), FakeClock(start=NOW)
         )  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("code", "sqlstate", "kind"),
+    [
+        (1142, "42000", "forbidden"),
+        (1064, "42000", "invalid"),
+        (3024, "HY000", "timeout"),
+        (1969, "70100", "timeout"),
+        (1792, "25006", "read_only"),
+    ],
+)
+def test_mysql_errors_classified_by_number_not_sqlstate(code, sqlstate, kind) -> None:
+    pymysql = pytest.importorskip("pymysql")
+    cls = pymysql.err.error_map.get(code, pymysql.err.OperationalError)
+    error = cls(code, "m", sqlstate=sqlstate)
+    assert sq._classify(error, connecting=False, cancelled=False).kind == kind

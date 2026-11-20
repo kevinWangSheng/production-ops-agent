@@ -825,12 +825,6 @@ def _classify(
     sqlstate = getattr(error, "sqlstate", None)
     args: tuple[Any, ...] = tuple(getattr(error, "args", ()))
     errno = args[0] if args and type(args[0]) is int else None
-    if isinstance(sqlstate, str) and sqlstate:
-        diag = getattr(error, "diag", None)
-        message = str(getattr(diag, "message_primary", None) or error)
-        if cancelled and sqlstate == "57014":
-            return SqlDriverError("timeout", sqlstate, "")
-        return SqlDriverError(_pg_kind(sqlstate), sqlstate, message)
     if errno is not None and _is_mysql_error(error):
         message = str(args[1]) if len(args) > 1 else ""
         if cancelled:
@@ -842,6 +836,14 @@ def _classify(
         if errno == 2013:
             return SqlDriverError("unavailable", str(errno), "")
         return SqlDriverError(_mysql_kind(errno), str(errno), message)
+    # PostgreSQL by SQLSTATE; checked after MySQL, whose errors carry a
+    # SQLSTATE too but are classified by their error number.
+    if isinstance(sqlstate, str) and sqlstate:
+        diag = getattr(error, "diag", None)
+        message = str(getattr(diag, "message_primary", None) or error)
+        if cancelled and sqlstate == "57014":
+            return SqlDriverError("timeout", sqlstate, "")
+        return SqlDriverError(_pg_kind(sqlstate), sqlstate, message)
     if _is_psycopg_error(error):
         if cancelled:
             return SqlDriverError("timeout")
