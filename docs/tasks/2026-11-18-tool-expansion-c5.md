@@ -70,7 +70,7 @@
 - LogsQL 扫描不把 `#` 当注释、字面量外拒 `'`、未闭合字面量报 `INVALID_QUERY`；禁用词按整词、不分大小写，要搜它们须加引号。理由：fail-closed，避免工具与 VictoriaLogs 对引号或注释理解不一致而漏检。
 - 发请求的 HTTP 读取与期限逻辑抽成 `loki_logs.http_get`，Loki 与 VictoriaLogs 共用，Loki 行为与字节不变（C5-13）。
 - 只读网关：`scripts/loki_readonly_gateway.py` 加 `--backend victorialogs`，不另起脚本；默认 `loki` 渲染的配置逐字节不变（本机对照旧版输出 diff 为空）。VictoriaLogs 网关容器 `opspilot-victorialogs-gateway`、默认端口 53103、状态目录 `tmp/m1-kind-lab/victorialogs-gateway`、设置文件 `tmp/m1-kind-lab/victorialogs-readonly.env`，`start` 支持 `--account-id`/`--project-id`。
-- CI：`log-backends` job 加 `victoriametrics/victoria-logs:v1.54.0`（digest `sha256:ee4e820c…`，2026-11-19 从 Docker Hub 读取）与第二个 nginx 网关容器，新步骤跑 `tests/integration/test_tool_expansion_c5b_victorialogs.py`，子查询探针结果写入 job 日志。
+- CI：`log-backends` job 加 `victoriametrics/victoria-logs:v1.54.0`（digest `sha256:ee4e820c…`，2026-11-19 从 Docker Hub 读取）与第二个 nginx 网关容器，新步骤跑 `tests/integration/test_tool_expansion_c5b_victorialogs*.py`（测试作者的同名文件与实现者的 `_impl.py`），子查询探针结果写入 job 日志。
 - 扩展档位 revision（本分支实测）：仅 VictoriaLogs `otel-demo-ext-1616059eb3fa`；ES 加 VictoriaLogs `otel-demo-ext-8be0fd839109`；Loki 加 VictoriaLogs `otel-demo-ext-8d5b08e18df7`；三者都有 `otel-demo-ext-1ada4b9c17db`。不含 VictoriaLogs 的四个值不变。
 
 ## 证据

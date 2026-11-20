@@ -689,7 +689,7 @@ jobs:
         run: |
           C5B_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5b-gateway-logs/access.log" \
           C5B_PROBE_OUT="$RUNNER_TEMP/c5b-probe.json" \
-            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5b_victorialogs.py -q -rs -s
+            .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5b_victorialogs*.py -q -rs -s
           cat "$RUNNER_TEMP/c5b-probe.json"
       - name: Container logs on failure
         if: failure()
