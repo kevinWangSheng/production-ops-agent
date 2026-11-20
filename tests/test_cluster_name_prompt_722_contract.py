@@ -62,7 +62,10 @@ BASE_PROFILES = ("fixture", "otel-demo")
 
 UNSET_VARIANT = "replay-candidate-k8s"
 CLUSTER_VARIANT = "replay-candidate-k8s-cluster"
-V7 = "opspilot-investigation-input-v7"
+# Task record (2026-11-18-cluster-name-prompt-722): the cluster name is input v8;
+# v7 belongs to C2b's runbook catalog, merged first.
+V8 = "opspilot-investigation-input-v8"
+V7_C2B = "opspilot-investigation-input-v7"
 
 # -- pins computed on origin/main 23f362f2 (see module docstring) ------------
 BASE_PROMPT_REVISION = "prompt-replay-candidate-860b743085d1"
@@ -470,21 +473,21 @@ def test_valid_names_are_accepted_verbatim(name):
     assert _input(_web_env(**{CLUSTER_ENV: name})).scope_facts["cluster_name"] == name
 
 
-# -- 5. Run input v7, rebuild, mismatches -------------------------------------
+# -- 5. Run input v8, rebuild, mismatches -------------------------------------
 
 
-def test_set_input_records_the_name_as_v7_and_round_trips():
+def test_set_input_records_the_name_as_v8_and_round_trips():
     from opspilot.investigation.context import CLUSTER_NAME, INPUT_VERSION_CLUSTER_NAME
 
     assert CLUSTER_NAME == "cluster_name"
-    assert INPUT_VERSION_CLUSTER_NAME == V7
+    assert INPUT_VERSION_CLUSTER_NAME == V8
     value = _input(_web_env(**{CLUSTER_ENV: NAME}))
     assert value.scope_facts[CLUSTER_NAME] == NAME
     assert value.variant_id == CLUSTER_VARIANT
-    assert value.version == V7
+    assert value.version == V8
     # Through JSON, as PostgreSQL stores it.
     row = json.loads(json.dumps(value.as_json()))
-    assert row["version"] == V7
+    assert row["version"] == V8
     assert row["scope_facts"]["cluster_name"] == NAME
     again = InvestigationInput.from_json(row)
     assert again == value
@@ -499,14 +502,14 @@ def test_set_input_records_the_name_as_v7_and_round_trips():
     } == unset["scope_facts"]
 
 
-def test_v7_outranks_and_coexists_with_earlier_facts():
+def test_v8_outranks_and_coexists_with_earlier_facts():
     alert = AlertAnchor(
         received_at=NOW - timedelta(minutes=1),
         starts_at=NOW - timedelta(minutes=5),
         original=(NOW - timedelta(minutes=5)).isoformat(),
     )
     alerted = _input(_web_env(**{CLUSTER_ENV: NAME}), alert=alert)
-    assert alerted.version == V7
+    assert alerted.version == V8
     assert alerted.scope_facts["cluster_name"] == NAME
     assert "alert_starts_at" in alerted.scope_facts
     assert (
@@ -524,10 +527,24 @@ def test_v7_outranks_and_coexists_with_earlier_facts():
             AFFECTED_SERVICE: {"namespace": "otel-demo", "workload": "checkout"},
         },
     )
-    assert with_service.version == V7
+    assert with_service.version == V8
     assert (
         InvestigationInput.from_json(json.loads(json.dumps(with_service.as_json())))
         == with_service
+    )
+    # It also coexists with, and outranks, C2b's v7 runbook catalog fact.
+    from opspilot.investigation.context import RUNBOOK_CATALOG
+    from opspilot.knowledge.catalog import unavailable_catalog
+
+    with_catalog = replace(
+        value,
+        scope_facts={**value.scope_facts, RUNBOOK_CATALOG: unavailable_catalog(86400)},
+    )
+    assert with_catalog.version == V8
+    assert with_catalog.scope_facts["cluster_name"] == NAME
+    assert (
+        InvestigationInput.from_json(json.loads(json.dumps(with_catalog.as_json())))
+        == with_catalog
     )
 
 
@@ -583,15 +600,16 @@ def test_from_json_refuses_rows_whose_version_variant_or_fact_disagree():
     with_fact = tampered(unset)
     with_fact["scope_facts"]["cluster_name"] = NAME
     rows = [
-        # a v1 row carrying the v7 fact
+        # a v1 row carrying the v8 fact
         tampered(named, version="opspilot-investigation-input-v1"),
         tampered(named, version="opspilot-investigation-input-v6"),
+        tampered(named, version=V7_C2B),  # C2b's v7 does not carry the name
         tampered(named, variant_id=UNSET_VARIANT),
         tampered(unset, variant_id=CLUSTER_VARIANT),
-        tampered(unset, version=V7),  # v7 row without the fact
+        tampered(unset, version=V8),  # v8 row without the fact
         without_fact,
         with_fact,  # v1 row with the fact
-        {**with_fact, "version": V7, "variant_id": UNSET_VARIANT},
+        {**with_fact, "version": V8, "variant_id": UNSET_VARIANT},
     ]
     for row in rows:
         with pytest.raises(ContextError) as excinfo:
@@ -667,7 +685,7 @@ def test_continuation_inherits_the_variant_and_name(monkeypatch):
     )
     assert successor.variant_id == CLUSTER_VARIANT
     assert successor.scope_facts["cluster_name"] == NAME
-    assert successor.version == V7
+    assert successor.version == V8
 
 
 # -- web/worker agreement and the claim gate ----------------------------------
