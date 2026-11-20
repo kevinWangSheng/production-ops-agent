@@ -168,7 +168,7 @@
 
 ### 实现决定（C6b，实现者自定，可逆，2026-11-20）
 
-- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-cf33ddb933d1`，仅 SQL Server `otel-demo-ext-6c47f0807aff`（裁决补充后的描述）；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
+- 扩展档位 revision：仅 ClickHouse `otel-demo-ext-418f6da11d43`，仅 SQL Server `otel-demo-ext-a50c45b8f95e`（PR #749 审查修复后的描述）；仅 Postgres `be3a9913af82`、仅 MySQL `ffed48334876` 与未设地址的值不变（本分支实测）。`SQL_ACCOUNT_UNSUPPORTED` 只进 ClickHouse 那三个注册的错误表，C6a 注册字节不变。
 - ClickHouse 连接用标准库 `http.client`（不读代理环境变量、不跟重定向），到期由看门狗关掉套接字（`cancel()` 对正在读的连接 `shutdown`）；`clickhouse+https` 的 `require` 用不校验证书的 SSL 上下文。连接自己把 HTTP 状态与 `X-ClickHouse-Exception-Code`（没有时取正文里的 `Code: N`）分类成 `SqlDriverError`。
 - SQL Server 连接用 python-tds `autocommit=True`、`disable_connect_retry=True`；没有参数时传 `None`（不是 `()`），否则 python-tds 会对模型 SQL 里的 `%` 做格式化。驱动原始异常由传输层按消息号分类；裸的 `TimeoutError`（驱动查询超时）归 `TOOL_TIMEOUT`。读到 `limit+1` 行后调 `cursor.cancel()` 再 `ROLLBACK TRANSACTION`。
 - 到期后任何来源的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`（看门狗取消后连接报出的断开属于超时）。
@@ -181,6 +181,13 @@
 - ClickHouse 的 `system` 库必须写成反引号 `` `system` ``：未加引号的 `SYSTEM` 一律按整词拒绝（含 `FROM system.tables`），描述里告诉模型这样写；工具自己的目录查询也写 `` `system` ``。
 - SQL Server 另拒整词 `WHILE`、`IF`、`PRINT`，以及锁提示 `UPDLOCK`、`XLOCK`、`HOLDLOCK`、`TABLOCK`、`TABLOCKX`、`PAGLOCK`、`ROWLOCK`、`SERIALIZABLE`、`REPEATABLEREAD`、`READPAST`：在字符串与带引号标识符之外作为整词出现就拒，不论是否在 `WITH (…)` 里（覆盖老式 `FROM t (UPDLOCK)` 与裸用）；`NOLOCK`、`READUNCOMMITTED` 放行，`[updlock]`、`rowlock_id` 放行。
 - ClickHouse `getSetting('readonly')` 返回数字：`2` 通过；`1` 报 `SQL_ACCOUNT_UNSUPPORTED`；其他值（含 `0`，GET 下正常不会出现）报 `SQL_ACCOUNT_NOT_READ_ONLY`。账号 `readonly=1` 时，第一个自查 GET 就会因工具自己的设置被拒（164），工具把自查阶段的 164 也报成 `SQL_ACCOUNT_UNSUPPORTED`；所有 GET 都带固定的查询键（接口原样）。
+- PR #749 审查修复（lead 定，全部 fail-closed，四种方言一致）：
+  - 词法器按服务器的形状先读掉数字字面量（`\d+(\.\d*)?([eE][+-]?\d*)?`、`\.\d+…`、`0x[0-9A-Fa-f]*`），数字后紧跟字母、`_` 或 `$` 一律 `QUERY_CONSTRUCT_NOT_ALLOWED`（SQL Server 把 `1e1EXEC` 读成数字加 `EXEC`，CI 实测见 `_impl` 文件的 `C6B-EVIDENCE` 行；PG 16 的 `1_000` 写法因此也被拒）。
+  - `--` 注释在 `\r` 或 `\n` 先到者结束（裸 `\r` 也结束注释，与服务器一致）。
+  - SQL Server：任何位置出现以 `sp_`、`xp_` 开头的名字（带不带括号、带不带方括号）都拒；三段及以上的点分名字与 `..` 都拒（自查只覆盖配置的库；列请用表别名，`dbo.t.col` 也被拒）；另拒 `RECEIVE`、`SEND`、`MOVE`、`CONVERSATION`、`OPEN`、`RETURN`、`BREAK`、`CONTINUE`、`FETCH`（`OFFSET n ROWS FETCH NEXT m ROWS ONLY` 的分页放行：`FETCH` 前一个词是 `ROW`/`ROWS` 时不拒，与测试作者的放行用例一致）、`CLOSE`、`DEALLOCATE`、`ADD SIGNATURE`，锁提示补 `READCOMMITTEDLOCK`、`NOWAIT`。**`END` 不拒**：拒了会拒掉所有 `CASE … END`，而 `BEGIN … END` 块已因 `BEGIN` 被拒，lead 不同意可再加。
+  - SQL Server 自查补：账号直接拥有的对象（`sys.objects.principal_id`）、服务器级对登录的 `IMPERSONATE`/`CONTROL`/`ALTER`/`TAKE OWNERSHIP`（`sys.server_permissions`）。
+  - ClickHouse 表函数补 `cosn`、`oss`、`hive`、`paimon`、`deltaLakeS3`、`deltaLakeCluster`、`hudiCluster`、`icebergCluster`。已知限制：`merge()` 因整词 `MERGE` 被拒（只会误拒）。
+  - 非阻塞：`_MSSQL_INVALID` 去掉重复的 102；ClickHouse 流中途的异常行按码分类（无码记 `SOURCE_ERROR`）、SQL Server 4060（库打不开）记 `SOURCE_FORBIDDEN`，两者照旧，记为已知取舍。
 - 常量 `SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION`、`SQL_MSSQL_TOOL_SCHEMA_REVISION` 已加到 `otel_demo_ext`。SQL Server 连接中途断开（python-tds `ClosedConnectionError`，消息号 0）报 `SOURCE_UNAVAILABLE`。
 
 ### 交给 #669

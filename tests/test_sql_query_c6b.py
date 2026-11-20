@@ -531,3 +531,65 @@ def test_clickhouse_unreachable() -> None:
     with pytest.raises(sq.SqlDriverError) as caught:
         conn.query("SELECT 1", max_rows=10)
     assert caught.value.kind == "unavailable"
+
+
+# -- PR #749 review ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql"),
+    [
+        ("mssql", "SELECT 1e1INSERT dbo.t VALUES (1)"),
+        ("mssql", "SELECT 1E1TRUNCATE TABLE dbo.t"),
+        ("mssql", "SELECT 0x0WAITFOR DELAY '00:00:10'"),
+        ("mssql", "SELECT 1.e1KILL 55"),
+        ("mssql", "SELECT 1e1EXEC master..xp_cmdshell 'whoami'"),
+        ("mssql", "SELECT 1e1EXEC msdb.dbo.sp_send_dbmail @recipients='a@b'"),
+        ("mssql", "SELECT 1 --\rINSERT dbo.t VALUES(1)"),
+        ("postgresql", "SELECT 1 --\r; DELETE FROM t"),
+        ("mysql", "SELECT 1 -- \r; DELETE FROM t"),
+        ("clickhouse", "SELECT 1 --\rINSERT INTO t VALUES (1)"),
+        ("clickhouse", "SELECT 1e1INSERT"),
+        ("postgresql", "SELECT 1e1DELETE"),
+        ("mssql", "SELECT * FROM master.dbo.sysobjects"),
+        ("mssql", "SELECT * FROM [master].[dbo].[t]"),
+        ("mssql", "SELECT * FROM master..t"),
+        ("mssql", "SELECT * FROM srv.db.dbo.t"),
+        ("mssql", "SELECT sp_who FROM t"),
+        ("mssql", "SELECT [xp_cmdshell] FROM t"),
+        ("mssql", "SELECT 1 RECEIVE"),
+        ("mssql", "SELECT 1 SEND"),
+        ("mssql", "SELECT 1 ADD SIGNATURE"),
+        ("mssql", "SELECT 1 RETURN"),
+        ("mssql", "SELECT 1 OPEN c"),
+        ("mssql", "SELECT 1 FETCH NEXT FROM c"),
+        ("mssql", "SELECT * FROM t WITH (READCOMMITTEDLOCK)"),
+        ("mssql", "SELECT * FROM t WITH (NOWAIT)"),
+        ("clickhouse", "SELECT * FROM cosn('x')"),
+        ("clickhouse", "SELECT * FROM hive('thrift://x', 'd', 't', 'a String', 'a')"),
+        ("clickhouse", "SELECT * FROM deltaLakeS3('x')"),
+        ("clickhouse", "SELECT * FROM paimon('x')"),
+        ("clickhouse", "SELECT * FROM icebergCluster('c', 'x')"),
+    ],
+)
+def test_review_cases_refused(dialect: str, sql: str) -> None:
+    problem = sq.sql_statement_problem(sql, dialect)
+    assert problem is not None and problem.startswith("QUERY_CONSTRUCT_NOT_ALLOWED:"), (
+        problem
+    )
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql"),
+    [
+        ("mssql", "SELECT 1.5, 2e3, 0x1F, .5 FROM t"),
+        ("mssql", "SELECT o.name FROM sys.objects o"),
+        ("mssql", "SELECT CASE WHEN a = 1 THEN 'x' END FROM t"),
+        ("mssql", "SELECT * FROM t ORDER BY id OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY"),
+        ("postgresql", "SELECT 1.5e-3, t1.a FROM t1"),
+        ("clickhouse", "SELECT 1e10, 0xFF"),
+        ("mysql", "SELECT a FROM t2 WHERE b = 3"),
+    ],
+)
+def test_review_cases_allowed(dialect: str, sql: str) -> None:
+    assert sq.sql_statement_problem(sql, dialect) is None

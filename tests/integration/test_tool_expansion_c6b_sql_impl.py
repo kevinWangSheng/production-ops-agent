@@ -577,3 +577,26 @@ def test_error_classes(kind: str) -> None:
     assert empty.status == "no_data", _view(empty)
     absent = _call(kind, sq.DESCRIBE_TOOL, {"table_name": "no_such_table"})
     assert absent.reason == "INVALID_PARAMS", _view(absent)
+
+
+def test_number_run_into_a_keyword_is_refused_and_read_as_two_tokens() -> None:
+    """PR #749 review B1: SQL Server reads ``1e1EXEC sp_who`` as the number
+    1e1 followed by ``EXEC sp_who``; the tool refuses it without sending."""
+    marker = _marker()
+    outcome = _call(
+        "mssql", sq.QUERY_TOOL, {"sql": f"SELECT 1e1EXEC sp_who /* {marker} */"}
+    )
+    assert outcome.reason == "INVALID_PARAMS", _view(outcome)
+    assert not _server_saw("mssql", marker)
+    conn = _ms(DB)
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1e1EXEC sp_who", None)
+            first = cursor.fetchall()
+            second_set = cursor.nextset()
+            print(
+                f"C6B-EVIDENCE mssql 1e1EXEC: first set {first!r}, second result set: {second_set}"
+            )
+            assert second_set, "SQL Server did not run EXEC sp_who after the number"
+    finally:
+        conn.close()

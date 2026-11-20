@@ -507,6 +507,21 @@ _DIALECT_WORDS: Mapping[str, frozenset[str]] = {
             "SERIALIZABLE",
             "REPEATABLEREAD",
             "READPAST",
+            "READCOMMITTEDLOCK",
+            "NOWAIT",
+            # Service Broker, cursors and further control flow (PR #749
+            # review); END is not refused (CASE ... END), BEGIN is
+            "RECEIVE",
+            "SEND",
+            "MOVE",
+            "CONVERSATION",
+            "OPEN",
+            "RETURN",
+            "BREAK",
+            "CONTINUE",
+            "FETCH",
+            "CLOSE",
+            "DEALLOCATE",
         }
     ),
 }
@@ -543,7 +558,15 @@ _CLICKHOUSE_FUNCTIONS = frozenset(
         "icebergAzure",
         "icebergHDFS",
         "deltaLake",
+        "deltaLakeS3",
+        "deltaLakeCluster",
         "hudi",
+        "hudiCluster",
+        "icebergCluster",
+        "cosn",
+        "oss",
+        "hive",
+        "paimon",
         "sleep",
         "sleepEachRow",
     )
@@ -599,6 +622,40 @@ def _quoted_end(sql: str, i: int, quote: str, *, backslash: bool, what: str) -> 
         j += 1
 
 
+#: SQL Server: a dotted name with two dots (``db.schema.obj``, ``db..obj``,
+#: four-part names); ``\x01`` stands for a bracketed or quoted identifier.
+_MSSQL_PART = r"(?:[A-Za-z_@#][A-Za-z0-9_@#$]*|\x01)"
+_MSSQL_MULTIPART = re.compile(
+    _MSSQL_PART
+    + r"\s*\.\s*(?:"
+    + _MSSQL_PART
+    + r"\s*)?\.\s*"
+    + r"(?:"
+    + _MSSQL_PART
+    + r"|\*)"
+)
+_NUMBER = re.compile(r"0[xX][0-9A-Fa-f]*|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d*)?")
+
+
+def _line_end(sql: str, i: int) -> int:
+    """Where a ``--`` comment starting at ``i`` ends: the first carriage
+    return or line feed (a bare ``\\r`` ends it too, as on the servers)."""
+    ends = [pos for pos in (sql.find("\n", i), sql.find("\r", i)) if pos >= 0]
+    return min(ends) if ends else len(sql)
+
+
+def _number_end(sql: str, i: int) -> int | None:
+    """End of the numeric literal starting at ``i``, or ``None`` when ``i``
+    does not start one (a digit inside an identifier is not a number)."""
+    ch = sql[i]
+    if not (ch.isdigit() or (ch == "." and i + 1 < len(sql) and sql[i + 1].isdigit())):
+        return None
+    if not ch.isascii() or _ident_before(sql, i):
+        return None
+    match = _NUMBER.match(sql, i)
+    return None if match is None or match.end() == i else match.end()
+
+
 def _lex_clickhouse(sql: str) -> tuple[str, list[tuple[int, str]]]:
     out: list[str] = []
     quoted: list[tuple[int, str]] = []
@@ -608,7 +665,7 @@ def _lex_clickhouse(sql: str) -> tuple[str, list[tuple[int, str]]]:
         ch = sql[i]
         nxt = sql[i + 1] if i + 1 < n else ""
         if ch == "-" and nxt == "-":
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
@@ -637,6 +694,21 @@ def _lex_clickhouse(sql: str) -> tuple[str, list[tuple[int, str]]]:
             out.append(" ")
             quoted.append((len(out), content))
             continue
+        number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
+            continue
         out.append(ch)
         i += 1
     return "".join(out), quoted
@@ -651,7 +723,7 @@ def _lex_mssql(sql: str) -> tuple[str, list[tuple[int, str]]]:
         ch = sql[i]
         nxt = sql[i + 1] if i + 1 < n else ""
         if ch == "-" and nxt == "-":
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
@@ -693,8 +765,23 @@ def _lex_mssql(sql: str) -> tuple[str, list[tuple[int, str]]]:
                 content.append(c)
                 j += 1
             i = j + 1
-            out.append(" ")
+            out.append("\x01")  # a quoted name, for the multi-part rule
             quoted.append((len(out), "".join(content)))
+            continue
+        number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
             continue
         out.append(ch)
         i += 1
@@ -720,12 +807,12 @@ def _lex_pg_mysql(
                     "QUERY_CONSTRUCT_NOT_ALLOWED",
                     "'--' must be followed by a space to start a comment",
                 )
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
         if mysql and ch == "#":
-            end = sql.find("\n", i)
+            end = _line_end(sql, i)
             i = n if end < 0 else end
             out.append(" ")
             continue
@@ -815,6 +902,21 @@ def _lex_pg_mysql(
             out.append(" ")
             quoted.append((len(out), "".join(content)))
             continue
+        number_end = _number_end(sql, i)
+        if number_end is not None:
+            # a numeric literal as the server reads it; a letter straight
+            # after it (``1e1EXEC``, ``0x0WAITFOR``) is refused, since the
+            # server reads that as a number and a keyword (PR #749 review B1)
+            following = sql[number_end] if number_end < len(sql) else ""
+            if following.isalpha() or following in ("_", "$"):
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED",
+                    "a letter straight after a number (separate them with a space)",
+                )
+            out.append("0")
+            out.extend(" " * (number_end - i - 1))
+            i = number_end
+            continue
         out.append(ch)
         i += 1
     # ``quoted`` holds indexes into ``out``; every replaced region is one
@@ -872,15 +974,23 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
         upper = word.upper()
         if upper in _FORBIDDEN_WORDS:
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
-        if upper in extra:
-            raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
-        if (
+        if upper in extra and not (
+            # OFFSET n ROWS FETCH NEXT m ROWS ONLY is paging, not a cursor
             dialect == "mssql"
-            and upper == "NEXT"
-            and index + 1 < len(words)
-            and words[index + 1][0].upper() == "VALUE"
+            and upper == "FETCH"
+            and index > 0
+            and words[index - 1][0].upper() in ("ROW", "ROWS")
         ):
-            raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "NEXT VALUE")
+            raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", upper)
+        if dialect == "mssql":
+            following = words[index + 1][0].upper() if index + 1 < len(words) else ""
+            if upper == "NEXT" and following == "VALUE":
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "NEXT VALUE")
+            if upper == "ADD" and following == "SIGNATURE":
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "ADD SIGNATURE")
+            if word.lower().startswith(("sp_", "xp_")):
+                # a system procedure named anywhere, called or not
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", word)
         if (
             upper == "FOR"
             and index + 1 < len(words)
@@ -891,6 +1001,17 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
             )
         if _next_char(body, end) == "(" and _function_problem(word, dialect):
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", f"{word}()")
+    if dialect == "mssql":
+        if _MSSQL_MULTIPART.search(body):
+            # the account check covers the configured database only
+            raise _Reject(
+                "QUERY_CONSTRUCT_NOT_ALLOWED",
+                "a name with three or more parts or '..' (database-qualified "
+                "names are refused; use the configured database and aliases)",
+            )
+        for _, content in quoted:
+            if content.lower().startswith(("sp_", "xp_")):
+                raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", content)
     for end, content in quoted:
         if _next_char(code, end) == "(" and _function_problem(content, dialect):
             raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", f'"{content}"()')
@@ -1068,7 +1189,14 @@ _MSSQL_ACCOUNT_CHECK = (
     f"UNION ALL SELECT {_ms_text(''''schema_owner:' + s.name''')} FROM sys.schemas s JOIN "
     "sys.database_principals pr ON pr.principal_id = s.principal_id WHERE "
     "(s.principal_id = DATABASE_PRINCIPAL_ID() OR (pr.type = 'R' AND "
-    "pr.is_fixed_role = 0 AND IS_MEMBER(pr.name) = 1))"
+    "pr.is_fixed_role = 0 AND IS_MEMBER(pr.name) = 1)) "
+    # PR #749 review: objects owned directly, and IMPERSONATE on a login
+    f"UNION ALL SELECT {_ms_text(''''object_owner:' + o.name''')} FROM sys.objects o "
+    "WHERE o.principal_id = DATABASE_PRINCIPAL_ID() "
+    f"UNION ALL SELECT {_ms_text(''''server_permission:' + sp.permission_name''')} FROM "
+    "sys.server_permissions sp WHERE sp.grantee_principal_id = SUSER_ID() AND "
+    "sp.state IN ('G', 'W') AND sp.permission_name IN ('IMPERSONATE', 'CONTROL', "
+    "'ALTER', 'TAKE OWNERSHIP')"
     ") x"
 )
 
@@ -1285,7 +1413,6 @@ _MSSQL_INVALID = frozenset(
         8115,
         241,
         242,
-        102,
         319,
         1038,
         4145,
@@ -2931,7 +3058,9 @@ _CLICKHOUSE_REFUSALS_TEXT = (
     "'#' and '$' outside quotes, and the table functions that reach outside "
     "the database: url, file, s3, gcs, azureBlobStorage, hdfs, remote, "
     "remoteSecure, cluster, mysql, postgresql, sqlite, mongodb, redis, odbc, "
-    "jdbc, executable, input, iceberg, deltaLake and hudi, plus sleep. "
+    "jdbc, executable, input, iceberg, deltaLake, hudi, cosn, oss, hive and "
+    "paimon (and their Cluster forms), plus sleep; merge() is refused too. "
+    "A number must not run straight into a word (1e1EXEC). "
     "Reading system tables is allowed, but write the database name with "
     "backticks: `system`.query_log, `system`.parts, `system`.processes (an "
     "unquoted SYSTEM is refused). A column with one of those names must be quoted. The tool "
@@ -2949,7 +3078,11 @@ _MSSQL_REFUSALS_TEXT = (
     "DBCC, KILL, BULK, BACKUP, RESTORE, SET, GO, WHILE, IF, PRINT, NEXT VALUE "
     "FOR, the locking hints UPDLOCK, XLOCK, HOLDLOCK, TABLOCK, TABLOCKX, "
     "PAGLOCK, ROWLOCK, SERIALIZABLE, REPEATABLEREAD and READPAST (NOLOCK is "
-    "allowed), and calls of "
+    "allowed), RECEIVE, SEND, OPEN, cursor FETCH (OFFSET n ROWS "
+    "FETCH NEXT m ROWS ONLY paging is allowed), CLOSE, DEALLOCATE, RETURN, BREAK, CONTINUE, any name "
+    "starting sp_ or xp_, names with three or more parts or '..' (stay in "
+    "the configured database; use table aliases for columns), a number "
+    "running straight into a word (1e1EXEC), and calls of "
     "xp_*, sp_*, OPENROWSET, OPENQUERY, OPENDATASOURCE and OPENXML. A column "
     "with one of those names must be quoted with [] . There is no EXPLAIN "
     "and SET SHOWPLAN is refused: read plans and query statistics from DMVs "
