@@ -108,17 +108,22 @@ def query_refused(
 
 
 def response(*calls: tuple[str, Any]) -> dict[str, Any]:
+    """A step's stored ``response``: the assistant message under
+    ``assistant`` (``opspilot/investigation/loop.py`` step payload)."""
     return {
-        "role": "assistant",
-        "content": None,
-        "tool_calls": [
-            {
-                "id": f"call-{i}",
-                "type": "function",
-                "function": {"name": name, "arguments": json.dumps(args)},
-            }
-            for i, (name, args) in enumerate(calls)
-        ],
+        "assistant": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": f"call-{i}",
+                    "type": "function",
+                    "function": {"name": name, "arguments": json.dumps(args)},
+                }
+                for i, (name, args) in enumerate(calls)
+            ],
+        },
+        "finish_reason": "tool_calls",
     }
 
 
