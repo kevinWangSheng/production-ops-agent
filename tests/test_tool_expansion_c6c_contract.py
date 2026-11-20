@@ -692,10 +692,10 @@ def test_current_op_command_document(monkeypatch, active_only):
     assert current["idleConnections"] is (active_only is False)
     match = pipeline[1]["$match"]
     assert dict(match["microsecs_running"]) == {"$gte": 1_500_000}
-    # Lead ruling 2026-11-20 (interface revision): at most 200 rows. The
-    # stage reads at most one more than the cap; 201 is the tight bound and
-    # the original 501 is tolerated (the tool still cuts to 200).
-    assert pipeline[2] in ({"$limit": 201}, {"$limit": 501}), pipeline[2]
+    # Lead ruling 2026-11-20 (interface revision): at most 200 rows, read
+    # one more to detect truncation.
+    assert pipeline[2] == {"$limit": 201}
+    assert dict(command.doc["cursor"]) == {"batchSize": 201}
 
 
 def test_a_left_over_cursor_is_killed_and_never_read_on(monkeypatch):
