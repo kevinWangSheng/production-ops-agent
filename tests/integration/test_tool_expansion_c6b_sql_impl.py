@@ -470,8 +470,8 @@ def test_timeout_cancels_the_statement(kind: str) -> None:
     else:
         sql = (
             "SELECT COUNT(*) FROM sys.all_objects a CROSS JOIN sys.all_objects b "
-            "CROSS JOIN sys.all_objects c WHERE a.object_id + b.object_id + "
-            f"c.object_id = -1 /* {marker} */"
+            "CROSS JOIN sys.all_objects c WHERE CAST(a.object_id AS BIGINT) + "
+            f"b.object_id + c.object_id = -1 /* {marker} */"
         )
     config = sq.SqlConfig(url=_url(kind), username=RO, password=PASSWORD, tls="disable")
     transport = sq.SqlTransport(config, request_timeout_seconds=5.0)
