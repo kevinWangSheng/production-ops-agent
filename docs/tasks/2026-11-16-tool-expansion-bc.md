@@ -73,7 +73,7 @@
 |---|---|---|---|---|
 | 1 | B1 Elasticsearch/OpenSearch 日志 | #560 | HolmesGPT 评测集 30 题 | 代码已合并（PR #705，`4052ab4f`，[B1 记录](2026-11-16-tool-expansion-b1.md)）；真实 Run 归 #671 |
 | 2 | C5 Loki / VictoriaLogs | #569 | HolmesGPT 评测集 9 题 | 预审与裁决完成（r10）；C5a Loki、C5b VictoriaLogs 两个 PR |
-| 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | |
+| 3 | B3 Pod 与节点实时用量 | #562 | SREGym 相关题与直接取样 | 公开接口已定、实现中（[B3 记录](2026-11-19-tool-expansion-b3.md)，分支 `feature/562-live-usage`，worktree `../poa-562-live`） |
 | 4 | C2 按需取 runbook | #566 | HolmesGPT 评测集 6 题 | |
 | 5 | C1 任务清单 | #565 | HolmesGPT 评测集 1 题，加开关对照 | |
 | 6 | C6 数据库只读查询 | #570 | HolmesGPT 评测集 7 题 | |
@@ -94,6 +94,7 @@
 - B1（#560，只在 `otel-demo-ext` 且设了 `OPSPILOT_ES_URL`）：租机或 lab 上的 Elasticsearch 8 / OpenSearch 2 的 `GET /_cat/indices/{pattern}?format=json`、`GET /{index}/_mapping`、`POST /{index}/_search`（唯一的 POST，请求体由工具拼，禁用脚本等构造），用独立凭据槽 `es-ro` 的只读 API key 或只读用户。返回：索引列表行、字段映射、按事故时间窗过滤的文档（`_index`、`_id`、`_source` 或 `fields`、`sort`，每个字符串值截到 2000 字符，最多 500 条）与聚合、总数、分片与超时信息。`may_contain_secrets=True`：投影后的响应存入证据库（PG），视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（lab 闸门要求 ES 地址是 lab 主机，`ELASTICSEARCH_NOT_LAB`）。jq 在 worker 本机隔离子进程里跑，不外发。不新增接收方。
 - C5a（#569，只在 `otel-demo-ext` 且设了 `OPSPILOT_LOKI_URL`）：租机或 lab 上 Loki（直连地址，经 nginx 只读网关）的 `GET /loki/api/v1/query_range`（唯一请求，查询串由工具拼，始终带事故查询窗，`offset`、`@` 与超出查询窗的范围在发请求前拒绝），用独立凭据槽 `loki-ro` 的网关只读账号（Basic 或 bearer），租户由运维配置（`X-Scope-OrgID`）。返回：查询窗内的日志行（`timestamp`、`labels`、`line`，最新在前，最多 500 条，每个字符串值截到 2000 字符）或指标查询的序列（`metric`、`values`）。`may_contain_secrets=True`：投影后的响应存入证据库（PG），视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（lab 闸门要求 Loki 地址是 lab 主机，`LOKI_NOT_LAB`）。不新增接收方。
 - C5b（#569，只在 `otel-demo-ext` 且设了 `OPSPILOT_VICTORIALOGS_URL`）：租机或 lab 上 VictoriaLogs（直连地址，经 nginx 只读网关）的 `GET /select/logsql/{query,streams,field_names,field_values,hits}`（只有这五条 GET，查询串由工具拼，始终带事故查询窗，`options`、`join`、`union`、`stream_context` 与子查询在发请求前拒绝），用独立凭据槽 `vlogs-ro` 的网关只读账号（Basic 或 bearer），租户由运维配置（`AccountID`/`ProjectID`）。返回：查询窗内的日志条目（VictoriaLogs 返回的整条 JSON，最新在前，最多 500 条，每个字符串值截到 2000 字符）、流与字段名、字段取值及命中数、按 step 分桶的计数。`may_contain_secrets=True`：投影后的响应存入证据库（PG），视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（lab 闸门要求地址是 lab 主机，`VICTORIALOGS_NOT_LAB`）。不新增接收方。
+- B3（#562，只在 `otel-demo-ext` 且 web 与 worker 都设了 `OPSPILOT_K8S_LIVE_METRICS=1`）：租机或 lab 集群 API server 的 `GET /apis/metrics.k8s.io/v1beta1/pods`（或 `/namespaces/{ns}/pods`）、`GET /apis/metrics.k8s.io/v1beta1/nodes`、`GET /api/v1/nodes`（只取 allocatable），路径写死，用现有 `k8s-ro` 只读身份（A1 清单已授权 `metrics.k8s.io` 的 pods、nodes，RBAC 不改）。返回：每个 Pod（含容器明细）或节点此刻的 CPU 毫核、内存字节、节点占可分配量的百分比、采样时刻与采样窗口；来源时间留空（当前状态类，B3-U1）。`may_contain_secrets=True`：投影后的响应存入证据库（PG），视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（地址受现有 `KUBERNETES_NOT_LAB` 闸门约束）。不新增接收方。
 
 ## 待决
 
