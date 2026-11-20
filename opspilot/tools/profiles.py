@@ -51,6 +51,11 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   web reads the address only, the worker the ``kafka-ro`` settings
   (``OPSPILOT_KAFKA_SECURITY_PROTOCOL``, ``_SASL_MECHANISM``, ``_USERNAME``,
   ``_PASSWORD``, ``_CA_FILE``; ``KAFKA_CONFIG_MISSING``/``_INVALID``).
+  ``OPSPILOT_MONGODB_URL`` adds the six MongoDB tools (C6c): the web reads
+  the address only, the worker the ``mongodb-ro`` settings
+  (``OPSPILOT_MONGODB_DATABASE``, ``_USERNAME``, ``_PASSWORD``,
+  ``_AUTH_SOURCE``, ``_TLS``, ``_CA_FILE``; ``MONGODB_CONFIG_MISSING``/
+  ``_INVALID``, ``MONGODB_TARGETS_OPSPILOT_DB``).
   ``OPSPILOT_HELM_RELEASES=1`` adds ``helm_list``, ``helm_history`` and
   ``helm_status`` (B4) over the existing cluster connection;
   ``OPSPILOT_ARGOCD=1`` adds the four ``argocd_app_*`` tools (C4) the same way
@@ -94,6 +99,7 @@ from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
 from opspilot.tools.kubernetes_core import KubernetesConfig
 from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
 from opspilot.tools.loki_logs import LokiConfig, loki_enabled
+from opspilot.tools.mongodb_query import MongoConfig, mongodb_enabled
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
     otel_demo_executor_factory,
@@ -167,6 +173,9 @@ _STARTUP_CODES = frozenset(
         "SQL_CONFIG_MISSING",
         "SQL_CONFIG_INVALID",
         "SQL_TARGETS_OPSPILOT_DB",
+        "MONGODB_CONFIG_MISSING",
+        "MONGODB_CONFIG_INVALID",
+        "MONGODB_TARGETS_OPSPILOT_DB",
         "KAFKA_CONFIG_MISSING",
         "KAFKA_CONFIG_INVALID",
         "ARGOCD_INVALID",
@@ -201,6 +210,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C3-12: the bootstrap address only; never an ``OPSPILOT_KAFKA_*``
     # credential in the web.
     kafka = kafka_enabled(env)
+    # C6c: the address only; never an ``OPSPILOT_MONGODB_*`` credential.
+    mongodb = mongodb_enabled(env)
     # B4-2: the switch only (not an ``OPSPILOT_K8S_*`` name, A2-3); the
     # worker alone checks the cluster address is a lab host (B4-3).
     helm = helm_releases_enabled(env)
@@ -234,6 +245,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 todo=todo,
                 sql=SqlConfig.from_env(env),
                 kafka=KafkaConfig.from_env(env),
+                mongodb=MongoConfig.from_env(env),
                 helm=helm,
                 argocd=argocd,
             )
@@ -255,6 +267,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             todo=todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
             helm=helm,
             argocd=argocd,
         ),
@@ -267,6 +280,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             todo=todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
             helm=helm,
             argocd=argocd,
         ),

@@ -81,6 +81,12 @@ join right after the Helm tools when ``OPSPILOT_ARGOCD=1``, listed under
 what it was before C4. The worker routes them to the same
 ``KubernetesTransport`` (``k8s-ro`` slot).
 
+C6c (#570): the six ``mongodb_*`` tools of :mod:`opspilot.tools.mongodb_query`
+join last when ``OPSPILOT_MONGODB_URL`` is set, listed under ``mongodb`` in
+``data_sources.available``; every set without the address is byte for byte
+what it was before C6c. The worker routes them to their own ``MongoTransport``
+(``mongodb-ro`` slot, address in the selector ``mongodb_endpoint``).
+
 B4 (#563): ``helm_list``, ``helm_history`` and ``helm_status`` of
 :mod:`opspilot.tools.helm_releases` join when ``OPSPILOT_HELM_RELEASES=1``,
 after the live usage tools and before ``fetch_skill`` and ``TodoWrite`` (the
@@ -118,6 +124,7 @@ from opspilot.tools import (
     kubernetes_logs,
     kubernetes_tabular,
     loki_logs,
+    mongodb_query,
     otel_demo,
     prometheus_ext,
     sql_query,
@@ -164,6 +171,8 @@ __all__ = [
     "TOOL_SCHEMAS",
     "KAFKA_TOOL_NAMES",
     "KAFKA_TOOL_SCHEMA_REVISION",
+    "MONGODB_TOOL_NAMES",
+    "MONGODB_TOOL_SCHEMA_REVISION",
     "SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION",
     "SQL_MSSQL_TOOL_SCHEMA_REVISION",
     "SQL_MYSQL_TOOL_SCHEMA_REVISION",
@@ -218,6 +227,7 @@ def _tool_schemas(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
@@ -252,6 +262,9 @@ def _tool_schemas(
     if kafka:
         # C3-12 (#567): after every earlier item.
         schemas = (*schemas, *kafka_admin.TOOL_SCHEMAS)
+    if mongodb:
+        # C6c (#570): after every earlier item.
+        schemas = (*schemas, *mongodb_query.TOOL_SCHEMAS)
     return schemas
 
 
@@ -273,6 +286,7 @@ def _data_sources(
     knowledge: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> dict[str, Any]:
@@ -307,6 +321,8 @@ def _data_sources(
         available["sql"] = sorted(sql_query.TOOL_NAMES)
     if kafka:
         available["kafka"] = sorted(kafka_admin.TOOL_NAMES)
+    if mongodb:
+        available["mongodb"] = sorted(mongodb_query.TOOL_NAMES)
     return {
         "available": available,
         "not_integrated": [
@@ -326,6 +342,7 @@ def _registrations(
     knowledge: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> tuple[ToolRegistration, ...]:
@@ -408,6 +425,13 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if mongodb:
+        base = (
+            *base,
+            *mongodb_query.mongodb_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     return base
 
 
@@ -421,6 +445,7 @@ def tool_schema_revision(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> str:
@@ -443,6 +468,7 @@ def tool_schema_revision(
                     todo,
                     sql=sql,
                     kafka=kafka,
+                    mongodb=mongodb,
                     helm=helm,
                     argocd=argocd,
                 )
@@ -456,6 +482,7 @@ def tool_schema_revision(
                     knowledge,
                     sql=sql,
                     kafka=kafka,
+                    mongodb=mongodb,
                     helm=helm,
                     argocd=argocd,
                 )
@@ -470,6 +497,7 @@ def tool_schema_revision(
                 knowledge,
                 sql=sql,
                 kafka=kafka,
+                mongodb=mongodb,
                 helm=helm,
                 argocd=argocd,
             ),
@@ -518,6 +546,11 @@ SQL_TOOL_NAMES: tuple[str, ...] = tuple(
 )
 #: C3-12: the same with only ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` set.
 KAFKA_TOOL_SCHEMA_REVISION = tool_schema_revision(kafka=True)
+#: C6c: the same with only ``OPSPILOT_MONGODB_URL`` set.
+MONGODB_TOOL_SCHEMA_REVISION = tool_schema_revision(mongodb=True)
+MONGODB_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(mongodb=True)
+)
 KAFKA_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(kafka=True)
 )
@@ -543,6 +576,7 @@ def otel_demo_ext_versions(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> dict[str, str]:
@@ -565,6 +599,7 @@ def otel_demo_ext_versions(
             todo=todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
             helm=helm,
             argocd=argocd,
         ),
@@ -582,6 +617,7 @@ def otel_demo_ext_face(
     todo: bool = False,
     sql: str | None = None,
     kafka: bool = False,
+    mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> ToolFace:
@@ -602,6 +638,7 @@ def otel_demo_ext_face(
             knowledge,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
             helm=helm,
             argocd=argocd,
         )
@@ -617,6 +654,7 @@ def otel_demo_ext_face(
             todo,
             sql=sql,
             kafka=kafka,
+            mongodb=mongodb,
             helm=helm,
             argocd=argocd,
         ),
@@ -633,6 +671,7 @@ def _target(
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
+    mongodb: mongodb_query.MongoConfig | None = None,
 ) -> RegisteredTarget:
     base = otel_demo._target(config)
     selector = {
@@ -650,6 +689,8 @@ def _target(
         selector[sql_query.ENDPOINT_SELECTOR] = sql.endpoint
     if kafka is not None:
         selector[kafka_admin.ENDPOINT_SELECTOR] = kafka.bootstrap_servers
+    if mongodb is not None:
+        selector[mongodb_query.ENDPOINT_SELECTOR] = mongodb.endpoint
     return RegisteredTarget(
         target_id=base.target_id,
         source=base.source,
@@ -678,6 +719,7 @@ def otel_demo_ext_registrations(
     knowledge: bool = False,
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
+    mongodb: mongodb_query.MongoConfig | None = None,
     helm: bool = False,
     argocd: bool = False,
 ) -> OtelDemoExtRegistrations:
@@ -691,11 +733,21 @@ def otel_demo_ext_registrations(
             knowledge,
             sql=None if sql is None else sql.dialect,
             kafka=kafka is not None,
+            mongodb=mongodb is not None,
             helm=helm,
             argocd=argocd,
         ),
         targets=(
-            _target(config, kubernetes, elasticsearch, loki, victorialogs, sql, kafka),
+            _target(
+                config,
+                kubernetes,
+                elasticsearch,
+                loki,
+                victorialogs,
+                sql,
+                kafka,
+                mongodb,
+            ),
         ),
     )
 
@@ -735,6 +787,8 @@ def _overflow_summary(
         return sql_query.overflow_summary(tool, rows, query)
     if tool in kafka_admin.TOOL_NAMES:
         return kafka_admin.overflow_summary(tool, rows, query)
+    if tool in mongodb_query.TOOL_NAMES:
+        return mongodb_query.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -753,6 +807,7 @@ def otel_demo_ext_executor_factory(
     todo: bool = False,
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
+    mongodb: mongodb_query.MongoConfig | None = None,
     helm: bool = False,
     argocd: bool = False,
     jq_path: str | None = None,
@@ -813,6 +868,7 @@ def otel_demo_ext_executor_factory(
         knowledge,
         sql=sql,
         kafka=kafka,
+        mongodb=mongodb,
         helm=helm,
         argocd=argocd,
     )
@@ -901,6 +957,10 @@ def otel_demo_ext_executor_factory(
         # C3-4/C3-9: its own ``kafka-ro`` slot, one short client per call.
         brokers = kafka_admin.KafkaTransport(kafka)
         routes.update(dict.fromkeys(kafka_admin.TOOL_NAMES, brokers))
+    if mongodb is not None:
+        # C6c: its own ``mongodb-ro`` slot, one short client per call.
+        documents = mongodb_query.MongoTransport(mongodb)
+        routes.update(dict.fromkeys(mongodb_query.TOOL_NAMES, documents))
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",

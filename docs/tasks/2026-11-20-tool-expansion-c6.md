@@ -1,9 +1,9 @@
 # 工具面拓展 C6：数据库只读查询
 
-- 状态：进行中（C6a 已合并 #746；C6b ClickHouse/SQL Server 公开接口已定，等测试作者；C6c MongoDB 另开）
+- 状态：进行中（C6a 已合并 #746；C6b 已合并 #749；C6c MongoDB 公开接口已定，等测试作者）
 - 更新日期：2026-11-20
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-15、R8-16、R8-25 与 r11（C6-U1=a；C6-0 至 C6-22 可逆默认全部采纳）；PRODUCT-CONSTRAINTS 第 18 行（模型自写查询只在注册的只读工具里跑，SQL 以只读账号为第一道、语句检查为第二道）；C3 第 3、8 节；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/database/`。issue #570。预审全文在仓库外（`~/.agent/handoffs/opspilot-c6-prereview-2026-11-19.md`），细节以它和 r11 为准
-- 工作区：C6a 实现 `../poa-570-sql`，分支 `feature/570-sql-a`（已合并，worktree 已删）；C6b 实现 `../poa-570-sqlb`，分支 `feature/570-sql-b`（起点 `0c0492f1`）
+- 工作区：C6a `../poa-570-sql`、C6b `../poa-570-sqlb`（都已合并、worktree 已删）；C6c 实现 `../poa-570-mongo`，分支 `feature/570-mongo`（起点 `f08a074e`）
 
 ## 目标
 
@@ -196,6 +196,99 @@
 
 - 222（ClickHouse）：题目自带 `default` 无口令账号是管理员，会被 C6-U1 拒；评测脚本按上面的 C6-21 用 `kubectl exec … clickhouse-client` 建只读账号，地址 `clickhouse+http://127.0.0.1:10222/default`、`OPSPILOT_SQL_TLS=disable`。
 - 223（SQL Server）：题目用 `sa`，同样被拒；用 `sqlcmd` 建只读登录与库用户，地址 `mssql://127.0.0.1:10223/testdb`、`disable`；租机选 amd64、给 3 GB。
+
+## C6c 公开接口（MongoDB，2026-11-20）
+
+新模块 `opspilot/tools/mongodb_query.py`（C6-16），不走 SQL 主体，但上限、投影、错误分类、凭据、lab 闸门、业务库隔离、扩展档位的写法照 C6a。PG、MySQL、ClickHouse、SQL Server 与未设地址时的 revision 字节不变。
+
+### 工具（上游 `holmes/plugins/toolsets/mongodb/mongodb.py` 默认名，C6-2）
+
+| 工具 | 参数（必填加粗） | 工具发的命令（写死） | 返回 `results` 每行 | `row_unit` | verb |
+|---|---|---|---|---|---|
+| `mongodb_find` | **`collection`**、**`filter`**（JSON 对象字符串，`{}` 为全部）、`projection`（JSON 对象）、`sort`（JSON 对象，值只许 `1`、`-1` 或 `{"$meta": …}`）、`limit`（默认 100，1–500） | `find` | 文档（JSON 安全值） | `documents` | `query` |
+| `mongodb_aggregate` | **`collection`**、**`pipeline`**（JSON 数组字符串）、`limit`（默认 100，1–500；上游没有，R8-15 披露） | `aggregate`，工具在末尾追加 `{"$limit": limit+1}` | 输出文档 | `documents` | `query` |
+| `mongodb_list_collections` | 无 | `listCollections`（`nameOnly`、`authorizedCollections`） | `{name, type}`，按 `name` 排序，最多 500 | `collections` | `get` |
+| `mongodb_collection_schema` | **`collection`** | `find`（`{}`、`limit: 10`）、`listIndexes`、`count`（估计数） | 每个字段 `{field, types}`（抽样 10 条推出，嵌套用点号）；视图另带 `indexes`（`{name, keys, unique}`）、`estimated_document_count`、`sample_size` | `fields` | `get` |
+| `mongodb_server_status` | `sections`（逗号分隔；可选值 `connections`、`opcounters`、`mem`、`locks`、`globalLock`、`network`、`wiredTiger`、`metrics`、`opLatencies`、`tcmalloc`、`flowControl`、`repl`、`asserts`、`transactions`；缺省前六个，比上游少 `wiredTiger`，免得一次就超 25k token） | `serverStatus`（admin 库） | 一行：`host`、`version`、`uptime_seconds` 与所选各段 | `sections` | `get` |
+| `mongodb_current_op` | `min_duration_ms`（整数，≥0）、`active_only`（布尔，默认 true） | admin 库上的 `aggregate`：`$currentOp`（`allUsers: true`，`idleConnections` = 非 `active_only`）、`$match`（`microsecs_running ≥ min_duration_ms×1000`）、`$limit: 201` | 每个操作 `{opid, op, ns, active, secs_running, microsecs_running, desc, appName, client, waitingForLock, planSummary, command}`，最多 200（裁决 A，见下） | `operations` | `get` |
+
+- 去掉上游每个工具的 `database` 参数与 `mongodb_list_databases`：库只来自配置（C3 §8，C6-2）。`collection` 只接受 `[A-Za-z0-9_.-]`、1–120 字符、不以 `.` 开头，否则 `INVALID_IDENTIFIER`。
+- 时间（C3 §8 当前状态类）同 C6a：来源时间留空，notes 第一条写查询时刻，`cannot_prove` 写明是查询时刻的数据；`current_op` 里的操作文本可能含其他客户端的查询内容（按字段名脱敏）。
+
+### 只读：两道加工具命令面（PRODUCT-CONSTRAINTS:18）
+
+- 第一道：只读账号（C6-21）。第二道：工具检查，分两部分：
+  - 命令面写死：工具只发上表这几种命令加 `connectionStatus` 与 `killCursors`，模型只能提供 `find` 的 filter/projection/sort 与 `aggregate` 的 pipeline，不能发任意命令。
+  - 内容检查（发请求前，拒绝时替身驱动收到 0 条命令）：JSON 用 `bson.json_util` 的 relaxed 扩展 JSON 解析（可写 `{"$oid": …}`、`{"$date": …}`），最长 20000 字符、嵌套不超过 30 层，解析失败 `INVALID_JSON`；filter/projection/sort/pipeline 在**任意深度**出现这些键一律 `QUERY_CONSTRUCT_NOT_ALLOWED`：`$where`、`$function`、`$accumulator`、`$code`、`$out`、`$merge`。pipeline 每一层（含 `$facet` 各分支、`$lookup.pipeline`、`$unionWith.pipeline`）的阶段名必须在白名单里：`$match`、`$project`、`$addFields`、`$set`、`$unset`、`$group`、`$sort`、`$limit`、`$skip`、`$count`、`$unwind`、`$lookup`、`$graphLookup`、`$unionWith`、`$facet`、`$bucket`、`$bucketAuto`、`$sortByCount`、`$replaceRoot`、`$replaceWith`、`$sample`、`$redact`、`$densify`、`$fill`、`$setWindowFields`、`$geoNear`；其余（`$documents`、`$currentOp`、`$collStats`、`$indexStats`、`$planCacheStats`、`$listSessions`、`$listLocalSessions`、`$changeStream`、`$search` 等）拒绝。`$lookup`/`$graphLookup` 的 `from` 与 `$unionWith` 的 `coll` 必须是字符串集合名（同库）；对象形式（`{db, coll}` 跨库）或带 `db` 键一律拒。每个阶段对象只许一个键。
+- 会话只读层：MongoDB 没有只读会话或只读事务（`readConcern`、`readPreference` 都不限制写）。这一层的残余照实写：一个有写权限的账号配进来时，挡写的只有工具命令面与内容检查，所以 C6-U1 自查对 Mongo 尤其不能省。读偏好设 `secondaryPreferred`（有副本时读副本，减轻主节点负担；读到的可能稍旧，notes 不另写）。
+
+### 每次调用的命令序列（新客户端、用完即关，不建池、不重试）
+
+- `MongoClient`：`directConnection=True`（只连配置的那一台，不按副本集配置去连别的主机）、`retryReads=False`、`retryWrites=False`、`appname=opspilot-mongodb-tool`、`readPreference=secondaryPreferred`、`serverSelectionTimeoutMS`/`connectTimeoutMS`/`socketTimeoutMS` 取剩余期限、`authSource` 取配置。
+- ① admin 库 `{"connectionStatus": 1, "showPrivileges": true}`（自查）→ ② 工具命令。每条工具命令带 `maxTimeMS`（剩余期限减 2 秒，至少 1000）与 `comment: "opspilot-<uuid4>"`（`listIndexes`、`killCursors` 只带 `comment`）。`find` 为 `{"find", "filter", "projection"?, "sort"?, "limit": limit+1, "batchSize": limit+1, "singleBatch": true, "maxTimeMS", "comment"}`；`aggregate` 为 `{"aggregate", "pipeline": [...模型的阶段, {"$limit": limit+1}], "cursor": {"batchSize": limit+1}, "maxTimeMS", "comment"}`。返回的游标 id 不为 0 时发 `{"killCursors": coll, "cursors": [id]}`。不发 `getMore`。
+- 到期：看门狗关闭客户端；服务器侧由 `maxTimeMS` 结束。
+- 驱动接缝：`MongoTransport(config, *, connector=None, request_timeout_seconds=30.0)`；`connector(config, timeout_seconds) -> MongoConnection`，`MongoConnection.command(database, spec) -> dict`（`spec` 为有序的命令文档，返回服务器的应答文档）、`cancel()`、`close()`。工具发出的每条命令都经过 `command`，合同测试用替身 connector 记录完整顺序。驱动原始异常（pymongo `OperationFailure.code`、`ConnectionFailure`、`NetworkTimeout`）由传输层分类，也可以直接抛 C6a 的 `SqlDriverError`。
+
+### 账号自查（C6-U1，MongoDB）
+
+- 读 `connectionStatus` 的 `authInfo`：`authenticatedUsers` 为空（服务器没开认证或没登录上）不通过；`authenticatedUserRoles` 每一项的 `role` 必须 ∈ {`read`、`readAnyDatabase`、`clusterMonitor`}（任意 `db`；自定义角色一律不通过）；`authenticatedUserPrivileges` 里任何一个 action 落在写与管理动作表（`insert`、`update`、`remove`、`createCollection`、`createIndex`、`dropCollection`、`dropDatabase`、`dropIndex`、`renameCollectionSameDB`、`convertToCapped`、`collMod`、`compact`、`enableProfiler`、`createUser`、`dropUser`、`updateUser`、`grantRole`、`revokeRole`、`createRole`、`dropRole`、`updateRole`、`changePassword`、`changeOwnPassword`、`changeCustomData`、`setAuthenticationRestriction`、`killop`、`killAnySession`、`shutdown`、`fsync`、`setParameter`、`replSetConfigure`、`applicationMessage`、`bypassDocumentValidation`、`anyAction`、`internal`、`reIndex`、`dropAllRolesFromDatabase`、`dropAllUsersFromDatabase`、`planCacheWrite`、`splitVector`、`cleanupOrphaned`、`moveChunk`、`splitChunk`、`enableSharding`、`flushRouterConfig`、`logRotate`、`resync`）也不通过；角色白名单是主判据，动作表是兜底。命中报 `MONGODB_ACCOUNT_NOT_READ_ONLY`（新码，归 `SOURCE_FORBIDDEN`），notes 写命中的角色或动作名，工具命令一条不发。判定函数为模块级 `mongodb_query.account_problem(status) -> str | None`（集成测试用 monkeypatch 跳过它来验证命令面这一层）。
+
+### 上限与投影
+
+- 同 C6a：`limit` 默认 100、1–500；原始读取按应答 BSON 大小累计 2 MiB，视图 25k token，超限整条 `RESULT_TOO_LARGE`；到 `limit` 标不完整。值转 JSON：`ObjectId` → 24 位十六进制串，日期 → ISO 8601，`Decimal128` → 字符串，二进制 → `0x` 十六进制，`Int64` → 整数，正则与 JS 代码值 → 字符串；任意深度的字符串截到 2000 字符，被截字段的点号路径列在行内 `_truncated_fields`。`result_path=("results",)`，`source="otel-demo"`，`may_contain_secrets=True`，地址在 selector `mongodb_endpoint`（不含凭据）。
+
+### 错误分类
+
+| 情况 | 结果 |
+|---|---|
+| 发请求前：`INVALID_JSON`、`INVALID_QUERY`（空、超长、不是对象/数组、嵌套过深、阶段对象多键）、`INVALID_LIMIT`、`INVALID_IDENTIFIER`、`INVALID_PARAMS`（`sections`、`min_duration_ms`、`active_only` 不合法）、`QUERY_CONSTRUCT_NOT_ALLOWED` | `INVALID_PARAMS`，码在 notes 开头 |
+| `OperationFailure` 码 2、9、14、15、16、17、40324、168、31249、31254、40353、51091 等语法/参数/类型错，`26`（集合不存在） | `INVALID_PARAMS`（`MONGODB_INVALID`，回显截短脱敏的服务器文本） |
+| 13（Unauthorized）、18（AuthenticationFailed）、11（UserNotFound） | `SOURCE_FORBIDDEN`（`MONGODB_FORBIDDEN`，不回显） |
+| `MONGODB_ACCOUNT_NOT_READ_ONLY`、`MONGODB_TARGETS_OPSPILOT_DB` | `SOURCE_FORBIDDEN` |
+| 50（MaxTimeMSExpired）、`NetworkTimeout` 且已到期 | `TOOL_TIMEOUT` |
+| `ServerSelectionTimeoutError`、`ConnectionFailure`、`AutoReconnect`、未到期的 `NetworkTimeout` | `SOURCE_UNAVAILABLE` |
+| 其他 | `SOURCE_ERROR` |
+| 成功但 0 行 | `no_data` |
+
+### 配置、凭据、lab 闸门、隔离、档位
+
+- `OPSPILOT_MONGODB_URL`：`mongodb://<host>[:<port>]`，可带一个末尾 `/`；`mongodb+srv://`、userinfo、多主机（逗号）、路径里的库名、查询串、片段一律 `MONGODB_CONFIG_INVALID`。`OPSPILOT_MONGODB_DATABASE`（必填，库名 1–63 字符，不含 `/\. "$`）、`OPSPILOT_MONGODB_USERNAME`、`OPSPILOT_MONGODB_PASSWORD`（必填，缺任一 `MONGODB_CONFIG_MISSING`）、`OPSPILOT_MONGODB_AUTH_SOURCE`（缺省 `admin`）、`OPSPILOT_MONGODB_TLS`（`verify-full` 默认、`require`、`disable`）、`OPSPILOT_MONGODB_CA_FILE`（必须可读，`disable` 时不许设）。没设地址却设了其余变量报 `MONGODB_CONFIG_INVALID`。凭据槽 `mongodb-ro`，不与 `sql-ro` 等回退。
+- web 只读 `OPSPILOT_MONGODB_URL` 是否设置。启动码 `MONGODB_CONFIG_MISSING`、`MONGODB_CONFIG_INVALID`、`MONGODB_TARGETS_OPSPILOT_DB` 进启动码集合；入口脚本放行 `OPSPILOT_MONGODB_*`。lab 闸门：设了地址就必须是 lab 主机，否则 `MONGODB_NOT_LAB`。
+- 业务库隔离（C6-8 第一层）：地址的（主机, 端口，缺省 27017）与进程里每个 `OPSPILOT_*DSN` 比对（同 C6a 的规则与回环归一），相同则启动失败 `MONGODB_TARGETS_OPSPILOT_DB`。OpsPilot 业务库是 PostgreSQL，第三层（库内探测）不适用。
+- 扩展档位：六个工具接在当前所有后端之后（Kafka 之后），`data_sources.available.mongodb` 为六个名字排序；`tool_schema_revision(..., mongodb=True)`，常量 `MONGODB_TOOL_SCHEMA_REVISION`、`MONGODB_TOOL_NAMES`；不设地址时所有现有值字节不变。
+- 依赖：`pymongo==4.19.0`（Apache-2.0，MongoDB 官方驱动，2026-10-14 发布；4.20.x 不足两周不选），连带 `dnspython`（ISC，pymongo 的必需依赖；我们不用 `mongodb+srv`）。上游同款驱动。
+
+### CI（写死，测试作者与实现者共用）
+
+- 同一个 job `db-backends` 再加容器 `c6-mongo`：`mongo@sha256:ac9e83c57e32bf767f875ac2b9a9d87800d2d91a7829180c3a4826e0599698e8`（7.0.17 多架构索引，2026-11-20 读取），`--cpus=1 --memory=512m`，`-e MONGO_INITDB_ROOT_USERNAME=root -e MONGO_INITDB_ROOT_PASSWORD=$C6_ADMIN_PASSWORD`，`-p 127.0.0.1:53206:27017`；就绪看 `docker exec c6-mongo mongosh --quiet -u root -p "$C6_ADMIN_PASSWORD" --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok'`。
+- pytest 步骤新增环境变量：`C6_MONGO_PORT=53206`、`C6_MONGO_ADMIN_USER=root`（口令 `C6_ADMIN_PASSWORD`）、`C6_MONGO_CONTAINER=c6-mongo`。门控仍是 `OPSPILOT_DB_BACKENDS=1`。
+- 文件与命名：测试作者 `tests/integration/test_tool_expansion_c6c_mongo.py`，库 `c6c_tests`、只读账号 `c6c_tests_ro`、其他账号前缀 `c6c_tests_`（账号都建在 `admin` 库）；实现者 `tests/integration/test_tool_expansion_c6c_mongo_impl.py`，`c6c_impl`、`c6c_impl_ro`、前缀 `c6c_impl_`。运行顺序：C6a、C6b 四个文件之后，先测试作者、后实现者。工具侧：`OPSPILOT_MONGODB_URL=mongodb://127.0.0.1:53206`、`OPSPILOT_MONGODB_AUTH_SOURCE=admin`、`OPSPILOT_MONGODB_TLS=disable`。工程师侧用 pymongo（实现提交后已在依赖里）以 root 连接。
+- 只读账号授权（C6-21，CI 夹具与租机共用）：admin 库 `createUser({user: <ro>, pwd: <口令>, roles: [{role: "read", db: <库>}, {role: "clusterMonitor", db: "admin"}]})`。
+- 命令是否到达服务器（⑨）：测试库开 profiler（工程师侧 `{"profile": 2}`），之后查该库 `system.profile` 里有没有带标记的命令（标记放在 filter 的值里，或工具自己的 `comment`）。
+- 断言（与 C6a ①–⑪ 对应）：① 六个工具都有真实返回（含索引与估计数、`serverStatus` 所选段、`$currentOp`）；③ 600 条集合按 limit 截断并标不完整，5000 字符长值截断，2 MiB 与视图超限整条拒；④ `password`/`api_token` 字段脱敏；⑤ 内容检查的代表构造（顶层与 `$facet`/`$lookup.pipeline`/`$unionWith.pipeline` 嵌套的 `$out`、`$merge`，`$where`、`$function`、`$accumulator`，跨库 `$lookup`，`$documents`、`$collStats`）在真实库上被拒、不到达服务器、集合数与文档数不变；⑥ 命令面：跳过 `account_problem` 用 root 账号经工具发一条合法的 `aggregate`，profiler 里只出现 `connectionStatus` 与该 `aggregate`（没有别的命令）；⑦ 只读账号直连 `insertOne`、`updateOne`、`deleteOne`、`drop`、含 `$out` 的 aggregate 全部被拒（13），文档数不变；⑧ 超时：低期限下跑一条重 pipeline（`$range` 展开），报 `TOOL_TIMEOUT`，之后 `$currentOp` 里没有带本次 `comment` 的操作；⑨ root 账号、`readWrite` 账号、自定义角色账号都报 `MONGODB_ACCOUNT_NOT_READ_ONLY` 且工具命令未到达；⑩ `OPSPILOT_WORKER_DSN` 与地址同主机同端口时启动失败 `MONGODB_TARGETS_OPSPILOT_DB`；⑪ 错误分类用真实应答（未知操作符、错误口令、无权限的库、端口无人监听、0 条结果）。
+
+### 实现决定（C6c，实现者自定，可逆，2026-11-20）
+
+- 扩展档位 revision：仅 MongoDB `otel-demo-ext-f3c82122dcd8`；不设地址时无后端 `c63f058afb18`、Kafka `b78a67921a9c`、各 SQL 方言等现有值不变（本分支实测）。
+- 工具在 `mongodb_query.py`，SQL 那边的 `_host_key`、`_dsn_endpoints`、`SqlDriverError` 复用（导入，不改 C6a/C6b 代码）。驱动原始异常由传输层分类：`OperationFailure` 按 `code`，`NetworkTimeout`/`ConnectionFailure`/`ServerSelectionTimeoutError` 未到期为不可用、到期为超时；到期后的 `unavailable`/`error` 一律改记 `TOOL_TIMEOUT`。
+- `MongoClient` 另设 `maxPoolSize=1`、`connect=False`（第一条命令时才连），看门狗到期时关闭客户端；`serverSelectionTimeoutMS`、`connectTimeoutMS` 取「剩余期限减 2 秒」与 10 秒的较小者（至少 1 秒），这样连不上的服务器在期限前报 `SOURCE_UNAVAILABLE`（CI 实测：取整个剩余期限时报成了超时）；`socketTimeoutMS` 仍取剩余期限。
+- `mongodb_current_op` 返回其他会话的操作与查询文本，`may_contain_secrets=True`（六个工具都是），按字段名走现有脱敏；B/C 记录的新数据源登记写明。
+- relaxed 扩展 JSON 里的 `{"$code": …}` 会被解析成 JavaScript 代码值，内容检查按值类型同样拒绝。
+
+### 裁决补充（C6c，lead 2026-11-20，测试作者提问后）
+
+- JSON 里重复的键拒绝（`INVALID_JSON`）：先用普通 JSON 解析一遍检查重复键与禁用键，再用 `bson.json_util` 解析成值。所以 `{"$code": …}` 在变成代码值之前就按键被拒。
+- 嵌套深度：顶层为 0，对象或数组每进一层加 1，超过 30 层报 `INVALID_QUERY`（20 层放行、40 层拒）。
+- 禁用运算符不分大小写比较（`$WHERE`、`$Out` 同样拒）；阶段白名单本来就只认原样拼写，大小写不对的阶段名不在白名单里，也被拒。
+- `account_problem` 收整个 `connectionStatus` 应答。
+- 每条工具命令都带 `maxTimeMS`，只有 `listIndexes` 与 `killCursors` 不带（`listCollections`、`serverStatus` 带）；`readPreference=secondaryPreferred` 设在客户端上。
+- 连不上的端口：`serverSelectionTimeoutMS`、`connectTimeoutMS` 取「剩余期限减 2 秒」与 10 秒的较小者，在期限前报 `SOURCE_UNAVAILABLE`。
+- admin 库 profiler 不可用时，测试跳过那一段并记录，可以接受。
+- 裁决 A（接口修订，同 C3 先例）：`mongodb_current_op` 行数上限 500 → **200**。理由：合同测试实测每行约 100 token（500 行约 5.05 万 token），200 行约 2 万 token，满上限仍放得进 25k 视图，返回 `ok` 加不完整标记，而不是整条 `RESULT_TOO_LARGE`。其他工具不下调：`list_collections` 每行约 10 token（500 行约 5k），`collection_schema` 的字段行同量级；`find`/`aggregate` 每条文档大小取决于数据，500 条超限时整条 `RESULT_TOO_LARGE` 并提示投影或调低 `limit`，与 C6a 相同。
+
+### 交给 #669
+
+- 229、230：题目自带 `holmes` 是 root，会被 C6-U1 拒；评测脚本用 `kubectl exec … mongosh` 按 C6-21 建只读账号，`OPSPILOT_MONGODB_URL=mongodb://127.0.0.1:10227`（230 为 10228）、`OPSPILOT_MONGODB_DATABASE=shopdb`（230 为 `opsdb`）、`AUTH_SOURCE=admin`、`TLS=disable`。
 
 ## 交给 #669 租机
 
