@@ -952,10 +952,18 @@ def test_mssql_rollback_backstop_undoes_only_transactional_writes(k8s_ca, monkey
     # A non-transactional side effect is not: a sequence number stays taken.
     # This is why the statement check refuses NEXT VALUE (and the record says
     # the rollback is only a backstop).
+    # Before the first NEXT VALUE, current_value already equals the start
+    # value (CI: 1 -> 1), so draw one directly first to measure a real step.
+    warm = int(_ms_scalar("SELECT NEXT VALUE FOR dbo.c6t_seq"))
     before_seq = _seq_value()
+    assert before_seq == warm
     taken = admin.query("SELECT NEXT VALUE FOR dbo.c6t_seq AS v")
     _assert(taken, "ok", None)
-    assert _seq_value() > before_seq
+    drawn = int(_rows(taken)[0]["v"])
+    assert drawn > before_seq  # the tool's call took a number...
+    assert _seq_value() == drawn  # ...and the rollback did not give it back
+    after = int(_ms_scalar("SELECT NEXT VALUE FOR dbo.c6t_seq"))
+    assert after > drawn
     print(
         f"C6B-EVIDENCE mssql sequence advanced under rollback: {before_seq} -> {_seq_value()}"
     )
