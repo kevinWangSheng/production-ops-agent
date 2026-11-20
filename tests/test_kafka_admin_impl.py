@@ -125,3 +125,24 @@ def test_a_partial_listing_is_incomplete_and_names_the_error():
     response = transport.fetch(_request(CONSUMERS_TOOL))
     assert response.incomplete is True
     assert "COORDINATOR_NOT_AVAILABLE" in str(response.view_fields)
+
+
+def test_a_failed_login_reported_to_error_cb_is_forbidden_not_a_timeout():
+    hung: concurrent.futures.Future[Any] = concurrent.futures.Future()
+    client = _Client([hung])
+    confs: list[dict[str, Any]] = []
+
+    def factory(conf: dict[str, Any]) -> _Client:
+        confs.append(conf)
+        return client
+
+    def poll(timeout: float) -> int:
+        error = ck.KafkaError(ck.KafkaError._AUTHENTICATION, "bad login")
+        confs[0]["error_cb"](error)
+        return 0
+
+    client.poll = poll  # type: ignore[attr-defined]
+    transport = KafkaTransport(KafkaConfig("localhost:9092"), client_factory=factory)
+    response = transport.fetch(_request(BROKERS_TOOL))
+    assert response.source_status == "KAFKA_FORBIDDEN"
+    assert "SASL_AUTHENTICATION_FAILED" in str(response.view_fields)

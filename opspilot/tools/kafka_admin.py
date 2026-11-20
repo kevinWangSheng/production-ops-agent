@@ -319,18 +319,7 @@ def _classify(error: object, missing: str | None) -> BaseException:
     if name in _TIMED_OUT:
         return TransportTimeout(name)
     if name.endswith("_AUTHORIZATION_FAILED") or name in _FORBIDDEN_EXTRA:
-        return _Refusal(
-            TransportResponse(
-                body=canonical({"error": FORBIDDEN_CODE}).encode(),
-                source_status=FORBIDDEN_CODE,
-                view_fields={
-                    "notes": [
-                        f"{FORBIDDEN_CODE}: the broker refused this read for the "
-                        f"configured identity ({name})."
-                    ]
-                },
-            )
-        )
+        return _forbidden(name)
     if name.startswith("INVALID_"):
         return _Refusal(
             TransportResponse(
@@ -347,6 +336,24 @@ def _classify(error: object, missing: str | None) -> BaseException:
             body=canonical({"error": ERROR_CODE}).encode(),
             source_status=ERROR_CODE,
             view_fields={"notes": [f"{ERROR_CODE}: {label}: {_note_text(text)}"]},
+        )
+    )
+
+
+_LOGIN_CHECK_SECONDS = 0.5
+
+
+def _forbidden(name: str) -> _Refusal:
+    return _Refusal(
+        TransportResponse(
+            body=canonical({"error": FORBIDDEN_CODE}).encode(),
+            source_status=FORBIDDEN_CODE,
+            view_fields={
+                "notes": [
+                    f"{FORBIDDEN_CODE}: the broker refused this read for the "
+                    f"configured identity ({name})."
+                ]
+            },
         )
     )
 
@@ -408,6 +415,14 @@ class _Call:
     client: Any
     deadline: float
     monotonic: Callable[[], float]
+    #: Error names librdkafka reported through ``error_cb`` (not per request).
+    seen: list[str] = field(default_factory=list)
+
+    def refused_login(self) -> bool:
+        """Whether the client reported a failed login: librdkafka keeps
+        retrying and never fails the request itself (CI, PR #748), so a
+        wrong password would otherwise end as a timeout."""
+        return any(name in _FORBIDDEN_EXTRA for name in self.seen)
 
     def remaining(self) -> float:
         left = self.deadline - self.monotonic()
@@ -420,9 +435,15 @@ class _Call:
 
     def result(self, future: Any, missing: str | None = None) -> Any:
         try:
-            return future.result(timeout=self.remaining())
-        except concurrent.futures.TimeoutError:
-            raise TransportTimeout("TIMEOUT") from None
+            while True:
+                # Short waits so a failed login ends the call at once.
+                wait = min(_LOGIN_CHECK_SECONDS, self.remaining())
+                try:
+                    return future.result(timeout=wait)
+                except concurrent.futures.TimeoutError:
+                    self.client.poll(0)
+                    if self.refused_login():
+                        raise _forbidden("SASL_AUTHENTICATION_FAILED") from None
         except (TransportError, _Missing, _Refusal):
             raise
         except Exception as error:
@@ -590,11 +611,18 @@ class KafkaTransport:
         budget = min(self._timeout, request.timeout_seconds)
         deadline = self._monotonic() + budget
         conf = self._config.client_conf(bootstrap, budget)
+        seen: list[str] = []
+        conf["error_cb"] = lambda error: seen.append(_error_name(error)[0])
         try:
             with self._factory(conf) as client:
-                call = _Call(client, deadline, self._monotonic)
+                call = _Call(client, deadline, self._monotonic, seen)
                 try:
                     answer = _HANDLERS[request.tool](call, request.params)
+                except TransportTimeout:
+                    client.poll(0)
+                    if call.refused_login():
+                        raise _forbidden("SASL_AUTHENTICATION_FAILED") from None
+                    raise
                 except _HandleGone:
                     # Once only, within the same deadline; read-only reads.
                     answer = _HANDLERS[request.tool](call, request.params)

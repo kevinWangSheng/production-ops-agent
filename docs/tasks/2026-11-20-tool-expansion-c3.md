@@ -104,6 +104,7 @@
 
 - `describe_consumer_group` 的分区行在 `list_offsets` 里某分区报错（如该主题已删）时，该行 `end_offset` 为空、`lag` 为空、标 `end_offset_unavailable`，不让整条调用失败。理由：组还提交着已删主题的位点是常见情形，整条失败会让这个组无法查看。
 - `_DESTROY_BROKER`（「Broker handle destroyed without termination」）时，同一客户端、同一期限内把本次调用的只读请求重跑一次，再失败报 `SOURCE_UNAVAILABLE`。理由：CI 实测（PR #748 第 7 轮）新建客户端发出的第一个请求会撞上 librdkafka 用首份元数据替换 bootstrap 句柄，`describe_topic` 与 `find_consumer_groups_by_topic` 偶发失败；这是客户端内部句柄被回收，不是 broker 拒绝，重跑只读请求无副作用。C3-10 的「不重试」对其余错误照旧（合同测试断言单次请求的错误码都不重试）。
+- 登录失败（错口令）：librdkafka 不让请求失败，只经 `error_cb` 报 `_AUTHENTICATION` 并一直重试，请求最终超时（CI 实测）。客户端配置挂 `error_cb` 记下错误名；等待结果时每 0.5 秒 `poll(0)` 一次，看到登录失败即报 `SOURCE_FORBIDDEN`，不等到 30 秒超时；超时时也再查一次。理由：错口令是权限问题，报成超时会误导排查。
 - 不带 Kafka 错误名的异常（例如客户端库自身的类型错误）归 `SOURCE_ERROR`，notes 只写异常类型名；worker 日志只记类型名，不记异常文本。理由：异常文本可能带请求内容。
 - `coordinator` 投影为 broker ID（整数）。理由：host/port 已在 `list_brokers`。
 - 扩展档位 revision（本分支实测）：仅 Kafka `otel-demo-ext-96b75ab08269`；SQL（postgresql）加 Kafka `otel-demo-ext-4ffb41544b2a`；不设 Kafka 地址时现有值不变（无后端 `otel-demo-ext-c63f058afb18`，合同测试钉的 8 个值全过）。
