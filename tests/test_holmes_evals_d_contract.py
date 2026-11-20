@@ -122,7 +122,11 @@ def test_c2_questions_and_groups() -> None:
     q = mod("questions")
     assert tuple(q.C2_QUESTIONS) == C2_ALL
     # PR-E (lead ruling): C1 (283) follows C2; groups c1 and todo-hard.
-    assert tuple(q.ALL_QUESTIONS) == (
+    # PR-F (lead ruling): the seven C6 questions are added; their position is
+    # not pinned here, the order of the others is.
+    c6 = set(q.C6_QUESTIONS)
+    assert c6 <= set(q.ALL_QUESTIONS)
+    assert tuple(x for x in q.ALL_QUESTIONS if x not in c6) == (
         tuple(q.B1_QUESTIONS) + tuple(q.C5_QUESTIONS) + C2_ALL
         + tuple(q.C1_QUESTIONS)
     )  # fmt: skip
@@ -230,7 +234,9 @@ def test_log_questions_kubernetes_specs() -> None:
     assert lb.backend_of(Q100A) == "loki"
     assert lb.backend_of(Q257) == "victorialogs"
     # PR-E (lead ruling): plus C1 (283).
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL) | {
+    # PR-F (lead ruling): C6 entries may be present; without them, unchanged.
+    c6 = set(mod("questions").C6_QUESTIONS)
+    assert set(lb.LOG_QUESTIONS) - c6 == set(C5_ALL) | set(C2_ALL) | {
         "283_todowrite_multistep_audit"
     }
 

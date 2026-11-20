@@ -129,6 +129,13 @@ C2_DISCLOSURES = (
     "UPSTREAM_HARNESS_JUDGE_TEXT",
     "KNOWLEDGE_UPSTREAM_DIRECT",
 )
+#: PR-F: the C6 database questions; Holmes uses each question's own admin
+#: account from upstream's ``toolsets.yaml`` (OpsPilot a read-only one).
+C6_DISCLOSURES = (
+    "TOOL_FACE_UPSTREAM_DEFAULT",
+    "UPSTREAM_HARNESS_JUDGE_TEXT",
+    "DB_ADMIN_ACCOUNT_UPSTREAM",
+)
 DEFAULT_VICTORIALOGS_PORT = 29428
 
 
@@ -218,7 +225,7 @@ def preflight(cfg: Config) -> None:
     if needs_es:
         check_es_url(cfg.secrets["ELASTICSEARCH_URL"])
     if cfg.kubeconfig is None and any(
-        backend_of(q) == "kubernetes" and LOG_QUESTIONS[q].needs_k8s
+        backend_of(q) in ("kubernetes", "sql", "mongodb") and LOG_QUESTIONS[q].needs_k8s
         for q in cfg.questions
     ):
         # PR-D: 94/95/96/162 set up on a cluster; an unreachable one is the
@@ -246,8 +253,9 @@ def pytest_env(cfg: Config, qid: str, chance_dir: Path) -> dict[str, str]:
                 "ELASTICSEARCH_API_KEY": s["ELASTICSEARCH_API_KEY"],
             }
         )
-    elif backend == "kubernetes":
-        # PR-D: no log backend, nothing to shift.
+    elif backend in ("kubernetes", "sql", "mongodb"):
+        # PR-D: no log backend, nothing to shift. PR-F: the database's
+        # port-forward is upstream's harness's own (``port_forwards``).
         env["OHC_SHIFT_BACKEND"] = "none"
     else:
         spec = LOG_QUESTIONS[qid]
@@ -578,6 +586,8 @@ def build_summary(
     mode: str | None = None
     if spec is None:
         disclosures = list(DISCLOSURES)
+    elif spec.backend in ("sql", "mongodb"):
+        disclosures = list(C6_DISCLOSURES)
     elif qid in KNOWLEDGE_QUESTIONS:
         disclosures = list(C2_DISCLOSURES)
         mode = holmes_run_mode(cfg, qid)
@@ -666,6 +676,10 @@ def _data_plane(cfg: Config, qid: str) -> dict[str, Any]:
         url = cfg.secrets.get("ELASTICSEARCH_URL")
     elif spec.backend == "kubernetes":
         url = None
+    elif spec.backend in ("sql", "mongodb"):
+        from scripts.holmes_evals.db_backends import DB_QUESTIONS, product_url
+
+        url = product_url(DB_QUESTIONS[qid])
     elif spec.address:
         url = f"http://localhost:{spec.address.rsplit(':', 1)[1]}"
     else:

@@ -172,7 +172,11 @@ def test_c5_question_lists() -> None:
     assert len(q.C5_QUESTIONS) == 9
     # PR-D (lead ruling): ALL_QUESTIONS gains the six C2 questions after C5;
     # PR-E (lead ruling): then C1 (283).
-    assert tuple(q.ALL_QUESTIONS) == (
+    # PR-F (lead ruling): the seven C6 questions are added; their position is
+    # not pinned here, the order of the others is.
+    c6 = set(q.C6_QUESTIONS)
+    assert c6 <= set(q.ALL_QUESTIONS)
+    assert tuple(x for x in q.ALL_QUESTIONS if x not in c6) == (
         tuple(q.B1_QUESTIONS) + C5_ALL + tuple(q.C2_QUESTIONS)
         + tuple(q.C1_QUESTIONS)
     )  # fmt: skip
@@ -233,7 +237,7 @@ def test_resolve_259_is_ambiguous() -> None:
     assert _abort(mod("driver").resolve_questions, "254,259") == "QUESTION_AMBIGUOUS"
 
 
-@pytest.mark.parametrize("spec", ["999", "c6", "loki", "100", "100a_x"])
+@pytest.mark.parametrize("spec", ["999", "c9", "loki", "100", "100a_x"])
 def test_resolve_unknown(spec: str) -> None:
     assert _abort(mod("driver").resolve_questions, spec) == "QUESTION_UNKNOWN"
 
@@ -286,13 +290,18 @@ def test_log_questions_cover_exactly_c5() -> None:
     lb, q = mod("log_backends"), mod("questions")
     # PR-D (lead ruling): log backends are exactly C5; ``kubernetes`` is C2;
     # PR-E (lead ruling): and C1 (283).
-    logs = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend != "kubernetes"}
+    # PR-F (lead ruling): C6 entries may be present (backend sql/mongodb);
+    # without them the table is unchanged.
+    c6 = set(q.C6_QUESTIONS)
+    for qid in c6 & set(lb.LOG_QUESTIONS):
+        assert lb.LOG_QUESTIONS[qid].backend == lb.backend_of(qid)
+        assert lb.backend_of(qid) in ("sql", "mongodb")
+    table = {k: s for k, s in lb.LOG_QUESTIONS.items() if k not in c6}
+    logs = {k for k, s in table.items() if s.backend != "kubernetes"}
     assert logs == set(C5_ALL)
-    kube = {k for k, s in lb.LOG_QUESTIONS.items() if s.backend == "kubernetes"}
+    kube = {k for k, s in table.items() if s.backend == "kubernetes"}
     assert kube == set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
-    assert set(lb.LOG_QUESTIONS) == (
-        set(C5_ALL) | set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS)
-    )
+    assert set(table) == (set(C5_ALL) | set(q.C2_QUESTIONS) | set(q.C1_QUESTIONS))
 
 
 def test_backend_of() -> None:

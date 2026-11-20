@@ -1156,6 +1156,12 @@ def shift_question(
         return apply_loki_shift(
             loki_admin, qid, question, now, setup_started=setup_started
         )
+    if backend in ("sql", "mongodb"):
+        # PR-F (C6): no absolute time in the question, data written by setup.
+        return question, ShiftRecord(
+            applied=False, reason="NO_TIME_REFERENCE",
+            time_only_phrases=time_only_phrases(question), backend=backend,
+        )  # fmt: skip
     return question, ShiftRecord(
         applied=False, reason="RELATIVE_TIME",
         time_only_phrases=time_only_phrases(question), backend=backend,

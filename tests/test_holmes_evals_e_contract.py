@@ -78,7 +78,13 @@ def test_c1_lists_and_groups() -> None:
     assert tuple(q.C1_QUESTIONS) == C1_ALL
     assert tuple(q.TODO_HARD_QUESTIONS) == HARD
     assert set(HARD) <= set(q.B1_QUESTIONS)
-    assert tuple(q.ALL_QUESTIONS) == (tuple(q.B1_QUESTIONS) + C5_ALL + C2_ALL + C1_ALL)
+    # PR-F (lead ruling): the seven C6 questions are added; their position is
+    # not pinned here, the order of the others is.
+    c6 = set(q.C6_QUESTIONS)
+    assert c6 <= set(q.ALL_QUESTIONS)
+    assert tuple(x for x in q.ALL_QUESTIONS if x not in c6) == (
+        tuple(q.B1_QUESTIONS) + C5_ALL + C2_ALL + C1_ALL
+    )
     assert len(set(q.ALL_QUESTIONS)) == len(q.ALL_QUESTIONS)
     assert tuple(q.QUESTION_GROUPS["c1"]) == C1_ALL
     assert tuple(q.QUESTION_GROUPS["todo-hard"]) == HARD
@@ -131,7 +137,9 @@ def test_283_log_question_spec() -> None:
     # The new field defaults to None: every earlier entry is unchanged.
     for qid in (*C5_ALL, *C2_ALL):
         assert lb.LOG_QUESTIONS[qid].namespace_prefix is None, qid
-    assert set(lb.LOG_QUESTIONS) == set(C5_ALL) | set(C2_ALL) | {Q283}
+    # PR-F (lead ruling): C6 entries may be present; without them, unchanged.
+    c6 = set(mod("questions").C6_QUESTIONS)
+    assert set(lb.LOG_QUESTIONS) - c6 == set(C5_ALL) | set(C2_ALL) | {Q283}
     fields = {f.name: f for f in dataclasses.fields(lb.LogQuestionSpec)}
     assert fields["namespace_prefix"].default is None
 

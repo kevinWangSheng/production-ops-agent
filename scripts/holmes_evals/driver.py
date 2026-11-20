@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from scripts import lab_evidence, run_freeze
+from scripts.holmes_evals import db_backends as db_mod
 from scripts.holmes_evals import judge as judge_mod
 from scripts.holmes_evals import knowledge as knowledge_mod
 from scripts.holmes_evals import scoring, task_list
@@ -319,7 +320,7 @@ class Config:
             return self.loki_mode
         if backend == "victorialogs":
             return self.victorialogs_mode
-        if backend == "kubernetes":
+        if backend in ("kubernetes", "sql", "mongodb"):
             return "none"
         return self.es_mode
 
@@ -394,6 +395,7 @@ def tool_env(
     *,
     knowledge: bool = False,
     todo: bool = False,
+    db_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """The tool profile's addresses, the same for web and worker. Only the
     question's own log backend is configured (as upstream's per-question
@@ -415,6 +417,12 @@ def tool_env(
         env["OPSPILOT_VICTORIALOGS_URL"] = product_log_url(cfg, backend)
     elif backend == "kubernetes":
         del env["OPSPILOT_ES_URL"]
+    elif backend in ("sql", "mongodb"):
+        # PR-F (C6): the address only (web and worker); the account is the
+        # worker's (``worker_env``).
+        del env["OPSPILOT_ES_URL"]
+        name = "OPSPILOT_MONGODB_URL" if backend == "mongodb" else "OPSPILOT_SQL_URL"
+        env[name] = (db_env or {})[name]
     if knowledge:
         env["OPSPILOT_KNOWLEDGE_TOOL"] = "1"
     if todo:
@@ -434,6 +442,7 @@ def web_env(
     knowledge: bool = False,
     import_account: UiAccount | None = None,
     todo: bool = False,
+    db_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     origin = f"http://127.0.0.1:{cfg.ports.web}"
     users = account.users_env()
@@ -442,7 +451,7 @@ def web_env(
         users += "," + import_account.users_env()
     return _strs(
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge, todo=todo)
+        | tool_env(cfg, backend, knowledge=knowledge, todo=todo, db_env=db_env)
         | {
             "OPSPILOT_WEB_DSN": pg.web_dsn,
             "OPSPILOT_UI_USERS": users,
@@ -467,10 +476,15 @@ def worker_env(
     log_env: Mapping[str, str] | None = None,
     knowledge: bool = False,
     todo: bool = False,
+    db_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     data_plane: dict[str, str]
     if backend == "kubernetes":
         data_plane = {}
+    elif backend in ("sql", "mongodb"):
+        # PR-F (C6): the attempt's read-only account (``db_backends``).
+        prefix = "OPSPILOT_MONGODB_" if backend == "mongodb" else "OPSPILOT_SQL_"
+        data_plane = {k: v for k, v in (db_env or {}).items() if k.startswith(prefix)}
     elif backend == "elasticsearch":
         data_plane = {
             k: v for k, v in product_es.items() if k.startswith("OPSPILOT_ES_")
@@ -484,7 +498,7 @@ def worker_env(
         }
     env = (
         services.base_env()
-        | tool_env(cfg, backend, knowledge=knowledge, todo=todo)
+        | tool_env(cfg, backend, knowledge=knowledge, todo=todo, db_env=db_env)
         | data_plane
         | {
             "OPSPILOT_WORKER_DSN": pg.runtime_dsn,
@@ -521,6 +535,7 @@ def check_env_isolation(
     *,
     role: Literal["web", "worker"],
     backend_addresses: Sequence[str] = (),
+    db_port: int | None = None,
 ) -> None:
     """H-5: neither product process holds an engineer credential; the web
     holds no ES or log-backend credential, model or judge key; the worker no
@@ -545,12 +560,44 @@ def check_env_isolation(
         ]
         if leaked:
             raise RoundAbort("ENV_ISOLATION", f"web:{leaked[0]}")
+    # PR-F (C6): the read-only account only in the worker; no question admin
+    # variable anywhere; the product's address is the question's
+    # port-forward.
+    if role == "web":
+        leaked_db = [k for k in env if k in _DB_SECRET_KEYS]
+        if leaked_db:
+            raise RoundAbort("ENV_ISOLATION", f"web:{leaked_db[0]}")
+    admin = [k for k in db_mod.ADMIN_ENV_NAMES if k in env]
+    if admin:
+        raise RoundAbort("ENV_ISOLATION", f"{role}:{admin[0]}")
+    if db_port is not None:
+        for name in ("OPSPILOT_SQL_URL", "OPSPILOT_MONGODB_URL"):
+            value = env.get(name)
+            if value is not None and _url_port(value) != db_port:
+                raise RoundAbort("ENV_ISOLATION", f"{role}:{name} not the port-forward")
     if engineer_key and any(engineer_key in v for v in env.values()):
         raise RoundAbort("ENV_ISOLATION", f"{role}:engineer key value")
     forbidden = _WEB_FORBIDDEN if role == "web" else _JUDGE_SECRET_KEYS
     present = [k for k in forbidden if k in env]
     if present:
         raise RoundAbort("ENV_ISOLATION", f"{role}:{present[0]}")
+
+
+_DB_SECRET_KEYS = (
+    "OPSPILOT_SQL_USERNAME",
+    "OPSPILOT_SQL_PASSWORD",
+    "OPSPILOT_MONGODB_USERNAME",
+    "OPSPILOT_MONGODB_PASSWORD",
+)
+
+
+def _url_port(value: str) -> int | None:
+    import urllib.parse
+
+    try:
+        return urllib.parse.urlsplit(value).port
+    except ValueError:
+        return None
 
 
 def setup_to_delivery_ok(setup_ended: datetime, at: datetime) -> bool:
@@ -697,6 +744,9 @@ class Backends:
     # PR-E (C1 task list).
     run_tool_names: Callable[[str, str], list[str]] = task_list.run_tool_names
     task_list_stats: Callable[[str, str], dict[str, Any]] = task_list.task_list_stats
+    # PR-F (C6 databases).
+    provision_db_account: Callable[..., None] = db_mod.provision_db_account
+    db_precheck: Callable[..., str | None] = db_mod.db_precheck
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     sleep: Callable[[float], None] = time.sleep
 
@@ -754,6 +804,12 @@ def disclosures(
     ):
         # PR-E (283): its ``app-283-*`` namespaces, the same rule.
         codes.append("K8S_SCOPE_DIFFERS")
+    if qid in db_mod.DB_QUESTIONS:
+        # PR-F: OpsPilot's read-only account against upstream's admin, and
+        # the tool face difference (R8-4, R8-15, R8-16).
+        codes += ["DB_READ_ONLY_ACCOUNT", "DB_TOOL_SURFACE_DIFFERS"]
+        if db_mod.DB_QUESTIONS[qid].dialect == "mssql":
+            codes.append("MSSQL_NO_TLS")
     if qid in KNOWLEDGE_QUESTIONS:
         codes.append("RUNBOOKS_IMPORTED_REVIEWED")
         if qid in GLOBAL_INSTRUCTIONS_QUESTIONS:
@@ -855,6 +911,9 @@ class Attempt:
         # run's "off" rows come from it) and any attempt with the switch on
         # or forced; other summaries keep their keys.
         self.todo_recorded = _todo_block(cfg, qid, question) is not None
+        # PR-F: this attempt's database question and read-only account.
+        self.db: db_mod.DbQuestionSpec | None = db_mod.DB_QUESTIONS.get(qid)
+        self.db_env: dict[str, str] = {}
         self._imported: list[dict[str, Any]] = []
         self._owner_dsn: str | None = None
         self._revoked = False
@@ -1098,7 +1157,7 @@ class Attempt:
         """The attempt's own VictoriaLogs, or the stand-in backend; the
         product's log account (``self.log_env``)."""
         cfg, b = self.cfg, self.b
-        if self.spec is None or self.backend == "kubernetes":
+        if self.spec is None or self.backend not in ("loki", "victorialogs"):
             return
         work = self.dir / "log-backend"
         try:
@@ -1151,8 +1210,53 @@ class Attempt:
                     getattr(error, "code", type(error).__name__),
                 ) from None
 
+    def _provision_db(self) -> None:
+        """PR-F: the attempt's read-only account (C6-21) in the question's
+        container, then the product's own account check over it."""
+        db = self.db
+        assert db is not None
+        password = secrets.token_urlsafe(24)
+        started = time.monotonic()
+        try:
+            self.b.provision_db_account(db, self._setup_env(), password)
+        except db_mod.DbSetupError as error:
+            raise InfraFailure(error.code, error.detail) from None
+        env = db_mod.product_env(db, password)
+        try:
+            problem = db_mod.precheck_with_wait(
+                db, env, self.b.db_precheck, sleep=self.b.sleep
+            )
+        except db_mod.DbLoginFailed as error:
+            raise InfraFailure("DB_LOGIN_FAILED", str(error)) from None
+        code = "pass" if problem is None else problem.split(":", 1)[0]
+        self.block["db_account"] = db_mod.summary_block(
+            db, code, time.monotonic() - started
+        )
+        if problem is not None:
+            # The grant script and the product's whitelist disagree: a retry
+            # gives the same answer.
+            raise DeterministicError("DB_ACCOUNT_NOT_READ_ONLY", problem)
+        self.db_env = env
+
     def _data_plane(self) -> dict[str, Any]:
         cfg = self.cfg
+        if self.db is not None:
+            return {
+                "backend": self.db.backend,
+                "dialect": self.db.dialect,
+                "mode": "port-forward",
+                "product_url": db_mod.product_url(self.db),
+                "gateway_upstream": None,
+                "port_forwards": [
+                    {
+                        k: f.get(k)
+                        for k in ("namespace", "service", "local_port", "remote_port")
+                    }
+                    for f in (self.q.port_forwards or [])
+                ],
+                "tls": db_mod.tls_mode(self.db),
+                "victorialogs_image": None,
+            }
         if self.spec is None:
             return {
                 "backend": "elasticsearch",
@@ -1195,6 +1299,11 @@ class Attempt:
     def _run(self) -> AttemptResult:
         cfg, b, q = self.cfg, self.b, self.q
         self.dir.mkdir(parents=True, exist_ok=True)
+        if self.backend in ("sql", "mongodb"):
+            # PR-F: re-read here, the table may differ from construction time.
+            self.db = db_mod.DB_QUESTIONS.get(self.qid)
+            if self.db is None:
+                raise DeterministicError("DB_QUESTION_UNKNOWN", self.qid)
         own = cfg.ports.log_ports(self.backend, self.mode)
         busy = [
             n for n, p in {**cfg.ports.per_attempt(), **own}.items() if b.port_in_use(p)
@@ -1203,6 +1312,9 @@ class Attempt:
             busy += [f"question:{p}" for p in self.spec.host_ports if b.port_in_use(p)]
         if busy:
             raise InfraFailure("PORT_BUSY", ",".join(busy))
+        if self.db is not None and self.db.local_port in (cfg.ports.pg, cfg.ports.web):
+            # C6-8: the question's database is never OpsPilot's own.
+            raise RoundAbort("DB_PORT_CONFLICT", str(self.db.local_port))
         self.owned_ports = {"pg": cfg.ports.pg, "web": cfg.ports.web, **own}
         wait = seconds_to_wait_for_utc_midnight(self.qid, b.now())
         if wait:
@@ -1232,6 +1344,8 @@ class Attempt:
                 f"exit={before.exit_code}",
             )
         self._connect_log_backend()
+        if self.db is not None:
+            self._provision_db()
         shift_started = b.now()
         self.block["setup"]["ended_at"] = _iso(shift_started)
         try:
@@ -1306,23 +1420,32 @@ class Attempt:
         assert cfg.account is not None and cfg.k8s is not None
         addresses = self._backend_addresses() if self.spec is not None else []
         self._owner_dsn = pg.owner_dsn
+        db_port = None if self.db is None else self.db.local_port
         wenv = web_env(
             cfg, pg, identities, cfg.account, backend=self.backend,
             knowledge=self.knowledge,
             import_account=cfg.import_account if self.knowledge else None,
-            todo=self.todo,
+            todo=self.todo, db_env=self.db_env or None,
         )  # fmt: skip
         check_env_isolation(
-            wenv, cfg.engineer_key, role="web", backend_addresses=addresses
-        )
+            wenv, cfg.engineer_key, role="web", backend_addresses=addresses,
+            db_port=db_port,
+        )  # fmt: skip
         kenv = worker_env(
             cfg, pg, cfg.product_es, cfg.k8s, q.cluster_name, cfg.secrets,
             backend=self.backend, log_env=self.log_env, knowledge=self.knowledge,
-            todo=self.todo,
+            todo=self.todo, db_env=self.db_env or None,
         )  # fmt: skip
         check_env_isolation(
-            kenv, cfg.engineer_key, role="worker", backend_addresses=addresses
-        )
+            kenv, cfg.engineer_key, role="worker", backend_addresses=addresses,
+            db_port=db_port,
+        )  # fmt: skip
+        if self.db is not None:
+            from opspilot.tracing import check_lab_target
+
+            gate = set(check_lab_target(kenv)) & {"SQL_NOT_LAB", "MONGODB_NOT_LAB"}
+            if gate:
+                raise RoundAbort("DB_NOT_LAB", ",".join(sorted(gate)))
         try:
             web = self._started(b.start_web(wenv, cfg.ports.web, self.dir / "web.log"))
         except services.ServiceError as error:
@@ -2004,6 +2127,46 @@ def run_round(
     return reports
 
 
+#: PR-F: one C6 attempt, in order (``Attempt._run``).
+DB_FLOW = (
+    "ports_free",
+    "after_test",
+    "release_check",
+    "before_test",
+    "port_forward",
+    "provision_db_account",
+    "db_precheck",
+    "no_shift",
+    "pg",
+    "web",
+    "worker",
+    "deliver",
+    "wait",
+    "collect",
+    "stop_port_forward",
+    "after_test",
+    "release_check",
+)
+
+
+def dry_run_plan(cfg: Config, qid: str) -> dict[str, Any]:
+    """What a round would do for ``qid``, without touching the host. For a
+    C6 question: its spec, the product's env (password masked) and the
+    flow."""
+    plan: dict[str, Any] = {"qid": qid, "backend": backend_of(qid)}
+    db = db_mod.DB_QUESTIONS.get(qid)
+    if db is not None:
+        env = db_mod.product_env(db, "<random per attempt>")
+        plan.update(
+            spec=asdict(db),
+            product_env=env,
+            web_env_keys=[db_mod.url_env_name(db)],
+            grants=f"C6-21:{db.dialect}",
+            flow=list(DB_FLOW),
+        )
+    return plan
+
+
 # -- CLI -----------------------------------------------------------------------------------------------
 
 
@@ -2075,6 +2238,11 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
     many = sub.add_parser("round", help="each question, trials 1..N")
     _common(many)
     many.add_argument("--trials", type=int, default=3)
+    many.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print each question's plan (C6: spec, product env, flow); run nothing",
+    )
     swing = sub.add_parser("swing", help="trials 4-6 of the swinging questions")
     _common(swing)
     again = sub.add_parser("judge", help="judge frozen trials not judged yet")
@@ -2153,6 +2321,10 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
         if args.command == "round" and not 1 <= args.trials <= len(MAIN_TRIALS):
             raise RoundAbort("BAD_TRIALS", str(args.trials))
         cfg = _config(args)
+        if args.command == "round" and args.dry_run:
+            for qid in cfg.questions:
+                print(json.dumps(dry_run_plan(cfg, qid)), flush=True)
+            return 0
         round_ = Round()
         try:
             prepare_round(cfg, backends, round_)

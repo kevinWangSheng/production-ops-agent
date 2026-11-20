@@ -129,9 +129,23 @@ TODO_HARD_QUESTIONS: tuple[str, ...] = (
     "193_elasticsearch_large_mapping_search",
     "280_es_multi_quirk",
 )
+#: C6 (#570, PR-F): the five SQL database questions (one per dialect) and
+#: the two MongoDB ones; each brings its own database in its namespace.
+C6_SQL_QUESTIONS: tuple[str, ...] = (
+    "217_database_sql_query",
+    "218_mysql_query_performance",
+    "219_mariadb_query_performance",
+    "222_clickhouse_query_performance",
+    "223_sqlserver_query_performance",
+)
+C6_MONGO_QUESTIONS: tuple[str, ...] = (
+    "229_mongodb_schema_discovery",
+    "230_mongodb_aggregation_analysis",
+)
+C6_QUESTIONS: tuple[str, ...] = C6_SQL_QUESTIONS + C6_MONGO_QUESTIONS
 #: Every question the drivers accept (B1 first, the order rounds run in).
 ALL_QUESTIONS: tuple[str, ...] = (
-    B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS + C1_QUESTIONS
+    B1_QUESTIONS + C5_QUESTIONS + C2_QUESTIONS + C1_QUESTIONS + C6_QUESTIONS
 )
 #: ``--questions`` group names.
 QUESTION_GROUPS: dict[str, tuple[str, ...]] = {
@@ -140,6 +154,7 @@ QUESTION_GROUPS: dict[str, tuple[str, ...]] = {
     "c2": C2_QUESTIONS,
     "c1": C1_QUESTIONS,
     "todo-hard": TODO_HARD_QUESTIONS,
+    "c6": C6_QUESTIONS,
 }
 
 
