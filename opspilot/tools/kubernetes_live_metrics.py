@@ -13,7 +13,7 @@ are B3-U1=a and B3-1 to B3-16:
   call reads at most 4 MiB in all (``RESULT_TOO_LARGE`` past it, the whole
   call). ``kubectl_top_pods`` takes an optional ``namespace`` (a DNS label;
   omitted is the whole cluster); ``kubectl_top_nodes`` takes nothing.
-* Units (B3-6, kubectl's): quantities parse with the Kubernetes quantity
+* Units (B3-6, as the command-line client shows them): quantities parse with the Kubernetes quantity
   grammar; CPU becomes millicores and memory bytes, each rounded up to an
   integer. A Pod's totals are the exact sum of its containers, rounded once.
   Node percentages are usage x 100 / allocatable, rounded down. Anything
