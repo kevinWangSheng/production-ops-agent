@@ -79,6 +79,17 @@ def _topics(admin) -> set[str]:
     return set(admin.list_topics(timeout=30).topics)
 
 
+def _until(step, timeout: float = 90):
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return step()
+        except Exception:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+
+
 @pytest.fixture(scope="module")
 def admin():
     from confluent_kafka import ConsumerGroupTopicPartitions, Producer, TopicPartition
@@ -140,20 +151,34 @@ def admin():
     from confluent_kafka.admin import OffsetSpec
 
     request = {TopicPartition(TOPIC, p): OffsetSpec.latest() for p in ENDS}
-    have = {
-        tp.partition: f.result(timeout=30).offset
-        for tp, f in client.list_offsets(request).items()
-    }
+
+    def ends() -> dict[int, int]:
+        return {
+            tp.partition: f.result(timeout=30).offset
+            for tp, f in client.list_offsets(request).items()
+        }
+
+    # A new topic answers NOT_LEADER_FOR_PARTITION until its leaders are
+    # elected (first CI run); wait for them.
+    have = _until(ends)
     for partition, count in ENDS.items():
         assert have[partition] in (0, count), have
         for n in range(have[partition], count):
             producer.produce(TOPIC, value=b"impl record %d" % n, partition=partition)
     assert producer.flush(60) == 0
-    offsets = ConsumerGroupTopicPartitions(
-        GROUP, [TopicPartition(TOPIC, p, o) for p, o in COMMITTED.items()]
-    )
-    for future in client.alter_consumer_group_offsets([offsets]).values():
-        future.result(timeout=60)
+    assert _until(ends) == ENDS
+
+    def commit() -> None:
+        # Partition errors come back inside the result, not as an exception.
+        offsets = ConsumerGroupTopicPartitions(
+            GROUP, [TopicPartition(TOPIC, p, o) for p, o in COMMITTED.items()]
+        )
+        for future in client.alter_consumer_group_offsets([offsets]).values():
+            result = future.result(timeout=60)
+            errors = [tp.error for tp in result.topic_partitions if tp.error]
+            assert not errors, errors
+
+    _until(commit)
     return client
 
 
