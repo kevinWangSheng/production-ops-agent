@@ -115,6 +115,7 @@
 - 资源行与 `sync_result.resources` 的 `group` 缺省为空串（Kubernetes 核心组的写法；ArgoCD 对核心组省略该字段），不为 `null`。理由：按 group 排序的行键要可比较（CI 实测测试作者 A-1）。
 - 合成数据比接口多一个金丝雀位置：`status.operationState.syncResult.source`（同一 `ApplicationSource` 的第四处副本，CRD 里有这个字段），`CANARY-C4-SYNCRESULT`。
 - 合成数据文件是 JSON 写的 `apps.yaml`（kubectl 当 YAML 读）：由脚本生成、字段多，JSON 便于核对。
+- 自建验收脚本 `scripts/c4_argocd_scenario.py`（2026-11-20 补写，测试 `tests/test_c4_argocd_scenario.py`）：应用 `path` 用 `helm-guestbook` 而不是 `guestbook`——`guestbook` 是纯 YAML 目录，`helm` 块一出现 ArgoCD 就按 Helm 渲染（v3.6.1 `ApplicationSource.ExplicitType`），没有 Chart.yaml 会让两次同步都失败；`helm-guestbook` 在两个 revision 都有 Chart.yaml，金丝雀仍在 `helm.values`。`argocd`/`c4-demo` 两个 namespace 由脚本带 label `app.kubernetes.io/managed-by=c4-argocd-scenario` 创建，已存在且无此 label 时 setup 与 teardown 拒绝执行；teardown 按钉住的 core 清单逐名删除，ArgoCD 只读 ClusterRole 保留（重复 apply 幂等）。check 的判定：`argocd_app_get`/`argocd_app_history` 证据存在、`sync.status` 非空、至少 2 条带 `id`、`revision(s)`、`deployed_at` 的历史行、金丝雀不出现。
 
 ## 下一步
 
