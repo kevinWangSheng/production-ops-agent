@@ -605,12 +605,18 @@ def test_the_description_lists_no_names_and_carries_no_upstream_answer_format():
 
 
 def test_the_registration_is_a_bounded_read_only_knowledge_get():
-    from opspilot.tools import knowledge_fetch, otel_demo_ext
+    from opspilot.tools import knowledge_fetch, otel_demo, otel_demo_ext
 
     reg = knowledge_fetch.fetch_skill_registration()
     assert reg.name == TOOL
     assert reg.version == "v1"
-    assert reg.source == "knowledge"
+    # Lead ruling (implementation decision 11): the executor requires a
+    # registration's source to equal its target's (executor.py:781), and the
+    # profile's only target is the lab one; the knowledge origin is carried
+    # by each row's ``kind`` and ``source`` fields (asserted on the real
+    # path in tests/acceptance/test_566_runbook_fetch_postgres.py).
+    assert reg.source == otel_demo.SOURCE
+    assert {r.source for r in otel_demo_ext._registrations()} == {reg.source}
     assert reg.verb == "get"
     assert reg.read_only is True
     assert reg.result_path == ("results",)
