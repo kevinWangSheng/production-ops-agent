@@ -479,7 +479,9 @@ class Entry:
             ) from None
         self.record["intake"] = {"status": result.status, "code": result.code}
         if result.status != 201 or not result.run_id:
-            raise EntryFailure("INTAKE_REFUSED", EXIT_PRODUCT)
+            # Not retried; the attempt ends with an empty diagnosis (exit 0).
+            self.record["conversion_reason"] = "INTAKE_REFUSED"
+            return ""
         run_id = result.run_id
         self.record["run_id"] = run_id
         waited = host.monotonic()
@@ -504,6 +506,10 @@ class Entry:
             json.dumps(run_block, indent=1, default=str) + "\n"
         )
         (self.dir / LEDGER_FILE).write_text(json.dumps(ledger, default=str) + "\n")
+        if timed_out:
+            # Past the deadline the Run counts as having no report.
+            self.record["conversion_reason"] = "RUN_NOT_TERMINAL"
+            return ""
         report, reason = report_object(run_block)
         converted = report_to_text(report, None, None)
         self.record["conversion_reason"] = reason if converted.text is None else None

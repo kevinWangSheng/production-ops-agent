@@ -156,8 +156,9 @@ def check_baseline(path: Path = DEFAULT_BASELINE) -> None:
 
 
 def apply_identity(
-    host: KubectlHost, kubeconfig: Path, manifest: Path = RBAC_MANIFEST
+    host: KubectlHost, kubeconfig: Path, manifest: Path | None = None
 ) -> None:
+    manifest = manifest or RBAC_MANIFEST
     if check_rbac_manifest(manifest.read_text(encoding="utf-8")):
         raise IdentityError("RBAC_MANIFEST_VIOLATION")
     if _run(host, kubeconfig, "apply", "-f", str(manifest)).returncode != 0:

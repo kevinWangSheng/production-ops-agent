@@ -14,6 +14,7 @@ receives the problem id itself).
 from __future__ import annotations
 
 import hashlib
+import urllib.parse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -192,8 +193,9 @@ def check_product_env(
     for key, value in env.items():
         if any(needle in str(value) for needle in needles):
             raise BoundaryError(f"ENV_ISOLATION:{role}:{key}")
-    loki = env.get(_LOKI_URL, "").rstrip("/")
-    if loki and any(loki.endswith("//" + a) for a in backend_addresses):
+    loki = env.get(_LOKI_URL, "")
+    netloc = urllib.parse.urlsplit(loki).netloc.rpartition("@")[2] if loki else ""
+    if netloc and netloc in set(backend_addresses):
         raise BoundaryError(f"ENV_ISOLATION:{role}:{_LOKI_URL}")
 
 

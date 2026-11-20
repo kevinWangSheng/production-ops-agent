@@ -102,7 +102,7 @@ def read_job(path: Path) -> Job:
         project = raw.get("project_name")
         if project is not None and not isinstance(project, str):
             raise JobError("JOB_INVALID")
-        ports_raw = raw.get("ports") or {}
+        ports_raw = raw["ports"]
         if not isinstance(ports_raw, dict):
             raise JobError("JOB_INVALID")
         known = Ports().all()
