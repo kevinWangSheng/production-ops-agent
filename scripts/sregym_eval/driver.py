@@ -507,6 +507,30 @@ def _submission(record: Mapping[str, Any]) -> Submission:
 _RECORD_DROPPED = frozenset({"question_file"})
 
 
+def recheck_leak(
+    problem_id: str,
+    *,
+    question: str,
+    key: str,
+    project_name: str | None,
+    record: Mapping[str, Any],
+) -> None:
+    """The driver's recheck with the whole problem id (PR-A rule); a hit
+    stops the round before anything reaches the evidence."""
+    try:
+        check_no_problem_id(
+            problem_id,
+            {
+                "question": question,
+                "idempotency_key": key,
+                "project_name": project_name or "",
+                "entry_record": json.dumps(record, default=str),
+            },
+        )
+    except AnswerLeak as error:
+        raise RoundAbort("ANSWER_LEAK", error.code) from None
+
+
 def _freeze(
     cfg: Config, host: Host, problem_id: str, trial: int, work: Path,
     csv_path: Path | None, exit_code: int, boundary: dict[str, Any],
@@ -519,15 +543,8 @@ def _freeze(
         question_path.read_text(encoding="utf-8") if question_path.is_file() else ""
     )
     key = idempotency_key(cfg.round, problem_seq(problem_id), trial)
-    try:
-        check_no_problem_id(
-            problem_id,
-            {"question": question, "idempotency_key": key,
-             "project_name": cfg.project_name or "",
-             "entry_record": json.dumps(record, default=str)},
-        )  # fmt: skip
-    except AnswerLeak as error:
-        raise RoundAbort("ANSWER_LEAK", error.code) from None
+    recheck_leak(problem_id, question=question, key=key,
+                 project_name=cfg.project_name, record=record)  # fmt: skip
     boundary["env_isolation"] = record.get("leak_check")
     outcome = None
     if csv_path is not None:
