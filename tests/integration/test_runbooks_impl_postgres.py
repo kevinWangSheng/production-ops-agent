@@ -24,7 +24,6 @@ from opspilot.knowledge.runbooks import RunbookDraft, RunbookStore
 from opspilot.persistence import PersistenceError, close_pools
 from opspilot.web.app import create_app
 from opspilot.web.auth import AuthConfig, Authenticator, hash_password
-from opspilot.web.runbooks import RunbookReview
 from scripts.m0.postgres_lab import DSN
 from tests.m1_web_support import (
     ORIGIN,
@@ -342,7 +341,7 @@ def test_the_workbench_flow_over_http(web_dsn: str) -> None:
         workbench,
         Authenticator(config),
         clock,
-        runbooks=RunbookReview(store=RunbookStore(web_dsn), target_keys=lambda: None),
+        runbooks=RunbookStore(web_dsn),
     )
     target = _target()
     submitted = post_form(

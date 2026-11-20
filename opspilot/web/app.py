@@ -69,7 +69,7 @@ from opspilot.web.incident_list import parse_query
 from opspilot.web.incident_view import LIVE_KINDS, handoff_view, page_view
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.runbooks import MAX_FORM_BYTES as RUNBOOK_FORM_BYTES
-from opspilot.web.runbooks import RunbookReview
+from opspilot.web.runbooks import RunbookReview, RunbookStoreSurface
 from opspilot.web.service import (
     MESSAGE_ACTIONS,
     Workbench,
@@ -264,7 +264,7 @@ def create_app(
     sse_repair_seconds: float = 5.0,
     review: PostmortemReview | None = None,
     releases: ReleaseStore | None = None,
-    runbooks: RunbookReview | None = None,
+    runbooks: RunbookStoreSurface | None = None,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -506,10 +506,23 @@ def create_app(
             raise _Refusal(404, "NOT_FOUND")
         return review
 
+    # C2a (#566): the registry's targets, or any target an intake accepts
+    # when no registry is configured
+    runbook_review = (
+        None
+        if runbooks is None
+        else RunbookReview(
+            store=runbooks,
+            target_keys=lambda: (
+                None if workbench.targets is None else workbench.targets.keys()
+            ),
+        )
+    )
+
     def runbooks_of() -> RunbookReview:
-        if runbooks is None:
+        if runbook_review is None:
             raise _Refusal(404, "NOT_FOUND")
-        return runbooks
+        return runbook_review
 
     # -- sign-in (#682) ----------------------------------------------------
 
@@ -898,7 +911,7 @@ def create_app(
         return render_runbooks(principal, "runbook_submission.html", page=page)
 
     @app.post("/runbooks/submissions/{submission_id}/review")
-    async def runbook_review(request: Request, submission_id: str) -> Response:
+    async def runbook_decide(request: Request, submission_id: str) -> Response:
         principal = await ui_mutation(request)
         service = runbooks_of()
         subject = _uuid_path(submission_id)
