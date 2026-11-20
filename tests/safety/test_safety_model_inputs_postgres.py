@@ -4,8 +4,9 @@ contract": credentials remain outside model inputs and traces).
 Every operator- or alert-supplied text a Run sends to the model, driven
 through the real web app, store and runner on PostgreSQL with a scripted
 model (``tests/workbench_driver.py``): the intake question, Alertmanager
-labels and annotations, and workbench messages of every kind (``message``
-and its ``follow_up`` / ``correct`` aliases). Each carries the same
+labels and annotations, workbench messages of every kind (``message``
+and its ``follow_up`` / ``correct`` aliases), and (#566 C2b) an imported
+runbook's catalog description and the body ``fetch_skill`` returns. Each carries the same
 name-context credential shapes; none may appear in any model call, and the
 non-secret marker next to them must (so the check is not vacuous).
 """
@@ -13,6 +14,8 @@ non-secret marker next to them must (so the check is not vacuous).
 from __future__ import annotations
 
 import json
+import os
+from contextlib import ExitStack
 from uuid import UUID, uuid4
 
 import psycopg
@@ -214,3 +217,75 @@ def test_a_chat_question_and_the_record_reach_the_model_without_credentials(
         [reply(content=json.dumps({"answer": "ok", "steer": False, "refs": []}))]
     )
     _assert_clean(model)
+
+
+# -- imported runbooks (#566 C2b): catalog description and fetched body ----------
+
+
+@pytest.fixture
+def runbook_harness(tmp_path):
+    """The extension-profile workbench with ``OPSPILOT_KNOWLEDGE_TOOL=1``
+    (``tests/runbook_fetch_support.py``) on its own scratch database."""
+    if os.environ.get("M1_DURABLE_POSTGRES") != "1":
+        pytest.skip("explicit PG opt-in required: M1_DURABLE_POSTGRES=1")
+    from opspilot.persistence.grants import WORKER_ROLE
+    from tests.runbook_fetch_support import build_harness
+    from tests.runbook_support import scratch_database
+    from tests.runtime_roles_support import login
+
+    ca = tmp_path / "synthetic-ca-placeholder.pem"
+    ca.write_text("synthetic ca placeholder\n")
+    with ExitStack() as stack:
+        patch = stack.enter_context(pytest.MonkeyPatch.context())
+        dsn = stack.enter_context(scratch_database("opspilot_c2b_safety"))
+        worker_dsn = stack.enter_context(login(dsn, WORKER_ROLE))
+        harness = build_harness(dsn, worker_dsn, patch, ca)
+        stack.callback(harness.close)
+        yield harness
+
+
+def test_runbook_descriptions_and_bodies_reach_the_model_without_credentials(
+    runbook_harness,
+):
+    """Two new model-input channels: the catalog description (redacted when
+    the web writes the v7 fact) and the body ``fetch_skill`` returns (the
+    executor's name-context redaction of the view)."""
+    from tests.acceptance.f7_pg_support import ScriptedProvider, assistant
+    from tests.runbook_fetch_support import CATALOG, fetch, report_round, traces
+
+    h = runbook_harness
+    described = f"{MARKER}-description"
+    bodied = f"{MARKER}-body"
+    name = f"rb-safety-{uuid4().hex[:8]}"
+    description = f"{described}: " + "; ".join(SHAPES.values())
+    assert len(description) <= 300
+    published = h.rb_publish(
+        name=name,
+        description=description,
+        content=f"# Checkout\n\n{bodied}: " + "\n".join(SHAPES.values()) + "\n",
+    )
+    assert published["entry_id"]
+    incident, _run = h.submit("Why is checkout erroring?")
+    fact = h.catalog(incident)
+    stored = json.dumps(fact, ensure_ascii=False)
+    assert described in stored
+    for secret in SECRETS:
+        assert secret not in stored, secret
+
+    provider = ScriptedProvider(
+        [
+            assistant(tool_calls=[fetch("read-runbook", name), traces()]),
+            report_round(),
+        ]
+    )
+    h.run(incident, provider)
+
+    assert len(provider.requests) == 2
+    sent = b"\n".join(provider.raw_requests).decode("utf-8")
+    sent_text = json.dumps(provider.requests, ensure_ascii=False)
+    assert described in sent_text, "the catalog never reached the model"
+    assert bodied in sent_text, "the fetched body never reached the model"
+    for secret in SECRETS:
+        assert secret not in sent, secret
+        assert secret not in sent_text, secret
+    assert fact is not None and CATALOG in h.recorded(incident)["scope_facts"]
