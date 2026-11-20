@@ -26,12 +26,13 @@ for a refused revoke and for residue) with its retry or abort; the
 
 Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
 
-* The Run's ``runbook_catalog`` fact is read from the collected ledger's
-  ``run.input.scope_facts.runbook_catalog`` (the ``opspilot_runs`` row) or,
-  if ``Backends`` has a ``run_catalog(owner_dsn, run_id)`` field, from it;
-  the harness serves the same fact both ways.
-* ``import_runbooks`` gets the driver's ``UiAccount`` for the import
-  account (``.name`` starts with ``holmes-eval-import-``).
+* Interface (implementer addendum ``2f19645b``): the Run's
+  ``runbook_catalog`` fact comes from ``Backends.run_catalog(owner_dsn,
+  run_id) -> dict | None``; the harness also puts the same fact into the
+  collected ledger's ``run.input`` (harmless if unused). ``import_runbooks``
+  gets ``Config.import_account`` (a ``UiAccount``, ``.name`` starts with
+  ``holmes-eval-import-``), created by ``prepare_round`` only when a C2
+  question is selected.
 * ``content_bytes`` is the size of the fixture's file or of its content.
 * In the ``finally`` path a failed revoke is recorded, not raised: the
   trial's own failure code stays the one in ``history``.
@@ -221,6 +222,7 @@ class C2Harness(Harness):
 
     def submit(self, web_url, account, *, question, key, target_id):
         self.at_submit = sorted(self.wb.active)
+        self._fact = self.catalog()  # one fact per Run, fixed at creation
         self.submit_accounts.append(account)
         return super().submit(
             web_url, account, question=question, key=key, target_id=target_id
@@ -251,7 +253,6 @@ class C2Harness(Harness):
 
     def collect(self, dsn: str, run_id: str) -> tuple[dict, dict]:
         block, ledger = super().collect(dsn, run_id)
-        self._fact = self.catalog()
         ledger = dict(ledger)
         ledger["run"] = dict(
             ledger.get("run") or {},
@@ -290,8 +291,8 @@ class C2Harness(Harness):
             "start_port_forward": self._never("start_port_forward"),
             "loki_admin": self._never("loki_admin"),
         }
-        if "run_catalog" in names:  # ASSUMPTION: optional seam
-            over["run_catalog"] = self.run_catalog
+        assert "run_catalog" in names
+        over["run_catalog"] = self.run_catalog
         return dataclasses.replace(super().backends(), **over)
 
     def secrets(self) -> list[str]:
@@ -412,6 +413,7 @@ def test_c2_k8s_trial_end_to_end(world) -> None:
     assert imp["question_dir"] == upstream / FIXTURES / Q94
     assert imp["target"] == TARGET
     account = imp["account"]
+    assert account is cfg.import_account
     assert account.name.startswith(IMPORT_PREFIX)
     assert re.fullmatch(re.escape(IMPORT_PREFIX) + r"[A-Za-z0-9_-]+", account.name)
     (asker,) = h.submit_accounts
@@ -423,6 +425,7 @@ def test_c2_k8s_trial_end_to_end(world) -> None:
     for dsn, target in h.wb.active_calls:
         assert dsn.startswith("postgresql://owner:") and target == TARGET
     assert h.at_submit == fixture_names(Q94)  # catalog visible before the Run
+    assert h.catalog_reads >= 1
 
     # Environments.
     (web,) = h.web_envs
@@ -562,6 +565,8 @@ def test_b1_trial_untouched_by_knowledge(world) -> None:
     record = driver.run_trial(cfg, h.backends(), Q275, _load(cfg, Q275), 1)
     assert record["status"] == "completed"
     assert h.wb.imports == [] and h.wb.revokes == [] and h.wb.active_calls == []
+    assert cfg.import_account is None  # only created when C2 is selected
+    assert h.catalog_reads == 0
     (web,) = h.web_envs
     (worker,) = h.worker_envs
     assert "OPSPILOT_KNOWLEDGE_TOOL" not in web

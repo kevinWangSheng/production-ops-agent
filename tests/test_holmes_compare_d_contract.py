@@ -27,9 +27,9 @@ Rules under test:
 
 Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
 
-* A selection with a k8s C2 question and no kubeconfig is a preflight
-  ``RoundAbort`` (code not pinned); a kubeconfig whose cluster is absent is
-  found only when the attempt runs (env_broken).
+* (Lead ruling) a selection with a k8s C2 question and no kubeconfig is
+  ``RoundAbort("KUBECONFIG_MISSING")`` in preflight; a kubeconfig whose
+  cluster is absent is found only when the attempt runs (env_broken).
 * ``run_mode`` is a top-level key of the ``holmes_compare`` block.
 """
 
@@ -109,7 +109,7 @@ def test_preflight_k8s_c2_needs_kubeconfig(
     runner = _runner()
     with pytest.raises(runner.RoundAbort) as caught:
         runner.preflight(_cfg(tmp_path, (Q89, qid)))
-    assert caught.value.code != "QUESTION_UNKNOWN"
+    assert caught.value.code == "KUBECONFIG_MISSING"
     kube = tmp_path / "kubeconfig"
     kube.write_text("apiVersion: v1\n")
     runner.preflight(_cfg(tmp_path, (Q89, qid), kubeconfig=kube))
