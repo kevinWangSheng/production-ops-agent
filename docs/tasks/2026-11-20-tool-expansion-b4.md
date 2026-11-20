@@ -1,6 +1,6 @@
 # 工具面拓展 B4：Helm 发布历史
 
-- 状态：进行中（实现与本机测试完成，Draft PR 等 CI；F11 第 4 步代码面论证与 B4 冲突，待 lead 裁决，见「待决」）
+- 状态：进行中（实现完成，Draft PR #752；两项裁决已落实，等独立审查）
 - 更新日期：2026-11-20
 - 依据：[B/C 批次记录](2026-11-16-tool-expansion-bc.md)、[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-15、R8-18、R8-25、R8-27 与 r11（B4C4-U1=a、B4 残余风险、修正 R8-18 措辞）；C3 第 8 节；上游 HolmesGPT `a0009195` `holmes/plugins/toolsets/helm.yaml:11-42`（`helm/core`）。issue #563。预审全文在仓库外（`~/.agent/handoffs/opspilot-b4c4-prereview-2026-11-19.md`），可逆默认 B4-1 至 B4-16 全部采纳；本记录与预审不同处在「实现决定」逐条写理由，以本记录为准
 - 工作区：`../poa-563-helm`，分支 `feature/563-helm`（起点 `882bd49c`，实现前 merge `origin/main` `923c734e`；测试作者提交 `bf218708` cherry-pick 为 `7c51c951`，断言未改）
@@ -165,8 +165,8 @@
 
 ## 待决
 
-1. **F11 第 4 步代码面论证与 B4 冲突（需 lead/用户裁决）**：`tests/acceptance/test_f11_step4_verdicts_no_gate.py::test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api` 禁止产品模块的字符串常量出现 `\bhelm\b`、`\bkubectl\b`，A2 只给 `kubernetes_core.py` 的读路径开了例外。B4 有三处绕不开：`kubernetes_core.HELM_FIELD_SELECTOR`（`type=helm.sh/release.v1`）、`HELM_OWNER`（`helm`），以及 `helm_releases._CANNOT_PROVE` 里的 `kubectl`（测试作者断言要求 `cannot_prove` 含 kubectl）。其余文字已改写避开。按 A2 先例（X1/Q1/Q2 后由独立测试作者修订论证），建议由独立测试作者把例外扩到这三处：只读的 Helm 记录选择器，加上 `cannot_prove` 说明文字。验收步骤原文不改。
-2. **测试断言与接口不符（未改，列给 lead）**：
-   - `test_other_secrets_are_never_read_even_when_present`：断言 `fieldSelector == ["helm.sh/release.v1"]`。接口与 `LEGAL` 表里都是 `type=helm.sh/release.v1`，断言漏了 `type=`。
-   - `test_a_bad_entry_is_dropped_counted_and_never_echoed[owner-label-missing / owner-label-not-helm]`：替身 apiserver 按 `labelSelector=owner=helm` 过滤（真实 apiserver 也是），这两条记录根本不会返回，`malformed` 只能是 0。工具里的 owner 校验是纵深防御，这两个用例测不到它。
-   - `test_switch_on_adds_exactly_the_three_tools_and_the_change_history_source[8 个组合]`：断言 `available` 的键顺序是 `change_history` 排在最后一个后端之后，但 `_surface` 经过 `canonical`，键按字母序。本机核对过同一测试的其余断言，按集合比较全部成立。
+无。2026-11-20 lead 裁决的两项已落实（测试作者提交 `035ee3da`，cherry-pick 进本分支，断言由测试作者修改）：
+1. F11 第 4 步代码面论证按 A2 先例扩例外，按「模块 + 模块级常量名」精确放行一个词：`kubernetes_core` 的 `HELM_FIELD_SELECTOR`、`HELM_OWNER` 放行 `helm`，`helm_releases` 的 `_CANNOT_PROVE` 放行 `kubectl`。F11 步骤原文不动。
+2. 与接口不符的 11 条合同断言按接口修改：补上 `type=` 前缀；owner 标签两例在服务端过滤后到不了工具；数据源键顺序改为按集合比较。
+
+本机复跑：B4 合同测试、F11 第 4 步验收、新 safety 共 655 过（24 条 PG 跳过）。
