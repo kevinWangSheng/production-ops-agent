@@ -344,9 +344,7 @@ def _cfg(tmp_path: Path) -> driver.Config:
     upstream = tmp_path / "upstream"
     upstream.mkdir()
     (tmp_path / "kc").write_text("token: engineer-admin-token-xyz\n")
-    (tmp_path / "env").write_text(
-        "DEEPSEEK_API_KEY=fake\nZAI_API_KEY=fake\n"
-    )
+    (tmp_path / "env").write_text("DEEPSEEK_API_KEY=fake\nZAI_API_KEY=fake\n")
     return driver.Config(
         round="r1", upstream=upstream, kubeconfig=tmp_path / "kc", env_file=tmp_path / "env",
         problems=(PID,), cluster_path="direct_readonly", tmp_root=tmp_path / "tmp",
