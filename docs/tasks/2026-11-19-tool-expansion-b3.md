@@ -40,6 +40,7 @@
 - 新 job，`ubuntu-24.04`，`timeout-minutes: 15`，与 `log-backends` 并行，scope 预检同其他 job。kind 二进制按 sha256 下载，节点镜像钉 digest；单节点集群装与 lab 同一份 metrics-server 清单；应用 `opspilot-readonly-rbac.yaml`，`kubectl create token` 发只读 token，工具只用这把 token。测试用 `OPSPILOT_K8S_LIVE=1` 门控，本机跳过。
 - 合成负载（镜像钉 digest）：`ns-a` 里吃 CPU 的 Pod（CPU limit 200m）、固定占约 64 MiB 的 Pod、双容器 Pod；`ns-b` 里一个空闲 Pod；等 `kubectl top pods -n ns-a` 出全 3 行再测。
 - 要覆盖的行为（B3-15）：两个工具都有真实返回；`namespace=ns-a` 只有 ns-a 的行，不传时含 `kube-system` 与 `ns-b`；CPU Pod 在 120m–260m、内存 Pod 不小于 64 MiB（只证明量级）；双容器 Pod 合计与明细符合上面的取整规则；与 `kubectl get --raw` 对齐：同一时刻取原始 metrics，`timestamp` 相同的行按上面的规则算出的毫核与字节完全相等；节点行有值、百分比非负；来源时间与 `data_as_of` 为空，`sampled_at` 与 notes 正确；错误分类用真实响应：无 metrics 权限的 SA token 报 `SOURCE_FORBIDDEN`（403）、错 token 401、metrics-server 缩到 0 副本报 `SOURCE_UNAVAILABLE`（503）、最后删 `APIService v1beta1.metrics.k8s.io` 报 `SOURCE_ERROR`（404）；两层只读：工具发出的请求只有上表路径（测试里包一层记录 opener），只读 token 对 metrics 路径 `POST`/`DELETE` 得 403 或 405、对 `secrets` 的 list 得 403。不调模型。
+- 稳定性修复（#739，合并后在无关 PR 上偶发失败）：① 不传 namespace 须含 `ns-b`——原断言只调一次工具，空闲 Pod 可能还没被 metrics-server 取到两次样本而缺席；改为 CI 开跑前与恢复后都等到 `ns-a` 三行、`ns-b` 的 `idle` 与节点都有样本，测试内最多重读 10 次（间隔 3 秒）再断言同一集合。② 节点 `cpu_percent`——原期望把用量向上取整到「整核」再除（319.8m/4 核得 {7, 25}），工具按毫核向上取整得 8；改为在行的单位（毫核、字节）上取整，仍与同一时刻 `kubectl get --raw` 的原始读数比较。两条要证明的性质不变。
 
 ## 实现决定（实现者自定，可逆）
 
