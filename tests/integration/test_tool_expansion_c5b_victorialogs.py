@@ -14,16 +14,19 @@ straight to VictoriaLogs' own port through ``/insert/jsonline`` with the
 account. The gateway logs method, path and status of every request, which
 is how a refusal is shown never to have been sent.
 
-ASSUMPTIONS about the CI job (the interface names no ports or variables;
-the defaults below follow the Loki job's 531xx scheme):
+The CI job's settings (lead's CI convention, 2026-11-19; defaults are the
+job's addresses, each overridable by the variable of the same name):
 
-* ``C5B_VLOGS_URL`` -- VictoriaLogs' own port (default 127.0.0.1:53128).
-* ``C5B_GATEWAY_VLOGS_URL`` -- the gateway server for VictoriaLogs
-  (default 127.0.0.1:53103).
-* ``C5_GATEWAY_DENY_URL`` -- the existing deny-all gateway server (53102).
-* ``C5B_GATEWAY_ACCESS_LOG`` -- the access log of the VictoriaLogs gateway,
-  falling back to ``C5_GATEWAY_ACCESS_LOG`` (one nginx may serve both).
-* ``C5_GATEWAY_PASSWORD`` -- the reader account, as for Loki.
+* ``C5B_VLOGS_URL`` -- VictoriaLogs' own port (default 127.0.0.1:53113).
+* ``C5B_GATEWAY_VLOGS_URL`` -- the read-only gateway (default 127.0.0.1:53103).
+* ``C5B_GATEWAY_DENY_URL`` -- the deny-all gateway (default 127.0.0.1:53104).
+* ``C5B_GATEWAY_ACCESS_LOG`` -- the gateway's access log (set by the step).
+* ``C5B_PROBE_OUT`` -- where the recorded observations (VictoriaLogs' limit
+  order, the hits bucket start, the subquery leak probe) are appended as JSON
+  lines (set by the step); they are also emitted as warnings.
+* ``C5_GATEWAY_PASSWORD`` -- the ``reader`` account's password.
+
+ASSUMPTION (not in the convention):
 * Tenant B is ``AccountID: 42`` / ``ProjectID: 7``; the default data is the
   default tenant (0:0, no headers).
 """
@@ -71,13 +74,13 @@ PATHS = {
     HITS: "/select/logsql/hits",
 }
 
-VLOGS_DIRECT = os.environ.get("C5B_VLOGS_URL", "http://127.0.0.1:53128")
+VLOGS_DIRECT = os.environ.get("C5B_VLOGS_URL", "http://127.0.0.1:53113")
 GATEWAY_VLOGS = os.environ.get("C5B_GATEWAY_VLOGS_URL", "http://127.0.0.1:53103")
-GATEWAY_DENY = os.environ.get("C5_GATEWAY_DENY_URL", "http://127.0.0.1:53102")
+GATEWAY_DENY = os.environ.get("C5B_GATEWAY_DENY_URL", "http://127.0.0.1:53104")
 GATEWAY_LOG = Path(
-    os.environ.get("C5B_GATEWAY_ACCESS_LOG")
-    or os.environ.get("C5_GATEWAY_ACCESS_LOG", "/tmp/c5-gateway-logs/access.log")
+    os.environ.get("C5B_GATEWAY_ACCESS_LOG", "/tmp/c5b-gateway-logs/access.log")
 )
+PROBE_OUT = os.environ.get("C5B_PROBE_OUT")
 READER = "reader"
 READER_PASSWORD = os.environ.get("C5_GATEWAY_PASSWORD", "changeme569")
 TENANT_B = {"AccountID": "42", "ProjectID": "7"}
@@ -113,6 +116,14 @@ BURST_WINDOW = Window(
 )
 BURST_BEFORE = 7
 BURST_INSIDE = 3
+
+
+def _observe(text: str) -> None:
+    """A recorded observation: a warning, and a JSON line in C5B_PROBE_OUT."""
+    warnings.warn(text, stacklevel=2)
+    if PROBE_OUT:
+        with open(PROBE_OUT, "a", encoding="utf-8") as out:
+            out.write(json.dumps({"observation": text}) + "\n")
 
 
 def _z(moment: datetime) -> str:
@@ -528,10 +539,9 @@ def test_victorialogs_order_and_limit_choice_are_recorded():
         if msgs == sorted(msgs)
         else "unordered"
     )
-    warnings.warn(
+    _observe(
         f"C5b observation: VictoriaLogs limit=10 returned the newest 10: "
         f"{set(msgs) == newest}; order {order}: {msgs}",
-        stacklevel=1,
     )
     assert len(msgs) == 10
 
@@ -645,10 +655,9 @@ def test_hits_buckets_are_step_aligned_but_count_only_inside(tools):
     notes = " ".join(str(note) for note in view.get("notes") or []).lower()
     assert "step" in notes or "bucket" in notes
     first = min(_instant(stamp) for row in rows for stamp in row["timestamps"])
-    warnings.warn(
+    _observe(
         f"C5b observation: first hits bucket {first.isoformat()} for window start "
         f"{BURST_WINDOW.start.isoformat()} (step 5m)",
-        stacklevel=1,
     )
 
 
@@ -843,12 +852,11 @@ def test_subquery_leak_probe_is_recorded_and_the_tool_still_refuses(tools):
         start=hour_start,
         end=NOW,
     )
-    warnings.warn(
+    _observe(
         f"C5b observation: in()-subquery direct status {status}, rows {leaked} "
         f"(non-empty = the subquery ignored start/end); "
         f"options(ignore_global_time_filter=true) status {status_opt}, "
         f"rows {len(rows_opt)}",
-        stacklevel=1,
     )
     assert status in (200, 400)
     outcome = tools.execute(
