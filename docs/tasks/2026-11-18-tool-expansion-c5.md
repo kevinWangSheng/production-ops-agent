@@ -74,6 +74,10 @@
 - 扩展档位 revision（本分支实测）：仅 VictoriaLogs `otel-demo-ext-1616059eb3fa`；ES 加 VictoriaLogs `otel-demo-ext-8be0fd839109`；Loki 加 VictoriaLogs `otel-demo-ext-8d5b08e18df7`；三者都有 `otel-demo-ext-1ada4b9c17db`。不含 VictoriaLogs 的四个值不变。
 - hits 另带 `extra_filters=_time:[start, end)`（lead 2026-11-19 批准，PR #731；理由：start/end 与桶标记不变、整窗都计，备选「自己把窗口缩到整步」会丢两端各至多一步并拒绝大步长）：VictoriaLogs v1.54.0 在带 `step` 时把 start 向下、end 向上对齐到 step 再过滤（源码 `app/vlselect/logsql/logsql.go` `parseCommonArgsExt` 与 `alignStartEndToStep`），CI 实测窗外一条被计入；同一窗口作为额外过滤条件在对齐之后取交集，计数只含窗内，start/end 仍为查询窗。
 - CI 实测（PR #731 第二轮）：select 五条路径接受 GET；`limit=N` 返回最新 N 条且按 `_time` 降序；`in(子查询)` 受 start/end 约束（不泄漏）；`options(ignore_global_time_filter=true)` 读到窗外数据（泄漏），C5-7 继续拒绝；`/internal/force_flush` 只接受 POST。
+- LogsQL 扫描再收紧（lead 2026-11-19，PR #731 审查）：字面量之外 `|` 后（跳过空白）紧跟带引号的 token 一律拒绝 `QUERY_CONSTRUCT_NOT_ALLOWED`。理由：VictoriaLogs 是否把 `| "join" …` 当管道名未核实，fail-closed；`_impl` 集成探针直连后端记录它的实际处理（只记录）。
+- 元数据截断说明改为「只显示其中一部分（limit 条），不一定是命中最多的」。理由：VictoriaLogs 在 `limit` 下返回哪些取值不保证按命中数。
+- 已知差异（不改）：VictoriaLogs 的 HTTP `end` 是开区间，query/streams/field_* 发出的是查询窗终点本身（恰在终点的条目不计），hits 的 `extra_filters` 也写成半开 `[start, end)`，两者一致于 VictoriaLogs 语义，但与视图里「窗口终点」的闭区间写法差 1 ns；扫描的 `"…"` 只按反斜杠跳一个字符，不校验 `\x`、`\u` 转义的长度，畸形转义由 VictoriaLogs 报 400。
+- 扩展档位 revision 随描述更新（模型可见说明加了引号管道一句）：仅 VictoriaLogs `otel-demo-ext-840df01f3bce`；ES 加 VictoriaLogs `otel-demo-ext-381e74cfe8d0`；Loki 加 VictoriaLogs `otel-demo-ext-cbd3b6aaa6b8`；三者都有 `otel-demo-ext-da924862e562`。上面「本分支实测」那行旧值作废；不含 VictoriaLogs 的四个值不变。
 
 ## 证据
 

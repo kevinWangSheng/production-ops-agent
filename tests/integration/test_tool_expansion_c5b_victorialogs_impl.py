@@ -584,6 +584,26 @@ def test_subquery_probe_is_recorded(seeded):
             "messages": msgs,
             "leaks": "probe inside" in msgs or "probe outside" in msgs,
         }
+    # PR #731 review: how VictoriaLogs reads a quoted token after | (the
+    # tool refuses it either way). "joined_marker" true means it ran as a
+    # join and pulled the out-of-window marker into an in-window entry.
+    quoted = 'app:"c5i-probe" | "join" by (trace) (app:"c5i-probe" marker:old)'
+    status, body = _direct("/select/logsql/query", {"query": quoted, **window})
+    if isinstance(body, dict):
+        rows = [body]
+    elif status == 200 and isinstance(body, str):
+        rows = [json.loads(line) for line in body.splitlines() if line.strip()]
+    else:
+        rows = []
+    results["quoted_join_pipe"] = {
+        "status": status,
+        "messages": sorted(str(row.get("_msg")) for row in rows),
+        "joined_marker": any(
+            row.get("_msg") == "probe inside" and row.get("marker") == "old"
+            for row in rows
+        ),
+        "error": str(body)[:300] if status != 200 else None,
+    }
     print("C5-7 probe:", json.dumps(results, sort_keys=True))
     if PROBE_OUT:
         Path(PROBE_OUT).write_text(json.dumps(results, indent=2, sort_keys=True))

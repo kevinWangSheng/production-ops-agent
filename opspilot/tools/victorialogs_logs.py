@@ -161,6 +161,8 @@ _FIELD = re.compile(r"[A-Za-z0-9_.:-]{1,%d}" % MAX_FIELD_CHARS)
 _TENANT = re.compile(r"[0-9]{1,10}")
 #: C5-7: refused wherever they stand outside a string literal.
 _WORDS = re.compile(r"\b(options|join|union|stream_context)\b", re.IGNORECASE)
+#: Every literal is blanked to ``""``, so this is | then a quoted token.
+_QUOTED_PIPE = re.compile(r'\|\s*"')
 _SUBQUERY = re.compile(r"\b(in|contains_any|contains_all)\s*\(", re.IGNORECASE)
 _RFC3339 = re.compile(
     r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d{1,9}))?(Z|[+-]\d\d:\d\d)"
@@ -429,6 +431,14 @@ def logsql_problem(query: str) -> tuple[str, str] | None:
         return "INVALID_QUERY", _QUERY_RULE
     except _Construct as found:
         return "QUERY_CONSTRUCT_NOT_ALLOWED", f"{found} {_CONSTRUCT_TEXT}"
+    if _QUOTED_PIPE.search(stripped) is not None:
+        # Whether VictoriaLogs reads a quoted token after | as a pipe name
+        # (| "join" ...) is not verified: refuse rather than bet (PR #731
+        # review, lead decision).
+        return (
+            "QUERY_CONSTRUCT_NOT_ALLOWED",
+            f"a quoted token right after | {_CONSTRUCT_TEXT}",
+        )
     word = _WORDS.search(stripped)
     if word is not None:
         return "QUERY_CONSTRUCT_NOT_ALLOWED", f"{word.group(1)} {_CONSTRUCT_TEXT}"
@@ -740,9 +750,9 @@ class VictoriaLogsTransport:
         reasons: list[str] = []
         if plan.limit is not None and len(parsed) > plan.limit:
             reasons.append(
-                f"limit: more than {plan.limit} {noun} matched; the "
-                f"{plan.limit} with the most hits are shown. Narrow the query "
-                "or shorten the window"
+                f"limit: more than {plan.limit} {noun} matched; only part of "
+                f"them ({plan.limit}) is shown, not necessarily those with the "
+                "most hits. Narrow the query or shorten the window"
             )
         notes = [f"Incomplete result ({reason})." for reason in reasons]
         if cut:
@@ -934,8 +944,9 @@ _LOGSQL_TEXT = (
     "nothing is returned, broaden the query (drop a filter, widen the window). "
     "Refused before sending (QUERY_CONSTRUCT_NOT_ALLOWED): options(...), "
     "join, union, stream_context, subqueries in in(...), contains_any(...) "
-    "or contains_all(...), and single quotes; to search for one of these "
-    'words, quote it with "..." or `...`.'
+    "or contains_all(...), single quotes, and a quoted token right after |; "
+    'to search for one of these words, quote it with "..." or `...` (not '
+    "directly after |)."
 )
 _COMMON = " ".join((_TIME_TEXT, _LOGSQL_TEXT, _TOO_LARGE_TEXT, _ERRORS_TEXT))
 

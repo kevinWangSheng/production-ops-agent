@@ -144,6 +144,8 @@ def _z(moment) -> str:
         '~"5\\\\d\\\\d" | stats count() | sort by (count) desc',
         "_time:5m error | rename x as y | delete z",
         "foo#bar",
+        'error AND "a b" OR "x y"',
+        '_msg:"x | y" | stats count()',
     ],
 )
 def test_allowed_logsql(query):
@@ -169,6 +171,15 @@ def test_allowed_logsql(query):
         ("error # | join (x)", "QUERY_CONSTRUCT_NOT_ALLOWED"),
         ('"unterminated', "INVALID_QUERY"),
         ("`unterminated", "INVALID_QUERY"),
+        # A quoted token right after | (PR #731 review): refused, whatever
+        # VictoriaLogs would make of it.
+        ('error | "join" x', "QUERY_CONSTRUCT_NOT_ALLOWED"),
+        (
+            "error |`options`(ignore_global_time_filter=true)",
+            "QUERY_CONSTRUCT_NOT_ALLOWED",
+        ),
+        ("error | 'x'", "QUERY_CONSTRUCT_NOT_ALLOWED"),
+        ('error |   "stats" count()', "QUERY_CONSTRUCT_NOT_ALLOWED"),
         ("a\tb", "INVALID_QUERY"),
         ("x" * 4001, "INVALID_QUERY"),
         ("   ", "INVALID_QUERY"),
