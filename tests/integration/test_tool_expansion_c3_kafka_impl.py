@@ -299,3 +299,52 @@ def test_observe_reads_beyond_describe_and_client_cost(admin, reader):
         f"(eight tools {min(seconds):.3f}-{max(seconds):.3f} s)"
     )
     assert all(value.startswith("ok/") for value in results.values()), results
+
+
+def test_observe_group_visibility_admin_and_reader(admin):
+    """What the admin and the Describe-only reader see of ``impl-stopped``
+    through the raw admin API (an observation for the task record)."""
+    from confluent_kafka import ConsumerGroupTopicPartitions
+    from confluent_kafka.admin import AdminClient
+
+    reader_client = AdminClient(
+        {
+            "bootstrap.servers": SASL,
+            "security.protocol": "SASL_PLAINTEXT",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": READER,
+            "sasl.password": READER_PASSWORD,
+        }
+    )
+    for label, client in (("admin", admin), ("reader", reader_client)):
+        report: dict[str, Any] = {}
+        try:
+            listed = client.list_consumer_groups(request_timeout=20).result(timeout=25)
+            report["listed"] = sorted(g.group_id for g in listed.valid)[:20]
+            report["list_errors"] = [str(e) for e in listed.errors][:5]
+        except Exception as error:
+            report["list_error"] = str(error)[:300]
+        try:
+            (desc,) = [
+                f.result(timeout=25)
+                for f in client.describe_consumer_groups(
+                    [GROUP], request_timeout=20
+                ).values()
+            ]
+            report["describe"] = f"{desc.state} {desc.type} members={len(desc.members)}"
+        except Exception as error:
+            report["describe_error"] = str(error)[:300]
+        try:
+            (offsets,) = [
+                f.result(timeout=25)
+                for f in client.list_consumer_group_offsets(
+                    [ConsumerGroupTopicPartitions(GROUP)], request_timeout=20
+                ).values()
+            ]
+            report["offsets"] = [
+                (tp.topic, tp.partition, tp.offset, str(tp.error))
+                for tp in offsets.topic_partitions
+            ]
+        except Exception as error:
+            report["offsets_error"] = str(error)[:300]
+        _observe(f"group visibility {label}: {json.dumps(report, default=str)}")
