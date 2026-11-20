@@ -43,7 +43,8 @@ trim() {
 # credential OPSPILOT_SQL_* (C6a, #570), and the Kafka address and kafka-ro
 # settings OPSPILOT_KAFKA_* (C3, #567), and the Helm release switch
 # OPSPILOT_HELM_RELEASES (B4, #563), and the MongoDB address and
-# mongodb-ro settings OPSPILOT_MONGODB_* (C6c, #570); export those and
+# mongodb-ro settings OPSPILOT_MONGODB_* (C6c, #570), and the ArgoCD switch
+# OPSPILOT_ARGOCD (C4, #568); export those and
 # nothing else (worker_main reads the model and
 # LangSmith keys from the file itself). Same reading as worker_main._read_env_file: per KEY, the first
 # KEY=value line wins; line and value are stripped and one pair of matching
@@ -66,7 +67,7 @@ if [ -n "$env_file" ]; then
                 LANGSMITH_ENDPOINT | LANGSMITH_WORKSPACE_ID) ;;
             OPSPILOT_K8S_* | OPSPILOT_ES_* | OPSPILOT_LOKI_* | OPSPILOT_VICTORIALOGS_* | \
                 OPSPILOT_SQL_* | OPSPILOT_MONGODB_* | OPSPILOT_KAFKA_* | OPSPILOT_KNOWLEDGE_TOOL | \
-                OPSPILOT_TODO_WRITE | OPSPILOT_HELM_RELEASES)
+                OPSPILOT_TODO_WRITE | OPSPILOT_HELM_RELEASES | OPSPILOT_ARGOCD)
                 # a name, never shell text: it reaches eval below
                 case "$name" in *[!A-Z0-9_]*) continue ;; esac
                 ;;

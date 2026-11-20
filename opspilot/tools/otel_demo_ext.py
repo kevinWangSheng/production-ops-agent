@@ -75,11 +75,18 @@ address is byte for byte what it was before C3. The worker routes them to
 their own ``KafkaTransport`` (``kafka-ro`` slot, address in the selector
 ``kafka_bootstrap``).
 
+C4 (#568): the four ``argocd_app_*`` tools of :mod:`opspilot.tools.argocd_apps`
+join right after the Helm tools when ``OPSPILOT_ARGOCD=1``, listed under
+``change_history`` with them; every set without the switch is byte for byte
+what it was before C4. The worker routes them to the same
+``KubernetesTransport`` (``k8s-ro`` slot).
+
 C6c (#570): the six ``mongodb_*`` tools of :mod:`opspilot.tools.mongodb_query`
 join last when ``OPSPILOT_MONGODB_URL`` is set, listed under ``mongodb`` in
 ``data_sources.available``; every set without the address is byte for byte
 what it was before C6c. The worker routes them to their own ``MongoTransport``
 (``mongodb-ro`` slot, address in the selector ``mongodb_endpoint``).
+
 B4 (#563): ``helm_list``, ``helm_history`` and ``helm_status`` of
 :mod:`opspilot.tools.helm_releases` join when ``OPSPILOT_HELM_RELEASES=1``,
 after the live usage tools and before ``fetch_skill`` and ``TodoWrite`` (the
@@ -106,6 +113,7 @@ from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
+    argocd_apps,
     elasticsearch_logs,
     helm_releases,
     jaeger_query,
@@ -150,6 +158,8 @@ __all__ = [
     "ES_TOOL_NAMES",
     "ES_TOOL_SCHEMAS",
     "ES_TOOL_SCHEMA_REVISION",
+    "ARGOCD_TOOL_NAMES",
+    "ARGOCD_TOOL_SCHEMA_REVISION",
     "HELM_TOOL_NAMES",
     "HELM_TOOL_SCHEMA_REVISION",
     "LIVE_METRICS_TOOL_NAMES",
@@ -219,6 +229,7 @@ def _tool_schemas(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
     fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1), the
@@ -235,6 +246,9 @@ def _tool_schemas(
         # tool and the task list; the SQL and Kafka tools, added after
         # those two, stay after them so their revisions do not move.
         schemas = (*schemas, *helm_releases.TOOL_SCHEMAS)
+    if argocd:
+        # C4 (#568): right after the Helm tools, same reason.
+        schemas = (*schemas, *argocd_apps.TOOL_SCHEMAS)
     if knowledge:
         # C2b (#566): last in the fixed order
         schemas = (*schemas, *knowledge_fetch.TOOL_SCHEMAS)
@@ -274,6 +288,7 @@ def _data_sources(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
@@ -293,9 +308,13 @@ def _data_sources(
         available["loki"] = sorted(loki_logs.TOOL_NAMES)
     if victorialogs:
         available["victorialogs"] = sorted(victorialogs_logs.TOOL_NAMES)
-    if helm:
-        # B4-14: change history moves from not integrated to available.
-        available["change_history"] = sorted(helm_releases.TOOL_NAMES)
+    if helm or argocd:
+        # B4-14: change history moves from not integrated to available; C4
+        # adds the ArgoCD tools under the same key.
+        available["change_history"] = sorted(
+            (set(helm_releases.TOOL_NAMES) if helm else set())
+            | (set(argocd_apps.TOOL_NAMES) if argocd else set())
+        )
     if knowledge:
         available["knowledge"] = list(knowledge_fetch.TOOL_NAMES)
     if sql is not None:
@@ -307,7 +326,9 @@ def _data_sources(
     return {
         "available": available,
         "not_integrated": [
-            name for name in _NOT_INTEGRATED if not (helm and name == "change_history")
+            name
+            for name in _NOT_INTEGRATED
+            if not ((helm or argocd) and name == "change_history")
         ],
         "instruction": DATA_SOURCES_INSTRUCTION,
     }
@@ -323,6 +344,7 @@ def _registrations(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -375,6 +397,13 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if argocd:
+        base = (
+            *base,
+            *argocd_apps.argocd_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     if knowledge:
         base = (
             *base,
@@ -418,6 +447,7 @@ def tool_schema_revision(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -440,6 +470,7 @@ def tool_schema_revision(
                     kafka=kafka,
                     mongodb=mongodb,
                     helm=helm,
+                    argocd=argocd,
                 )
             ],
             "registry": ToolRegistry(
@@ -453,6 +484,7 @@ def tool_schema_revision(
                     kafka=kafka,
                     mongodb=mongodb,
                     helm=helm,
+                    argocd=argocd,
                 )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
@@ -467,6 +499,7 @@ def tool_schema_revision(
                 kafka=kafka,
                 mongodb=mongodb,
                 helm=helm,
+                argocd=argocd,
             ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
@@ -526,6 +559,11 @@ HELM_TOOL_SCHEMA_REVISION = tool_schema_revision(helm=True)
 HELM_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(helm=True)
 )
+#: C4: the same with only ``OPSPILOT_ARGOCD=1``.
+ARGOCD_TOOL_SCHEMA_REVISION = tool_schema_revision(argocd=True)
+ARGOCD_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(argocd=True)
+)
 
 
 def otel_demo_ext_versions(
@@ -540,6 +578,7 @@ def otel_demo_ext_versions(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -562,6 +601,7 @@ def otel_demo_ext_versions(
             kafka=kafka,
             mongodb=mongodb,
             helm=helm,
+            argocd=argocd,
         ),
     }
 
@@ -579,6 +619,7 @@ def otel_demo_ext_face(
     kafka: bool = False,
     mongodb: bool = False,
     helm: bool = False,
+    argocd: bool = False,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -599,6 +640,7 @@ def otel_demo_ext_face(
             kafka=kafka,
             mongodb=mongodb,
             helm=helm,
+            argocd=argocd,
         )
         return context
 
@@ -614,6 +656,7 @@ def otel_demo_ext_face(
             kafka=kafka,
             mongodb=mongodb,
             helm=helm,
+            argocd=argocd,
         ),
         variant_id=_variant(todo),
         evidence_context=evidence_context,
@@ -678,6 +721,7 @@ def otel_demo_ext_registrations(
     kafka: kafka_admin.KafkaConfig | None = None,
     mongodb: mongodb_query.MongoConfig | None = None,
     helm: bool = False,
+    argocd: bool = False,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
@@ -691,6 +735,7 @@ def otel_demo_ext_registrations(
             kafka=kafka is not None,
             mongodb=mongodb is not None,
             helm=helm,
+            argocd=argocd,
         ),
         targets=(
             _target(
@@ -734,6 +779,8 @@ def _overflow_summary(
         return {"row_unit": "nodes"}
     if tool == helm_releases.HISTORY_TOOL:
         return {"row_unit": "revisions"}
+    if tool in argocd_apps.TOOL_NAMES:
+        return argocd_apps.overflow_summary(tool, rows, query)
     if tool in helm_releases.TOOL_NAMES:
         return {"row_unit": "releases"}
     if tool in sql_query.TOOL_NAMES:
@@ -762,6 +809,7 @@ def otel_demo_ext_executor_factory(
     kafka: kafka_admin.KafkaConfig | None = None,
     mongodb: mongodb_query.MongoConfig | None = None,
     helm: bool = False,
+    argocd: bool = False,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -822,6 +870,7 @@ def otel_demo_ext_executor_factory(
         kafka=kafka,
         mongodb=mongodb,
         helm=helm,
+        argocd=argocd,
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (
@@ -871,6 +920,9 @@ def otel_demo_ext_executor_factory(
     if helm:
         # B4-15: the same cluster transport and ``k8s-ro`` slot.
         routes.update(dict.fromkeys(helm_releases.TOOL_NAMES, cluster))
+    if argocd:
+        # C4-10: the same cluster transport and ``k8s-ro`` slot.
+        routes.update(dict.fromkeys(argocd_apps.TOOL_NAMES, cluster))
     if elasticsearch is not None:
         # B1-4: its own slot, never another backend's credential.
         search = elasticsearch_logs.ElasticsearchTransport(

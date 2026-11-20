@@ -127,6 +127,10 @@ _TABULAR_TOOL = "kubernetes_tabular_query"
 _LIVE_METRICS_TOOLS = frozenset({"kubectl_top_pods", "kubectl_top_nodes"})
 #: B4 (#563): served by ``helm_releases.HelmReleasesTransport``.
 _HELM_TOOLS = frozenset({"helm_list", "helm_history", "helm_status"})
+#: C4 (#568): served by ``argocd_apps.ArgoCDTransport``.
+_ARGOCD_TOOLS = frozenset(
+    {"argocd_app_list", "argocd_app_get", "argocd_app_history", "argocd_app_resources"}
+)
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -1312,6 +1316,11 @@ class KubernetesTransport:
         self._helm = HelmReleasesTransport(
             client=self._client, monotonic=self._monotonic, now=now
         )
+        from opspilot.tools.argocd_apps import ArgoCDTransport
+
+        self._argocd = ArgoCDTransport(
+            client=self._client, monotonic=self._monotonic, now=now
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         try:
@@ -1323,6 +1332,8 @@ class KubernetesTransport:
     def _fetch(self, request: TransportRequest) -> TransportResponse:
         if request.tool in _HELM_TOOLS:
             return self._helm.fetch(request)
+        if request.tool in _ARGOCD_TOOLS:
+            return self._argocd.fetch(request)
         if request.tool == _POD_LOGS_TOOL:
             return self._logs.fetch(request)
         if request.tool == _TABULAR_TOOL:
