@@ -9,6 +9,13 @@ REPO_URL=https://github.com/HolmesGPT/holmesgpt.git
 POETRY_VERSION=1.8.5   # upstream CLAUDE.md: the lockfile is Poetry 1.8.x
 DEST=${1:-tmp/holmes-compare/upstream}
 PY=${HOLMES_PYTHON_BIN:-python3.12}
+# Absolute paths: the steps below cd into DEST and then use "$DEST/..." and "$PY".
+mkdir -p "$DEST"
+DEST=$(cd "$DEST" && pwd)
+case $PY in
+  /*) ;;
+  */*) PY="$(cd "$(dirname "$PY")" && pwd)/$(basename "$PY")" ;;
+esac
 
 if [ ! -d "$DEST/.git" ]; then
   mkdir -p "$DEST"
