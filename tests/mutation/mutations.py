@@ -327,4 +327,16 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    redacted = _redact_escaped_quotes(redacted)\n",
         "    pass\n",
     ),
+    Mutation(
+        "M37",
+        "credentials: runbook catalog descriptions are redacted before the v7 fact (#566 C2b)",
+        # ASSUMPTION (test author, implementation unseen): catalog.py calls
+        # ``redact_credentials(`` exactly once, on the description; the
+        # runner reports ``stale`` otherwise and the implementer pins the
+        # exact line.
+        "opspilot/knowledge/catalog.py",
+        "redact_credentials(",
+        "str(",
+        pg=True,
+    ),
 )

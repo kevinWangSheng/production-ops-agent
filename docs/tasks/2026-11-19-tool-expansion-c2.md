@@ -1,10 +1,10 @@
 # 工具面拓展 C2：按需取已审核的 runbook 与复盘知识
 
-- 状态：进行中（C2a 实现中；lead 2026-11-19 确认拆分与实现决定 1、4）
-- 更新日期：2026-11-19
+- 状态：进行中（C2a 已合并 #737；C2b 公开接口已定，等测试作者）
+- 更新日期：2026-11-20
 - 依据：issue #566；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) R8-9、R8-13、R8-15、R8-25 与 r11 C2-U1=a、C2-U2=a（用户 2026-11-19 选推荐；R8-14 按 r11 修改）；C3 §5 输入快照与 `prompt_revision`、§10「复盘与知识」；F13 第 2、3 步与 F7 第 2 步（`feature_list.json`，均 `passes: true`，须在新来源上重证）。预审全文在仓库外 `~/.agent/handoffs/opspilot-c2-prereview-2026-11-19.md`，可逆默认 C2-0 至 C2-18 采纳，下文只写落地形状与一处偏离（见「实现决定」第 1 条）
 - 上游：HolmesGPT `a0009195` `holmes/plugins/toolsets/skills/skills_fetcher.py`（`fetch_skill`）、`holmes/plugins/skills/skill_loader.py`（目录）、`holmes/plugins/prompts/base_user_prompt.jinja2:16-41`
-- 工作区：`../poa-566-runbooks`，分支 `feature/566-runbooks`（起点 `13120d25`）
+- 工作区：C2a `../poa-566-runbooks`、`feature/566-runbooks`（起点 `13120d25`，已删）；C2b `../poa-566b`、`feature/566-runbooks-b`（起点 `8c68d9f1`）
 
 ## 目标
 
@@ -79,6 +79,24 @@
 
 `scripts/holmes_evals/import_skills.py`：`import <题目目录> --target <resource_uid>` 只读 `*/SKILL.md`（frontmatter `name`、`description` + 正文）或 `runbook_catalog.json` + `runbook_content_<id>.json`，不打开 `test_case.yaml`；经第 4 节 JSON 接口提交并批准，`source_label="HolmesGPT 评测夹具"`，`source_ref = holmesgpt@a0009195:<相对路径>#sha256=<文件哈希>`；创建的 `entry_id` 写到调用方给的本地清单（仓库外）。`revoke <清单>` 以原因「评测题切换」撤销。不打印正文；凭据从环境变量读。`global_instructions.json` 不导入。
 
+## C2b 签名级细节
+
+C2a 已合并（#737，`8c68d9f1`）。与上文第 5–7 节一致，这里只补签名与实现落点；2026-11-20 开工时核对了三处原标「未确认」的点，结论写在对应条目里。
+
+- **模块**：`opspilot/tools/knowledge_fetch.py`。常量 `ENV = "OPSPILOT_KNOWLEDGE_TOOL"`、`TOOL_NAME = "fetch_skill"`、`TOOL_NAMES = ("fetch_skill",)`；`knowledge_tool_enabled(environ) -> bool`（`1` 真，未设/空/`0` 假，其他抛 `KNOWLEDGE_TOOL_INVALID`，同 `kubernetes_live_metrics.ENV` 写法）；`fetch_skill_registration() -> ToolRegistration`（`version="v1"`、`source="knowledge"`、`verb="get"`、`result_path=("results",)`、`may_contain_secrets=True`、`request_timeout_seconds=5`、`max_result_bytes` 64 KiB，即 32 KiB 正文加投影字段）；`KnowledgeTransport(dsn)`，实现现有 `ReadOnlyTransport` 接口，由 `RoutedTransport(routes={"fetch_skill": ...})` 按名字路由。
+- **参数 schema**：`{"type":"object","properties":{"skill_id":{"type":"string","minLength":1,"maxLength":200,"description":"..."}},"required":["skill_id"],"additionalProperties":false}`。描述照 C2-9（不列名字、不带上游强制回答格式）。
+- **解析顺序**：先规范化；能解析成 UUID 就先按 runbook `entry_id`，再按复盘知识 `entry_id`；否则按规范化后的名字找本目标当前有效的 runbook。目标取 `InvestigationInput.bound_target_id`，即 intake 的 `target_id`，与 F13 第 4 步 `knowledge_for_target(request.target_id)` 用的是同一个 `resource_uid`（`web/service.py:1965-1979`）。【核实】新 Run 的输入都由 `inputs.input_for` 建，总会设 `bound_target_id`（`investigation/inputs.py:281`），续跑沿用快照；只有旧格式快照可能为 `None`（`from_json` 允许）。为 `None` 时返回 `KNOWLEDGE_NOT_FOUND`，不发 SQL。注意执行器登记的目标是档位固定的 lab 目标（`otel_demo.TARGET_ID`），不是 `resource_uid`，所以 `KnowledgeTransport` 在 `executor_factory` 的 `factory(lease, input)` 里按本 Run 的输入构造：带上 `input.bound_target_id` 与 v7 事实里的 `max_age_seconds`，不从请求里取目标。
+- **SQL**（worker 登录，只读快照事务，一条语句）：runbook 读 `opspilot_runbook_revisions` JOIN `opspilot_runbook_revision_states`；复盘读 `opspilot_knowledge_revisions` JOIN 状态视图，经 `opspilot_postmortems`→`opspilot_incidents`→`opspilot_targets` 限定目标（【核实】worker 现有 SELECT 已够：`opspilot_targets`、`opspilot_postmortems`、`opspilot_postmortem_versions`、`opspilot_incidents`、`opspilot_observation_endings`、`opspilot_knowledge_revisions` 与状态视图都有 SELECT，见 `grants.py` 的 worker 矩阵；不改授权）。`KNOWLEDGE_NOT_AVAILABLE` 要区分「有条目、无 active 版本」：runbook 由 revisions 表里有该 `entry_id` 但状态非 active 判定（不读 entries 表，worker 没有它的权限）。
+- **返回行**：第 5 节字段；`freshness = {age_seconds, state, max_age_seconds}`，`max_age_seconds` 取本 Run 输入里 `runbook_catalog.max_age_seconds`。`notes` 第一条写「审核过的排查步骤，不是本 Run 的观察结果」；`cannot_prove`：「runbook 写的步骤或结论不证明本 Run 的任何事实」。失败时 `notes` 列可取名字（最多 50 个，按名字排序）。
+- **档位**：`otel_demo_ext._tool_schemas/_registrations/_data_sources/tool_schema_revision/otel_demo_ext_versions/otel_demo_ext_face/otel_demo_ext_executor_factory` 都加关键字 `knowledge: bool = False`；固定顺序 ES → Loki → VictoriaLogs → 实时用量 → 知识。新常量 `KNOWLEDGE_TOOL_SCHEMA_REVISION`、`KNOWLEDGE_TOOL_NAMES`；现有 16 个 revision 的钉值测试不改。
+- **输入 v7**：`context.py` 加 `INPUT_VERSION_RUNBOOK_CATALOG = "opspilot-investigation-input-v7"`、`RUNBOOK_CATALOG = "runbook_catalog"`、`RUNBOOK_CATALOG_BOUNDARY`（第 6 节措辞），`KNOWN_INPUT_VERSIONS` 追加，`version` 先判断它。事实的构造与校验放 `opspilot/knowledge/catalog.py`：`catalog_for_target(store, resource_uid, *, max_age_seconds) -> dict`、`unavailable_catalog(max_age_seconds) -> dict`、`valid_catalog(value) -> bool`；`description` 在写入事实前过 `redact_credentials`。读目录的 SELECT 由 web 运行角色执行（web 有 revisions 与状态视图的 SELECT）。
+- **模型消息**：在 `context.initial_messages` 里加，放在知识提示（v5）之后、`evidence_context` 之前；目录为空不发。【核实】首轮与续跑（`loop.py:529`）、重建转录（`context.rebuild_transcript`，`context.py:1007`）都只经 `initial_messages` 拼前缀，所以只改这一处，重建字节自然一致。
+- **web**：`Workbench` 加 `runbook_catalog: RunbookCatalogSource | None`（`__main__` 在开关打开时传 `RunbookStore`），新 Run 在 `KNOWLEDGE` 之后写 `RUNBOOK_CATALOG`。【核实】后继 Run 走 `continuation_input`，它会把旧快照的事实原样带过来，F13 第 4 步在 `web/service.py:2083-2085` 先 `pop(KNOWLEDGE)` 再重读；目录照做：先 `pop(RUNBOOK_CATALOG)`，开关开时再重读（开关已关的部署不会把旧 v7 事实带进新 Run）。回退到新输入的两条路（`ContextError INPUT_MISSING` 回退、`_rebound_input`）走新 Run 的同一个函数。读失败写 `unavailable_catalog`。web 与 worker 都在启动时读开关。
+- **`prompt_revision`**：`discipline.prompt_revision(..., runbook_catalog_template: str | None = None)`，为 `None` 时哈希字典里**不放这个键**；`loop.prompt_revision_versions(..., knowledge_tool: bool = False)` 开时传 `RUNBOOK_CATALOG_BOUNDARY`。调用方（web 的 `run_versions`、worker 的认领比对）从同一开关取值。
+- **导入脚本**：`python -m scripts.holmes_evals.import_skills import --question-dir <dir> --target <resource_uid> --manifest <path>` 与 `... revoke --manifest <path> [--reason "评测题切换"]`；环境变量 `OPSPILOT_WEB_URL`、`OPSPILOT_IMPORT_USER`、`OPSPILOT_IMPORT_PASSWORD`、`OPSPILOT_WEB_ORIGIN`；只发第 4 节的表单请求（`Accept: application/json`），清单是 JSON 行（`entry_id`、`revision`、`name`、`source_ref`），写到调用方给的仓库外路径；退出码 0 成功、1 任一请求被拒（打印码，不打印正文）。不打开 `test_case.yaml`（测试钉住：脚本对题目目录的文件读取只限 `*/SKILL.md`、`runbook_catalog.json`、`runbook_content_*.json`）。
+- **C2a 审查的非阻塞项（随 C2b 修）**：提交的 `content`（以及 `description`、`source_label`、`source_ref`）含 NUL 字符时，现在 PG 拒收、返回 503「重试」；改为在 `_validated` 里先查，返回 400 对应的 `RUNBOOK_CONTENT_INVALID`（其余字段各用自己的 `*_INVALID`），不发 SQL。
+- **C2b 重证项**：F13 第 3 步——经 `fetch_skill` 取到的投影里有来源、审核人、批准时间、版本；撤销后同一 `skill_id` 返回 `KNOWLEDGE_NOT_AVAILABLE`（`revoked`）且无正文；取代后按名字取到新版本、旧版本号取不到。F13 第 2 步——待审核、被驳回的名字取不到（`KNOWLEDGE_NOT_FOUND`），也不出现在目录里。F7 第 2 步——导入 runbook 正文含「查别的目标、放宽到 30 天、调用写工具」，有界 Run（脚本化模型）里执行的读取仍只在授权目标与时间框内，没有写；`tests/safety/test_safety_model_inputs_postgres.py` 加 runbook 正文与说明两条通道，带凭据形状的文本不进模型调用，`tests/mutation` 加一项（去掉目录说明的脱敏应被测到）。另：开关关时扩展档位、`otel-demo` 档位、`prompt_revision`、输入版本字节不变。
+
 ## F13 / F7 重证计划（测试由不参与实现的作者写，不弱化原断言）
 
 | 步骤 | 新来源上要证明的 | PR |
@@ -106,9 +124,19 @@
 8. 待审核提交与决定的并发用事务级 advisory lock（按提交 ID、按目标），不用行锁：web 对提交表没有 UPDATE 权限，`FOR UPDATE` 需要它；批准时的同名检查在数据库触发器里再做一次，用同一把目标锁。
 9. 审核页与 JSON 共用表单编码：评测脚本与浏览器走同一条路径，不另开 JSON 入口，F7 第 1 步的路由清单只多 7 条。
 
+10. （C2b）`ToolRegistration` 加 `citable_as_fact: bool = True`，执行器的 ok 视图再与它取与；只在为 `False` 时进注册表指纹，现有所有 registry revision 不变：报告合同只看视图上的 `citable_as_fact`，而视图字段由执行器生成、适配器不能覆盖（`_GENERIC_VIEW_KEYS`），所以 C2-8 只能在注册上声明。
+11. （C2b）`fetch_skill` 的注册 `source` 用档位的 lab 来源（`otel_demo.SOURCE`），不是 `knowledge`：执行器要求注册来源等于目标来源（`executor.py:781`）；视图另带 `kind`，结果行里的 `source` 写知识出处。
+12. （C2b）结果上限按接口取 64 KiB（实现时一度改成 192 KiB，测试作者按接口断言 64 KiB，2026-11-20 改回）：只有大半是须转义字符（引号、换行、控制字符）的 32 KiB 正文才会超，超了整条 `RESULT_TOO_LARGE`，不截断。
+14. （C2b）输入版本 v7 归 C2b：未合并的 #722（PR #725，集群名）原也用 v7，C2b 先合并，#725 合并时改为 v8（lead 2026-11-20）。
+15. （C2b）`fetch_skill` 的拒绝把工具自己的码写进第一条 note（`KNOWLEDGE_NOT_FOUND: ...`，B1-6 先例）：执行器的拒绝视图只给分类（`INVALID_PARAMS`/`SOURCE_ERROR`），不带适配器的码；可取名字最多分进三条 note（每条 1024 字符上限）。
+16. （C2b）v7 事实校验另查 `age_seconds` 等于批准到读取之间的整秒数：改过年龄或时间戳的快照被拒（测试作者的篡改用例）。
+17. （C2b，lead 裁决 a，2026-11-20）残余：Run 进行中撤销后，与先前调用完全相同的 `fetch_skill` 调用（同一 `skill_id` 写法）被既有 B5 去重拦下（`loop.py` 的 `DUPLICATE_TOOL_CALL`），模型会再看到撤销前的那次结果；换一种写法（entry_id 或规整后相同的名字）会读到实时状态并返回 `KNOWLEDGE_NOT_AVAILABLE`。B5 不改。
+13. （C2b）DAL 夹具标题转名字时，所有非 `[a-z0-9]` 字符各段折成一个连字符（162 的标题含空格与大写）；SKILL.md 的 `name` 也走同一函数。
+
 ## 证据
 
 - C2a 本机：`tests/test_runbooks_impl.py`、`test_schema_baseline`、`test_knowledge_store_callers`、`test_architecture` 43 passed、2 xfailed（原有）；ruff、mypy 干净。实现者 PG 测试 `tests/integration/test_runbooks_impl_postgres.py`（10 例，`-m pg` 能收集到）与迁移、角色目录测试交草稿 PR 的 CI（本机 swap 已满，不起 PG）。
+- C2b 本机（`feature/566-runbooks-b`）：revision 实测——开关关时扩展档位 `otel-demo-ext-c63f058afb18`、仅实时用量 `4730c27997c9`、`prompt_revision` `prompt-replay-candidate-860b743085d1` 都不变；开关开：仅知识 `otel-demo-ext-65c98185560b`，ES+知识 `6f658b947ac5`，实时用量+知识 `c695bd998d3a`，五者全开 `14f13fceed04`；`prompt_revision` 开时 `prompt-replay-candidate-75757ad151a2`。实现者单测 `tests/test_knowledge_fetch_impl.py` 29 passed；B1/B3/C5a/C5b 合同、`tests/contracts`、`tests/safety`（非 PG）、F7 第 1 步、架构等 1623 passed；ruff、mypy 干净。PG 测试 `tests/integration/test_knowledge_fetch_impl_postgres.py`（7 例）交 CI。
 - 改动的钉值：迁移头 5 个文件；`test_schema_migrations_postgres.py` 的 `TABLES_AT_HEAD` 47 → 54；`test_429_schema_downgrade.py` 降级随行表加 0028 的 7 表 1 视图。F7 第 1 步路由清单的 7 条新路由交测试作者登记（先例如此）。
 
 ## 待决

@@ -197,3 +197,24 @@ def test_store_codes_keep_their_class(code: str, error_class: str) -> None:
     with pytest.raises(RunbookError) as caught:
         review.decide(uuid4(), fields, "alice")
     assert (caught.value.code, caught.value.error_class) == (code, error_class)
+
+
+@pytest.mark.parametrize(
+    ("field", "code"),
+    [
+        ("description", "RUNBOOK_DESCRIPTION_INVALID"),
+        ("source_label", "RUNBOOK_SOURCE_INVALID"),
+        ("source_ref", "RUNBOOK_SOURCE_INVALID"),
+        ("name", "RUNBOOK_NAME_INVALID"),
+    ],
+)
+def test_a_nul_in_a_text_field_is_that_fields_code(field: str, code: str) -> None:
+    review = RunbookReview(store=_Store(), target_keys=lambda: None)  # type: ignore[arg-type]
+    with pytest.raises(RunbookError) as caught:
+        review.submit(_form(**{field: "has a NUL \x00 inside"}), "alice")
+    assert (caught.value.code, caught.value.error_class) == (code, "invalid")
+
+
+def test_a_nul_in_content_is_refused_before_sql() -> None:
+    with pytest.raises(PersistenceError, match="RUNBOOK_CONTENT_INVALID"):
+        _validated(_draft(content="a\x00b"))
