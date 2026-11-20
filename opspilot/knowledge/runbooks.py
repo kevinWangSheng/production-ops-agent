@@ -190,6 +190,7 @@ def _validated(draft: object) -> tuple[RunbookDraft, str]:
         not isinstance(description, str)
         or not description.strip()
         or len(description) > DESCRIPTION_MAX_CHARS
+        or "\x00" in description
     ):
         raise PersistenceError("RUNBOOK_DESCRIPTION_INVALID")
     content = draft.content
@@ -197,6 +198,9 @@ def _validated(draft: object) -> tuple[RunbookDraft, str]:
         not isinstance(content, str)
         or not content.strip()
         or len(content.encode("utf-8")) > CONTENT_MAX_BYTES
+        # PostgreSQL text cannot hold NUL: refused here (400), not as a
+        # storage failure (C2a review, C2b interface)
+        or "\x00" in content
     ):
         raise PersistenceError("RUNBOOK_CONTENT_INVALID")
     label, ref = draft.source_label, draft.source_ref
@@ -206,6 +210,8 @@ def _validated(draft: object) -> tuple[RunbookDraft, str]:
         or len(label) > SOURCE_LABEL_MAX_CHARS
         or not isinstance(ref, str)
         or len(ref) > SOURCE_REF_MAX_CHARS
+        or "\x00" in label
+        or "\x00" in ref
     ):
         raise PersistenceError("RUNBOOK_SOURCE_INVALID")
     if draft.supersedes_entry_id is not None:
@@ -563,6 +569,27 @@ class RunbookStore(_StoreBase):
             )
             self._record_request(conn, idempotency_key, "revoke", request, result)
             return result
+
+    # --- the catalog a Run starts with (C2b, ``opspilot.knowledge.catalog``)
+
+    def active_catalog(self, resource_uid: str) -> dict[str, Any]:
+        """Every active runbook of one target, read in its own snapshot with
+        the database clock: name, entry, revision, description, approval
+        time and age in seconds since approval."""
+        _require_text(resource_uid)
+        with self.transaction(snapshot=True) as conn:
+            clock = conn.execute("SELECT clock_timestamp() AS now").fetchone()
+            assert clock is not None
+            now = clock["now"]
+            rows = conn.execute(
+                "SELECT r.name, r.entry_id, r.revision, r.description, r.approved_at, "
+                "floor(extract(epoch FROM (%s - r.approved_at)))::bigint AS age_seconds "
+                "FROM opspilot_runbook_revisions r "
+                "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
+                "WHERE r.resource_uid=%s AND s.state='active' ORDER BY r.name",
+                (now, resource_uid),
+            ).fetchall()
+        return {"retrieved_at": now, "rows": rows}
 
     # --- reads (workbench pages; review history, not a knowledge read)
 

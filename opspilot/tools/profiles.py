@@ -39,11 +39,15 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   ``kubectl_top_pods`` and ``kubectl_top_nodes`` (B3-1) over the existing
   cluster connection; any value but ``1``, ``0`` or empty is a startup error
   (``K8S_LIVE_METRICS_INVALID``) in both processes.
+  ``OPSPILOT_KNOWLEDGE_TOOL=1`` adds ``fetch_skill`` and, in the web, the
+  approved-runbook list to new Runs (C2b); the same values rule
+  (``KNOWLEDGE_TOOL_INVALID``).
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
 ``OPSPILOT_VICTORIALOGS_URL`` each set in both or in neither, and
-``OPSPILOT_K8S_LIVE_METRICS`` the same in both).
+``OPSPILOT_K8S_LIVE_METRICS`` and ``OPSPILOT_KNOWLEDGE_TOOL`` the same in
+both).
 """
 
 from __future__ import annotations
@@ -64,6 +68,7 @@ from opspilot.tools.fixture import (
     fixture_face,
     fixture_versions,
 )
+from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
 from opspilot.tools.kubernetes_core import KubernetesConfig
 from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
 from opspilot.tools.loki_logs import LokiConfig, loki_enabled
@@ -96,6 +101,9 @@ class ToolProfile:
     face: Callable[[Clock], ToolFace]
     versions: Callable[[], dict[str, str]]
     executor_factory: Callable[[DurableStore, EvidenceSink, Clock], ExecutorFactory]
+    #: C2b: whether new Runs carry the approved-runbook list (input v7);
+    #: only ``otel-demo-ext`` with ``OPSPILOT_KNOWLEDGE_TOOL=1``.
+    runbook_catalog: bool = False
 
 
 def _fixture() -> ToolProfile:
@@ -151,6 +159,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     victorialogs = victorialogs_enabled(env)
     # B3-1: the switch only; it adds no credential or address.
     live_metrics = live_metrics_enabled(env)
+    # C2b: the switch only; the worker reads knowledge with its own runtime
+    # role, the web adds the runbook list to new Runs.
+    knowledge = knowledge_tool_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -174,6 +185,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 loki=LokiConfig.from_env(env),
                 victorialogs=VictoriaLogsConfig.from_env(env),
                 live_metrics=live_metrics,
+                knowledge=knowledge,
             )
         except ToolContractError as error:
             code = str(error)
@@ -189,13 +201,16 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             loki=loki,
             victorialogs=victorialogs,
             live_metrics=live_metrics,
+            knowledge=knowledge,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
             loki=loki,
             victorialogs=victorialogs,
             live_metrics=live_metrics,
+            knowledge=knowledge,
         ),
+        runbook_catalog=knowledge,
         executor_factory=executor_factory,
     )
 

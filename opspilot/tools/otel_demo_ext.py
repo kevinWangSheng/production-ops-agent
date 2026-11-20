@@ -68,7 +68,7 @@ from dataclasses import dataclass
 from datetime import timedelta, timezone
 from typing import Any, cast
 
-from opspilot.investigation.context import InvestigationInput
+from opspilot.investigation.context import InvestigationInput, catalog_max_age
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import investigation_versions
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
@@ -77,6 +77,7 @@ from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
     elasticsearch_logs,
     jaeger_query,
+    knowledge_fetch,
     kubernetes_core,
     kubernetes_live_metrics,
     kubernetes_logs,
@@ -158,6 +159,7 @@ def _tool_schemas(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
     """C5-14: the base array, then each configured backend's tools in the
     fixed order Elasticsearch, Loki, VictoriaLogs, live usage (B3-1)."""
@@ -168,6 +170,9 @@ def _tool_schemas(
         schemas = (*schemas, *victorialogs_logs.TOOL_SCHEMAS)
     if live_metrics:
         schemas = (*schemas, *kubernetes_live_metrics.TOOL_SCHEMAS)
+    if knowledge:
+        # C2b (#566): last in the fixed order
+        schemas = (*schemas, *knowledge_fetch.TOOL_SCHEMAS)
     return schemas
 
 
@@ -186,6 +191,7 @@ def _data_sources(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> dict[str, Any]:
     available: dict[str, Any] = {
         "prometheus": sorted(
@@ -205,6 +211,8 @@ def _data_sources(
         available["loki"] = sorted(loki_logs.TOOL_NAMES)
     if victorialogs:
         available["victorialogs"] = sorted(victorialogs_logs.TOOL_NAMES)
+    if knowledge:
+        available["knowledge"] = list(knowledge_fetch.TOOL_NAMES)
     return {
         "available": available,
         "not_integrated": list(_NOT_INTEGRATED),
@@ -217,6 +225,7 @@ def _registrations(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -262,6 +271,13 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if knowledge:
+        base = (
+            *base,
+            knowledge_fetch.fetch_skill_registration(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     return base
 
 
@@ -271,6 +287,7 @@ def tool_schema_revision(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -283,16 +300,18 @@ def tool_schema_revision(
             "tool_schemas": [
                 dict(item)
                 for item in _tool_schemas(
-                    elasticsearch, loki, victorialogs, live_metrics
+                    elasticsearch, loki, victorialogs, live_metrics, knowledge
                 )
             ],
             "registry": ToolRegistry(
-                _registrations(elasticsearch, loki, victorialogs, live_metrics)
+                _registrations(
+                    elasticsearch, loki, victorialogs, live_metrics, knowledge
+                )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
             "data_sources": _data_sources(
-                elasticsearch, loki, victorialogs, live_metrics
+                elasticsearch, loki, victorialogs, live_metrics, knowledge
             ),
             "kubernetes_resources": kubernetes_core.resource_table(),
         }
@@ -322,6 +341,11 @@ LIVE_METRICS_TOOL_SCHEMA_REVISION = tool_schema_revision(live_metrics=True)
 LIVE_METRICS_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(live_metrics=True)
 )
+#: C2b: the same with only ``OPSPILOT_KNOWLEDGE_TOOL=1``.
+KNOWLEDGE_TOOL_SCHEMA_REVISION = tool_schema_revision(knowledge=True)
+KNOWLEDGE_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(knowledge=True)
+)
 
 
 def otel_demo_ext_versions(
@@ -330,18 +354,22 @@ def otel_demo_ext_versions(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
     ``OPSPILOT_VICTORIALOGS_URL`` is set (B1-U2, C5-14); ``live_metrics``:
-    whether ``OPSPILOT_K8S_LIVE_METRICS=1`` (B3-1)."""
+    whether ``OPSPILOT_K8S_LIVE_METRICS=1`` (B3-1); ``knowledge``: whether
+    ``OPSPILOT_KNOWLEDGE_TOOL=1`` (C2b), which also adds the runbook list's
+    boundary wording to ``prompt_revision``."""
     return {
-        **investigation_versions(DISCIPLINE_VARIANT),
+        **investigation_versions(DISCIPLINE_VARIANT, knowledge_tool=knowledge),
         "tool_schema_revision": tool_schema_revision(
             elasticsearch=elasticsearch,
             loki=loki,
             victorialogs=victorialogs,
             live_metrics=live_metrics,
+            knowledge=knowledge,
         ),
     }
 
@@ -353,6 +381,7 @@ def otel_demo_ext_face(
     loki: bool = False,
     victorialogs: bool = False,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -364,12 +393,14 @@ def otel_demo_ext_face(
         window = Window(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end)
         context = dict(otel_demo._evidence_context(run_id, window))
         context["data_sources"] = _data_sources(
-            elasticsearch, loki, victorialogs, live_metrics
+            elasticsearch, loki, victorialogs, live_metrics, knowledge
         )
         return context
 
     return ToolFace(
-        tool_schemas=_tool_schemas(elasticsearch, loki, victorialogs, live_metrics),
+        tool_schemas=_tool_schemas(
+            elasticsearch, loki, victorialogs, live_metrics, knowledge
+        ),
         variant_id=DISCIPLINE_VARIANT,
         evidence_context=evidence_context,
     )
@@ -419,6 +450,7 @@ def otel_demo_ext_registrations(
     loki: loki_logs.LokiConfig | None = None,
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
     live_metrics: bool = False,
+    knowledge: bool = False,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
@@ -427,6 +459,7 @@ def otel_demo_ext_registrations(
             loki is not None,
             victorialogs is not None,
             live_metrics,
+            knowledge,
         ),
         targets=(_target(config, kubernetes, elasticsearch, loki, victorialogs),),
     )
@@ -471,6 +504,7 @@ def otel_demo_ext_executor_factory(
     loki: loki_logs.LokiConfig | None = None,
     victorialogs: victorialogs_logs.VictoriaLogsConfig | None = None,
     live_metrics: bool = False,
+    knowledge: bool = False,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
@@ -494,13 +528,26 @@ def otel_demo_ext_executor_factory(
 
     ``live_metrics`` (B3-1): ``OPSPILOT_K8S_LIVE_METRICS=1``; the two live
     usage tools are registered and routed to the cluster transport only then.
+
+    ``knowledge`` (C2b): ``OPSPILOT_KNOWLEDGE_TOOL=1``; ``fetch_skill`` is
+    registered, and each Run's executor routes it to a ``KnowledgeTransport``
+    bound to that Run's own target and catalog threshold (the registered
+    target is the fixed lab target, never the Run's ``resource_uid``).
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
     kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
     registrations = otel_demo_ext_registrations(
-        config, kubernetes, elasticsearch, loki, victorialogs, live_metrics
+        config, kubernetes, elasticsearch, loki, victorialogs, live_metrics, knowledge
+    )
+    # C2b: the worker runtime role, read-only snapshot reads only.
+    knowledge_reader = (
+        knowledge_fetch.KnowledgeReader(
+            store.dsn, pool=getattr(store, "pool_config", None)
+        )
+        if knowledge
+        else None
     )
     tools = ToolRegistry(registrations.tools)
     targets = TargetRegistry(list(registrations.targets))
@@ -574,6 +621,16 @@ def otel_demo_ext_executor_factory(
 
     def factory(lease: Lease, input: InvestigationInput) -> ReadOnlyToolExecutor:
         run = store.rebuild(lease.incident_id)["run"]
+        run_routes = routes
+        if knowledge_reader is not None:
+            run_routes = {
+                **routes,
+                knowledge_fetch.TOOL_NAME: knowledge_fetch.KnowledgeTransport(
+                    reader=knowledge_reader,
+                    resource_uid=input.bound_target_id,
+                    max_age_seconds=catalog_max_age(input.scope_facts),
+                ),
+            }
         scope = QueryScope(
             scope_id=f"{PROFILE_NAME}:{lease.run_id}:{lease.epoch}",
             subject_kind="incident",
@@ -603,7 +660,7 @@ def otel_demo_ext_executor_factory(
                 ),
                 sources=sources,
                 kubernetes=cluster,
-                routes=routes,
+                routes=run_routes,
             ),
             evidence=evidence,
             control=control,

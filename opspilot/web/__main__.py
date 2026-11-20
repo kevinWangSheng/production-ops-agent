@@ -350,6 +350,8 @@ def _serve() -> int:
         if os.environ.get("OPSPILOT_KNOWLEDGE_HINTS") == "off"
         else knowledge,
         knowledge_max_age_seconds=knowledge_max_age,
+        # C2b: only ``otel-demo-ext`` with ``OPSPILOT_KNOWLEDGE_TOOL=1``
+        runbook_catalog=RunbookStore(dsn) if profile.runbook_catalog else None,
         health_profile=_health_profile(),
         # The same versions and tool face ``python -m opspilot.worker_main``
         # claims and runs with: a Run recorded under other versions is

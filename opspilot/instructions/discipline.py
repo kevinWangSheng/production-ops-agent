@@ -426,6 +426,7 @@ def prompt_revision(
     alert_context_template: str = "",
     knowledge_template: str = "",
     release_context_template: str = "",
+    runbook_catalog_template: str | None = None,
 ) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
@@ -438,21 +439,23 @@ def prompt_revision(
     传入知识提示与发布事实（F11 P4-05）的不可信数据边界措辞，都由调用方从其单一来源取得。实例值（具体失败原因、具体 evidence_id）不参与，只有模板
     本身参与；这样仅预算、授权范围或具体失败内容不同的两个 Run 得到相同
     取值。
+
+    ``runbook_catalog_template``（C2b，#566）只在 runbook 目录开关打开时由
+    调用方传入；为 ``None`` 时哈希字典里没有这个键（不是空串），开关关闭的
+    部署取值逐字节不变（照 #722「未设时字节不变」）。
     """
-    return "prompt-{}-{}".format(
-        variant_id,
-        _short(
-            {
-                "discipline": template_projection(variant_id),
-                "report_contract": report_contract,
-                "run_coverage_template": run_coverage_template,
-                "report_retry_template": report_retry_template,
-                "alert_context_template": alert_context_template,
-                "knowledge_template": knowledge_template,
-                "release_context_template": release_context_template,
-            }
-        ),
-    )
+    hashed: dict[str, object] = {
+        "discipline": template_projection(variant_id),
+        "report_contract": report_contract,
+        "run_coverage_template": run_coverage_template,
+        "report_retry_template": report_retry_template,
+        "alert_context_template": alert_context_template,
+        "knowledge_template": knowledge_template,
+        "release_context_template": release_context_template,
+    }
+    if runbook_catalog_template is not None:
+        hashed["runbook_catalog_template"] = runbook_catalog_template
+    return "prompt-{}-{}".format(variant_id, _short(hashed))
 
 
 def prompt_face_sha256(

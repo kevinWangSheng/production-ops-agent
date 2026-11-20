@@ -469,8 +469,15 @@ class ToolRegistration:
     error_classes: Mapping[str, str] = field(default_factory=dict)
     incomplete_marker: str | None = None
     read_only: bool = True
+    #: C2b (#566, C2-8): ``False`` for a tool whose ok results describe how
+    #: to investigate rather than what this Run observed (``fetch_skill``):
+    #: its views are never ``citable_as_fact``. Fingerprinted only when
+    #: ``False``, so every existing registry revision is unchanged.
+    citable_as_fact: bool = True
 
     def __post_init__(self) -> None:
+        if type(self.citable_as_fact) is not bool:
+            raise ToolContractError("INVALID_REGISTRATION")
         if not (
             isinstance(self.name, str)
             and _NAME.fullmatch(self.name)
@@ -703,6 +710,11 @@ class ToolRegistry(_FrozenIndex):
                     "incomplete_marker": entries[name].incomplete_marker,
                     "read_only": entries[name].read_only,
                     "may_contain_secrets": entries[name].may_contain_secrets,
+                    **(
+                        {}
+                        if entries[name].citable_as_fact
+                        else {"citable_as_fact": False}
+                    ),
                 }
                 for name in sorted(entries)
             ],
