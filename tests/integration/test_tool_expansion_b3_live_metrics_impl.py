@@ -183,9 +183,15 @@ def test_namespace_rows_magnitudes_and_containers(sent):
 
 
 def test_whole_cluster_includes_other_namespaces(sent):
-    view, _ = _call("kubectl_top_pods", {})
-    assert view["status"] == "ok", view
-    namespaces = {row["namespace"] for row in view["content"]}
+    # metrics-server leaves out a Pod until it has two samples of it (an idle
+    # Pod can miss a scrape), so wait a few resolution periods for ns-b (#739).
+    for _ in range(10):
+        view, _ = _call("kubectl_top_pods", {})
+        assert view["status"] == "ok", view
+        namespaces = {row["namespace"] for row in view["content"]}
+        if {"kube-system", "ns-a", "ns-b"} <= namespaces:
+            break
+        time.sleep(3)
     assert {"kube-system", "ns-a", "ns-b"} <= namespaces
     assert view["scope"] == {"namespace": None, "all_namespaces": True}
 

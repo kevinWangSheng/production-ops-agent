@@ -304,8 +304,14 @@ def _compare(
 
 
 def test_pods_without_namespace_cover_the_whole_cluster(cluster, roles):
-    rows = _rows(_run(cluster, PODS))
-    namespaces = {r["namespace"] for r in rows}
+    # metrics-server leaves out a Pod until it has two samples of it (an idle
+    # Pod can miss a scrape), so wait a few resolution periods for ns-b (#739).
+    for _ in range(10):
+        rows = _rows(_run(cluster, PODS))
+        namespaces = {r["namespace"] for r in rows}
+        if {"kube-system", NS_A, NS_B} <= namespaces:
+            break
+        time.sleep(3)
     assert {"kube-system", NS_A, NS_B} <= namespaces
     assert roles["idle"][1] in {r["pod"] for r in rows if r["namespace"] == NS_B}
     assert rows == sorted(rows, key=lambda r: (r["namespace"], r["pod"]))
@@ -355,10 +361,12 @@ def test_node_rows_match_kubectl_get_raw(cluster, roles):
         for item in raw_get("/api/v1/nodes")["items"]
     }
 
-    def percent(usage: Decimal, total: str) -> set[int]:
+    def percent(usage: Decimal, whole: Decimal) -> set[int]:
         # Whether the rounded-up or the exact usage is divided is not
-        # pinned; both floor to the same value except at a boundary.
-        whole = exact(total)
+        # pinned; both floor to the same value except at a boundary. Usage
+        # and total are in the unit the row reports (millicores, bytes), so
+        # "rounded up" means the reported integer (#739: rounding CPU up to
+        # whole cores gave {7, 25} for 319.8m of 4 cores).
         return {
             math.floor(usage * 100 / whole),
             math.floor(Decimal(ceil(usage)) * 100 / whole),
@@ -371,8 +379,8 @@ def test_node_rows_match_kubectl_get_raw(cluster, roles):
         assert row["memory_bytes"] == ceil(memory)
         assert row["window"] == item["window"]
         alloc = allocatable[row["node"]]
-        assert row["cpu_percent"] in percent(cpu / 1000, alloc["cpu"]), row
-        assert row["memory_percent"] in percent(memory, alloc["memory"]), row
+        assert row["cpu_percent"] in percent(cpu, exact(alloc["cpu"]) * 1000), row
+        assert row["memory_percent"] in percent(memory, exact(alloc["memory"])), row
 
     matched = _compare(
         lambda: _rows(_run(cluster, NODES)),

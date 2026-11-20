@@ -774,12 +774,14 @@ jobs:
           # The first scrape takes one or two metric-resolution periods.
           for _ in $(seq 1 60); do
             rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
-            [ "$rows" = "3" ] && break
+            idle=$(kubectl top pods -n ns-b --no-headers 2>/dev/null | grep -c '^idle ' || true)
+            nodes=$(kubectl top nodes --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && [ "$idle" = "1" ] && [ "$nodes" -ge 1 ] && break
             sleep 3
           done
           kubectl top pods -n ns-a
           kubectl top nodes
-          [ "$rows" = "3" ] || { echo "metrics never covered ns-a" >&2; exit 1; }
+          [ "$rows" = "3" ] && [ "$idle" = "1" ] || { echo "metrics never covered ns-a and ns-b" >&2; exit 1; }
           mkdir -p "$RUNNER_TEMP/b3"
           kubectl config view --raw --minify \
             -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
@@ -827,10 +829,12 @@ jobs:
           kubectl wait --for=condition=Available apiservice/v1beta1.metrics.k8s.io --timeout=180s
           for _ in $(seq 1 60); do
             rows=$(kubectl top pods -n ns-a --no-headers 2>/dev/null | wc -l || true)
-            [ "$rows" = "3" ] && break
+            idle=$(kubectl top pods -n ns-b --no-headers 2>/dev/null | grep -c '^idle ' || true)
+            nodes=$(kubectl top nodes --no-headers 2>/dev/null | wc -l || true)
+            [ "$rows" = "3" ] && [ "$idle" = "1" ] && [ "$nodes" -ge 1 ] && break
             sleep 3
           done
-          [ "$rows" = "3" ] || { echo "metrics did not come back" >&2; exit 1; }
+          [ "$rows" = "3" ] && [ "$idle" = "1" ] || { echo "metrics did not come back" >&2; exit 1; }
       - name: Live usage tools against a real cluster (implementer tests)
         if: steps.scope.outputs.full != 'false' && !cancelled()
         env:
