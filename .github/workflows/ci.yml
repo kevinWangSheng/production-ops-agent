@@ -687,6 +687,10 @@ jobs:
           OPSPILOT_LOG_BACKENDS: "1"
           C5_GATEWAY_PASSWORD: changeme569
         run: |
+          C5B_VLOGS_URL=http://127.0.0.1:53113 \
+          C5B_GATEWAY_VLOGS_URL=http://127.0.0.1:53103 \
+          C5B_GATEWAY_URL=http://127.0.0.1:53103 \
+          C5_GATEWAY_DENY_URL=http://127.0.0.1:53102 \
           C5B_GATEWAY_ACCESS_LOG="$RUNNER_TEMP/c5b-gateway-logs/access.log" \
           C5B_PROBE_OUT="$RUNNER_TEMP/c5b-probe.json" \
             .venv/bin/python -m pytest tests/integration/test_tool_expansion_c5b_victorialogs*.py -q -rs -s
