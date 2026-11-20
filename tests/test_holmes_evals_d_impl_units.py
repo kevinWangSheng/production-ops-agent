@@ -46,7 +46,7 @@ def _cfg(tmp_path: Path) -> driver.Config:
 def test_question_lists_and_specs() -> None:
     assert questions.QUESTION_GROUPS["c2"] == questions.C2_QUESTIONS
     # PR-E appends the C1 question after C2.
-    assert questions.ALL_QUESTIONS[-7:-1] == questions.C2_QUESTIONS
+    assert questions.ALL_QUESTIONS[-14:-8] == questions.C2_QUESTIONS  # then 283, then C6
     assert driver.resolve_questions("c2") == questions.C2_QUESTIONS
     assert driver.resolve_questions("162") == (Q162,)
     assert log_backends.KNOWLEDGE_QUESTIONS == set(questions.C2_QUESTIONS)

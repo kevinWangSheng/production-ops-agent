@@ -25,18 +25,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from scripts.holmes_evals.db_backends import DB_QUESTIONS
 from scripts.holmes_evals.questions import (
     C1_QUESTIONS,
     C2_QUESTIONS,
     C5_LOKI_QUESTIONS,
     C5_VICTORIALOGS_QUESTIONS,
+    C6_QUESTIONS,
 )
 from scripts.itbench_lite import services
 from scripts.itbench_lite.services import ServiceError, Started
 
 #: ``kubernetes`` (PR-D, C2): no log backend; the product's Kubernetes
 #: read-only tools and ``fetch_skill`` only.
-Backend = Literal["elasticsearch", "loki", "victorialogs", "kubernetes"]
+#: ``sql`` / ``mongodb`` (PR-F, C6): the question's own database behind its
+#: port-forward (``db_backends``).
+Backend = Literal[
+    "elasticsearch", "loki", "victorialogs", "kubernetes", "sql", "mongodb"
+]
 
 #: victoriametrics/victoria-logs:v1.54.0, the digest the CI job
 #: ``log-backends`` pins (read from Docker Hub on 2026-11-19).
@@ -53,7 +59,7 @@ READY_TIMEOUT_S = 60
 @dataclass(frozen=True)
 class LogQuestionSpec:
     qid: str
-    backend: Literal["loki", "victorialogs", "kubernetes"]
+    backend: Literal["loki", "victorialogs", "kubernetes", "sql", "mongodb"]
     #: ``127.0.0.1:<port>`` of the question's own Loki (engineer reads and
     #: writes, the gateway's upstream); None for VictoriaLogs (the attempt's).
     address: str | None
@@ -135,6 +141,20 @@ LOG_QUESTIONS: dict[str, LogQuestionSpec] = {
             False,
             namespace_prefix="app-283-",
         ),
+        # PR-F (C6): the database questions; release checks and port checks
+        # as C5 (namespace gone, the port-forward's local port free).
+        *(
+            LogQuestionSpec(
+                d.qid,
+                d.backend,
+                f"127.0.0.1:{d.local_port}",
+                d.namespace,
+                d.host_ports,
+                True,
+                False,
+            )
+            for d in DB_QUESTIONS.values()
+        ),
     )  # fmt: skip
 }
 assert set(LOG_QUESTIONS) == (
@@ -142,6 +162,7 @@ assert set(LOG_QUESTIONS) == (
     | set(C5_VICTORIALOGS_QUESTIONS)
     | set(C2_QUESTIONS)
     | set(C1_QUESTIONS)
+    | set(C6_QUESTIONS)
 )
 #: Questions whose attempts import their knowledge fixtures and run with
 #: ``OPSPILOT_KNOWLEDGE_TOOL=1`` (PR-D).

@@ -36,7 +36,7 @@ def _q(enable_todo: bool) -> Question:
 
 def test_question_lists_and_283_spec() -> None:
     assert questions.C1_QUESTIONS == ("283_todowrite_multistep_audit",)
-    assert questions.ALL_QUESTIONS[-1] == "283_todowrite_multistep_audit"
+    assert questions.ALL_QUESTIONS[-8] == "283_todowrite_multistep_audit"  # PR-F appends C6
     assert driver.resolve_questions("283") == questions.C1_QUESTIONS
     assert driver.resolve_questions("todo-hard") == questions.TODO_HARD_QUESTIONS
     assert set(questions.TODO_HARD_QUESTIONS) <= set(questions.B1_QUESTIONS)
