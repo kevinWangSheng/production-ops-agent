@@ -601,36 +601,62 @@ def test_apply_loki_shift_end_to_end() -> None:
     assert _as_utc(s.shifted_min) == _as_utc(record.shifted_min)
 
 
+def _span_ns(r: dict[str, Any]) -> int:
+    return int(r["query"]["end"][0]) - int(r["query"]["start"][0])
+
+
 def test_apply_loki_shift_reads_within_loki_query_length() -> None:
-    """Loki 2.9 rejects a labels/query_range span over 30d1h with HTTP 400; the
-    fixed-time read is split into windows that fit, and still sees every
-    fixed entry of the 730-day span (one 650 days back, one on a window edge)."""
+    """Loki 2.9 rejects a labels/series/query_range span over 30d1h (HTTP
+    400), and its frontend runs every query_range as 30-minute sub-queries, so
+    on the fixtures' 50m-CPU Loki a request costs by span (about 5 s a day,
+    60 s timeout). The fixed-time read stays near the anchor, reads each
+    stream under one selector, and still sees every entry the questions'
+    generators write (2025-08-01 00:00 to 2025-08-04 14:00)."""
     shift = mod("shift")
-    limit = timedelta(days=30, hours=1)
     store = FakeLoki()
-    store.max_query_ns = int(limit.total_seconds()) * 1_000_000_000
+    store.max_query_ns = int(timedelta(days=30, hours=1).total_seconds()) * 10**9
     _seed_101(store)
-    old = SETUP_STARTED - timedelta(days=650)
-    edge = SETUP_STARTED - shift.FIXED_READ_SPAN + timedelta(days=30)
-    store.add(S2, [(ns_of(old), "db very old"), (ns_of(edge), "db edge")])
+    first = datetime(2025, 8, 1, 0, 0, tzinfo=UTC)
+    last = datetime(2025, 8, 4, 13, 59, tzinfo=UTC)
+    store.add(S2, [(ns_of(first), "db first"), (ns_of(last), "db last")])
     with served_loki(store) as url:
         _, record = shift.apply_loki_shift(
             _admin(url), Q101, PROMPT, NOW, setup_started=SETUP_STARTED
         )
-    windowed = [
+    reads = [
         r for r in store.requests
-        if r["path"] in ("/loki/api/v1/labels", "/loki/api/v1/query_range")
+        if r["path"] in ("/loki/api/v1/labels", "/loki/api/v1/series",
+                         "/loki/api/v1/query_range")
     ]  # fmt: skip
-    assert windowed
-    for r in windowed:
-        span = int(r["query"]["end"][0]) - int(r["query"]["start"][0])
-        assert span <= store.max_query_ns
-    starts = [int(r["query"]["start"][0]) for r in windowed]
-    assert min(starts) == ns_of(SETUP_STARTED - shift.FIXED_READ_SPAN)
-    # 52 from the end-to-end seed plus the two older ones, each read once.
+    assert reads
+    assert all(_span_ns(r) <= store.max_query_ns for r in reads)
+    queries = _query_requests(store)
+    day = int(timedelta(days=1).total_seconds()) * 10**9
+    assert all(_span_ns(r) <= day for r in queries)  # each well under the timeout
+    # One selector covers all three streams (all carry ``app``): at most a
+    # week of query_range in total, not 730 days per label name.
+    assert len({r["query"]["query"][0] for r in queries}) == 1
+    assert sum(_span_ns(r) for r in queries) <= 7 * day
+    # 52 from the end-to-end seed plus the two generator-edge entries, once each.
     assert record.fixed_entries == 54
-    assert _as_utc(record.original_min) == edge  # the oldest kept entry
-    assert record.pushed == 9
+    assert _as_utc(record.original_min) == first
+
+
+@pytest.mark.parametrize("offset", [timedelta(hours=-63), timedelta(hours=63)])
+def test_apply_loki_shift_data_at_read_edge_fails_closed(offset: timedelta) -> None:
+    """Fixed data near the edge of the anchor read may continue past it: the
+    shift fails instead of moving part of the timeline, and pushes nothing."""
+    shift = mod("shift")
+    store = FakeLoki()
+    _seed_101(store)
+    store.add(S2, [(ns_of(ANCHOR + offset), "db near edge")])
+    with served_loki(store) as url:
+        code = _code(
+            shift.apply_loki_shift, _admin(url), Q101, PROMPT, NOW,
+            setup_started=SETUP_STARTED,
+        )  # fmt: skip
+    assert code == "SHIFT_DATA_AT_READ_EDGE"
+    assert not [r for r in store.requests if r["path"].endswith("/push")]
 
 
 def test_apply_loki_shift_no_fixed_entries() -> None:

@@ -213,6 +213,8 @@ class FakeLoki:
             return 200, {"status": "success", "data": names}
         if method == "GET" and path == "/loki/api/v1/query_range":
             return self._query_range(query)
+        if method == "GET" and path == "/loki/api/v1/series":
+            return self._series(query)
         if method == "POST" and path == "/loki/api/v1/push":
             return self._push(headers, body)
         if method == "GET" and path == "/ready":
@@ -259,6 +261,29 @@ class FakeLoki:
                 ],
             },
         }
+
+    def _series(self, query: Mapping[str, list[str]]) -> tuple[int, Any]:
+        start = _parse_time((query.get("start") or [""])[0], 0)
+        end = _parse_time((query.get("end") or [""])[0], 2**63 - 1)
+        matches = [_SELECTOR.match(m.strip()) for m in query.get("match[]") or []]
+        if not matches or not all(matches):
+            return 400, {"error": "unsupported match[]"}
+        out = []
+        with self.lock:
+            for s in self.streams.values():
+                hit = any(
+                    m["name"] in s.labels
+                    and (
+                        s.labels[m["name"]] == m["value"]
+                        if m["op"] == "="
+                        else re.fullmatch(m["value"], s.labels[m["name"]])
+                    )
+                    for m in matches
+                    if m
+                )
+                if hit and s.window(start, end, 1):
+                    out.append(dict(s.labels))
+        return 200, {"status": "success", "data": out}
 
     def _push(self, headers: Mapping[str, str], body: bytes) -> tuple[int, Any]:
         lower = {k.lower(): v for k, v in headers.items()}
