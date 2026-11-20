@@ -95,12 +95,14 @@ __all__ = [
     "TOOL_SCHEMAS",
     "KubernetesClient",
     "KubernetesConfig",
+    "KubernetesRequestRefused",
     "KubernetesTransport",
     "ListResult",
     "Resource",
     "LineFilter",
     "check_namespace",
     "check_object_name",
+    "check_release_name",
     "check_selector",
     "filter_lines",
     "pattern_problem",
@@ -110,6 +112,7 @@ __all__ = [
     "require_jq",
     "resolve_kind",
     "run_isolated",
+    "secret_request_problem",
 ]
 
 JQ_QUERY_TOOL = "kubernetes_jq_query"
@@ -122,6 +125,8 @@ _POD_LOGS_TOOL = "fetch_pod_logs"
 _TABULAR_TOOL = "kubernetes_tabular_query"
 #: B3 (#562): served by ``kubernetes_live_metrics.LiveMetricsTransport``.
 _LIVE_METRICS_TOOLS = frozenset({"kubectl_top_pods", "kubectl_top_nodes"})
+#: B4 (#563): served by ``helm_releases.HelmReleasesTransport``.
+_HELM_TOOLS = frozenset({"helm_list", "helm_history", "helm_status"})
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -473,6 +478,177 @@ def _remaining(deadline: float) -> float:
     return left
 
 
+# -- the Secret gateway (B4-5, B4-6, r11) --------------------------------------
+
+#: B4: the only field selector a Secret list may carry, compared whole.
+HELM_FIELD_SELECTOR = "type=helm.sh/release.v1"
+#: B4: the ``owner`` label value Helm puts on its release records.
+HELM_OWNER = "helm"
+_HELM_OWNER_SELECTOR = f"owner={HELM_OWNER}"
+_HELM_NAME_PREFIX = f"{_HELM_OWNER_SELECTOR},name="
+#: B4-9: objects per Helm release page (a record can be about 1.4 MiB).
+HELM_PAGE_LIMIT = 5
+#: Helm's release-name rule (a DNS-1123 subdomain, at most 53 characters).
+HELM_RELEASE_NAME = re.compile(
+    r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*"
+)
+MAX_HELM_RELEASE_NAME_CHARS = 53
+_CONTINUE_TOKEN = re.compile(r"[A-Za-z0-9_=+/-]{1,4096}")
+_HELM_QUERY_ORDER = ("fieldSelector", "labelSelector", "limit", "continue")
+_HELM_FIRST_PAGE_KEYS = frozenset(_HELM_QUERY_ORDER[:3])
+_HELM_NEXT_PAGE_KEYS = frozenset(_HELM_QUERY_ORDER)
+_NAMESPACED_SECRETS = re.compile(r"/api/v1/namespaces/([^/]+)/secrets")
+#: Refused at the resource position of every request (B4-5 step 2): the old
+#: watch and proxy prefixes move ``secrets`` to another position.
+_REFUSED_RESOURCES = frozenset({"watch", "proxy"})
+
+
+class KubernetesRequestRefused(Exception):
+    """``KubernetesClient.get`` refused a request before sending it (B4-5).
+
+    Not a ``TransportError``: nothing was attempted, so every cluster
+    transport turns it into ``refused(code)`` (``sent=False``).
+    """
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def check_release_name(name: object) -> bool:
+    """B4-1: Helm's release-name rule (it goes into the label selector)."""
+    return (
+        isinstance(name, str)
+        and 0 < len(name) <= MAX_HELM_RELEASE_NAME_CHARS
+        and HELM_RELEASE_NAME.fullmatch(name) is not None
+    )
+
+
+def helm_label_selector(release_name: str | None) -> str:
+    """The only two label selectors a Helm page carries (B4-7)."""
+    if release_name is None:
+        return _HELM_OWNER_SELECTOR
+    return _HELM_NAME_PREFIX + release_name
+
+
+def helm_secrets_url(endpoint: str, namespace: str | None) -> str:
+    """The Helm release page path (B4-1): every namespace or one."""
+    base = endpoint.rstrip("/") + "/api/v1"
+    if namespace is None:
+        return base + "/secrets"
+    return f"{base}/namespaces/{namespace}/secrets"
+
+
+def helm_page_query(label_selector: str, continue_token: str | None) -> str:
+    """The exact query string of one Helm release page, in the fixed key
+    order the gateway re-encodes and compares against (B4-5 step 5)."""
+    values = {
+        "fieldSelector": HELM_FIELD_SELECTOR,
+        "labelSelector": label_selector,
+        "limit": str(HELM_PAGE_LIMIT),
+    }
+    if continue_token is not None:
+        values["continue"] = continue_token
+    return urllib.parse.urlencode(
+        [(key, values[key]) for key in _HELM_QUERY_ORDER if key in values]
+    )
+
+
+def _resource_segment(segments: Sequence[str]) -> str | None:
+    """The resource position of a decoded API path (lower case), or ``None``
+    for a path that has none (discovery, ``/version``, ...)."""
+    lower = [segment.lower() for segment in segments]
+    if len(lower) >= 3 and lower[0] == "api":
+        base = 2
+    elif len(lower) >= 4 and lower[0] == "apis":
+        base = 3
+    else:
+        return None
+    if lower[base] == "namespaces" and len(lower) > base + 2:
+        return lower[base + 2]
+    return lower[base]
+
+
+def _helm_labels_ok(value: str) -> bool:
+    if value == _HELM_OWNER_SELECTOR:
+        return True
+    return value.startswith(_HELM_NAME_PREFIX) and check_release_name(
+        value[len(_HELM_NAME_PREFIX) :]
+    )
+
+
+def secret_request_problem(url: str, accept: str, *, helm_page: bool) -> str | None:
+    """``RESOURCE_NOT_ALLOWED`` for a request the gateway refuses, else
+    ``None`` (B4-5, r11).
+
+    Every request: the path is percent-decoded segment by segment; an empty
+    segment (other than a trailing one), ``.``, ``..`` or a decoded ``/`` is
+    refused, and so is ``watch`` or ``proxy`` at the resource position. A
+    request whose resource position is ``secrets`` in any spelling passes
+    only as a Helm release page: ``helm_page`` (the client's switch and the
+    Helm transport's own call), the raw path exactly ``/api/v1/secrets`` or
+    ``/api/v1/namespaces/{namespace}/secrets``, ``Accept`` exactly
+    ``application/json``, no userinfo or fragment, and a query whose key set
+    is exactly ``fieldSelector, labelSelector, limit`` (plus ``continue`` on
+    later pages), each key once, each value equal to what the Helm tools
+    build, and the raw string byte-equal to its re-encoding. Pure.
+    """
+    refusal = "RESOURCE_NOT_ALLOWED"
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return refusal
+    if not parts.path.startswith("/"):
+        return refusal
+    decoded = [urllib.parse.unquote(s) for s in parts.path.split("/")[1:]]
+    for index, segment in enumerate(decoded):
+        if segment == "" and index != len(decoded) - 1:
+            return refusal
+        if segment in (".", "..") or "/" in segment:
+            return refusal
+    if decoded and decoded[-1] == "":
+        decoded = decoded[:-1]
+    resource = _resource_segment(decoded)
+    if resource in _REFUSED_RESOURCES:
+        return refusal
+    if resource != "secrets":
+        return None
+    # A Secret request: only the exact Helm release page.
+    if not helm_page or "#" in url or "@" in parts.netloc:
+        return refusal
+    if parts.path != "/api/v1/secrets":
+        match = _NAMESPACED_SECRETS.fullmatch(parts.path)
+        if match is None or not check_namespace(match[1]):
+            return refusal
+    if accept != "application/json":
+        return refusal
+    raw = parts.query
+    if ";" in raw:
+        return refusal
+    try:
+        pairs = urllib.parse.parse_qsl(raw, strict_parsing=True, keep_blank_values=True)
+    except ValueError:
+        return refusal
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        return refusal
+    if set(keys) not in (_HELM_FIRST_PAGE_KEYS, _HELM_NEXT_PAGE_KEYS):
+        return refusal
+    values = dict(pairs)
+    if values["fieldSelector"] != HELM_FIELD_SELECTOR:
+        return refusal
+    if values["limit"] != str(HELM_PAGE_LIMIT):
+        return refusal
+    if not _helm_labels_ok(values["labelSelector"]):
+        return refusal
+    token = values.get("continue")
+    if token is not None and _CONTINUE_TOKEN.fullmatch(token) is None:
+        return refusal
+    if raw != helm_page_query(values["labelSelector"], token):
+        return refusal
+    return None
+
+
 @dataclass(frozen=True)
 class ListResult:
     """Every object of one kind (one scope), merged across pages.
@@ -508,10 +684,14 @@ class KubernetesClient:
         credentials: Mapping[str, str | None],
         opener: urllib.request.OpenerDirector | None = None,
         ca_file: str | None = None,
+        helm_releases: bool = False,
     ) -> None:
         self._credentials = dict(credentials)
         self._opener = opener or kubernetes_opener(ca_file)
         self._deadline_handlers = DeadlineHandlers(self._opener)
+        #: B4-2: ``OPSPILOT_HELM_RELEASES=1``; only then may a Helm release
+        #: page (and nothing else of Secrets) pass the gateway.
+        self._helm_releases = helm_releases
 
     def token(self) -> str:
         token = self._credentials.get(CREDENTIAL_REF)
@@ -527,8 +707,15 @@ class KubernetesClient:
         max_bytes: int,
         accept: str = "application/json",
         cut: bool = False,
+        helm_page: bool = False,
     ) -> _Fetched:
         """One GET bounded by ``deadline`` (monotonic) and ``max_bytes``.
+
+        The single exit of every cluster read, so the Secret gateway runs
+        here first (B4-5): a refused request raises
+        ``KubernetesRequestRefused`` and the opener is never called.
+        ``helm_page`` is passed only by the Helm release transport; it counts
+        only with the client's ``helm_releases`` switch.
 
         2xx and 4xx come back (a 4xx body cut at ``ERROR_BODY_BYTES``); 5xx is
         ``TransportUnavailable``; a body past ``max_bytes`` is
@@ -536,6 +723,11 @@ class KubernetesClient:
         ``max_bytes`` bytes with ``_Fetched.cut`` set (A3-3); the deadline is
         ``TransportTimeout``.
         """
+        code = secret_request_problem(
+            url, accept, helm_page=self._helm_releases and helm_page
+        )
+        if code is not None:
+            raise KubernetesRequestRefused(code)
         headers = {
             "Accept": accept,
             "Authorization": f"Bearer {self.token()}",
@@ -1081,9 +1273,14 @@ class KubernetesTransport:
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
         monotonic: Callable[[], float] | None = None,
+        helm_releases: bool = False,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._client = KubernetesClient(
-            credentials=credentials, opener=opener, ca_file=ca_file
+            credentials=credentials,
+            opener=opener,
+            ca_file=ca_file,
+            helm_releases=helm_releases,
         )
         # ``None``: resolved from PATH on first use (the worker resolves it at
         # startup and passes it in, A2-8).
@@ -1110,8 +1307,22 @@ class KubernetesTransport:
         self._live_metrics = LiveMetricsTransport(
             client=self._client, monotonic=self._monotonic
         )
+        from opspilot.tools.helm_releases import HelmReleasesTransport
+
+        self._helm = HelmReleasesTransport(
+            client=self._client, monotonic=self._monotonic, now=now
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
+        try:
+            return self._fetch(request)
+        except KubernetesRequestRefused as refusal:
+            # B4-5: the gateway refused before the opener ran.
+            return refused(refusal.code)
+
+    def _fetch(self, request: TransportRequest) -> TransportResponse:
+        if request.tool in _HELM_TOOLS:
+            return self._helm.fetch(request)
         if request.tool == _POD_LOGS_TOOL:
             return self._logs.fetch(request)
         if request.tool == _TABULAR_TOOL:

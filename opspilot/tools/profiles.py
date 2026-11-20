@@ -56,13 +56,18 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   (``OPSPILOT_MONGODB_DATABASE``, ``_USERNAME``, ``_PASSWORD``,
   ``_AUTH_SOURCE``, ``_TLS``, ``_CA_FILE``; ``MONGODB_CONFIG_MISSING``/
   ``_INVALID``, ``MONGODB_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_HELM_RELEASES=1`` adds ``helm_list``, ``helm_history`` and
+  ``helm_status`` (B4) over the existing cluster connection; the same values
+  rule (``HELM_RELEASES_INVALID``), and the worker does not start when the
+  cluster address is not a lab host (``HELM_NOT_LAB``).
 
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
 ``OPSPILOT_VICTORIALOGS_URL``, ``OPSPILOT_SQL_URL`` and
 ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` each set (to the same value) in both or
 in neither, and
-``OPSPILOT_K8S_LIVE_METRICS`` and ``OPSPILOT_KNOWLEDGE_TOOL`` the same in
+``OPSPILOT_K8S_LIVE_METRICS``, ``OPSPILOT_KNOWLEDGE_TOOL`` and
+``OPSPILOT_HELM_RELEASES`` the same in
 both).
 """
 
@@ -85,6 +90,7 @@ from opspilot.tools.fixture import (
     fixture_face,
     fixture_versions,
 )
+from opspilot.tools.helm_releases import helm_releases_enabled
 from opspilot.tools.kafka_admin import KafkaConfig, kafka_enabled
 from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
 from opspilot.tools.kubernetes_core import KubernetesConfig
@@ -169,6 +175,7 @@ _STARTUP_CODES = frozenset(
         "MONGODB_TARGETS_OPSPILOT_DB",
         "KAFKA_CONFIG_MISSING",
         "KAFKA_CONFIG_INVALID",
+        "HELM_NOT_LAB",
     }
 )
 
@@ -201,6 +208,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     kafka = kafka_enabled(env)
     # C6c: the address only; never an ``OPSPILOT_MONGODB_*`` credential.
     mongodb = mongodb_enabled(env)
+    # B4-2: the switch only (not an ``OPSPILOT_K8S_*`` name, A2-3); the
+    # worker alone checks the cluster address is a lab host (B4-3).
+    helm = helm_releases_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -213,7 +223,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` and
         # ``VICTORIALOGS_CONFIG_MISSING`` / ``VICTORIALOGS_CONFIG_INVALID``
         # for C5-4; ``SQL_CONFIG_*`` and ``SQL_TARGETS_OPSPILOT_DB`` for
-        # C6-7/C6-8; ``KAFKA_CONFIG_*`` for C3-4).
+        # C6-7/C6-8; ``KAFKA_CONFIG_*`` for C3-4; ``HELM_NOT_LAB`` for B4-3).
         try:
             return otel_demo_ext_executor_factory(
                 store,
@@ -230,6 +240,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 sql=SqlConfig.from_env(env),
                 kafka=KafkaConfig.from_env(env),
                 mongodb=MongoConfig.from_env(env),
+                helm=helm,
             )
         except ToolContractError as error:
             code = str(error)
@@ -250,6 +261,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            helm=helm,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -261,6 +273,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            helm=helm,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,

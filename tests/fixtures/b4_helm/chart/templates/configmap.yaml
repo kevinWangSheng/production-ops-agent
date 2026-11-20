@@ -1,0 +1,10 @@
+{{/* CANARY-B4-TEMPLATE */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ if .Values.failName }}Invalid_Name{{ else }}{{ .Release.Name }}-config{{ end }}
+data:
+  manifest: CANARY-B4-MANIFEST
+  tag: {{ .Values.image.tag | quote }}
+  fromSet: {{ .Values.fromSet | quote }}
+  extra: {{ .Files.Get "files/extra.txt" | trim | quote }}
