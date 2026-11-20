@@ -13,7 +13,7 @@
 
 | 工具 | 参数（必填加粗） | 做什么 | 返回 `results` 每行 | `row_unit` | verb |
 |---|---|---|---|---|---|
-| `database_sql_query` | **`sql`**（字符串）、`limit`（整数，默认 100，1–500） | 原样执行模型的一条只读语句，最多取 `limit+1` 行判断截断；工具不改写 SQL | `{列名: 值}`，列顺序同结果集；重名列第 2 个起加 `#2`、`#3` 后缀 | `rows` | `query` |
+| `database_sql_query` | **`sql`**（字符串）、`limit`（整数，默认 100，1–500） | 原样执行模型的一条只读语句，最多取 `limit+1` 行判断截断；工具不改写 SQL | `{列名: 值}`，列顺序同结果集；重名列第 2 个起加 `#2`、`#3` 后缀（递增到未被占用） | `rows` | `query` |
 | `database_sql_list_tables` | `schema`、`include_views`（布尔，默认 true） | 写死的目录查询 | `{schema, name, type}`，`type` ∈ `table`、`view`、`materialized_view`、`partitioned_table`、`foreign_table`（MySQL/MariaDB 只有前两种）；按 `schema`、`name` 排序；最多 500 行 | `tables` | `get` |
 | `database_sql_describe_table` | **`table_name`**、`schema` | 写死的目录查询 | 每列 `{name, type, nullable, default, ordinal}`，按 `ordinal`；视图另带 `primary_key`（列名数组）、`foreign_keys`（`{name, columns, referred_schema, referred_table, referred_columns}`）、`indexes`（`{name, columns, unique, primary, definition}`，`definition` Postgres 为 `pg_get_indexdef`，MySQL 为 `null`） | `columns` | `get` |
 
@@ -93,7 +93,10 @@
 - 产品代码禁用进程墙钟（`datetime.now`），视图不带 `read_at`；查询时刻即执行器记录的本次调用观察时间。
 - 驱动错误由传输层分类：connector 与连接可以直接抛 psycopg（读 `.sqlstate`）或 PyMySQL（读错误号）的原始异常，也可以抛已分类的 `SqlDriverError(kind, code, message)`（`kind` ∈ `invalid`、`forbidden`、`read_only`、`unavailable`、`timeout`、`error`）。到期后的失败一律 `TOOL_TIMEOUT`；MySQL/MariaDB 到期由传输层另开一条连接发 `KILL QUERY <CONNECTION_ID()>`，Postgres 调连接的 `cancel()`。
 - `OPSPILOT_SQL_CA_FILE` 必须是可读文件，否则 `SQL_CONFIG_INVALID`（同 Loki/VictoriaLogs 先例）。
-- 结果体不按键排序，行对象的键保持结果集列序。
+- 结果体不按键排序，行对象的键保持结果集列序；重名列的后缀一直递增到没被占用（`a, a, a#2` → `a, a#2, a#2#2`），任何两列的键都不同（PR #746 审查 R1）。
+- 语句检查再收紧（PR #746 审查，lead 定，全部 fail-closed）：字符串、注释、带引号标识符之外出现任何非 ASCII 字符一律 `QUERY_CONSTRUCT_NOT_ALLOWED`，两种方言都做（PG 允许 \200–\377 作标识符与 dollar tag 字符，词法器不认会错位，审查实测 5 条绕过，B1）；禁用函数加 `*_to_xml*` 族（`query_to_xml` 等会执行字符串里的 SQL）、`pg_try_advisory*`、`txid_current`、`pg_current_xact_id`、`WAIT_FOR_EXECUTED_GTID_SET`、`WAIT_UNTIL_SQL_THREAD_AFTER_GTIDS`；MySQL 方言拒绝优化器提示 `/*+ … */`（可覆盖 `MAX_EXECUTION_TIME`/`SET_VAR`）与 `:=` 赋值。
+- 地址与 DSN 比对收紧：`OPSPILOT_SQL_URL` 带逗号（多主机）报 `SQL_CONFIG_INVALID`；DSN 同时给 `host` 与 `hostaddr` 时两者都参与比对；`127.1`、`2130706433` 一类 inet_aton 简写按其地址比对，`*.localhost`、`localhost.localdomain` 视为回环。
+- 已知限制（不修，记录）：账号自查不把默认给 PUBLIC 的 `TEMP` 算作写权限（`CREATE TEMP` 由语句检查与只读事务拦）；PG 15 以前 `public` schema 默认对 PUBLIC 有 `CREATE`，自查会因此拒绝这类库上的账号（只会误拒）；`SECURITY DEFINER` 函数的 `EXECUTE` 不检查（函数内的写仍受只读事务约束，但经 dblink 一类的外连不受，dblink 由语句检查拦）；MySQL `mandatory_roles` 与 `activate_all_roles_on_login` 给的角色不出现在 `SHOW GRANTS`，自查看不到。
 - DSN 比对读传入的环境映射与进程环境两处（只会扩大拒绝）；web 不调用它。refusal 码：库侧语法/对象错 `SQL_INVALID`（回显截短脱敏的库文本，`http_status=400` 走现有 `source_error` 通道）、`SQL_FORBIDDEN`、`SESSION_READ_ONLY`、`SQL_SOURCE_ERROR`、`TABLE_NOT_FOUND`，分别归 `INVALID_PARAMS`、`SOURCE_FORBIDDEN`、`SOURCE_FORBIDDEN`、`SOURCE_ERROR`、`INVALID_PARAMS`。
 - MySQL/MariaDB 读到 `limit+1` 行或 2 MiB 后，另开一条连接 `KILL QUERY` 再丢弃剩余行；模型语句后的 `ROLLBACK` 尽力发送，失败不改变已得的结果。
 - 扩展档位 revision：仅 Postgres `otel-demo-ext-be3a9913af82`，仅 MySQL/MariaDB `otel-demo-ext-ffed48334876`；不设 `OPSPILOT_SQL_URL` 时无后端 `c63f058afb18`、仅 ES `4f7faf728706` 等现有值不变（本分支实测）。

@@ -36,6 +36,7 @@ import json
 import math
 import os
 import re
+import socket
 import ssl
 import threading
 import time
@@ -159,6 +160,7 @@ def _url_parts(value: str) -> tuple[str, str, int | None, str]:
         or parts.username is not None
         or parts.password is not None
         or "@" in parts.netloc
+        or "," in parts.netloc
         or parts.query
         or parts.fragment
         or "?" in value
@@ -206,10 +208,17 @@ def _host_key(host: str) -> str:
         or value.startswith("@")
     ):
         return _LOOPBACK
+    if value.endswith(".localhost") or value == "localhost.localdomain":
+        return _LOOPBACK
     try:
         address = ipaddress.ip_address(value)
     except ValueError:
-        return value
+        try:
+            # libpq and MySQL clients also accept inet_aton shorthands
+            # (127.1, 2130706433); compare them as the address they name.
+            address = ipaddress.ip_address(socket.inet_aton(value))
+        except (OSError, ValueError):
+            return value
     if address.is_loopback or address.is_unspecified:
         return _LOOPBACK
     return str(address)
@@ -237,7 +246,11 @@ def _dsn_endpoints(env: Mapping[str, str]) -> set[tuple[str, int]]:
             info = conninfo_to_dict(value)
         except Exception:
             info = {}
-        hosts = str(info.get("host") or info.get("hostaddr") or default_host).split(",")
+        # host and hostaddr both count when both are given (fail closed)
+        hosts = [
+            *str(info.get("host") or default_host).split(","),
+            *(str(info["hostaddr"]).split(",") if info.get("hostaddr") else []),
+        ]
         ports = str(info.get("port") or default_port_text).split(",")
         for index, host in enumerate(hosts):
             port_text = ports[index] if index < len(ports) else ports[-1]
@@ -374,6 +387,10 @@ _FORBIDDEN_FUNCTIONS = frozenset(
         "load_file",
         "master_pos_wait",
         "source_pos_wait",
+        "wait_for_executed_gtid_set",
+        "wait_until_sql_thread_after_gtids",
+        "txid_current",
+        "pg_current_xact_id",
         "openrowset",
         "openquery",
         "opendatasource",
@@ -392,6 +409,7 @@ _FORBIDDEN_FUNCTION_PREFIXES = (
     "lo_",
     "dblink",
     "pg_advisory",
+    "pg_try_advisory",
     "pg_stat_reset",
     "xp_",
     "sp_",
@@ -446,6 +464,11 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
             if mysql and (sql.startswith("/*!", i) or sql.startswith("/*M!", i)):
                 raise _Reject(
                     "QUERY_CONSTRUCT_NOT_ALLOWED", "executable comment /*! ... */"
+                )
+            if mysql and sql.startswith("/*+", i):
+                # optimizer hints can override MAX_EXECUTION_TIME or SET_VAR
+                raise _Reject(
+                    "QUERY_CONSTRUCT_NOT_ALLOWED", "optimizer hint /*+ ... */"
                 )
             depth = 1
             j = i + 2
@@ -532,8 +555,11 @@ def _lex(sql: str, dialect: str, backslash: bool) -> tuple[str, list[tuple[int, 
 
 def _function_problem(name: str) -> bool:
     lowered = name.lower()
-    return lowered in _FORBIDDEN_FUNCTIONS or lowered.startswith(
-        _FORBIDDEN_FUNCTION_PREFIXES
+    return (
+        lowered in _FORBIDDEN_FUNCTIONS
+        or lowered.startswith(_FORBIDDEN_FUNCTION_PREFIXES)
+        # query_to_xml, cursor_to_xml, table_to_xml, ...: they run SQL text
+        or "_to_xml" in lowered
     )
 
 
@@ -543,7 +569,19 @@ def _next_char(text: str, index: int) -> str:
     return text[index] if index < len(text) else ""
 
 
-def _scan(code: str, quoted: Sequence[tuple[int, str]]) -> None:
+def _scan(code: str, quoted: Sequence[tuple[int, str]], dialect: str) -> None:
+    # PostgreSQL and MySQL accept non-ASCII letters in identifiers and
+    # PostgreSQL in dollar-quote tags; this lexer does not, so any non-ASCII
+    # character outside literals, comments and quoted identifiers is refused
+    # rather than lexed differently from the server (PR #746 review B1).
+    for ch in code:
+        if ord(ch) > 127:
+            raise _Reject(
+                "QUERY_CONSTRUCT_NOT_ALLOWED",
+                "a non-ASCII character outside quotes (quote the identifier)",
+            )
+    if dialect == "mysql" and ":=" in code:
+        raise _Reject("QUERY_CONSTRUCT_NOT_ALLOWED", "variable assignment :=")
     body = code.rstrip()
     if body.endswith(";"):
         body = body[:-1]
@@ -589,7 +627,7 @@ def sql_statement_problem(sql: object, dialect: str) -> str | None:
     try:
         for backslash in (True, False):
             code, quoted = _lex(sql, dialect, backslash)
-            _scan(code, quoted)
+            _scan(code, quoted, dialect)
     except _Reject as reject:
         if reject.code == "INVALID_QUERY":
             return f"INVALID_QUERY: {reject.detail}."
@@ -1123,13 +1161,26 @@ def _safe_text(value: str) -> str:
 
 
 def _column_keys(columns: Sequence[str]) -> list[str]:
-    seen: dict[str, int] = {"_truncated_fields": 1}
+    """Result column names as unique row keys: a repeated name gets the
+    next ``#n`` suffix that no other key uses (``a, a, a#2`` is
+    ``a, a#2, a#2#2``... never two equal keys; PR #746 review R1)."""
+    used: set[str] = {"_truncated_fields"}
+    counts: dict[str, int] = {}
     keys: list[str] = []
     for column in columns:
         name = _safe_text(str(column))
-        count = seen.get(name, 0) + 1
-        seen[name] = count
-        keys.append(name if count == 1 else f"{name}#{count}")
+        if name not in used:
+            key = name
+        else:
+            n = counts.get(name, 1)
+            while True:
+                n += 1
+                key = f"{name}#{n}"
+                if key not in used:
+                    break
+            counts[name] = n
+        used.add(key)
+        keys.append(key)
     return keys
 
 

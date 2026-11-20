@@ -598,3 +598,80 @@ def test_mysql_errors_classified_by_number_not_sqlstate(code, sqlstate, kind) ->
     cls = pymysql.err.error_map.get(code, pymysql.err.OperationalError)
     error = cls(code, "m", sqlstate=sqlstate)
     assert sq._classify(error, connecting=False, cancelled=False).kind == kind
+
+
+# -- PR #746 review fixes ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql"),
+    [
+        ("postgresql", "SELECT 1 AS é$a$, pg_sleep(5) AS x, 1 AS é$a$"),
+        ("postgresql", "SELECT 1 AS é$a$ FROM t FOR UPDATE /* é$a$ */"),
+        ("postgresql", "SELECT 1 AS é$a$ INTO newt FROM t /* é$a$ */"),
+        ("postgresql", "SELECT $é$'$é$, pg_sleep(1), $é$'$é$"),
+        ("postgresql", "SELECT $é$'$é$ INTO x FROM t, $é$'$é$"),
+        ("mysql", "SELECT 1 AS é#, SLEEP(1)"),
+        ("postgresql", "SELECT query_to_xml('select 1', true, true, '')"),
+        ("postgresql", "SELECT cursor_to_xml('c', 1, true, true, '')"),
+        ("postgresql", "SELECT table_to_xmlschema('t', true, true, '')"),
+        ("postgresql", "SELECT pg_try_advisory_lock(1)"),
+        ("postgresql", "SELECT txid_current()"),
+        ("mysql", "SELECT /*+ MAX_EXECUTION_TIME(999999) */ 1"),
+        ("mysql", "SELECT /*+ SET_VAR(sql_mode='') */ 1"),
+        ("mysql", "SELECT @a := 1"),
+        ("mysql", "SELECT WAIT_FOR_EXECUTED_GTID_SET('x', 5)"),
+    ],
+)
+def test_review_statements_refused(dialect: str, sql: str) -> None:
+    problem = sq.sql_statement_problem(sql, dialect)
+    assert problem is not None and problem.startswith("QUERY_CONSTRUCT_NOT_ALLOWED:"), (
+        problem
+    )
+
+
+@pytest.mark.parametrize(
+    ("dialect", "sql"),
+    [
+        ("postgresql", "SELECT 'café', \"naïve\" FROM t WHERE c = 'é$a$'"),
+        ("mysql", "SELECT 'café', `naïve` FROM t -- é\n"),
+    ],
+)
+def test_non_ascii_inside_quotes_and_comments_allowed(dialect: str, sql: str) -> None:
+    assert sq.sql_statement_problem(sql, dialect) is None
+
+
+def test_column_keys_never_collide() -> None:
+    assert sq._column_keys(["a", "a", "a#2"]) == ["a", "a#2", "a#2#2"]
+    keys = sq._column_keys(["a", "a#2", "a", "a"])
+    assert len(set(keys)) == 4 and keys[:2] == ["a", "a#2"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["postgresql://h1,h2/db", "postgresql://127.0.0.1:5432,127.0.0.1:5433/db"],
+)
+def test_multi_host_url_refused(url: str) -> None:
+    with pytest.raises(ToolContractError, match="SQL_CONFIG_INVALID"):
+        sq.SqlConfig.from_env(
+            {sq.URL_ENV: url, sq.USERNAME_ENV: "ro", sq.PASSWORD_ENV: "x"}
+        )
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "host=db.example hostaddr=127.0.0.1 port=5432 dbname=o",
+        "host=127.1 port=5432 dbname=o",
+        "host=localhost.localdomain port=5432 dbname=o",
+    ],
+)
+def test_dsn_hostaddr_and_shorthands_count(dsn: str) -> None:
+    env = {
+        sq.URL_ENV: "postgresql://127.0.0.1:5432/shop",
+        sq.USERNAME_ENV: "ro",
+        sq.PASSWORD_ENV: "x",
+        "OPSPILOT_WORKER_DSN": dsn,
+    }
+    with pytest.raises(ToolContractError, match="SQL_TARGETS_OPSPILOT_DB"):
+        sq.SqlConfig.from_env(env)
