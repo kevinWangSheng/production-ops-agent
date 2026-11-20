@@ -506,7 +506,9 @@ def account_problem(status: Mapping[str, Any]) -> str | None:
     non-empty list of ``{role, db}``, privileges a list of objects with an
     ``actions`` list) is refused rather than read as "nothing bad found"."""
     info = status.get("authInfo") if isinstance(status, Mapping) else None
-    users = info.get("authenticatedUsers") if isinstance(info, Mapping) else None
+    if not isinstance(info, Mapping):
+        info = {}
+    users = info.get("authenticatedUsers")
     if not isinstance(users, list) or not users:
         return (
             "MONGODB_ACCOUNT_NOT_READ_ONLY: no authenticated user (the server "
