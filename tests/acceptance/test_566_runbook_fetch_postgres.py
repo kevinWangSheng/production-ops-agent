@@ -722,23 +722,53 @@ def test_a_successor_run_rereads_the_catalog_and_a_switch_off_web_drops_it(h):
 
 # -- NUL in a submission (C2a review, fixed in C2b) -------------------------------------
 
+NUL_CASES = [
+    ("content", "RUNBOOK_CONTENT_INVALID"),
+    ("description", "RUNBOOK_DESCRIPTION_INVALID"),
+    ("source_label", "RUNBOOK_SOURCE_INVALID"),
+    ("source_ref", "RUNBOOK_SOURCE_INVALID"),
+]
+NUL_TEXT = "has a NUL \u0000 inside"
 
-@pytest.mark.parametrize(
-    ("field", "code"),
-    [
-        ("content", "RUNBOOK_CONTENT_INVALID"),
-        ("description", "RUNBOOK_DESCRIPTION_INVALID"),
-        ("source_label", "RUNBOOK_SOURCE_INVALID"),
-        ("source_ref", "RUNBOOK_SOURCE_INVALID"),
-    ],
-)
-def test_a_nul_character_is_refused_with_the_fields_code_and_writes_nothing(
+
+@pytest.mark.parametrize(("field", "code"), NUL_CASES)
+def test_a_nul_character_in_a_form_is_a_400_and_writes_nothing(h, field, code):
+    # Lead ruling (2026-11-20): on the form path the existing web guard
+    # (``_reject_ambiguous_text``) may answer first with ``INVALID_INPUT``
+    # for the text fields it covers; it does not cover ``content``, whose
+    # NUL must be the store's own ``RUNBOOK_CONTENT_INVALID``.
+    before = h.runbook_counts()
+    response = h.rb_submit(**{field: NUL_TEXT})
+    assert response.status == 400, response.text
+    if field == "content":
+        assert _code(response) == code
+    else:
+        assert _code(response) in {"INVALID_INPUT", code}
+    assert h.runbook_counts() == before
+
+
+@pytest.mark.parametrize(("field", "code"), NUL_CASES)
+def test_the_store_refuses_a_nul_with_the_fields_own_code_before_any_sql(
     h, field, code
 ):
+    from opspilot.knowledge.runbooks import RunbookDraft
+    from opspilot.persistence import PersistenceError
+
+    fields = {
+        "resource_uid": TARGET_ID,
+        "name": f"nul-{field.replace('_', '-')}-{U}",
+        "description": "Steps for checkout errors.",
+        "content": "# Checkout\n\n1. Read the error rate.\n",
+        "source_label": "contract test",
+        "source_ref": "tests/acceptance/test_566_runbook_fetch_postgres.py",
+        field: NUL_TEXT,
+    }
     before = h.runbook_counts()
-    response = h.rb_submit(**{field: "has a NUL \u0000 inside"})
-    assert response.status == 400, response.text
-    assert _code(response) == code
+    with pytest.raises(PersistenceError) as raised:
+        h.runbooks.submit(
+            RunbookDraft(**fields), idempotency_key=uuid4().hex, actor_id=UI_USER
+        )
+    assert str(raised.value) == code
     assert h.runbook_counts() == before
 
 
