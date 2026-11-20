@@ -879,6 +879,23 @@ def _errors_of(futures: Mapping[Any, Any]) -> list[str]:
     return names
 
 
+#: librdkafka can fail a new client's first request with this while it swaps
+#: the connection handle; a transport artefact, not an authorization answer
+#: (the product retries it once too).
+_HANDLE_SWAP = "_DESTROY_BROKER"
+
+
+def _probe_write(name: str, attempt) -> list[str]:
+    """Run one write attempt as the read-only identity on a fresh client and
+    return ``_errors_of`` for it; a ``_DESTROY_BROKER`` answer is retried on
+    a new client, at most three tries in all."""
+    for _ in range(3):
+        errors = _errors_of(attempt(_admin(READER, READER_PASSWORD)))
+        if _HANDLE_SWAP not in errors:
+            return errors
+    raise AssertionError(f"{name}: still {_HANDLE_SWAP} after 3 clients: {errors}")
+
+
 def test_the_opspilot_identity_cannot_produce(cluster):
     from confluent_kafka import Producer
 
@@ -946,13 +963,12 @@ def test_the_opspilot_identity_cannot_change_topics_configs_or_groups(cluster):
 
     admin = cluster["admin"]
     before = _snapshot(admin)
-    reader = _admin(READER, READER_PASSWORD)
     attempts = {
-        "create_topics": reader.create_topics(
+        "create_topics": lambda c: c.create_topics(
             [NewTopic("opspilot-made-567", 1, 1)], request_timeout=20
         ),
-        "delete_topics": reader.delete_topics(["orders"], request_timeout=20),
-        "incremental_alter_configs": reader.incremental_alter_configs(
+        "delete_topics": lambda c: c.delete_topics(["orders"], request_timeout=20),
+        "incremental_alter_configs": lambda c: c.incremental_alter_configs(
             [
                 ConfigResource(
                     ResourceType.TOPIC,
@@ -968,10 +984,10 @@ def test_the_opspilot_identity_cannot_change_topics_configs_or_groups(cluster):
             ],
             request_timeout=20,
         ),
-        "delete_consumer_groups": reader.delete_consumer_groups(
+        "delete_consumer_groups": lambda c: c.delete_consumer_groups(
             ["order-processor"], request_timeout=20
         ),
-        "alter_consumer_group_offsets": reader.alter_consumer_group_offsets(
+        "alter_consumer_group_offsets": lambda c: c.alter_consumer_group_offsets(
             [
                 ConsumerGroupTopicPartitions(
                     "order-processor", [TopicPartition("orders", 0, 0)]
@@ -979,11 +995,11 @@ def test_the_opspilot_identity_cannot_change_topics_configs_or_groups(cluster):
             ],
             request_timeout=20,
         ),
-        "delete_records": reader.delete_records(
+        "delete_records": lambda c: c.delete_records(
             [TopicPartition("orders", 0, 1)], request_timeout=20
         ),
     }
-    outcomes = {name: _errors_of(futures) for name, futures in attempts.items()}
+    outcomes = {name: _probe_write(name, call) for name, call in attempts.items()}
     for name, errors in outcomes.items():
         assert errors and all("AUTHORIZATION_FAILED" in e for e in errors), (
             name,
