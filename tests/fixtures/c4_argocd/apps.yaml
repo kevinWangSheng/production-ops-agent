@@ -118,7 +118,10 @@
       "kind": "ConfigMap",
       "namespace": "shop",
       "name": "web-config",
-      "status": "Synced"
+      "status": "Synced",
+      "health": {
+       "status": "Healthy"
+      }
      }
     ],
     "summary": {
