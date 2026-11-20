@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set nav = "runbooks" %}
+{% block title %}Submit a runbook{% endblock %}
+{% block body %}
+<h1>Submit a runbook</h1>
+<p class="muted">The submission waits for review. Only after a signed-in user approves it can an investigation of this target read it. Content is stored as written (Markdown, at most 32 KiB) and shown to the reviewer unredacted; it is redacted before it reaches a model.</p>
+{% include "_runbook_error.html" %}
+<form method="post" action="/runbooks" id="form-submit">
+  <input type="hidden" name="idempotency_key" value="submit-{{ form_nonce }}">
+  <p><label>Target <input name="resource_uid" required maxlength="256" list="known-targets" value="{{ fields.resource_uid or '' }}"></label></p>
+  {% if known_targets %}<datalist id="known-targets">{% for t in known_targets %}<option value="{{ t }}">{% endfor %}</datalist>{% endif %}
+  <p><label>Name <input name="name" required maxlength="100" placeholder="e.g. database-troubleshooting" value="{{ fields.name or '' }}"></label> <span class="muted">lowercase letters, digits and hyphens; spaces and underscores become hyphens</span></p>
+  <p><label>Description <input name="description" required maxlength="300" value="{{ fields.description or '' }}"></label></p>
+  <p><label>Source <input name="source_label" required maxlength="100" value="{{ fields.source_label or '' }}"></label>
+     <label>Reference <input name="source_ref" maxlength="500" value="{{ fields.source_ref or '' }}"></label></p>
+  <p><label>Replaces entry (optional) <input name="supersedes_entry_id" maxlength="36" value="{{ fields.supersedes_entry_id or '' }}"></label></p>
+  <p><label>Content<br><textarea name="content" required rows="20" cols="100">{{ fields.content or '' }}</textarea></label></p>
+  <button type="submit">submit for review</button>
+</form>
+{% endblock %}

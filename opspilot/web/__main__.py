@@ -85,6 +85,7 @@ from pathlib import Path
 from opspilot import health, logs, schema
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
+from opspilot.knowledge.runbooks import RunbookStore
 from opspilot.observer.health_profile import (
     PROFILE_DIRECTORY,
     HealthProfile,
@@ -362,6 +363,7 @@ def _serve() -> int:
         Authenticator(config),
         clock,
         review=PostmortemReview(knowledge=knowledge, events=events),
+        runbooks=RunbookStore(dsn),
     )
     host, _, port = bind.rpartition(":")
     # Before any thread: a bind that cannot be served refuses to start.
