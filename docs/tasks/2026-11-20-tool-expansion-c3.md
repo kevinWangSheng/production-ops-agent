@@ -31,7 +31,7 @@
 - 滞后行（C3-7）：`{topic, partition, committed_offset, end_offset, log_start_offset, lag, flags}`。`lag = end_offset - committed_offset`（条数）；分区集合 = 成员分配到的分区 ∪ 有提交位点的分区；没有提交位点 `lag=null`、`flags` 含 `no_committed_offset`；`committed > end` 时 `lag=0`、标 `committed_ahead_of_end`；`committed < log_start` 时标 `committed_below_log_start`。`end_offset` 用 `OffsetSpec.latest()`、`log_start_offset` 用 `OffsetSpec.earliest()`，`isolation_level` read_uncommitted。**提交位点上的 `metadata` 字符串不投影**。`lag_by_topic` 与 `total_lag` 只加非空的 `lag`。
 - 时间（预审类别 1）：当前状态类，来源时间留空，视图带 `observed_at`（查询时刻）。工具描述的 `cannot_prove`（C3-11）：不能证明事故时间窗内的滞后；不能说明消息内容或积压原因；提交位点与末尾位点不是同一瞬间读的。只改工具描述，不改调查提示词。
 - 参数校验（C3-8，发请求前拒绝，`INVALID_PARAMS`，码放 notes 开头）：`INVALID_TOPIC`（不是 `[A-Za-z0-9._-]{1,249}`）、`INVALID_GROUP`（空、超过 255 字符或含不可打印字符）、`INVALID_RESOURCE`（`resource_type` 不在两项里，broker 的 `resource_name` 不是非负十进制整数）、布尔参数类型错。
-- 上限（C3-8）：`list_topics`、`list_kafka_consumers` 最多 1000 行（排序后取前 1000，标不完整）；每个主题或组最多 1000 个分区行（同）；`find_consumer_groups_by_topic` 最多扫描 200 个组（按名字排序取前 200，标不完整并写扫了多少、共多少）；所有字符串值截到 2000 字符；原始结果 2 MiB、视图 25k token，超限整条 `RESULT_TOO_LARGE`。`may_contain_secrets=True`，`source="otel-demo"`，挂在现有 target 下，引导地址放 selector `kafka_bootstrap`，`result_path` 为 `results`。
+- 上限（C3-8，lead 2026-11-20 裁决修订）：`list_topics` 最多 1000 行、`list_kafka_consumers` 最多 800 行（排序后取前 N，标不完整）；每个主题或组最多 500 个分区行（同）。按实测每行 token 数定，避免满上限仍被 25k 视图上限整条拒绝；`find_consumer_groups_by_topic` 最多扫描 200 个组（按名字排序取前 200，标不完整并写扫了多少、共多少）；所有字符串值截到 2000 字符；原始结果 2 MiB、视图 25k token，超限整条 `RESULT_TOO_LARGE`。`may_contain_secrets=True`，`source="otel-demo"`，挂在现有 target 下，引导地址放 selector `kafka_bootstrap`，`result_path` 为 `results`。
 - 错误分类（C3-10）：`_TRANSPORT`、`_ALL_BROKERS_DOWN`、`_RESOLVE`、`NOT_COORDINATOR`、`COORDINATOR_NOT_AVAILABLE`、`COORDINATOR_LOAD_IN_PROGRESS` → `SOURCE_UNAVAILABLE`；`_TIMED_OUT`、`REQUEST_TIMED_OUT` 或 30 秒期限到 → 超时（沿用 C5 的超时分类）；`*_AUTHORIZATION_FAILED`、`SASL_AUTHENTICATION_FAILED`、`_AUTHENTICATION` → `SOURCE_FORBIDDEN`（只带码，不回显）；`UNKNOWN_TOPIC_OR_PART`、`UNKNOWN_TOPIC_ID` → `no_data`，notes `TOPIC_NOT_FOUND`；`GROUP_ID_NOT_FOUND` 或组状态 `DEAD` → `no_data`，notes `GROUP_NOT_FOUND`；`INVALID_*` → `INVALID_PARAMS`；其余 → `SOURCE_ERROR`，回显截短、脱敏后的错误名与说明。不重试。
 
 ## 只读保证
@@ -114,11 +114,11 @@
 - 独立合同测试 `tests/test_tool_expansion_c3_kafka_contract.py`：194 个中 179 过、15 失败，测试断言未改，已报 lead：
   1. 夹具 `Models.tp` 给真包的 `TopicPartition` 传 `metadata=None`，真包报 `TypeError`（9 个失败）；
   2. 夹具 `_sasl_env(**overrides)` 重复关键字参数（3 个失败）；
-  3. 接口内部冲突（4 个失败）：1000 行上限与 25k token 视图上限放不下同一张表——1000 个组 26,432 token、1000 个 topic 分区行 38,470、1000 个滞后行 34,528（`list_topics` 1000 行放得下）。待 lead 裁决上限数字。
+  3. 接口内部冲突（4 个失败）：1000 行上限与 25k token 视图上限放不下同一张表——1000 个组 26,432 token、1000 个 topic 分区行 38,470、1000 个滞后行 34,528（`list_topics` 1000 行放得下）。lead 裁决按工具定上限（800/500/500/1000），测试作者 `74438dfa` 修夹具并改数字。
   临时副本只修 1、2 两处夹具时 190 过，只剩 3 的 4 个。
 - 2026-11-20 CI `kafka-backend`（PR #748，`apache/kafka:4.3.2`）：实现者 `_impl.py` 4 passed——只有 Describe 类 ACL（无 READ）的 `opspilot` 账号 8 个工具全部 ok（`list_consumer_group_offsets` 不需要 Group READ）；`impl-stopped` 组滞后精确为 40；匿名监听、broker 开着自动建主题时，随机拼错的名字经 `describe_topic`（含 `fetch_configuration`）、`find_consumer_groups_by_topic`、`describe_configs` 都是 `no_data`/`TOPIC_NOT_FOUND`，3 秒后主题列表里没有它；每次调用新建客户端约 0.06–0.9 秒，低于 C3-9 的 1 秒阈值，保持短命客户端。独立作者的集成文件在夹具阶段失败（新建主题后立即 `list_offsets` 得 `NOT_LEADER_FOR_PARTITION`，测试夹具未等分区 leader），已报 lead。
 - CI 实测 broker 刚启动时 `list_consumer_groups` 偶发「1 个 broker 未应答」且 `valid` 为空，原实现会报 `no_data`（等于声称没有组）；已改为：一个组都没列出时按第一个错误分类，部分列出时标不完整并在 notes 写错误名。
 
 ## 下一步
 
-lead 裁决行数上限后改实现与本记录；推送开 Draft PR，CI 跑 `kafka-backend` 与 `tests/acceptance`；`list_consumer_group_offsets` 是否需要 Group READ 以 CI 观测为准，照实报。
+等测试作者的集成夹具修复（等分区 leader、逐个检查提交结果的分区错误）；cherry-pick 后重跑 CI，CI 跑 `kafka-backend` 与 `tests/acceptance`；`list_consumer_group_offsets` 是否需要 Group READ 以 CI 观测为准，照实报。

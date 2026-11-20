@@ -106,8 +106,11 @@ MAX_BOOTSTRAP_SERVERS = 10
 
 REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RESULT_BYTES = 2 * 1024 * 1024
+#: Row caps per tool (lead ruling 2026-11-20): set from the measured tokens
+#: per row so that a full page still fits the 25k-token view.
 MAX_ROWS = 1000
-MAX_PARTITION_ROWS = 1000
+MAX_GROUP_ROWS = 800
+MAX_PARTITION_ROWS = 500
 MAX_SCANNED_GROUPS = 200
 MAX_VALUE_CHARS = 2000
 MAX_GROUP_CHARS = 255
@@ -698,7 +701,7 @@ def _list_consumers(call: _Call, params: Mapping[str, object]) -> _Answer:
         for item in listings
     ]
     notes, incomplete = _listing_errors(result, bool(rows))
-    answer = _capped(rows, "groups", notes)
+    answer = _capped(rows, "groups", notes, MAX_GROUP_ROWS)
     answer.incomplete = answer.incomplete or incomplete
     return answer
 
@@ -721,14 +724,17 @@ def _listing_errors(result: object, any_valid: bool) -> tuple[list[str], bool]:
 
 
 def _capped(
-    rows: list[dict[str, Any]], unit: str, notes: list[str] | None = None
+    rows: list[dict[str, Any]],
+    unit: str,
+    notes: list[str] | None = None,
+    limit: int = MAX_ROWS,
 ) -> _Answer:
     notes = list(notes or [])
-    incomplete = len(rows) > MAX_ROWS
+    incomplete = len(rows) > limit
     if incomplete:
-        notes.append(f"{len(rows)} {unit}; the first {MAX_ROWS} by name are shown.")
+        notes.append(f"{len(rows)} {unit}; the first {limit} by name are shown.")
     return _Answer(
-        rows=rows[:MAX_ROWS],
+        rows=rows[:limit],
         unit=unit,
         returned=len(rows),
         incomplete=incomplete,
@@ -1121,7 +1127,7 @@ _CANNOT_PROVE: Mapping[str, str] = {
 
 _SCHEMA_TEXT: Mapping[str, str] = {
     CONSUMERS_TOOL: "Lists all Kafka consumer groups in the cluster: group_id, "
-    "state, type, is_simple; sorted by group_id, at most 1000.",
+    "state, type, is_simple; sorted by group_id, at most 800.",
     GROUP_TOOL: "Describes one Kafka consumer group: state, coordinator, "
     "members (client_id, host, assignment) and, with include_offsets (default "
     "true), per-partition committed offset, end offset, log start offset, lag "
@@ -1254,7 +1260,7 @@ _VALUES_FORMAT = (
     "refused before anything is sent."
 )
 _LIMITS = (
-    "At most 1000 rows (topics, groups) and 1000 partition rows, sorted, the "
+    "At most 1000 topics, 800 groups and 500 partition rows, sorted, the "
     "rest marked incomplete; find_consumer_groups_by_topic scans at most 200 "
     "groups. String values cut to 2000 characters. At most 2 MiB and 25,000 "
     "tokens, refused whole above that (RESULT_TOO_LARGE). 30 s per call, no "
