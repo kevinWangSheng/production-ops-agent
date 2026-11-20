@@ -228,7 +228,9 @@ def _dsn_endpoints(env: Mapping[str, str]) -> set[tuple[str, int]]:
     found: set[tuple[str, int]] = set()
     default_host = env.get("PGHOST") or ""
     default_port_text = env.get("PGPORT") or "5432"
-    for name, value in env.items():
+    # The worker's mapping is its process environment; both are read so a
+    # DSN in either widens the refusal (fail closed).
+    for name, value in [*env.items(), *os.environ.items()]:
         if not _DSN_ENV.fullmatch(name) or not value:
             continue
         try:
@@ -550,9 +552,10 @@ def _scan(code: str, quoted: Sequence[tuple[int, str]]) -> None:
     words = [(m.group(0), m.start(), m.end()) for m in _WORD.finditer(body)]
     first = _WORD.match(re.sub(r"^[\s(]*", "", body))
     if first is None or first.group(0).upper() not in _ALLOWED_FIRST:
+        start = "" if first is None else f"it starts with {first.group(0).upper()}; "
         raise _Reject(
             "QUERY_CONSTRUCT_NOT_ALLOWED",
-            "the statement must start with SELECT, WITH, EXPLAIN, SHOW, "
+            f"{start}the statement must start with SELECT, WITH, EXPLAIN, SHOW, "
             "DESCRIBE or DESC",
         )
     for index, (word, _, end) in enumerate(words):
@@ -636,7 +639,8 @@ _PG_ACCOUNT_CHECK = (
     + " AND (pg_catalog.has_table_privilege(r.oid, c.oid, "
     "'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') OR (CASE WHEN "
     "pg_catalog.current_setting('server_version_num')::int >= 170000 THEN "
-    "pg_catalog.has_table_privilege(r.oid, c.oid, 'MAINTAIN') ELSE false END))) "
+    "pg_catalog.has_table_privilege(r.oid, c.oid, 'MAINTAIN') ELSE false END) OR "
+    "pg_catalog.has_any_column_privilege(r.oid, c.oid, 'INSERT, UPDATE, REFERENCES'))) "
     "UNION ALL SELECT 'sequence_write' WHERE EXISTS (SELECT 1 FROM "
     "pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
     "CROSS JOIN r WHERE c.relkind = 'S' AND "
@@ -675,7 +679,10 @@ _COLUMN_LIST = re.compile(r"\s*\([^()]*\)")
 
 
 def _mysql_grant_problem(line: str) -> str | None:
-    match = _MYSQL_GRANT.fullmatch(line.strip())
+    text = line.strip()
+    if ";" in text or len(re.findall(r"\bGRANT\b", text, re.I)) != 1:
+        return "a grant line this check cannot read"
+    match = _MYSQL_GRANT.fullmatch(text)
     if match is None:
         return "a grant that is not a plain privilege grant (role or proxy)"
     if "WITH GRANT OPTION" in match.group("rest").upper():
@@ -735,7 +742,8 @@ def session_problem(dialect: str, rows: Sequence[Sequence[object]]) -> str | Non
 
 
 class SqlDriverError(Exception):
-    """A database failure, already classified by the connection.
+    """A classified database failure. The transport classifies raw
+    psycopg/PyMySQL errors into this itself; a connection may also raise it.
 
     ``kind``: ``invalid`` (syntax, unknown object, bad data), ``forbidden``
     (authentication, privilege), ``read_only`` (the read-only transaction
@@ -797,15 +805,79 @@ def _pg_kind(sqlstate: str) -> str:
     return "error"
 
 
+_AUTH_PHRASES = (
+    "password authentication failed",
+    "no pg_hba.conf entry",
+    "does not exist",
+    "permission denied",
+    "authentication failed",
+)
+
+
+def _classify(
+    error: BaseException, *, connecting: bool, cancelled: bool
+) -> SqlDriverError:
+    """One driver failure as a ``SqlDriverError`` (C6-14). The transport
+    classifies raw psycopg/PyMySQL errors itself, so a connection only
+    passes them through; a ``SqlDriverError`` is taken as it is."""
+    if isinstance(error, SqlDriverError):
+        return error
+    sqlstate = getattr(error, "sqlstate", None)
+    args: tuple[Any, ...] = tuple(getattr(error, "args", ()))
+    errno = args[0] if args and type(args[0]) is int else None
+    if isinstance(sqlstate, str) and sqlstate:
+        diag = getattr(error, "diag", None)
+        message = str(getattr(diag, "message_primary", None) or error)
+        if cancelled and sqlstate == "57014":
+            return SqlDriverError("timeout", sqlstate, "")
+        return SqlDriverError(_pg_kind(sqlstate), sqlstate, message)
+    if errno is not None and _is_mysql_error(error):
+        message = str(args[1]) if len(args) > 1 else ""
+        if cancelled:
+            return SqlDriverError("timeout", str(errno), "")
+        if connecting:
+            if errno in (1044, 1045, 1698):
+                return SqlDriverError("forbidden", str(errno), "")
+            return SqlDriverError("unavailable", str(errno), "")
+        if errno == 2013:
+            return SqlDriverError("unavailable", str(errno), "")
+        return SqlDriverError(_mysql_kind(errno), str(errno), message)
+    if _is_psycopg_error(error):
+        if cancelled:
+            return SqlDriverError("timeout")
+        text = str(error).lower()
+        if connecting and any(phrase in text for phrase in _AUTH_PHRASES):
+            return SqlDriverError("forbidden", "28000", "")
+        return SqlDriverError("unavailable")
+    if cancelled:
+        return SqlDriverError("timeout")
+    return SqlDriverError("unavailable" if connecting else "error")
+
+
+def _is_mysql_error(error: BaseException) -> bool:
+    try:
+        import pymysql  # type: ignore[import-untyped]
+    except ImportError:  # pragma: no cover - a locked dependency
+        return False
+    return isinstance(error, pymysql.MySQLError)
+
+
+def _is_psycopg_error(error: BaseException) -> bool:
+    try:
+        import psycopg
+    except ImportError:  # pragma: no cover - a locked dependency
+        return False
+    return isinstance(error, psycopg.Error)
+
+
 class _PostgresConnection:
     """psycopg, autocommit (the tool sends ``BEGIN READ ONLY`` itself);
     rows are streamed over the extended protocol, so the server refuses a
-    second statement too."""
+    second statement too. Driver errors pass through to the transport."""
 
     def __init__(self, config: SqlConfig, timeout: float) -> None:
         import psycopg
 
-        self._psycopg = psycopg
         kwargs: dict[str, Any] = {
             "host": config.host,
             "port": config.port,
@@ -818,51 +890,12 @@ class _PostgresConnection:
         }
         if config.tls == "verify-full":
             kwargs["sslrootcert"] = config.ca_file or "system"
-        try:
-            self._conn = psycopg.connect(
-                autocommit=True, prepare_threshold=None, **kwargs
-            )
-        except psycopg.Error as error:
-            raise self._error(error, connecting=True) from None
-        except Exception:
-            raise SqlDriverError("unavailable") from None
+        self._conn = psycopg.connect(autocommit=True, prepare_threshold=None, **kwargs)
         self.server_version = str(self._conn.info.server_version)
-        self._cancelled = False
-
-    def _error(self, error: Exception, connecting: bool = False) -> SqlDriverError:
-        sqlstate = str(getattr(error, "sqlstate", "") or "")
-        message = str(
-            getattr(getattr(error, "diag", None), "message_primary", "") or ""
-        )
-        if self._cancelled_flag() and sqlstate in ("", "57014"):
-            return SqlDriverError("timeout", sqlstate, "")
-        if not sqlstate:
-            # Connection-level failures carry no SQLSTATE; only the
-            # authentication ones are told apart, by libpq's fixed wording.
-            text = str(error).lower()
-            if connecting and any(
-                phrase in text
-                for phrase in (
-                    "password authentication failed",
-                    "no pg_hba.conf entry",
-                    "does not exist",
-                    "permission denied",
-                )
-            ):
-                return SqlDriverError("forbidden", "28000", "")
-            return SqlDriverError("unavailable", "", "")
-        kind = _pg_kind(sqlstate)
-        return SqlDriverError(kind, sqlstate, message)
-
-    def _cancelled_flag(self) -> bool:
-        return bool(getattr(self, "_cancelled", False))
 
     def execute(self, statement: str, params: Sequence[object] = ()) -> None:
-        try:
-            with self._conn.cursor() as cursor:
-                cursor.execute(statement, tuple(params) if params else None)
-        except self._psycopg.Error as error:
-            raise self._error(error) from None
+        with self._conn.cursor() as cursor:
+            cursor.execute(statement, tuple(params) if params else None)
 
     def query(
         self, statement: str, params: Sequence[object] = (), *, max_rows: int
@@ -871,32 +904,28 @@ class _PostgresConnection:
         columns: list[str] | None = None
         more = False
         size = 0
-        try:
-            with self._conn.cursor() as cursor:
-                stream = cursor.stream(statement, tuple(params) if params else None)
-                try:
-                    for row in stream:
-                        if columns is None:
-                            columns = [c.name for c in cursor.description or ()]
-                        if len(rows) >= max_rows:
-                            more = True
-                            break
-                        size += _approx_size(row)
-                        if size > READ_LIMIT_BYTES:
-                            raise TransportResultTooLarge(str(READ_LIMIT_BYTES))
-                        rows.append(tuple(row))
-                finally:
-                    close = getattr(stream, "close", None)
-                    if close is not None:
-                        close()
-                if columns is None:
-                    columns = [c.name for c in cursor.description or ()]
-        except self._psycopg.Error as error:
-            raise self._error(error) from None
+        with self._conn.cursor() as cursor:
+            stream = cursor.stream(statement, tuple(params) if params else None)
+            try:
+                for row in stream:
+                    if columns is None:
+                        columns = [c.name for c in cursor.description or ()]
+                    if len(rows) >= max_rows:
+                        more = True
+                        break
+                    size += _approx_size(row)
+                    if size > READ_LIMIT_BYTES:
+                        raise TransportResultTooLarge(str(READ_LIMIT_BYTES))
+                    rows.append(tuple(row))
+            finally:
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()  # cancels and drains what is left
+            if columns is None:
+                columns = [c.name for c in cursor.description or ()]
         return columns, rows, more
 
     def cancel(self) -> None:
-        self._cancelled = True
         try:
             self._conn.cancel_safe(timeout=3.0)
         except Exception:
@@ -907,45 +936,6 @@ class _PostgresConnection:
             self._conn.close()
         except Exception:
             pass
-
-
-#: Syntax, unknown object and bad-value errors (MySQL and MariaDB).
-_MYSQL_INVALID = frozenset(
-    {
-        1051,
-        1052,
-        1054,
-        1060,
-        1064,
-        1066,
-        1109,
-        1146,
-        1210,
-        1222,
-        1241,
-        1242,
-        1247,
-        1248,
-        1250,
-        1292,
-        1305,
-        1349,
-        1356,
-        1365,
-        1366,
-        1367,
-        1406,
-        1582,
-        1583,
-        1584,
-        1630,
-        1690,
-        3140,
-        3141,
-        3143,
-        3146,
-    }
-)
 
 
 def _mysql_kind(errno: int) -> str:
@@ -975,90 +965,68 @@ def _mysql_kind(errno: int) -> str:
     return "error"
 
 
+#: Syntax, unknown object and bad-value errors (MySQL and MariaDB).
+_MYSQL_INVALID = frozenset(
+    {1051, 1052, 1054, 1060, 1064, 1066, 1109, 1146, 1210, 1222, 1241,
+     1242, 1247, 1248, 1250, 1292, 1305, 1349, 1356, 1365, 1366, 1367,
+     1406, 1582, 1583, 1584, 1630, 1690, 3140, 3141, 3143, 3146}
+)  # fmt: skip
+
+
+def _mysql_connect(config: SqlConfig, timeout: float) -> Any:
+    import pymysql
+
+    kwargs: dict[str, Any] = {
+        "host": config.host,
+        "port": config.port,
+        "user": config.username,
+        "password": config.password,
+        "database": config.database,
+        "connect_timeout": max(1.0, timeout),
+        "read_timeout": max(1.0, timeout),
+        "write_timeout": max(1.0, timeout),
+        "autocommit": True,
+        "charset": "utf8mb4",
+        "local_infile": False,
+        "client_flag": 0,
+        "program_name": _APPLICATION_NAME,
+    }
+    if config.tls == "verify-full":
+        kwargs["ssl"] = ssl.create_default_context(cafile=config.ca_file)
+    elif config.tls == "require":
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        kwargs["ssl"] = context
+    return pymysql.connect(**kwargs)
+
+
 class _MySqlConnection:
     """PyMySQL, autocommit with an explicit read-only transaction, no
     ``MULTI_STATEMENTS``, no ``LOAD DATA LOCAL``; result rows are read
     unbuffered and an early stop kills the query from a second connection
-    before the rest is drained."""
+    before the rest is drained. Driver errors pass through; the transport
+    kills a query past its deadline itself."""
 
     def __init__(self, config: SqlConfig, timeout: float) -> None:
-        import pymysql  # type: ignore[import-untyped]
-        import pymysql.cursors  # type: ignore[import-untyped]
-
-        self._pymysql = pymysql
         self._config = config
-        self._timeout = timeout
-        self._started = time.monotonic()
-        self._conn = self._connect(timeout)
+        self._conn = _mysql_connect(config, timeout)
         self.server_version = str(self._conn.get_server_info())
         self._thread_id: int | None = self._conn.thread_id()
 
-    def _connect(self, timeout: float) -> Any:
-        pymysql = self._pymysql
-        config = self._config
-        kwargs: dict[str, Any] = {
-            "host": config.host,
-            "port": config.port,
-            "user": config.username,
-            "password": config.password,
-            "database": config.database,
-            "connect_timeout": max(1.0, timeout),
-            "read_timeout": max(1.0, timeout),
-            "write_timeout": max(1.0, timeout),
-            "autocommit": True,
-            "charset": "utf8mb4",
-            "local_infile": False,
-            "client_flag": 0,
-            "program_name": _APPLICATION_NAME,
-        }
-        if config.tls == "verify-full":
-            kwargs["ssl"] = ssl.create_default_context(cafile=config.ca_file)
-        elif config.tls == "require":
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            kwargs["ssl"] = context
-        try:
-            return pymysql.connect(**kwargs)
-        except pymysql.MySQLError as error:
-            raise self._error(error, connecting=True) from None
-        except Exception:
-            raise SqlDriverError("unavailable") from None
-
-    def _error(self, error: Exception, connecting: bool = False) -> SqlDriverError:
-        args: tuple[Any, ...] = tuple(getattr(error, "args", ()))
-        errno = args[0] if args and isinstance(args[0], int) else 0
-        message = str(args[1]) if len(args) > 1 else ""
-        if self._cancelled_flag():
-            return SqlDriverError("timeout", str(errno), "")
-        if connecting and errno not in (1044, 1045, 1698, 1049):
-            return SqlDriverError("unavailable", str(errno), "")
-        if connecting and errno == 1049:
-            return SqlDriverError("error", str(errno), "")
-        if errno == 2013 and not connecting:
-            # A read timeout (the deadline) or a lost connection.
-            spent = time.monotonic() - self._started
-            kind = "timeout" if spent >= self._timeout - 0.5 else "unavailable"
-            return SqlDriverError(kind, str(errno), "")
-        return SqlDriverError(_mysql_kind(errno), str(errno), message)
-
-    def _cancelled_flag(self) -> bool:
-        return bool(getattr(self, "_cancelled", False))
-
     def execute(self, statement: str, params: Sequence[object] = ()) -> None:
-        try:
-            with self._conn.cursor() as cursor:
-                cursor.execute(statement, tuple(params) if params else None)
-        except self._pymysql.MySQLError as error:
-            raise self._error(error) from None
+        with self._conn.cursor() as cursor:
+            cursor.execute(statement, tuple(params) if params else None)
 
     def query(
         self, statement: str, params: Sequence[object] = (), *, max_rows: int
     ) -> tuple[list[str], list[tuple[Any, ...]], bool]:
+        import pymysql.cursors  # type: ignore[import-untyped]
+
         rows: list[tuple[Any, ...]] = []
         more = False
         size = 0
-        cursor = self._conn.cursor(self._pymysql.cursors.SSCursor)
+        cursor = self._conn.cursor(pymysql.cursors.SSCursor)
         try:
             cursor.execute(statement, tuple(params) if params else None)
             columns = [str(item[0]) for item in cursor.description or ()]
@@ -1076,8 +1044,6 @@ class _MySqlConnection:
                 rows.append(tuple(row))
             if more:
                 self._kill()
-        except self._pymysql.MySQLError as error:
-            raise self._error(error) from None
         finally:
             try:
                 cursor.close()  # drains what is left: little once killed
@@ -1086,17 +1052,15 @@ class _MySqlConnection:
         return columns, rows, more
 
     def _kill(self) -> None:
-        """``KILL QUERY`` this connection's statement from a second one
-        (best effort; an account may always kill its own threads)."""
         if self._thread_id is None:
             return
         try:
-            other = self._connect(3.0)
-        except SqlDriverError:
+            other = _mysql_connect(self._config, 3.0)
+        except Exception:
             return
         try:
             with other.cursor() as cursor:
-                cursor.execute("KILL QUERY %s", (int(self._thread_id),))
+                cursor.execute(f"KILL QUERY {int(self._thread_id)}")
         except Exception:
             pass
         finally:
@@ -1106,8 +1070,7 @@ class _MySqlConnection:
                 pass
 
     def cancel(self) -> None:
-        self._cancelled = True
-        self._kill()
+        """The transport kills a late query with ``KILL QUERY``."""
 
     def close(self) -> None:
         try:
@@ -1367,72 +1330,110 @@ class SqlTransport:
 
         try:
             conn = self._connector(self._config, remaining())
-        except SqlDriverError as error:
-            return _driver_failure(error, dialect)
-        timer = threading.Timer(max(0.0, deadline - self._monotonic()), conn.cancel)
+        except TransportError:
+            raise
+        except Exception as error:
+            return _driver_failure(
+                _classify(error, connecting=True, cancelled=False), dialect
+            )
+        state: dict[str, Any] = {"cancelled": False, "killed": False, "thread": None}
+        lock = threading.Lock()
+
+        def kill_late_query() -> None:
+            """MySQL/MariaDB: ``KILL QUERY`` from a second connection (an
+            account may always kill its own threads); best effort."""
+            with lock:
+                if state["killed"] or state["thread"] is None:
+                    return
+                state["killed"] = True
+            try:
+                other = self._connector(self._config, 3.0)
+            except Exception:
+                return
+            try:
+                other.execute(f"KILL QUERY {int(state['thread'])}")
+            except Exception:
+                pass
+            finally:
+                other.close()
+
+        def on_deadline() -> None:
+            state["cancelled"] = True
+            if dialect == "postgresql":
+                conn.cancel()
+            else:
+                kill_late_query()
+
+        timer = threading.Timer(max(0.0, deadline - self._monotonic()), on_deadline)
         timer.daemon = True
         timer.start()
         began = False
-        try:
+
+        def rollback() -> None:
             try:
-                if dialect == "postgresql":
-                    ms = int(_server_timeout(remaining()) * 1000)
-                    conn.execute("BEGIN READ ONLY")
-                    began = True
-                    conn.execute(f"SET LOCAL statement_timeout = {ms}")
-                    conn.execute(f"SET LOCAL lock_timeout = {ms}")
-                    conn.execute(
-                        f"SET LOCAL idle_in_transaction_session_timeout = {ms}"
-                    )
-                    _, rows, _ = conn.query(_PG_ACCOUNT_CHECK, max_rows=64)
-                    problem = session_problem(dialect, rows)
-                    if problem is not None:
-                        return _answered(problem)
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass  # read-only work is discarded with the connection
+
+        try:
+            if dialect == "postgresql":
+                ms = int(_server_timeout(remaining()) * 1000)
+                conn.execute("BEGIN READ ONLY")
+                began = True
+                conn.execute(f"SET LOCAL statement_timeout = {ms}")
+                conn.execute(f"SET LOCAL lock_timeout = {ms}")
+                conn.execute(f"SET LOCAL idle_in_transaction_session_timeout = {ms}")
+                _, rows, _ = conn.query(_PG_ACCOUNT_CHECK, max_rows=64)
+                problem = session_problem(dialect, rows)
+                if problem is not None:
+                    return _answered(problem)
+            else:
+                _, version_rows, _ = conn.query(
+                    "SELECT VERSION(), CONNECTION_ID()", max_rows=1
+                )
+                version = str(version_rows[0][0]) if version_rows else ""
+                if version_rows and len(version_rows[0]) > 1:
+                    try:
+                        state["thread"] = int(version_rows[0][1])
+                    except (TypeError, ValueError):
+                        state["thread"] = None
+                seconds = _server_timeout(remaining())
+                if "mariadb" in version.lower():
+                    conn.execute(f"SET SESSION max_statement_time = {seconds:.3f}")
                 else:
-                    _, version_rows, _ = conn.query(
-                        "SELECT VERSION(), CONNECTION_ID()", max_rows=1
-                    )
-                    version = str(version_rows[0][0]) if version_rows else ""
-                    seconds = _server_timeout(remaining())
-                    if "mariadb" in version.lower():
-                        conn.execute(f"SET SESSION max_statement_time = {seconds:.3f}")
-                    else:
-                        conn.execute(
-                            f"SET SESSION max_execution_time = {int(seconds * 1000)}"
-                        )
                     conn.execute(
-                        f"SET SESSION lock_wait_timeout = {max(1, int(seconds))}"
+                        f"SET SESSION max_execution_time = {int(seconds * 1000)}"
                     )
-                    _, rows, _ = conn.query(_MYSQL_ACCOUNT_CHECK, max_rows=256)
-                    problem = session_problem(dialect, rows)
-                    if problem is not None:
-                        return _answered(problem)
-                    conn.execute("START TRANSACTION READ ONLY")
-                    began = True
-                remaining()
-                response = plan(conn)
+                conn.execute(f"SET SESSION lock_wait_timeout = {max(1, int(seconds))}")
+                _, rows, _ = conn.query(_MYSQL_ACCOUNT_CHECK, max_rows=256)
+                problem = session_problem(dialect, rows)
+                if problem is not None:
+                    return _answered(problem)
+                conn.execute("START TRANSACTION READ ONLY")
+                began = True
+            remaining()
+            response = plan(conn)
+            began = False
+            rollback()
+            return response
+        except TransportError:
+            if began:
                 began = False
-                try:
-                    conn.execute("ROLLBACK")
-                except SqlDriverError:
-                    pass  # read-only work is discarded with the connection
-                return response
-            except SqlDriverError as error:
-                if began:
-                    try:
-                        conn.execute("ROLLBACK")
-                    except Exception:
-                        pass
-                    began = False
-                return _driver_failure(error, dialect)
-            finally:
-                if began:
-                    try:
-                        conn.execute("ROLLBACK")
-                    except Exception:
-                        pass
+                rollback()
+            raise
+        except Exception as error:
+            late = state["cancelled"] or self._monotonic() >= deadline - 0.05
+            failure = _classify(error, connecting=False, cancelled=late)
+            if failure.kind == "timeout" and dialect != "postgresql":
+                kill_late_query()
+            if began:
+                began = False
+                rollback()
+            return _driver_failure(failure, dialect)
         finally:
             timer.cancel()
+            if began:
+                rollback()
             conn.close()
 
     # -- the three tools ---------------------------------------------------
@@ -1767,7 +1768,10 @@ class SqlTransport:
         view: Mapping[str, Any],
         incomplete: bool,
     ) -> TransportResponse:
-        body = canonical(body_obj).encode("utf-8")
+        # Not ``canonical``: rows keep their columns in result order.
+        body = json.dumps(body_obj, separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
         if len(body) > request.max_result_bytes:
             raise TransportResultTooLarge(str(request.max_result_bytes))
         return TransportResponse(

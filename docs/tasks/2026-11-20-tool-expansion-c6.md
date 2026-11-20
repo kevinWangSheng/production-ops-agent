@@ -40,8 +40,8 @@
 
 ### 账号自查（C6-U1）与业务库隔离（C6-8）
 
-- Postgres 自查是一条查询，每行一个问题码，0 行为通过。对当前用户及其能 `SET ROLE` 的所有角色（`pg_has_role(..., 'MEMBER')`）：`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolbypassrls` 任一为真；属于 `pg_read_all_data`、`pg_read_all_stats`、`pg_read_all_settings`、`pg_stat_scan_tables`、`pg_monitor` 之外的任何 `pg_*` 预定义角色；对用户 schema 里任一表/视图/物化视图/外表有 `INSERT`、`UPDATE`、`DELETE`、`TRUNCATE`、`REFERENCES`、`TRIGGER`（17 起加 `MAINTAIN`）；对任一序列有 `UPDATE` 或 `USAGE`；对任一用户 schema 有 `CREATE`；对当前库有 `CREATE` 或是库的属主。默认给 PUBLIC 的 `TEMP` 不算（`CREATE TEMP` 被语句检查与只读事务拦）。另一问题码 `opspilot_schema`：库里任一 schema 有名为 `opspilot_runs` 的关系（`pg_class` 对所有账号可见）。
-- MySQL/MariaDB 自查：`SHOW GRANTS` 每一行必须是 `GRANT <权限> ON <范围> TO <账号>`，权限 ⊆ {`USAGE`、`SELECT`（含列级）、`SHOW VIEW`、`PROCESS`、`SHOW DATABASES`、`REPLICATION CLIENT`、`BINLOG MONITOR`、`SLAVE MONITOR`、`REPLICA MONITOR`}，且不带 `WITH GRANT OPTION`；角色授予、`PROXY`、`ALL PRIVILEGES` 与解析不了的行一律不通过。notes 只写命中的权限名与范围，不回显整行（MariaDB 的行可能带口令散列）。自查判定函数为模块级 `sql_query.session_problem(dialect, rows) -> str | None`（集成测试 ⑥ 用 monkeypatch 跳过）。
+- Postgres 自查是一条查询，每行一个问题码，0 行为通过。对当前用户及其能 `SET ROLE` 的所有角色（`pg_has_role(..., 'MEMBER')`）：`rolsuper`、`rolcreaterole`、`rolcreatedb`、`rolreplication`、`rolbypassrls` 任一为真；属于 `pg_read_all_data`、`pg_read_all_stats`、`pg_read_all_settings`、`pg_stat_scan_tables`、`pg_monitor` 之外的任何 `pg_*` 预定义角色；对用户 schema 里任一表/视图/物化视图/外表有 `INSERT`、`UPDATE`、`DELETE`、`TRUNCATE`、`REFERENCES`、`TRIGGER`（17 起加 `MAINTAIN`）；对任一列有 `INSERT`、`UPDATE`、`REFERENCES`（列级授权，`has_any_column_privilege`；只查表级会漏）；对任一序列有 `UPDATE` 或 `USAGE`；对任一用户 schema 有 `CREATE`；对当前库有 `CREATE` 或是库的属主。默认给 PUBLIC 的 `TEMP` 不算（`CREATE TEMP` 被语句检查与只读事务拦）。另一问题码 `opspilot_schema`：库里任一 schema 有名为 `opspilot_runs` 的关系（`pg_class` 对所有账号可见）。
+- MySQL/MariaDB 自查：`SHOW GRANTS` 每一行必须是 `GRANT <权限> ON <范围> TO <账号>`，权限 ⊆ {`USAGE`、`SELECT`（含列级）、`SHOW VIEW`、`PROCESS`、`SHOW DATABASES`、`REPLICATION CLIENT`、`BINLOG MONITOR`、`SLAVE MONITOR`、`REPLICA MONITOR`}，且不带 `WITH GRANT OPTION`；列级授权的权限名同样按白名单（`UPDATE (col)` 不通过）；角色授予、`PROXY`、`ALL PRIVILEGES`、一行里含 `;` 或多个 `GRANT` 与解析不了的行一律不通过。notes 只写命中的权限名与范围，不回显整行（MariaDB 的行可能带口令散列）。自查判定函数为模块级 `sql_query.session_problem(dialect, rows) -> str | None`（集成测试 ⑥ 用 monkeypatch 跳过）。
 - 结果：账号问题报 `SQL_ACCOUNT_NOT_READ_ONLY`，`opspilot_schema` 报 `SQL_TARGETS_OPSPILOT_DB`，都归 `SOURCE_FORBIDDEN`，notes 开头写码；模型语句一条不发。
 - 业务库隔离 ①（worker 启动时）：`OPSPILOT_SQL_URL` 的（主机, 端口）与进程环境里每个匹配 `^OPSPILOT_[A-Z0-9_]*DSN$` 的变量（URI 或 libpq 键值形式，用 `psycopg.conninfo.conninfo_to_dict` 解析；缺主机按 `PGHOST` 再按回环，缺端口按 `PGPORT` 再按 5432）比较；`localhost`、`127.0.0.0/8`、`::1`、Unix 套接字路径视为同一主机；SQL 端口缺省 Postgres 5432、MySQL 3306。相同则启动失败 `SQL_TARGETS_OPSPILOT_DB`。② 凭据只来自 `sql-ro` 槽，不读任何 DSN，不与业务库连接池共用对象。③ 即上面的 `opspilot_schema`（每次调用，Postgres）。
 
@@ -91,7 +91,10 @@
 
 - MySQL 8 的默认认证插件 `caching_sha2_password` 在明文连接上要 `cryptography` 包做 RSA 交换；不加这个依赖，MySQL 8 须配 `OPSPILOT_SQL_TLS=require`（镜像首次启动自带自签证书）或 `verify-full` 加 CA；配 `disable` 时登录失败报 `SOURCE_UNAVAILABLE`。MariaDB 默认 `mysql_native_password`，`disable` 可用。理由：强制加密，不新增依赖。
 - 产品代码禁用进程墙钟（`datetime.now`），视图不带 `read_at`；查询时刻即执行器记录的本次调用观察时间。
-- 驱动错误统一成 `SqlDriverError(kind, code, message)`，`kind` ∈ `invalid`、`forbidden`、`read_only`、`unavailable`、`timeout`、`error`，替身 connector 抛它模拟库错误。refusal 码：库侧语法/对象错 `SQL_INVALID`（回显截短脱敏的库文本，`http_status=400` 走现有 `source_error` 通道）、`SQL_FORBIDDEN`、`SESSION_READ_ONLY`、`SQL_SOURCE_ERROR`、`TABLE_NOT_FOUND`，分别归 `INVALID_PARAMS`、`SOURCE_FORBIDDEN`、`SOURCE_FORBIDDEN`、`SOURCE_ERROR`、`INVALID_PARAMS`。
+- 驱动错误由传输层分类：connector 与连接可以直接抛 psycopg（读 `.sqlstate`）或 PyMySQL（读错误号）的原始异常，也可以抛已分类的 `SqlDriverError(kind, code, message)`（`kind` ∈ `invalid`、`forbidden`、`read_only`、`unavailable`、`timeout`、`error`）。到期后的失败一律 `TOOL_TIMEOUT`；MySQL/MariaDB 到期由传输层另开一条连接发 `KILL QUERY <CONNECTION_ID()>`，Postgres 调连接的 `cancel()`。
+- `OPSPILOT_SQL_CA_FILE` 必须是可读文件，否则 `SQL_CONFIG_INVALID`（同 Loki/VictoriaLogs 先例）。
+- 结果体不按键排序，行对象的键保持结果集列序。
+- DSN 比对读传入的环境映射与进程环境两处（只会扩大拒绝）；web 不调用它。refusal 码：库侧语法/对象错 `SQL_INVALID`（回显截短脱敏的库文本，`http_status=400` 走现有 `source_error` 通道）、`SQL_FORBIDDEN`、`SESSION_READ_ONLY`、`SQL_SOURCE_ERROR`、`TABLE_NOT_FOUND`，分别归 `INVALID_PARAMS`、`SOURCE_FORBIDDEN`、`SOURCE_FORBIDDEN`、`SOURCE_ERROR`、`INVALID_PARAMS`。
 - MySQL/MariaDB 读到 `limit+1` 行或 2 MiB 后，另开一条连接 `KILL QUERY` 再丢弃剩余行；模型语句后的 `ROLLBACK` 尽力发送，失败不改变已得的结果。
 - 扩展档位 revision：仅 Postgres `otel-demo-ext-be3a9913af82`，仅 MySQL/MariaDB `otel-demo-ext-ffed48334876`；不设 `OPSPILOT_SQL_URL` 时无后端 `c63f058afb18`、仅 ES `4f7faf728706` 等现有值不变（本分支实测）。
 - CI 镜像 digest（2026-11-20 从 Docker Hub 读取）：`postgres@sha256:7e5df973…`、`mysql@sha256:d58ac933…`、`mariadb@sha256:bfb1298c…`。
