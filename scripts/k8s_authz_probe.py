@@ -212,8 +212,21 @@ def _q(value: str | None) -> str:
     return urllib.parse.quote(value or "undiscovered", safe="")
 
 
+#: C4 (#568): with the ArgoCD overlay, Applications are readable and the other
+#: two ArgoCD resources must still be refused by RBAC.
+ARGOCD_APPLICATIONS = "/apis/argoproj.io/v1alpha1/applications"
+ARGOCD_DENIED = (
+    "/apis/argoproj.io/v1alpha1/applicationsets",
+    "/apis/argoproj.io/v1alpha1/appprojects",
+)
+
+
 def rows(
-    namespace: str, found: dict[str, str | None], *, helm_overlay: bool = False
+    namespace: str,
+    found: dict[str, str | None],
+    *,
+    helm_overlay: bool = False,
+    argocd_overlay: bool = False,
 ) -> list[dict[str, Any]]:
     """The probe table: ``name``, ``method``, ``path``, ``expected`` and,
     for some, request ``headers`` and a JSON ``body``.
@@ -256,6 +269,11 @@ def rows(
     ]
     if helm_overlay:
         allowed = [*allowed, *secret_lists]
+    if argocd_overlay:
+        allowed = [
+            *allowed,
+            ("list ArgoCD applications (C4)", "GET", ARGOCD_APPLICATIONS),
+        ]
     table: list[dict[str, Any]] = [
         {"name": n, "method": m, "path": p, "expected": 200} for n, m, p in allowed
     ]
@@ -402,12 +420,19 @@ def rows(
     ] + [
         (f"list custom resource {path.split('/')[2]}", "GET", path, {}, None)
         for path in CUSTOM_RESOURCES
+        if not (argocd_overlay and path == ARGOCD_APPLICATIONS)
     ]
+    if argocd_overlay:
+        denied += [
+            (f"list ArgoCD {path.rsplit('/', 1)[1]}", "GET", path, {}, None)
+            for path in ARGOCD_DENIED
+        ]
     for name, method, path, headers, body in denied:
         row: dict[str, Any] = {
             "name": name,
             "method": method,
             "path": path,
+            # The overlay's CRDs are installed: RBAC itself must refuse.
             "expected": [403, 404] if path in CUSTOM_RESOURCES else 403,
         }
         if headers:
@@ -521,6 +546,7 @@ def probe(
     known_secrets: list[str] | tuple[str, ...] = (),
     known: list[str] | tuple[str, ...] = (),
     helm_overlay: bool = False,
+    argocd_overlay: bool = False,
 ) -> dict[str, Any]:
     """The probe table and the ConfigMap search, through ``request``; the
     report's ``ok`` also needs known lab secret values to have been given.
@@ -531,7 +557,9 @@ def probe(
     needles = [auth.removeprefix("Bearer "), *known]
     found = discover(send)
     results = []
-    for row in rows(namespace, found, helm_overlay=helm_overlay):
+    for row in rows(
+        namespace, found, helm_overlay=helm_overlay, argocd_overlay=argocd_overlay
+    ):
         status = _send_row(send, row)
         expected = row["expected"]
         accepted = expected if isinstance(expected, list) else [expected]
@@ -601,6 +629,12 @@ def main(argv: list[str] | None = None) -> int:
         "lists to answer 200 (status only; bodies are discarded) and getting "
         "or watching a Secret to stay 403",
     )
+    parser.add_argument(
+        "--expect-argocd-overlay",
+        action="store_true",
+        help="the ArgoCD overlay ClusterRole is applied (C4): expect ArgoCD "
+        "Applications to answer 200 and ApplicationSets and AppProjects 403",
+    )
     args = parser.parse_args(argv)
     try:
         env = read_env(args.env_file)
@@ -614,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
         namespace=args.namespace,
         known_secrets=known,
         helm_overlay=args.expect_helm_overlay,
+        argocd_overlay=args.expect_argocd_overlay,
     )
     report = {
         "side": args.side,

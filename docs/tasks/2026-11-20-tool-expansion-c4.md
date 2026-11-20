@@ -20,7 +20,7 @@
 
 - 上游 `argocd/core` 另外 7 个不做：`argocd_app_diff`、`argocd_app_manifests`、`argocd_app_manifest_source_revision`（要 ArgoCD API/repo-server 渲染，CR 里没有）、`argocd_repo_list`、`argocd_cluster_list`（存在 ArgoCD 的 Secret 里）、`argocd_proj_list`、`argocd_proj_get`（AppProject 不在 R8-19「Application 类」里，C4-3）。这是与上游的工具面差距，工具描述与结果页照写。
 - 参数校验（发请求前，码放 notes 开头，归 `INVALID_PARAMS`）：`namespace` 用 `check_namespace`，否则 `INVALID_NAMESPACE`；`app_name` 必须是 DNS-1123 子域（`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`，不超过 253 字符），否则 `INVALID_APP_NAME`。没有其他参数。
-- 上限：`argocd_app_list` 最多 300 行、`argocd_app_resources` 最多 500 行、`argocd_app_history` 不设（ArgoCD 默认保留 10 条，`revisionHistoryLimit`）；排序后取前 N，标不完整。原始读取每次调用合计 4 MiB（list 分页按余额读，最多 50 页），投影体 2 MiB、视图 25k token，超限整条 `RESULT_TOO_LARGE`。行数上限按 C3 的教训在实现后实测每行 token 数，满上限放不进 25k 时下调并记理由。所有字符串值截到 2000 字符。
+- 上限（2026-11-20 实现时实测修订）：`argocd_app_list` 最多 120 行、`argocd_app_resources` 最多 250 行（实测每行约 154 与 74 token，原估计的 300/500 行会被 25k 视图上限整条拒绝）、`argocd_app_history` 不设（ArgoCD 默认保留 10 条，`revisionHistoryLimit`）；排序后取前 N，标不完整。原始读取每次调用合计 4 MiB（list 分页按余额读，最多 50 页），投影体 2 MiB、视图 25k token，超限整条 `RESULT_TOO_LARGE`。行数上限按 C3 的教训在实现后实测每行 token 数，满上限放不进 25k 时下调并记理由。所有字符串值截到 2000 字符。
 
 ## 投影（C4-6，白名单新建，不做删除式过滤）
 
@@ -109,7 +109,10 @@
 - get/history/resources 的 `namespace` 可选、默认 `argocd`：上游 `app get`/`resources` 不带 namespace、`history` 带 `--app-namespace`；ArgoCD 默认把 Application 放在自己的 namespace。
 - 404 区分靠响应体 `details.name`：命名路径上 CRD 未装与应用不存在都是 404，只有前者的 Status 不带对象名。
 - CI 只装 CRD、不跑控制器：status 可直接写入，省去控制器启动与 Git 访问；控制器真实写出的 status 由租机冒烟覆盖。
-- 行数上限 300/500 是估计值，实现后按实测每行 token 数核对。
+- 行数上限：接口原估计 300/500，实测（DeepSeek 计数器，合成数据的典型行）摘要行约 154 token、资源行约 74 token，改为 120/250，留出视图其他字段的余量。
+- 开关值用 `1`（预审写的是 `on`），与 B4 的 `OPSPILOT_HELM_RELEASES` 一致。
+- 合成数据比接口多一个金丝雀位置：`status.operationState.syncResult.source`（同一 `ApplicationSource` 的第四处副本，CRD 里有这个字段），`CANARY-C4-SYNCRESULT`。
+- 合成数据文件是 JSON 写的 `apps.yaml`（kubectl 当 YAML 读）：由脚本生成、字段多，JSON 便于核对。
 
 ## 下一步
 

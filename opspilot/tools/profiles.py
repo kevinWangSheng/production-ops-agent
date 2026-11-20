@@ -52,7 +52,9 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   (``OPSPILOT_KAFKA_SECURITY_PROTOCOL``, ``_SASL_MECHANISM``, ``_USERNAME``,
   ``_PASSWORD``, ``_CA_FILE``; ``KAFKA_CONFIG_MISSING``/``_INVALID``).
   ``OPSPILOT_HELM_RELEASES=1`` adds ``helm_list``, ``helm_history`` and
-  ``helm_status`` (B4) over the existing cluster connection; the same values
+  ``helm_status`` (B4) over the existing cluster connection;
+  ``OPSPILOT_ARGOCD=1`` adds the four ``argocd_app_*`` tools (C4) the same way
+  (``ARGOCD_INVALID`` for any other value); the same values
   rule (``HELM_RELEASES_INVALID``), and the worker does not start when the
   cluster address is not a lab host (``HELM_NOT_LAB``).
 
@@ -75,6 +77,7 @@ from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.investigation.todo import todo_write_enabled
 from opspilot.persistence import DurableStore
+from opspilot.tools.argocd_apps import argocd_enabled
 from opspilot.tools.elasticsearch_logs import (
     ElasticsearchConfig,
     elasticsearch_enabled,
@@ -200,6 +203,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # B4-2: the switch only (not an ``OPSPILOT_K8S_*`` name, A2-3); the
     # worker alone checks the cluster address is a lab host (B4-3).
     helm = helm_releases_enabled(env)
+    # C4 (#568): the switch only; the same cluster connection.
+    argocd = argocd_enabled(env)
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -229,6 +234,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 sql=SqlConfig.from_env(env),
                 kafka=KafkaConfig.from_env(env),
                 helm=helm,
+                argocd=argocd,
             )
         except ToolContractError as error:
             code = str(error)
@@ -249,6 +255,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             helm=helm,
+            argocd=argocd,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -260,6 +267,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             helm=helm,
+            argocd=argocd,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,

@@ -982,10 +982,60 @@ jobs:
           OPSPILOT_K8S_BACKENDS_LIVE: "1"
         run: |
           .venv/bin/python -m pytest tests/integration/test_tool_expansion_b4_helm_impl.py -q -rs
+      # C4 (#568): ArgoCD CRDs only (no controller; the Application CRD has no
+      # status subresource, so the seed writes status directly), the ArgoCD
+      # overlay on the same read-only identity, then the two test files.
+      - name: Install the ArgoCD v3.6.1 CRDs and the ArgoCD overlay
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: |
+          base=https://raw.githubusercontent.com/argoproj/argo-cd/v3.6.1/manifests/crds
+          mkdir -p "$RUNNER_TEMP/c4"
+          while read -r sum file; do
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/c4/$file" "$base/$file"
+            echo "$sum  $RUNNER_TEMP/c4/$file" | sha256sum -c -
+          done <<'SUMS'
+          9fd0da3e7097ad6d1af614fabd5c960bc7ddb00d768c3ef485a2fda6e9460df8 application-crd.yaml
+          980128848a8d2152b946aec6a11cdd1174b38b04587f4fba94537c040fd84202 applicationset-crd.yaml
+          084150a2feccd188a1dee09cd8a3a259dfacecdfb7e10037df78900f60816482 appproject-crd.yaml
+          SUMS
+          # The Application CRD is 416 KB, past the client-side apply annotation.
+          kubectl apply --server-side -f "$RUNNER_TEMP/c4/"
+          kubectl wait --for=condition=Established --timeout=60s \
+            crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
+          kubectl apply -f scripts/kind_lab/opspilot-readonly-rbac-argocd.yaml
+          {
+            echo "C4_CANARIES=tests/fixtures/c4_argocd/canaries.txt"
+            echo "C4_ARGOCD_NAMESPACE=argocd"
+          } >> "$GITHUB_ENV"
+      - name: Seed the synthetic ArgoCD Applications
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        run: bash tests/fixtures/c4_argocd/seed.sh
+      - name: ArgoCD tools against a real cluster (independent tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd.py -q -rs
+      - name: ArgoCD tools against a real cluster (implementer tests)
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+        run: |
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd_impl.py -q -rs
+      - name: ArgoCD tools with the Application CRD removed
+        if: steps.scope.outputs.full != 'false' && !cancelled()
+        env:
+          OPSPILOT_K8S_BACKENDS_LIVE: "1"
+          C4_ARGOCD_CRD_REMOVED: "1"
+        run: |
+          kubectl delete crd applications.argoproj.io --wait=true
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_c4_argocd.py \
+            tests/integration/test_tool_expansion_c4_argocd_impl.py -q -rs
       - name: Cluster state on failure
         if: failure()
         run: |
           kubectl get pods -A -o wide 2>&1 || true
+          kubectl get applications -A -o name 2>&1 || true
           # Names only, never a Secret body.
           kubectl get secrets -A --field-selector type=helm.sh/release.v1 -o name 2>&1 || true
 

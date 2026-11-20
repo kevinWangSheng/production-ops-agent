@@ -1,0 +1,812 @@
+{
+ "apiVersion": "v1",
+ "kind": "List",
+ "items": [
+  {
+   "apiVersion": "v1",
+   "kind": "Namespace",
+   "metadata": {
+    "name": "argocd"
+   }
+  },
+  {
+   "apiVersion": "v1",
+   "kind": "Namespace",
+   "metadata": {
+    "name": "c4-other"
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "name": "c4-healthy",
+    "namespace": "argocd"
+   },
+   "spec": {
+    "project": "default",
+    "source": {
+     "repoURL": "https://git.example.test/shop/deploy.git",
+     "path": "apps/shop",
+     "targetRevision": "v1.0.0"
+    },
+    "destination": {
+     "server": "https://kubernetes.default.svc",
+     "namespace": "shop"
+    },
+    "syncPolicy": {
+     "automated": {
+      "prune": true,
+      "selfHeal": false
+     }
+    }
+   },
+   "status": {
+    "sync": {
+     "status": "Synced",
+     "revision": "aaaa111",
+     "comparedTo": {
+      "destination": {
+       "server": "https://kubernetes.default.svc",
+       "namespace": "shop"
+      },
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/shop",
+       "targetRevision": "v1.0.0"
+      }
+     }
+    },
+    "health": {
+     "status": "Healthy"
+    },
+    "reconciledAt": "2026-10-01T08:00:00Z",
+    "history": [
+     {
+      "id": 1,
+      "revision": "aaaa000",
+      "deployedAt": "2026-09-20T08:00:00Z",
+      "deployStartedAt": "2026-09-20T08:00:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/shop",
+       "targetRevision": "aaaa000"
+      }
+     },
+     {
+      "id": 2,
+      "revision": "aaaa111",
+      "deployedAt": "2026-10-01T08:00:00Z",
+      "deployStartedAt": "2026-10-01T08:00:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/shop",
+       "targetRevision": "aaaa111"
+      }
+     }
+    ],
+    "resources": [
+     {
+      "group": "apps",
+      "version": "v1",
+      "kind": "Deployment",
+      "namespace": "shop",
+      "name": "web",
+      "status": "Synced",
+      "health": {
+       "status": "Healthy"
+      }
+     },
+     {
+      "version": "v1",
+      "kind": "Service",
+      "namespace": "shop",
+      "name": "web",
+      "status": "Synced",
+      "health": {
+       "status": "Healthy"
+      }
+     },
+     {
+      "version": "v1",
+      "kind": "ConfigMap",
+      "namespace": "shop",
+      "name": "web-config",
+      "status": "Synced"
+     }
+    ],
+    "summary": {
+     "images": [
+      "registry.example.test/shop/web:1.0.0"
+     ]
+    }
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "name": "c4-degraded",
+    "namespace": "argocd"
+   },
+   "spec": {
+    "project": "default",
+    "source": {
+     "repoURL": "https://git.example.test/shop/deploy.git",
+     "path": "apps/cart",
+     "targetRevision": "v2.0.0"
+    },
+    "destination": {
+     "server": "https://kubernetes.default.svc",
+     "namespace": "shop"
+    }
+   },
+   "status": {
+    "sync": {
+     "status": "OutOfSync",
+     "revision": "bbbb222",
+     "comparedTo": {
+      "destination": {
+       "server": "https://kubernetes.default.svc",
+       "namespace": "shop"
+      },
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/cart",
+       "targetRevision": "v2.0.0"
+      }
+     }
+    },
+    "health": {
+     "status": "Degraded",
+     "message": "Deployment cart has 0/2 ready replicas"
+    },
+    "conditions": [
+     {
+      "type": "SyncError",
+      "message": "one or more objects failed to apply",
+      "lastTransitionTime": "2026-10-01T08:00:00Z"
+     }
+    ],
+    "operationState": {
+     "phase": "Failed",
+     "message": "one or more objects failed to apply",
+     "startedAt": "2026-10-01T08:00:00Z",
+     "finishedAt": "2026-10-01T08:01:00Z",
+     "retryCount": 2,
+     "operation": {
+      "sync": {
+       "revision": "bbbb222"
+      }
+     },
+     "syncResult": {
+      "revision": "bbbb222",
+      "resources": [
+       {
+        "group": "apps",
+        "version": "v1",
+        "kind": "Deployment",
+        "namespace": "shop",
+        "name": "cart",
+        "status": "SyncFailed",
+        "message": "admission webhook denied the request",
+        "hookPhase": "Failed",
+        "syncPhase": "Sync"
+       }
+      ]
+     }
+    },
+    "reconciledAt": "2026-10-01T08:00:00Z",
+    "history": [
+     {
+      "id": 1,
+      "revision": "bbbb111",
+      "deployedAt": "2026-09-25T08:00:00Z",
+      "deployStartedAt": "2026-09-25T08:00:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/shop",
+       "targetRevision": "bbbb111"
+      }
+     }
+    ],
+    "resources": [
+     {
+      "group": "apps",
+      "version": "v1",
+      "kind": "Deployment",
+      "namespace": "shop",
+      "name": "cart",
+      "status": "OutOfSync",
+      "health": {
+       "status": "Degraded",
+       "message": "0/2 ready"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "name": "c4-history",
+    "namespace": "argocd"
+   },
+   "spec": {
+    "project": "default",
+    "sources": [
+     {
+      "repoURL": "https://git.example.test/shop/deploy.git",
+      "path": "apps/a",
+      "targetRevision": "v1.0.0"
+     },
+     {
+      "repoURL": "https://charts.example.test",
+      "path": "",
+      "targetRevision": "1.2.3"
+     }
+    ],
+    "destination": {
+     "server": "https://kubernetes.default.svc",
+     "namespace": "shop"
+    }
+   },
+   "status": {
+    "sync": {
+     "status": "Synced",
+     "revisions": [
+      "cccc012",
+      "1.2.3"
+     ]
+    },
+    "health": {
+     "status": "Healthy"
+    },
+    "reconciledAt": "__RECENT__",
+    "history": [
+     {
+      "id": 12,
+      "revisions": [
+       "cccc012",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc012"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 11,
+      "revisions": [
+       "cccc011",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc011"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 10,
+      "revisions": [
+       "cccc010",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc010"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 9,
+      "revisions": [
+       "cccc009",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc009"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 8,
+      "revisions": [
+       "cccc008",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc008"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 7,
+      "revisions": [
+       "cccc007",
+       "1.2.3"
+      ],
+      "deployedAt": "__RECENT__",
+      "deployStartedAt": "__RECENT__",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc007"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 6,
+      "revisions": [
+       "cccc006",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-16T08:00:00Z",
+      "deployStartedAt": "2026-09-16T07:59:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc006"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 5,
+      "revisions": [
+       "cccc005",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-15T08:00:00Z",
+      "deployStartedAt": "2026-09-15T07:59:00Z",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc005"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 4,
+      "revisions": [
+       "cccc004",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-14T08:00:00Z",
+      "deployStartedAt": "2026-09-14T07:59:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc004"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 3,
+      "revisions": [
+       "cccc003",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-13T08:00:00Z",
+      "deployStartedAt": "2026-09-13T07:59:00Z",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc003"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 2,
+      "revisions": [
+       "cccc002",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-12T08:00:00Z",
+      "deployStartedAt": "2026-09-12T07:59:00Z",
+      "initiatedBy": {
+       "automated": true
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc002"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     },
+     {
+      "id": 1,
+      "revisions": [
+       "cccc001",
+       "1.2.3"
+      ],
+      "deployedAt": "2026-09-11T08:00:00Z",
+      "deployStartedAt": "2026-09-11T07:59:00Z",
+      "initiatedBy": {
+       "username": "admin"
+      },
+      "sources": [
+       {
+        "repoURL": "https://git.example.test/shop/deploy.git",
+        "path": "apps/a",
+        "targetRevision": "cccc001"
+       },
+       {
+        "repoURL": "https://charts.example.test",
+        "path": "",
+        "targetRevision": "1.2.3"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "name": "c4-canary",
+    "namespace": "argocd",
+    "annotations": {
+     "note": "CANARY-C4-ANNOTATION"
+    },
+    "labels": {
+     "secret": "CANARY-C4-LABEL"
+    }
+   },
+   "spec": {
+    "project": "default",
+    "source": {
+     "repoURL": "https://canary-user:CANARY-C4-REPOUSER@git.example.test/c4/canary.git?token=CANARY-C4-REPOQUERY",
+     "path": "apps/canary",
+     "targetRevision": "main",
+     "helm": {
+      "values": "password: CANARY-C4-VALUES",
+      "valuesObject": {
+       "password": "CANARY-C4-VALUESOBJ"
+      },
+      "parameters": [
+       {
+        "name": "db.password",
+        "value": "CANARY-C4-PARAM"
+       }
+      ],
+      "fileParameters": [
+       {
+        "name": "cert",
+        "path": "secrets/CANARY-C4-FILEPARAM.pem"
+       }
+      ]
+     },
+     "plugin": {
+      "name": "vault",
+      "env": [
+       {
+        "name": "TOKEN",
+        "value": "CANARY-C4-PLUGINENV"
+       }
+      ],
+      "parameters": [
+       {
+        "name": "secret",
+        "string": "CANARY-C4-PLUGINPARAM"
+       }
+      ]
+     },
+     "kustomize": {
+      "patches": [
+       {
+        "patch": "- op: add\n  path: /data/p\n  value: CANARY-C4-KPATCH"
+       }
+      ]
+     },
+     "directory": {
+      "jsonnet": {
+       "extVars": [
+        {
+         "name": "token",
+         "value": "CANARY-C4-JSONNET"
+        }
+       ]
+      }
+     }
+    },
+    "destination": {
+     "server": "https://kubernetes.default.svc",
+     "namespace": "shop"
+    }
+   },
+   "status": {
+    "sync": {
+     "status": "Synced",
+     "revision": "dddd444",
+     "comparedTo": {
+      "destination": {
+       "server": "https://kubernetes.default.svc",
+       "namespace": "shop"
+      },
+      "source": {
+       "repoURL": "https://git.example.test/c4/canary.git",
+       "path": "apps/canary",
+       "targetRevision": "main",
+       "helm": {
+        "values": "secret: CANARY-C4-COMPARED"
+       }
+      }
+     }
+    },
+    "health": {
+     "status": "Healthy"
+    },
+    "reconciledAt": "2026-10-01T08:00:00Z",
+    "operationState": {
+     "phase": "Succeeded",
+     "startedAt": "2026-10-01T08:00:00Z",
+     "finishedAt": "2026-10-01T08:00:00Z",
+     "operation": {
+      "sync": {
+       "revision": "dddd444",
+       "source": {
+        "repoURL": "https://git.example.test/c4/canary.git",
+        "path": "apps/canary",
+        "targetRevision": "main",
+        "helm": {
+         "values": "secret: CANARY-C4-OPSTATE"
+        }
+       }
+      }
+     },
+     "syncResult": {
+      "revision": "dddd444",
+      "source": {
+       "repoURL": "https://git.example.test/c4/canary.git",
+       "path": "apps/canary",
+       "targetRevision": "main",
+       "helm": {
+        "values": "secret: CANARY-C4-SYNCRESULT"
+       }
+      }
+     }
+    },
+    "history": [
+     {
+      "id": 1,
+      "revision": "dddd444",
+      "deployedAt": "2026-10-01T08:00:00Z",
+      "source": {
+       "repoURL": "https://git.example.test/c4/canary.git",
+       "path": "apps/canary",
+       "targetRevision": "main",
+       "helm": {
+        "values": "secret: CANARY-C4-HISTSRC"
+       }
+      }
+     }
+    ]
+   },
+   "operation": {
+    "sync": {
+     "revision": "dddd444",
+     "source": {
+      "repoURL": "https://git.example.test/c4/canary.git",
+      "path": "apps/canary",
+      "targetRevision": "main",
+      "helm": {
+       "values": "secret: CANARY-C4-OPERATION"
+      }
+     }
+    }
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "Application",
+   "metadata": {
+    "name": "c4-elsewhere",
+    "namespace": "c4-other"
+   },
+   "spec": {
+    "project": "default",
+    "source": {
+     "repoURL": "https://git.example.test/shop/deploy.git",
+     "path": "apps/other",
+     "targetRevision": "v1.0.0"
+    },
+    "destination": {
+     "server": "https://kubernetes.default.svc",
+     "namespace": "shop"
+    }
+   },
+   "status": {
+    "sync": {
+     "status": "Synced"
+    },
+    "health": {
+     "status": "Healthy"
+    },
+    "reconciledAt": "2026-10-01T08:00:00Z"
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "AppProject",
+   "metadata": {
+    "name": "c4-proj",
+    "namespace": "argocd"
+   },
+   "spec": {
+    "sourceRepos": [
+     "*"
+    ],
+    "destinations": [
+     {
+      "server": "*",
+      "namespace": "*"
+     }
+    ]
+   }
+  },
+  {
+   "apiVersion": "argoproj.io/v1alpha1",
+   "kind": "ApplicationSet",
+   "metadata": {
+    "name": "c4-set",
+    "namespace": "argocd"
+   },
+   "spec": {
+    "generators": [
+     {
+      "list": {
+       "elements": [
+        {
+         "env": "a"
+        }
+       ]
+      }
+     }
+    ],
+    "template": {
+     "metadata": {
+      "name": "c4-set-{{env}}"
+     },
+     "spec": {
+      "project": "default",
+      "source": {
+       "repoURL": "https://git.example.test/shop/deploy.git",
+       "path": "apps/shop",
+       "targetRevision": "v1.0.0"
+      },
+      "destination": {
+       "server": "https://kubernetes.default.svc",
+       "namespace": "shop"
+      }
+     }
+    }
+   }
+  }
+ ]
+}
