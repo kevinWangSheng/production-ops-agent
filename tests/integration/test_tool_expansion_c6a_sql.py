@@ -11,8 +11,7 @@ Written by the independent test author from the C6 task record
 (「CI（R8-25）」, eleven assertions ①-⑪) without reading the implementation.
 The fixtures, not the product, write: an administrator connection creates
 the schema, the synthetic rows and the C6-21 read-only account
-(``c6t_ro``; named with this file's ``c6t_`` prefix so it never collides
-with the implementer's ``..._impl.py`` fixtures). The tool only ever gets
+(``c6_tests_ro``). The tool only ever gets
 the read-only account, except where an assertion is about what happens
 when it gets the administrator (⑥, ⑨) or a deliberately over-privileged
 account (C6-U1 cases).
@@ -20,19 +19,26 @@ account (C6-U1 cases).
 CI environment this file assumes (defaults in parentheses); the job sets
 them or uses the defaults:
 
-* ``C6A_PG_PORT`` (55432), ``C6A_MYSQL_PORT`` (53306), ``C6A_MARIADB_PORT``
-  (53307): container ports bound on 127.0.0.1.
-* ``C6A_PG_ADMIN_USER`` (``postgres``) / ``C6A_PG_ADMIN_PASSWORD``
-  (``changeme570``); ``C6A_MYSQL_ROOT_PASSWORD`` (``changeme570``) for both
-  MySQL and MariaDB ``root``. Low-entropy CI-only values.
-* ``C6A_PG_CONTAINER`` (``c6a-postgres``): the PostgreSQL container name,
+* ``C6_DB_HOST`` (127.0.0.1); ``C6_PG_PORT`` (53201), ``C6_MYSQL_PORT``
+  (53202), ``C6_MARIADB_PORT`` (53203); ``C6_UNREACHABLE_PORT`` (53209,
+  nothing listens).
+* Administrators ``C6_PG_ADMIN_USER`` (``postgres``),
+  ``C6_MYSQL_ADMIN_USER`` / ``C6_MARIADB_ADMIN_USER`` (``root``), sharing
+  ``C6_ADMIN_PASSWORD`` (``changeme570``). Low-entropy CI-only values.
+* ``C6_PG_CONTAINER`` (``c6-postgres``): the PostgreSQL container name,
   started with ``-c log_statement=all``; ``docker logs`` of it is the
   statement log for ⑨. MySQL and MariaDB run with
   ``--general-log=1 --log-output=TABLE`` (read from ``mysql.general_log``).
+* This file creates its own database ``c6_tests``, read-only account
+  ``c6_tests_ro`` (C6-21 grants), the stand-in OpsPilot database
+  ``c6_tests_opspilot`` (with ``opspilot_runs``) and ``c6_tests_*`` test
+  accounts; the implementer's file uses ``c6_impl*``. It runs first.
 * PostgreSQL and MariaDB are reached with ``OPSPILOT_SQL_TLS=disable``
-  (the images have no server certificate configured for PostgreSQL;
-  MariaDB accounts use ``mysql_native_password``); MySQL 8 with
-  ``require`` (its auto-generated self-signed certificate, ⑪).
+  (no server certificate for PostgreSQL; MariaDB accounts use
+  ``mysql_native_password``); MySQL 8 with ``require`` (its auto-generated
+  self-signed certificate, ⑪): caching_sha2_password over plaintext would
+  need the ``cryptography`` package, which the project does not install.
+  Engineer-side MySQL 8 connections pass an unverified SSLContext.
 * ``jq`` and ``python3`` on PATH (the extension worker's preconditions).
 """
 
@@ -68,19 +74,25 @@ QUERY = "database_sql_query"
 LIST_TABLES = "database_sql_list_tables"
 DESCRIBE = "database_sql_describe_table"
 
-HOST = "127.0.0.1"
-PG_PORT = int(os.environ.get("C6A_PG_PORT", "55432"))
-MYSQL_PORT = int(os.environ.get("C6A_MYSQL_PORT", "53306"))
-MARIADB_PORT = int(os.environ.get("C6A_MARIADB_PORT", "53307"))
-PG_ADMIN = os.environ.get("C6A_PG_ADMIN_USER", "postgres")
-PG_ADMIN_PASSWORD = os.environ.get("C6A_PG_ADMIN_PASSWORD", "changeme570")
-MYSQL_ROOT_PASSWORD = os.environ.get("C6A_MYSQL_ROOT_PASSWORD", "changeme570")
-PG_CONTAINER = os.environ.get("C6A_PG_CONTAINER", "c6a-postgres")
+HOST = os.environ.get("C6_DB_HOST", "127.0.0.1")
+PG_PORT = int(os.environ.get("C6_PG_PORT", "53201"))
+MYSQL_PORT = int(os.environ.get("C6_MYSQL_PORT", "53202"))
+MARIADB_PORT = int(os.environ.get("C6_MARIADB_PORT", "53203"))
+UNREACHABLE_PORT = int(os.environ.get("C6_UNREACHABLE_PORT", "53209"))
+PG_ADMIN = os.environ.get("C6_PG_ADMIN_USER", "postgres")
+MY_ADMIN = {
+    "mysql": os.environ.get("C6_MYSQL_ADMIN_USER", "root"),
+    "mariadb": os.environ.get("C6_MARIADB_ADMIN_USER", "root"),
+}
+ADMIN_PASSWORD = os.environ.get("C6_ADMIN_PASSWORD", "changeme570")
+PG_ADMIN_PASSWORD = ADMIN_PASSWORD
+MYSQL_ROOT_PASSWORD = ADMIN_PASSWORD
+PG_CONTAINER = os.environ.get("C6_PG_CONTAINER", "c6-postgres")
 
-DB = "c6t_app"
-OPSMOCK_DB = "c6t_opsmock"
-OWNED_DB = "c6t_owned"
-RO = "c6t_ro"
+DB = "c6_tests"
+OPSMOCK_DB = "c6_tests_opspilot"
+OWNED_DB = "c6_tests_owned"
+RO = "c6_tests_ro"
 RO_PASSWORD = "ro-" + "pw-570"  # low entropy, CI only
 CANARY = "aaaaaaaa570"
 BULK_ROWS = 600
@@ -130,7 +142,7 @@ def _insecure_tls() -> ssl.SSLContext:
 
 def _my(
     backend: str,
-    user: str = "root",
+    user: str | None = None,
     password: str = MYSQL_ROOT_PASSWORD,
     database: str | None = None,
 ):
@@ -139,7 +151,7 @@ def _my(
     kwargs: dict[str, Any] = {
         "host": HOST,
         "port": PORT[backend],
-        "user": user,
+        "user": user or MY_ADMIN[backend],
         "password": password,
         "autocommit": True,
         "connect_timeout": 10,
@@ -203,7 +215,7 @@ def _words(n: int) -> str:
 
 #: PostgreSQL accounts that must be refused by the account check (C6-U1):
 #: name suffix -> statements run by the administrator after the role exists
-#: with LOGIN, CONNECT on c6t_app and pg_read_all_data.
+#: with LOGIN, CONNECT on c6_tests and pg_read_all_data.
 PG_BAD_ROLES: dict[str, list[str]] = {
     "super": ["ALTER ROLE {r} SUPERUSER"],
     "createrole": ["ALTER ROLE {r} CREATEROLE"],
@@ -223,40 +235,50 @@ PG_BAD_ROLES: dict[str, list[str]] = {
     "seq_usage": ["GRANT USAGE ON SEQUENCE c6t_customers_id_seq TO {r}"],
     "seq_update": ["GRANT UPDATE ON SEQUENCE c6t_customers_id_seq TO {r}"],
     "schema_create": ["GRANT CREATE ON SCHEMA public TO {r}"],
-    "db_create": ["GRANT CREATE ON DATABASE c6t_app TO {r}"],
-    "inherits_writer": ["GRANT c6t_writer TO {r}"],
-    "can_set_super": ["GRANT c6t_superish TO {r} WITH INHERIT FALSE"],
+    "db_create": ["GRANT CREATE ON DATABASE c6_tests TO {r}"],
+    "inherits_writer": ["GRANT c6_tests_writer TO {r}"],
+    "can_set_super": ["GRANT c6_tests_superish TO {r} WITH INHERIT FALSE"],
 }
 
 #: MySQL/MariaDB accounts the account check must refuse: suffix -> grants.
 MY_BAD_USERS: dict[str, list[str]] = {
-    "insert": ["GRANT SELECT, INSERT ON c6t_app.* TO {u}"],
-    "all_db": ["GRANT ALL PRIVILEGES ON c6t_app.* TO {u}"],
-    "grant_option": ["GRANT SELECT ON c6t_app.* TO {u} WITH GRANT OPTION"],
-    "temp_tables": ["GRANT SELECT, CREATE TEMPORARY TABLES ON c6t_app.* TO {u}"],
-    "lock_tables": ["GRANT SELECT, LOCK TABLES ON c6t_app.* TO {u}"],
-    "execute": ["GRANT SELECT, EXECUTE ON c6t_app.* TO {u}"],
-    "column_update": ["GRANT SELECT, UPDATE (note) ON c6t_app.c6t_orders TO {u}"],
-    "file": ["GRANT SELECT ON c6t_app.* TO {u}", "GRANT FILE ON *.* TO {u}"],
-    "role": ["GRANT SELECT ON c6t_app.* TO {u}", "GRANT c6t_writer TO {u}"],
-    "proxy": ["GRANT SELECT ON c6t_app.* TO {u}", "GRANT PROXY ON 'c6t_ro'@'%' TO {u}"],
+    "insert": ["GRANT SELECT, INSERT ON c6_tests.* TO {u}"],
+    "all_db": ["GRANT ALL PRIVILEGES ON c6_tests.* TO {u}"],
+    "grant_option": ["GRANT SELECT ON c6_tests.* TO {u} WITH GRANT OPTION"],
+    "temp_tables": ["GRANT SELECT, CREATE TEMPORARY TABLES ON c6_tests.* TO {u}"],
+    "lock_tables": ["GRANT SELECT, LOCK TABLES ON c6_tests.* TO {u}"],
+    "execute": ["GRANT SELECT, EXECUTE ON c6_tests.* TO {u}"],
+    "column_update": ["GRANT SELECT, UPDATE (note) ON c6_tests.c6t_orders TO {u}"],
+    "file": ["GRANT SELECT ON c6_tests.* TO {u}", "GRANT FILE ON *.* TO {u}"],
+    "role": ["GRANT SELECT ON c6_tests.* TO {u}", "GRANT c6_tests_writer TO {u}"],
+    "proxy": [
+        "GRANT SELECT ON c6_tests.* TO {u}",
+        "GRANT PROXY ON 'c6_tests_ro'@'%' TO {u}",
+    ],
 }
 
 
 def _pg_setup() -> None:
-    bad = [f"c6t_bad_{name}" for name in PG_BAD_ROLES]
-    roles = [RO, "c6t_ro_narrow", "c6t_ro_monitor", *bad, "c6t_writer", "c6t_superish"]
+    bad = [f"c6_tests_bad_{name}" for name in PG_BAD_ROLES]
+    roles = [
+        RO,
+        "c6_tests_ro_narrow",
+        "c6_tests_ro_monitor",
+        *bad,
+        "c6_tests_writer",
+        "c6_tests_superish",
+    ]
     with _pg() as conn:
         for db in (DB, OPSMOCK_DB, OWNED_DB):
             conn.execute(f"DROP DATABASE IF EXISTS {db} WITH (FORCE)")
-        for role in (*roles, "c6t_owner"):
+        for role in (*roles, "c6_tests_owner"):
             conn.execute(f"DROP ROLE IF EXISTS {role}")
         conn.execute(f"CREATE DATABASE {DB}")
         conn.execute(f"CREATE DATABASE {OPSMOCK_DB}")
-        for role in (RO, "c6t_ro_narrow", "c6t_ro_monitor", *bad):
+        for role in (RO, "c6_tests_ro_narrow", "c6_tests_ro_monitor", *bad):
             conn.execute(f"CREATE ROLE {role} LOGIN PASSWORD '{RO_PASSWORD}'")
-        conn.execute("CREATE ROLE c6t_writer NOLOGIN")
-        conn.execute("CREATE ROLE c6t_superish NOLOGIN SUPERUSER")
+        conn.execute("CREATE ROLE c6_tests_writer NOLOGIN")
+        conn.execute("CREATE ROLE c6_tests_superish NOLOGIN SUPERUSER")
     with _pg(DB) as conn:
         conn.execute(
             """
@@ -322,15 +344,15 @@ def _pg_setup() -> None:
                 [(1 + n % 3, 10 + n, "paid", f"order-{n}") for n in range(5)],
             )
         conn.execute(
-            f"GRANT CONNECT ON DATABASE {DB} TO {RO}, c6t_ro_monitor, c6t_ro_narrow"
+            f"GRANT CONNECT ON DATABASE {DB} TO {RO}, c6_tests_ro_monitor, c6_tests_ro_narrow"
         )
         conn.execute(f"GRANT pg_read_all_data, pg_read_all_stats TO {RO}")
         conn.execute(f"ALTER ROLE {RO} SET default_transaction_read_only = on")
-        conn.execute("GRANT pg_read_all_data, pg_monitor TO c6t_ro_monitor")
-        conn.execute("GRANT SELECT ON c6t_orders TO c6t_ro_narrow")
-        conn.execute("GRANT INSERT ON c6t_orders TO c6t_writer")
+        conn.execute("GRANT pg_read_all_data, pg_monitor TO c6_tests_ro_monitor")
+        conn.execute("GRANT SELECT ON c6t_orders TO c6_tests_ro_narrow")
+        conn.execute("GRANT INSERT ON c6t_orders TO c6_tests_writer")
         for name, statements in PG_BAD_ROLES.items():
-            role = f"c6t_bad_{name}"
+            role = f"c6_tests_bad_{name}"
             conn.execute(f"GRANT CONNECT ON DATABASE {DB} TO {role}")
             conn.execute(f"GRANT pg_read_all_data TO {role}")
             for statement in statements:
@@ -338,22 +360,22 @@ def _pg_setup() -> None:
     with _pg() as conn:
         # A database owned by an otherwise read-only role.
         conn.execute(f"GRANT CONNECT ON DATABASE {OPSMOCK_DB} TO {RO}")
-        conn.execute(f"CREATE ROLE c6t_owner LOGIN PASSWORD '{RO_PASSWORD}'")
-        conn.execute("GRANT pg_read_all_data TO c6t_owner")
-        conn.execute(f"CREATE DATABASE {OWNED_DB} OWNER c6t_owner")
+        conn.execute(f"CREATE ROLE c6_tests_owner LOGIN PASSWORD '{RO_PASSWORD}'")
+        conn.execute("GRANT pg_read_all_data TO c6_tests_owner")
+        conn.execute(f"CREATE DATABASE {OWNED_DB} OWNER c6_tests_owner")
     with _pg(OPSMOCK_DB) as conn:
         # Stands in for OpsPilot's own database (C6-8 ③).
         conn.execute("CREATE TABLE opspilot_runs (id int PRIMARY KEY)")
 
 
 def _my_setup(backend: str) -> None:
-    users = [RO, *(f"c6t_bad_{name}" for name in MY_BAD_USERS)]
+    users = [RO, *(f"c6_tests_bad_{name}" for name in MY_BAD_USERS)]
     conn = _my(backend)
     try:
         with conn.cursor() as cur:
             for user in users:
                 cur.execute(f"DROP USER IF EXISTS '{user}'@'%'")
-            cur.execute("DROP ROLE IF EXISTS c6t_writer")
+            cur.execute("DROP ROLE IF EXISTS c6_tests_writer")
             cur.execute(f"DROP DATABASE IF EXISTS {DB}")
             cur.execute(f"CREATE DATABASE {DB}")
             cur.execute(f"USE {DB}")
@@ -438,10 +460,10 @@ def _my_setup(backend: str) -> None:
             cur.execute(f"GRANT SELECT, SHOW VIEW ON {DB}.* TO '{RO}'@'%'")
             cur.execute(f"GRANT SELECT ON performance_schema.* TO '{RO}'@'%'")
             cur.execute(f"GRANT PROCESS ON *.* TO '{RO}'@'%'")
-            cur.execute("CREATE ROLE c6t_writer")
-            cur.execute(f"GRANT INSERT ON {DB}.* TO c6t_writer")
+            cur.execute("CREATE ROLE c6_tests_writer")
+            cur.execute(f"GRANT INSERT ON {DB}.* TO c6_tests_writer")
             for name, grants in MY_BAD_USERS.items():
-                user = f"'c6t_bad_{name}'@'%'"
+                user = f"'c6_tests_bad_{name}'@'%'"
                 for grant in grants:
                     cur.execute(grant.format(u=user))
     finally:
@@ -588,7 +610,9 @@ def _assert(outcome, status: str, reason: str | None, first_note: str | None = N
 def _admin_env(backend: str, k8s_ca: str, **extra: str) -> dict[str, str]:
     if backend == "postgresql":
         return _env(backend, k8s_ca, user=PG_ADMIN, password=PG_ADMIN_PASSWORD, **extra)
-    return _env(backend, k8s_ca, user="root", password=MYSQL_ROOT_PASSWORD, **extra)
+    return _env(
+        backend, k8s_ca, user=MY_ADMIN[backend], password=MYSQL_ROOT_PASSWORD, **extra
+    )
 
 
 # == ① real data from all three tools =============================================
@@ -1011,7 +1035,7 @@ def test_administrator_account_is_refused_and_the_statement_never_arrives(
 def test_postgres_over_privileged_roles_are_refused(case, k8s_ca):
     _ensure("postgresql")
     marker = _marker(f"u1-pg-{case}")
-    tool = Tool(_env("postgresql", k8s_ca, user=f"c6t_bad_{case}"))
+    tool = Tool(_env("postgresql", k8s_ca, user=f"c6_tests_bad_{case}"))
     outcome = tool.query(f"SELECT '{marker}' AS marker")
     _assert(outcome, "error", "SOURCE_FORBIDDEN", "SQL_ACCOUNT_NOT_READ_ONLY")
     time.sleep(0.5)
@@ -1020,7 +1044,7 @@ def test_postgres_over_privileged_roles_are_refused(case, k8s_ca):
 
 def test_postgres_database_owner_is_refused(k8s_ca):
     _ensure("postgresql")
-    tool = Tool(_env("postgresql", k8s_ca, user="c6t_owner", database=OWNED_DB))
+    tool = Tool(_env("postgresql", k8s_ca, user="c6_tests_owner", database=OWNED_DB))
     _assert(
         tool.query("SELECT 1 AS n"),
         "error",
@@ -1031,7 +1055,7 @@ def test_postgres_database_owner_is_refused(k8s_ca):
 
 def test_postgres_whitelisted_monitoring_roles_pass(k8s_ca):
     _ensure("postgresql")
-    for user in ("c6t_ro_monitor", "c6t_ro_narrow"):
+    for user in ("c6_tests_ro_monitor", "c6_tests_ro_narrow"):
         outcome = Tool(_env("postgresql", k8s_ca, user=user)).query("SELECT 1 AS n")
         _assert(outcome, "ok", None)
 
@@ -1041,7 +1065,7 @@ def test_postgres_whitelisted_monitoring_roles_pass(k8s_ca):
 def test_mysql_over_privileged_accounts_are_refused(backend_name, case, k8s_ca):
     _ensure(backend_name)
     marker = _marker(f"u1-my-{case}")
-    tool = Tool(_env(backend_name, k8s_ca, user=f"c6t_bad_{case}"))
+    tool = Tool(_env(backend_name, k8s_ca, user=f"c6_tests_bad_{case}"))
     outcome = tool.query(f"SELECT '{marker}' AS marker")
     _assert(outcome, "error", "SOURCE_FORBIDDEN", "SQL_ACCOUNT_NOT_READ_ONLY")
     assert not _general_log_has(backend_name, marker)
@@ -1080,14 +1104,17 @@ def test_real_error_responses_are_classified(backend, ro, k8s_ca):
     _assert(wrong, "error", "SOURCE_FORBIDDEN")
     assert "wrong-pw-570" not in repr(_view(wrong))
     if backend == "postgresql":
-        narrow = Tool(_env(backend, k8s_ca, user="c6t_ro_narrow"))
+        narrow = Tool(_env(backend, k8s_ca, user="c6_tests_ro_narrow"))
         _assert(
             narrow.query("SELECT * FROM c6t_customers"), "error", "SOURCE_FORBIDDEN"
         )
     else:
         _assert(ro.query("SELECT * FROM mysql.user"), "error", "SOURCE_FORBIDDEN")
     gone = Tool(
-        {**_env(backend, k8s_ca), "OPSPILOT_SQL_URL": _url(backend, port=1)}
+        {
+            **_env(backend, k8s_ca),
+            "OPSPILOT_SQL_URL": _url(backend, port=UNREACHABLE_PORT),
+        }
     ).query("SELECT 1")
     _assert(gone, "error", "SOURCE_UNAVAILABLE")
 
