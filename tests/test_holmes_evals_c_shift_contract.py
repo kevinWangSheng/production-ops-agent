@@ -601,6 +601,38 @@ def test_apply_loki_shift_end_to_end() -> None:
     assert _as_utc(s.shifted_min) == _as_utc(record.shifted_min)
 
 
+def test_apply_loki_shift_reads_within_loki_query_length() -> None:
+    """Loki 2.9 rejects a labels/query_range span over 30d1h with HTTP 400; the
+    fixed-time read is split into windows that fit, and still sees every
+    fixed entry of the 730-day span (one 650 days back, one on a window edge)."""
+    shift = mod("shift")
+    limit = timedelta(days=30, hours=1)
+    store = FakeLoki()
+    store.max_query_ns = int(limit.total_seconds()) * 1_000_000_000
+    _seed_101(store)
+    old = SETUP_STARTED - timedelta(days=650)
+    edge = SETUP_STARTED - shift.FIXED_READ_SPAN + timedelta(days=30)
+    store.add(S2, [(ns_of(old), "db very old"), (ns_of(edge), "db edge")])
+    with served_loki(store) as url:
+        _, record = shift.apply_loki_shift(
+            _admin(url), Q101, PROMPT, NOW, setup_started=SETUP_STARTED
+        )
+    windowed = [
+        r for r in store.requests
+        if r["path"] in ("/loki/api/v1/labels", "/loki/api/v1/query_range")
+    ]  # fmt: skip
+    assert windowed
+    for r in windowed:
+        span = int(r["query"]["end"][0]) - int(r["query"]["start"][0])
+        assert span <= store.max_query_ns
+    starts = [int(r["query"]["start"][0]) for r in windowed]
+    assert min(starts) == ns_of(SETUP_STARTED - shift.FIXED_READ_SPAN)
+    # 52 from the end-to-end seed plus the two older ones, each read once.
+    assert record.fixed_entries == 54
+    assert _as_utc(record.original_min) == edge  # the oldest kept entry
+    assert record.pushed == 9
+
+
 def test_apply_loki_shift_no_fixed_entries() -> None:
     shift = mod("shift")
     store = FakeLoki()

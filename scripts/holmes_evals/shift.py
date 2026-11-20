@@ -138,6 +138,9 @@ SHIFT_DAY_WAIT_CAP = timedelta(hours=2)
 FIXED_ENTRY_AGE = timedelta(hours=24)
 #: How far back the fixed-time read goes (the fixtures' Loki keeps 2 years).
 FIXED_READ_SPAN = timedelta(days=730)
+#: One labels/query_range request spans at most this; Loki 2.9's default
+#: ``max_query_length`` (30d1h) rejects longer ones with HTTP 400.
+LOKI_QUERY_SPAN = timedelta(days=30)
 LOKI_PAGE = 5000
 LOKI_MAX_ENTRIES = 200_000
 LOKI_PUSH_ENTRIES = 5000
@@ -978,14 +981,30 @@ class LokiAdmin:
     def entries(self, start: datetime, end: datetime) -> list[LokiEntry]:
         """Every entry in ``[start, end)`` of every stream, oldest first.
 
-        One selector ``{L=~".+"}`` per label name (every stream carries at
-        least one label), paged forward by time, duplicates across selectors
-        and page boundaries dropped."""
-        names = self.label_names(start, end)
+        The range is read in consecutive half-open windows of at most
+        ``LOKI_QUERY_SPAN`` (Loki's query-length limit); in each window, one
+        selector ``{L=~".+"}`` per label name seen there (every stream carries
+        at least one label), paged forward by time, duplicates across
+        selectors and page boundaries dropped."""
         seen: set[tuple[tuple[tuple[str, str], ...], int, str]] = set()
         out: list[LokiEntry] = []
+        window_start = start
+        while window_start < end:
+            window_end = min(window_start + LOKI_QUERY_SPAN, end)
+            self._window_entries(window_start, window_end, seen, out)
+            window_start = window_end
+        out.sort(key=lambda e: (e.ns, sorted(e.labels.items()), e.line))
+        return out
+
+    def _window_entries(
+        self,
+        start: datetime,
+        end: datetime,
+        seen: set[tuple[tuple[tuple[str, str], ...], int, str]],
+        out: list[LokiEntry],
+    ) -> None:
         end_ns = _ns(end)
-        for name in names:
+        for name in self.label_names(start, end):
             selector = "{" + f'{name}=~".+"' + "}"
             cursor = _ns(start)
             while True:
@@ -1004,8 +1023,6 @@ class LokiAdmin:
                 if latest <= cursor:
                     raise ShiftError("SHIFT_PAGE_STUCK")
                 cursor = latest
-        out.sort(key=lambda e: (e.ns, sorted(e.labels.items()), e.line))
-        return out
 
     def push(self, entries: Sequence[LokiEntry]) -> None:
         """Chunked ``/loki/api/v1/push`` (at most ``LOKI_PUSH_ENTRIES``
