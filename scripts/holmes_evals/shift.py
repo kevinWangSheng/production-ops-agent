@@ -143,6 +143,8 @@ LOKI_MAX_ENTRIES = 200_000
 LOKI_PUSH_ENTRIES = 5000
 LOKI_PUSH_BYTES = 4 * 1024 * 1024
 LOKI_TIMEOUT_S = 60
+#: ``{"streams": [...]}`` around the streams of one push request.
+_PUSH_ENVELOPE = 64
 DAY = timedelta(days=1)
 
 
@@ -455,7 +457,7 @@ def seconds_to_wait_for_shift_day(
     setup_timeout_s`` (the shift runs after ``before_test``); otherwise the
     seconds until the next day's incident hour has ended ``LEAD`` ago.
     Only :data:`LOKI_FIXED_TIME`; over ``SHIFT_DAY_WAIT_CAP`` raises
-    ``ShiftError("SHIFT_WAIT_FOR_DAY")``."""
+    ``DeterministicError("SHIFT_WAIT_FOR_DAY")`` (the driver's class)."""
     if qid not in LOKI_FIXED_TIME:
         return 0.0
     anchor = LOKI_ANCHORS[qid]
@@ -466,7 +468,9 @@ def seconds_to_wait_for_shift_day(
     ready = _incident_at(anchor, now) + DAY + INCIDENT_SPAN + LEAD
     wait = ready - now
     if wait > SHIFT_DAY_WAIT_CAP:
-        raise ShiftError("SHIFT_WAIT_FOR_DAY")
+        from scripts.itbench_lite.driver import DeterministicError
+
+        raise DeterministicError("SHIFT_WAIT_FOR_DAY")
     return max(wait.total_seconds(), 0.0) + 1.0
 
 
@@ -974,15 +978,15 @@ class LokiAdmin:
     def entries(self, start: datetime, end: datetime) -> list[LokiEntry]:
         """Every entry in ``[start, end)`` of every stream, oldest first.
 
-        One selector per label name, each excluding the streams the earlier
-        ones covered (``{L2=~".+", L1=""}``), paged forward by time."""
+        One selector ``{L=~".+"}`` per label name (every stream carries at
+        least one label), paged forward by time, duplicates across selectors
+        and page boundaries dropped."""
         names = self.label_names(start, end)
         seen: set[tuple[tuple[tuple[str, str], ...], int, str]] = set()
         out: list[LokiEntry] = []
         end_ns = _ns(end)
-        for i, name in enumerate(names):
-            matchers = [f'{name}=~".+"'] + [f'{n}=""' for n in names[:i]]
-            selector = "{" + ", ".join(matchers) + "}"
+        for name in names:
+            selector = "{" + f'{name}=~".+"' + "}"
             cursor = _ns(start)
             while True:
                 page = self._page(selector, cursor, end_ns)
@@ -1018,11 +1022,21 @@ class LokiAdmin:
 
         for entry in entries:
             key = tuple(sorted(entry.labels.items()))
-            batch.setdefault(key, []).append([str(entry.ns), entry.line])
-            count += 1
-            size += len(entry.line) + 32
-            if count >= LOKI_PUSH_ENTRIES or size >= LOKI_PUSH_BYTES:
+            value = [str(entry.ns), entry.line]
+            # The value's JSON size plus room for this stream's label block.
+            cost = len(json.dumps(value).encode("utf-8")) + 2
+            if key not in batch:
+                cost += len(json.dumps({"stream": dict(key), "values": []})) + 2
+            if count and (
+                count + 1 > LOKI_PUSH_ENTRIES
+                or size + cost > LOKI_PUSH_BYTES - _PUSH_ENVELOPE
+            ):
                 flush()
+                cost = len(json.dumps(value).encode("utf-8")) + 2
+                cost += len(json.dumps({"stream": dict(key), "values": []})) + 2
+            batch.setdefault(key, []).append(value)
+            count += 1
+            size += cost
         flush()
 
 

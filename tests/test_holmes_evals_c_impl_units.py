@@ -391,9 +391,10 @@ def _report(summary: str) -> dict[str, Any]:
 
 def _backends(
     cfg: driver.Config, seen: dict[str, Any], load: Any, report: dict[str, Any],
-    started_at: datetime,
+    before_delay: float,
 ) -> driver.Backends:  # fmt: skip
     servers: list[Any] = []
+    clock = [NOW - timedelta(seconds=before_delay)]
 
     def start_fake(backend: str, bport: int, gport: int, work: Path) -> Any:
         store, made = fake_logs.start(backend, bport, gport, ("ro", "pw-secret"))
@@ -417,7 +418,9 @@ def _backends(
         seen.setdefault("setup_env", []).append(dict(kw["env"]))
         if kw["operation"] == "before_test":
             load(kw["env"])
-        stamp = started_at.isoformat()
+        if kw["operation"] == "before_test":
+            clock[0] += timedelta(seconds=before_delay)  # before_test took this long
+        stamp = clock[0].isoformat()
         return ScriptResult(kw["operation"], 0, False, stamp, stamp, 0.1, "0" * 64)
 
     def submit(web_url: str, account: Any, **kw: Any) -> intake.SubmitResult:
@@ -457,7 +460,7 @@ def _backends(
         port_in_use=lambda port: False,
         start_fake_log_backend=start_fake,
         namespace_gone=lambda ns, env: True,
-        now=lambda: NOW,
+        now=lambda: clock[0],
         sleep=lambda s: None,
     )
 
@@ -474,7 +477,7 @@ def test_loki_trial_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         _push(base, {"namespace": "app-101", "level": "ERROR"}, _history())
 
     report = _report("Errors started November 19, 2026 around 13:50 UTC, 13:52 UTC.")
-    b = _backends(cfg, seen, load, report, SETUP)
+    b = _backends(cfg, seen, load, report, 300.0)
     out = driver.run_question(cfg, b, Q101, [1])
     assert out["trials"][1]["judge"]["choice"] == "A", out
     block = json.loads(cfg.summary_path(Q101, 1).read_text())["holmes_eval"]
@@ -513,7 +516,7 @@ def test_258_data_window_voids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     def load(env: dict[str, str]) -> None:
         seen["vl_url"] = env["VICTORIALOGS_URL"]
 
-    b = _backends(cfg, seen, load, _report("ok"), NOW - timedelta(seconds=241))
+    b = _backends(cfg, seen, load, _report("ok"), 241.0)
     out = driver.run_question(cfg, b, Q258, [1])
     assert out["trials"][1]["status"] == "missing"
     summary = json.loads(cfg.summary_path(Q258, 1).read_text())
@@ -522,9 +525,7 @@ def test_258_data_window_voids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     ] * 3
     assert seen["vl_url"] == f"http://127.0.0.1:{cfg.ports.victorialogs}"
     # Within the window the trial completes.
-    b2 = _backends(
-        cfg, {}, lambda env: None, _report("ok"), NOW - timedelta(seconds=30)
-    )
+    b2 = _backends(cfg, {}, lambda env: None, _report("ok"), 30.0)
     driver._set_aside(cfg, Q258, 2)
     done = driver.run_question(cfg, b2, Q258, [2])
     assert done["trials"][2]["status"] == "completed"

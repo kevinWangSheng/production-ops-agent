@@ -207,6 +207,13 @@ class Ports:
         """Ports an attempt needs free: its own, and the unreachable ones."""
         return {k: v for k, v in self.all().items() if k not in _ROUND_PORTS}
 
+    def for_summary(self, backend: str) -> dict[str, int]:
+        """The ``ports`` block: B1 keeps its six keys (PR-C adds only
+        ``data_plane`` to a B1 summary); C5 questions list every port."""
+        if backend == "elasticsearch":
+            return {k: v for k, v in self.all().items() if k not in _LOG_PORTS}
+        return self.all()
+
     def log_ports(self, backend: str, mode: str) -> dict[str, int]:
         """The ports one attempt of a C5 question opens itself."""
         if backend == "loki" and mode == "fake":
@@ -219,9 +226,10 @@ class Ports:
         return {}
 
 
-_ROUND_PORTS = frozenset(
-    {"es", "loki_gateway", "loki_fake", "victorialogs_gateway", "victorialogs"}
+_LOG_PORTS = frozenset(
+    {"loki_gateway", "loki_fake", "victorialogs_gateway", "victorialogs"}
 )
+_ROUND_PORTS = _LOG_PORTS | {"es"}
 
 
 @dataclass(frozen=True)
@@ -422,9 +430,11 @@ def worker_env(
         } | {"OPSPILOT_ES_URL": cfg.es_url}
     else:
         prefix = "OPSPILOT_LOKI_" if backend == "loki" else "OPSPILOT_VICTORIALOGS_"
-        data_plane = {
+        # The account's own address wins, so ``check_env_isolation`` sees an
+        # address that points past the gateway.
+        data_plane = {prefix + "URL": product_log_url(cfg, backend)} | {
             k: v for k, v in (log_env or {}).items() if k.startswith(prefix)
-        } | {prefix + "URL": product_log_url(cfg, backend)}
+        }
     env = (
         services.base_env()
         | tool_env(cfg, backend)
@@ -726,15 +736,6 @@ def report_object(run_block: Mapping[str, Any]) -> tuple[Any, str | None]:
         return None, "REPORT_INVALID_FOR_CONVERSION"
 
 
-def _setup_started(before: ScriptResult, default: datetime) -> datetime:
-    """When ``before_test`` began (the C5 data time), as an aware datetime."""
-    try:
-        moment = datetime.fromisoformat(before.started_at)
-    except (TypeError, ValueError):
-        return default
-    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
-
-
 @dataclass
 class AttemptResult:
     run_id: str
@@ -777,7 +778,7 @@ class Attempt:
             "trial": trial,
             "chance": chance,
             "git": cfg.git,
-            "ports": cfg.ports.all(),
+            "ports": cfg.ports.for_summary(backend_of(qid)),
             "cluster_name": {
                 "value": question.cluster_name,
                 "env_set": bool(question.cluster_name),
@@ -833,7 +834,7 @@ class Attempt:
         state: dict[str, Any] = {"namespace": self.spec.namespace}
         deadline = self.b.now() + timedelta(seconds=RELEASE_WAIT_S)
         gone = True
-        if self.spec.namespace is not None and self.mode != "fake":
+        if self.spec.namespace is not None:
             env = self._setup_env()
             while not (gone := self.b.namespace_gone(self.spec.namespace, env)):
                 if self.b.now() >= deadline:
@@ -841,8 +842,6 @@ class Attempt:
                 self.b.sleep(2)
         state["namespace_gone"] = gone
         busy = [p for p in self.spec.host_ports if self.b.port_in_use(p)]
-        if self.mode == "fake":
-            busy = []  # the stand-in owns no question port
         state["busy_ports"] = busy
         state["ok"] = gone and not busy
         return state
@@ -936,7 +935,7 @@ class Attempt:
     def _connect_log_backend(self) -> None:
         """After ``before_test``: the question's port-forwards and the Loki
         gateway's switch to the question's Loki (rental mode only)."""
-        if self.spec is None or self.mode == "fake":
+        if self.spec is None:
             return
         env = self._setup_env()
         for i, forward in enumerate(self.q.port_forwards or []):
@@ -947,7 +946,7 @@ class Attempt:
             except services.ServiceError as error:
                 raise InfraFailure("PORT_FORWARD_FAILED", error.code) from None
             self.forwards.push(started.name, started.stop)
-        if self.backend == "loki":
+        if self.backend == "loki" and self.mode == "gateway":
             try:
                 self.b.switch_gateway(
                     "loki", self._loki_address(), self.cfg.gateway_state("loki")
@@ -984,9 +983,7 @@ class Attempt:
                     for k in ("namespace", "service", "local_port", "remote_port")
                 }
                 for f in (self.q.port_forwards or [])
-            ]
-            if self.mode != "fake"
-            else [],
+            ],
             "victorialogs_image": VICTORIALOGS_IMAGE
             if self.backend == "victorialogs" and self.mode == "docker"
             else None,
@@ -999,7 +996,7 @@ class Attempt:
         busy = [
             n for n, p in {**cfg.ports.per_attempt(), **own}.items() if b.port_in_use(p)
         ]
-        if self.spec is not None and self.mode != "fake":
+        if self.spec is not None:
             busy += [f"question:{p}" for p in self.spec.host_ports if b.port_in_use(p)]
         if busy:
             raise InfraFailure("PORT_BUSY", ",".join(busy))
@@ -1013,10 +1010,7 @@ class Attempt:
         prompt = q.user_prompt
         timeout_s = q.setup_timeout or DEFAULT_SETUP_TIMEOUT
         if self.qid in LOKI_FIXED_TIME:
-            try:
-                day_wait = seconds_to_wait_for_shift_day(self.qid, b.now(), timeout_s)
-            except ShiftError as error:
-                raise DeterministicError(error.code) from None
+            day_wait = seconds_to_wait_for_shift_day(self.qid, b.now(), timeout_s)
             self.block["shift_day_wait_seconds"] = round(day_wait, 1)
             if day_wait:
                 b.sleep(day_wait)
@@ -1026,6 +1020,7 @@ class Attempt:
             self._admin = b.es_admin(cfg.es_url, cfg.engineer_key)
         self._clean_armed = True
         self._clean("cleanup_before")
+        before_started = b.now()
         before = self._script("before_test")
         self.block["setup"]["before_test"] = asdict(before)
         if not before.ok:
@@ -1054,7 +1049,7 @@ class Attempt:
                     qid=self.qid,
                     question=prompt,
                     now=shift_started,
-                    setup_started=_setup_started(before, shift_started),
+                    setup_started=before_started,
                 )
         except ShiftError as error:
             if error.code in INFRA_SHIFT_ERRORS:
@@ -1129,7 +1124,7 @@ class Attempt:
         if not setup_to_delivery_ok(setup_ended, now):
             raise VoidAttempt("SETUP_TO_DELIVERY_EXCEEDED", f"{gap:.1f}s")
         if self.spec is not None:
-            written = (now - _setup_started(before, now)).total_seconds()
+            written = (now - before_started).total_seconds()
             self.block["delivery"]["data_written_to_delivery_seconds"] = round(
                 written, 3
             )
