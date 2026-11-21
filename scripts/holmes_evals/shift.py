@@ -38,8 +38,8 @@ is a whole number of days (lead, 2026-11-19), so a time of day written alone
 needs no deshift: the incident hour must end at least ``LEAD`` before now and
 still lie wholly inside the 24-hour authorised box at delivery; when no day
 fits the attempt waits (:func:`seconds_to_wait_for_shift_day`). The entries
-older than ``FIXED_ENTRY_AGE`` before ``before_test`` began are read back from
-the question's own Loki, moved by the offset (entry time and ISO times inside
+older than ``FIXED_ENTRY_AGE`` before ``before_test`` began, within
+``LOKI_ANCHOR_READ`` of the anchor, are read back from the question's own Loki, moved by the offset (entry time and ISO times inside
 the line), entries that would land after ``now - LEAD`` are dropped, and the
 rest are pushed back under their labels. Loki cannot rewrite in place: the
 2025 originals stay, outside the box (disclosed).
@@ -136,8 +136,21 @@ BOX_MARGIN = timedelta(minutes=10)
 SHIFT_DAY_WAIT_CAP = timedelta(hours=2)
 #: Loki entries older than this before ``before_test`` began are fixed-time data.
 FIXED_ENTRY_AGE = timedelta(hours=24)
-#: How far back the fixed-time read goes (the fixtures' Loki keeps 2 years).
-FIXED_READ_SPAN = timedelta(days=730)
+#: The fixed-time read is ``[anchor - this, anchor + this)``. Loki's query
+#: frontend splits every request into 30-minute sub-queries, about 0.1 s each
+#: under the fixtures' 50m CPU limit, so a read's cost grows with its span, not
+#: its data (a 730-day read is about an hour). The three questions' generators
+#: write 2025-08-01 00:00 to 2025-08-04 14:00, i.e. anchor -38 h to +49 h.
+LOKI_ANCHOR_READ = timedelta(days=3)
+#: Fixed entries this close to the read's edge may continue past it:
+#: ``SHIFT_DATA_AT_READ_EDGE`` (fail closed instead of shifting part of them).
+LOKI_EDGE_GUARD = timedelta(hours=12)
+#: One query_range request spans at most this (about 5 s on the fixtures'
+#: Loki, well under ``LOKI_TIMEOUT_S``).
+LOKI_QUERY_SPAN = timedelta(days=1)
+#: One labels/series request spans at most this; Loki 2.9's default
+#: ``max_query_length`` (30d1h) rejects longer ones with HTTP 400.
+LOKI_SERIES_SPAN = timedelta(days=30)
 LOKI_PAGE = 5000
 LOKI_MAX_ENTRIES = 200_000
 LOKI_PUSH_ENTRIES = 5000
@@ -895,6 +908,37 @@ def _selector_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _spans(
+    start: datetime, end: datetime, step: timedelta
+) -> list[tuple[datetime, datetime]]:
+    """``[start, end)`` as consecutive half-open spans of at most ``step``."""
+    out: list[tuple[datetime, datetime]] = []
+    lo = start
+    while lo < end:
+        hi = min(lo + step, end)
+        out.append((lo, hi))
+        lo = hi
+    return out
+
+
+def _covering_names(streams: set[tuple[tuple[str, str], ...]]) -> list[str]:
+    """Label names that together appear in every stream (greedy: the name in
+    the most uncovered streams first, ties by name)."""
+    left = set(streams)
+    names: list[str] = []
+    while left:
+        counts: dict[str, int] = {}
+        for key in left:
+            for name, _ in key:
+                counts[name] = counts.get(name, 0) + 1
+        if not counts:
+            break  # a stream without labels cannot exist in Loki
+        best = min(counts, key=lambda n: (-counts[n], n))
+        names.append(best)
+        left = {key for key in left if best not in dict(key)}
+    return names
+
+
 class LokiAdmin:
     """Engineer-side client of a question's own Loki (its original port, not
     the gateway; the fixtures' Loki has no authentication)."""
@@ -914,7 +958,8 @@ class LokiAdmin:
         return f"LokiAdmin({self.url!r})"
 
     def _call(
-        self, method: str, path: str, query: Mapping[str, str] | None = None,
+        self, method: str, path: str,
+        query: Mapping[str, str] | Sequence[tuple[str, str]] | None = None,
         body: Any = None,
     ) -> Any:  # fmt: skip
         url = self.url + path
@@ -953,6 +998,19 @@ class LokiAdmin:
         data = out.get("data") if isinstance(out, dict) else None
         return sorted(str(n) for n in data or [] if not str(n).startswith("__"))
 
+    def series(
+        self, start: datetime, end: datetime, names: Sequence[str]
+    ) -> list[dict[str, str]]:
+        """Label sets of the streams with a label in ``names`` and data in
+        ``[start, end)`` (one ``match[]`` per name)."""
+        query = [("match[]", "{" + f'{n}=~".+"' + "}") for n in names]
+        query += [("start", str(_ns(start))), ("end", str(_ns(end)))]
+        out = self._call("GET", "/loki/api/v1/series", query)
+        data = out.get("data") if isinstance(out, dict) else None
+        if not isinstance(data, list):
+            raise ShiftError("SHIFT_IO_FAILED", "unexpected series result")
+        return [{str(k): str(v) for k, v in (s or {}).items()} for s in data]
+
     def _page(self, selector: str, start_ns: int, end_ns: int) -> list[LokiEntry]:
         out = self._call(
             "GET",
@@ -978,12 +1036,34 @@ class LokiAdmin:
     def entries(self, start: datetime, end: datetime) -> list[LokiEntry]:
         """Every entry in ``[start, end)`` of every stream, oldest first.
 
-        One selector ``{L=~".+"}`` per label name (every stream carries at
-        least one label), paged forward by time, duplicates across selectors
+        The streams with data in the range are listed first (labels, then
+        series, per ``LOKI_SERIES_SPAN``); a few label names that together
+        cover every listed stream (every stream carries at least one label)
+        each give a selector ``{L=~".+"}``, read per ``LOKI_QUERY_SPAN``
+        window, paged forward by time, duplicates across selectors, windows
         and page boundaries dropped."""
-        names = self.label_names(start, end)
+        streams: set[tuple[tuple[str, str], ...]] = set()
+        for lo, hi in _spans(start, end, LOKI_SERIES_SPAN):
+            names = self.label_names(lo, hi)
+            if names:
+                for labels in self.series(lo, hi, names):
+                    streams.add(tuple(sorted(labels.items())))
+        selectors = _covering_names(streams)
         seen: set[tuple[tuple[tuple[str, str], ...], int, str]] = set()
         out: list[LokiEntry] = []
+        for lo, hi in _spans(start, end, LOKI_QUERY_SPAN):
+            self._window_entries(lo, hi, selectors, seen, out)
+        out.sort(key=lambda e: (e.ns, sorted(e.labels.items()), e.line))
+        return out
+
+    def _window_entries(
+        self,
+        start: datetime,
+        end: datetime,
+        names: Sequence[str],
+        seen: set[tuple[tuple[tuple[str, str], ...], int, str]],
+        out: list[LokiEntry],
+    ) -> None:
         end_ns = _ns(end)
         for name in names:
             selector = "{" + f'{name}=~".+"' + "}"
@@ -1004,8 +1084,6 @@ class LokiAdmin:
                 if latest <= cursor:
                     raise ShiftError("SHIFT_PAGE_STUCK")
                 cursor = latest
-        out.sort(key=lambda e: (e.ns, sorted(e.labels.items()), e.line))
-        return out
 
     def push(self, entries: Sequence[LokiEntry]) -> None:
         """Chunked ``/loki/api/v1/push`` (at most ``LOKI_PUSH_ENTRIES``
@@ -1075,11 +1153,16 @@ def apply_loki_shift(
         raise ShiftError("SHIFT_NO_QUESTION_TIME")
     anchor = min(instants)
     seconds = plan_day_shift_seconds(anchor, now)
-    fixed = admin.entries(
-        setup_started - FIXED_READ_SPAN, setup_started - FIXED_ENTRY_AGE
-    )
+    read_start = anchor - LOKI_ANCHOR_READ
+    read_end = min(anchor + LOKI_ANCHOR_READ, setup_started - FIXED_ENTRY_AGE)
+    fixed = admin.entries(read_start, read_end)
     if not fixed:
         raise ShiftError("SHIFT_NO_FIXED_ENTRIES")
+    if fixed[0].ns < _ns(read_start + LOKI_EDGE_GUARD) or (
+        read_end == anchor + LOKI_ANCHOR_READ
+        and fixed[-1].ns >= _ns(read_end - LOKI_EDGE_GUARD)
+    ):
+        raise ShiftError("SHIFT_DATA_AT_READ_EDGE")
     check_no_overlap(_from_ns(fixed[0].ns), _from_ns(fixed[-1].ns), seconds)
     cutoff = _ns(now - LEAD)
     offset = seconds * 1_000_000_000

@@ -221,6 +221,31 @@ class FakeLoki:
             "data": {"resultType": "streams", "result": result, "stats": {}},
         }
 
+    def series(self, q: Mapping[str, list[str]]) -> Answer:
+        """Label sets of streams matching any ``match[]`` with an entry in
+        ``[start, end)`` (the shift lists streams before reading them)."""
+        try:
+            selectors = [self._select(m)[0] for m in q.get("match[]") or []]
+            end = _ns(q.get("end", [None])[0], _now_ns())
+            start = _ns(q.get("start", [None])[0], end - 3600 * 10**9)
+        except (_BadRequest, ValueError) as error:
+            return 400, str(error)
+        if not selectors:
+            return 400, "match[] is required"
+        with self.lock:
+            items = [(k, list(v)) for k, v in self.streams.items()]
+        out = []
+        for key, values in items:
+            labels = dict(key)
+            if not any(
+                all(_label_ok(labels, op, n, v) for n, op, v in matchers)
+                for matchers in selectors
+            ):
+                continue
+            if any(start <= ts < end for ts, _ in values):
+                out.append(labels)
+        return 200, {"status": "success", "data": out}
+
     def labels(self, q: Mapping[str, list[str]]) -> Answer:
         with self.lock:
             names = sorted({k for key in self.streams for k, _ in key})
@@ -237,6 +262,8 @@ class FakeLoki:
             return self.query_range(q)
         if path == "/loki/api/v1/labels" and method == "GET":
             return self.labels(q)
+        if path == "/loki/api/v1/series" and method == "GET":
+            return self.series(q)
         return 404, "404 page not found"
 
 

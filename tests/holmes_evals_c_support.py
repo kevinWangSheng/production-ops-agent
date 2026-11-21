@@ -142,6 +142,9 @@ class FakeLoki:
         self.streams: dict[tuple[tuple[str, str], ...], _Stream] = {}
         self.requests: list[dict[str, Any]] = []
         self.lock = threading.Lock()
+        #: Like Loki's ``max_query_length`` (2.9 default 30d1h): a labels or
+        #: query_range request spanning more than this gets HTTP 400.
+        self.max_query_ns: int | None = None
 
     # -- direct seeding (the stand-in for a question's before_test)
     def add(self, labels: Mapping[str, str], rows: Sequence[tuple[int, str]]) -> None:
@@ -197,11 +200,21 @@ class FakeLoki:
                 "body_bytes": len(body),
             }
         )
+        if method == "GET" and self.max_query_ns is not None and path in (
+            "/loki/api/v1/labels", "/loki/api/v1/label", "/loki/api/v1/query_range",
+        ):  # fmt: skip
+            span = _parse_time((query.get("end") or [""])[0], 2**63 - 1) - _parse_time(
+                (query.get("start") or [""])[0], 0
+            )
+            if span > self.max_query_ns:
+                return 400, {"error": "query length exceeds limit"}
         if method == "GET" and path in ("/loki/api/v1/labels", "/loki/api/v1/label"):
             names = sorted({n for s in self.streams.values() for n in s.labels})
             return 200, {"status": "success", "data": names}
         if method == "GET" and path == "/loki/api/v1/query_range":
             return self._query_range(query)
+        if method == "GET" and path == "/loki/api/v1/series":
+            return self._series(query)
         if method == "POST" and path == "/loki/api/v1/push":
             return self._push(headers, body)
         if method == "GET" and path == "/ready":
@@ -248,6 +261,29 @@ class FakeLoki:
                 ],
             },
         }
+
+    def _series(self, query: Mapping[str, list[str]]) -> tuple[int, Any]:
+        start = _parse_time((query.get("start") or [""])[0], 0)
+        end = _parse_time((query.get("end") or [""])[0], 2**63 - 1)
+        matches = [_SELECTOR.match(m.strip()) for m in query.get("match[]") or []]
+        if not matches or not all(matches):
+            return 400, {"error": "unsupported match[]"}
+        out = []
+        with self.lock:
+            for s in self.streams.values():
+                hit = any(
+                    m["name"] in s.labels
+                    and (
+                        s.labels[m["name"]] == m["value"]
+                        if m["op"] == "="
+                        else re.fullmatch(m["value"], s.labels[m["name"]])
+                    )
+                    for m in matches
+                    if m
+                )
+                if hit and s.window(start, end, 1):
+                    out.append(dict(s.labels))
+        return 200, {"status": "success", "data": out}
 
     def _push(self, headers: Mapping[str, str], body: bytes) -> tuple[int, Any]:
         lower = {k.lower(): v for k, v in headers.items()}
