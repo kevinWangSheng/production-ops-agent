@@ -332,12 +332,14 @@ def worker_env(
 
 
 def write_identities(path: Path, namespace: str) -> None:
-    """S-11: the extended profile's one target; namespace from ``/get_app``,
-    no workload (it would point the model at a component)."""
+    """S-11: the extended profile's one target; namespace from ``/get_app``.
+    ``workload`` (required by the product loader and migration 0004) repeats
+    the namespace: it names the whole application, never a component."""
     entry = {
         "integration_id": TARGET_ID,
         "cluster_uid": CLUSTER_UID,
         "namespace": namespace,
+        "workload": namespace,
         "health_profile_id": HEALTH_PROFILE_ID,
         "match": {"version": 1, "labels": {"namespace": namespace}},
     }

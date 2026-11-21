@@ -709,3 +709,19 @@ def test_missing_kafka_host_entry_aborts_prepare_before_identity(
         driver.prepare(cfg, None)  # type: ignore[arg-type]
     assert calls == []
     assert (tmp_path / "hosts").read_bytes() == before
+
+
+def test_write_identities_passes_product_loader(tmp_path: Path) -> None:
+    # The same loader the workbench and migration 0004 use; a missing
+    # required field (workload, 2026-11-20 rental host) raises here.
+    from opspilot.schema import load_target_identities
+    from opspilot.web.store import MappingTargetRegistry
+
+    path = tmp_path / "identities.json"
+    agent_entry.write_identities(path, "astronomy-shop")
+    loaded = load_target_identities(path)
+    entry = loaded[agent_entry.TARGET_ID]
+    assert entry["namespace"] == entry["workload"] == "astronomy-shop"
+    assert entry["match"]["labels"] == {"namespace": "astronomy-shop"}
+    registry = MappingTargetRegistry.from_file(str(path))
+    assert registry.keys() == (agent_entry.TARGET_ID,)

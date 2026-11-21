@@ -32,8 +32,10 @@ class Ports:
         """Ports that must be free before a trial starts. The round's Loki
         gateway (started once per round) and the unreachable port are not
         in it."""
+        # mcp: upstream main.py leaves its MCP port-forward running and
+        # reclaims it on the next run (_kill_stale_port_forward); not ours.
         return {
             k: v
             for k, v in self.all().items()
-            if k not in ("unreachable", "loki_gateway")
+            if k not in ("unreachable", "loki_gateway", "mcp")
         }
