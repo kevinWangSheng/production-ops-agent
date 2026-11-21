@@ -1,0 +1,44 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "status": "missing",
+  "reason": "CHANCES_EXHAUSTED",
+  "frozen_at": "2026-11-20T21:54:24.462491+00:00",
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "qid": "101_loki_historical_logs_pod_deleted",
+    "trial": 1,
+    "history": [
+      {
+        "chance": 1,
+        "kind": "infra",
+        "code": "SHIFT_IO_FAILED",
+        "detail": "GET /loki/api/v1/query_range TimeoutError",
+        "at": "2026-11-20T21:49:43.260000+00:00",
+        "cleanup_order": []
+      },
+      {
+        "chance": 2,
+        "kind": "infra",
+        "code": "SHIFT_IO_FAILED",
+        "detail": "GET /loki/api/v1/query_range TimeoutError",
+        "at": "2026-11-20T21:52:05.024721+00:00",
+        "cleanup_order": []
+      },
+      {
+        "chance": 3,
+        "kind": "infra",
+        "code": "SHIFT_IO_FAILED",
+        "detail": "GET /loki/api/v1/query_range TimeoutError",
+        "at": "2026-11-20T21:54:24.462391+00:00",
+        "cleanup_order": []
+      }
+    ],
+    "git": {
+      "commit": "a6052971f6968ac0edac0f411d6930b090864778",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "category": "env_broken",
+    "time_box_limited": false
+  }
+}

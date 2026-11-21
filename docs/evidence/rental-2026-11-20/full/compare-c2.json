@@ -1,0 +1,267 @@
+{
+ "schema": "holmes-compare-table-1",
+ "questions": 6,
+ "trials_per_question": 3,
+ "rows": [
+  {
+   "qid": "89_skill_missing_cloudwatch",
+   "opspilot": {
+    "passes": 2,
+    "of": 3,
+    "rate": 0.6666666666666666,
+    "swing": true,
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "90_skill_basic_selection",
+   "opspilot": {
+    "passes": 1,
+    "of": 3,
+    "rate": 0.3333333333333333,
+    "swing": true,
+    "trials": [
+     true,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 2,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "94_skill_transparency",
+   "opspilot": {
+    "passes": 1,
+    "of": 3,
+    "rate": 0.3333333333333333,
+    "swing": true,
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "95_skill_memory_leak_detection",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "96_no_matching_skill",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "162_get_skills",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  }
+ ],
+ "totals": {
+  "opspilot": {
+   "passes": 10,
+   "denominator": 18,
+   "rate": 0.5555555555555556,
+   "swing_questions": 3,
+   "missing_trials": 0
+  },
+  "holmes": {
+   "passes": 18,
+   "denominator": 18,
+   "rate": 1.0,
+   "swing_questions": 0,
+   "missing_trials": 0
+  }
+ },
+ "totals_merged": false,
+ "holmes_judge_path": "opspilot",
+ "notes": [
+  "Holmes 判分口径：默认 opspilot（上游 harness 建的 judge 文本，用 OpsPilot #666 同一 judge 判分，两家同一 judge 口径）",
+  "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具",
+  "两家总分分列，不合并、不相减；同一计分规则：每题 3 遍，只有 judge 判 A 算通过，缺遍、无回答、judge 无结论均记 0 并留在分母。",
+  "同模型（DeepSeek deepseek-flash，thinking 开、effort high）、同题、同 judge 接收方与模型（Z.ai glm-5.3-flashx）。",
+  "R8-13：标「去 skill 断言」的题两家都不判 SuggestSkills 建议条数，也不跑 replay。",
+  "R10-1：固定时间题两家都按同一平移规则改写数据与题面，送 judge 前反平移；平移量随各自运行时刻不同。"
+ ]
+}

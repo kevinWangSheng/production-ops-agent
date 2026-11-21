@@ -1,0 +1,374 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-l-pr725-261-262",
+  "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+  "frozen_at": "2026-11-20T21:42:20.650398+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+    "incident_id": "163a482e-4ba7-5545-9ffb-79c4c5ecae70",
+    "run": {
+      "state": "blocked",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 0,
+      "deadline": "2026-11-20T23:40:38.362676+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "We had a P1 incident 6 hours ago in production-eu-west-2 — checkout-service was\nthrowing 500s and customers couldn't pay. Please look up the logs from that\nwindow in app-261-prod-logs and explain the root cause.\n",
+      "authorized_window": {
+        "end": "2026-11-20T21:40:38+00:00",
+        "start": "2026-11-19T21:40:38+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "163a482e-4ba7-5545-9ffb-79c4c5ecae70",
+      "target_id": "929d67a9-0395-46ce-9ec8-b0b4cade0732",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+      "created_at": "2026-11-20T21:40:38.382229+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+        "control_generation": 0,
+        "state": "blocked"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-4f7faf728706",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": null,
+    "report_present": false,
+    "conclusion_step": null,
+    "steps": [],
+    "tokens": {
+      "model_rounds_with_usage": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 0
+    },
+    "tool_requests": [],
+    "observations": [],
+    "investigation_evidence": {
+      "incident_id": "163a482e-4ba7-5545-9ffb-79c4c5ecae70",
+      "observations": [],
+      "refused_operations": [],
+      "reports": [],
+      "coverage": [
+        {
+          "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "elasticsearch",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [],
+    "audit": {
+      "incident_id": "163a482e-4ba7-5545-9ffb-79c4c5ecae70",
+      "entries": [
+        {
+          "recorded_at": "2026-11-20T21:40:38.392024+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:40:38.392024+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d:1",
+          "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:40:39.342542+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+          "actor": null,
+          "detail": {
+            "kind": "run_claim_refused",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:40:39.342542+00:00",
+          "sequence": 3,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d:2",
+          "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 2
+          }
+        }
+      ],
+      "counts": {
+        "input": 0,
+        "query": 0,
+        "evidence": 0,
+        "state_change": 4,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "input",
+        "query",
+        "evidence",
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+      "scenario_id": "frozen-run",
+      "final_state": "blocked",
+      "evidence_ids": [],
+      "decision": "handoff",
+      "actions": [],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": "handoff",
+      "handoff_reasons": [
+        "INCOMPATIBLE_STATE"
+      ],
+      "report_available": false
+    },
+    "collected_at_db": "2026-11-20T21:40:43.758717+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-l-pr725-261-262",
+    "project_id": "501abd4a-41fd-4636-a541-2dc76a477111",
+    "trace_tier": null,
+    "read_back": "root_run_not_found",
+    "roots": []
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "l-pr725-261-262",
+    "qid": "261_time_window_gap_external_data",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 1,
+    "chance": 1,
+    "git": {
+      "commit": "ddcf5cee5dccc626414f3c4583275429ba4957a4",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 31010,
+      "web": 31080,
+      "es": 31092,
+      "prometheus": 31090,
+      "jaeger_query": 31086,
+      "k8s": 31043
+    },
+    "cluster_name": {
+      "value": "production-eu-west-2",
+      "env_set": true
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-20T21:40:29.346473+00:00",
+        "ended_at": "2026-11-20T21:40:29.350470+00:00",
+        "seconds": 0.004,
+        "log_sha256": "42e4d132f105e8b58d763d3fcf3eaa1081f5328430ed2e3ebd3aaa81cccf06c6",
+        "skipped": false
+      },
+      "purged": {
+        "before": [],
+        "after": [
+          "app-261-prod-logs"
+        ]
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-20T21:40:29.360923+00:00",
+        "ended_at": "2026-11-20T21:40:29.726499+00:00",
+        "seconds": 0.366,
+        "log_sha256": "7ab0648b8f61acd8585cf8f4a5f4356530769dce38e4be735c037fd0ffa3779c",
+        "skipped": false
+      },
+      "ended_at": "2026-11-20T21:40:29.726829+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-20T21:40:43.813503+00:00",
+        "ended_at": "2026-11-20T21:40:43.817807+00:00",
+        "seconds": 0.004,
+        "log_sha256": "42e4d132f105e8b58d763d3fcf3eaa1081f5328430ed2e3ebd3aaa81cccf06c6",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": false,
+      "reason": "RELATIVE_TIME",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "indices": [],
+      "store_size_before": {},
+      "store_size_after": {},
+      "question_rewrites": [],
+      "time_only_phrases": 0
+    },
+    "shift_timing": {
+      "started_at": "2026-11-20T21:40:29.726829+00:00",
+      "ended_at": "2026-11-20T21:40:29.726953+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "8f8323215b4d9058bb9283f80287c6404ff873eb82f78b953b2925d3ff06ab63",
+      "sha256_delivered": "8f8323215b4d9058bb9283f80287c6404ff873eb82f78b953b2925d3ff06ab63",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "CLUSTER_NAME_ENV_ONLY"
+    ],
+    "data_plane": {
+      "backend": "elasticsearch",
+      "mode": "external",
+      "product_url": "http://127.0.0.1:30920",
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-20T21:40:38.268554+00:00",
+      "setup_to_delivery_seconds": 8.542,
+      "status": 201,
+      "code": null,
+      "incident_id": "163a482e-4ba7-5545-9ffb-79c4c5ecae70",
+      "run_id": "7833cfac-6610-525c-8ae1-dac47a2bfe6d",
+      "idempotency_label": "holmes-l-pr725-261-262-261_time_window_gap_external_data-t1-c1",
+      "responded_at": "2026-11-20T21:40:38.396162+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "blocked",
+      "timed_out": false,
+      "seconds": 5.023
+    },
+    "conversion": {
+      "with_tool_calls": false,
+      "tool_calls": 0,
+      "tool_calls_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "deshift_count": 0,
+      "reason": "REPORT_REJECTED_BY_PRODUCT",
+      "text_sha256": null
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": null,
+      "passed": null,
+      "error_code": null,
+      "attempts": null,
+      "request_bytes": null
+    },
+    "category": "no_report"
+  },
+  "raw_ledger": {
+    "sha256": "7c12ea9ae2c8cf23ca8e2db18c20b61e725c2c786c14736008d16bbf821c182a",
+    "bytes": 66767,
+    "path": "tmp/lab-ledgers/holmes-evals-l-pr725-261-262/7833cfac-6610-525c-8ae1-dac47a2bfe6d/ledger.json",
+    "in_repository": false
+  }
+}

@@ -1,0 +1,109 @@
+{
+ "holmes_compare": {
+  "category": "no_report",
+  "chance": 1,
+  "code": "HOLMES_NO_ANSWER",
+  "conversion": {
+   "deshift_count": null,
+   "text_sha256": null
+  },
+  "data_plane": {
+   "backend": "mongodb",
+   "mode": "upstream-direct",
+   "product_url": "mongodb://127.0.0.1:10227",
+   "victorialogs_image": null
+  },
+  "disclosures": [
+   "TOOL_FACE_UPSTREAM_DEFAULT",
+   "UPSTREAM_HARNESS_JUDGE_TEXT",
+   "DB_ADMIN_ACCOUNT_UPSTREAM",
+   "JUDGE_DIFFERS_FROM_UPSTREAM"
+  ],
+  "history": [
+   {
+    "category": "no_report",
+    "chance": 1,
+    "code": "HOLMES_NO_ANSWER"
+   }
+  ],
+  "judge": {
+   "attempts": null,
+   "choice": null,
+   "error_code": null,
+   "model": "glm-5.3-flashx",
+   "passed": false,
+   "path": "opspilot",
+   "prompt": "scripts.holmes_evals.judge (#666)",
+   "prompt_sha256": null,
+   "receiver": "zai"
+  },
+  "llm_calls": null,
+  "model": "deepseek/deepseek-flash",
+  "model_env": {
+   "ENABLE_TELEMETRY": "false",
+   "LLM_REQUEST_TIMEOUT": "360",
+   "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+   "OVERRIDE_MAX_OUTPUT_TOKEN": "65536",
+   "REASONING_EFFORT": "high",
+   "TEMPERATURE": "none",
+   "THINKING": "{\"type\": \"enabled\"}"
+  },
+  "purged": {
+   "after": [],
+   "before": []
+  },
+  "pytest": {
+   "errors": {
+    "call": "Skipped"
+   },
+   "exit": 0,
+   "phases": {
+    "call": "skipped",
+    "setup": "passed",
+    "teardown": "passed"
+   },
+   "timed_out": false
+  },
+  "qid": "229_mongodb_schema_discovery",
+  "question": {
+   "sha256_delivered": "55a41576b850f20653dbd9716747e490dac414dcc300cf718d016842e30151eb",
+   "sha256_original": "55a41576b850f20653dbd9716747e490dac414dcc300cf718d016842e30151eb"
+  },
+  "round": "full-h-c6",
+  "seconds": null,
+  "shift": {
+   "anchor": null,
+   "anchor_source": null,
+   "applied": false,
+   "backend": "victorialogs",
+   "dropped_future": 0,
+   "fixed_entries": 0,
+   "line_stamps_rewritten": 0,
+   "original_max": null,
+   "original_min": null,
+   "pushed": 0,
+   "question_rewrites": [],
+   "reason": "RELATIVE_TIME",
+   "seconds": 0,
+   "shifted_max": null,
+   "shifted_min": null,
+   "streams": [],
+   "time_only_phrases": 0
+  },
+  "shift_day_wait_seconds": 0.0,
+  "todo": {
+   "enabled": false,
+   "mode": "question",
+   "source": "question"
+  },
+  "tool_calls": null,
+  "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具",
+  "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+  "trial": 2,
+  "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+  "wall_seconds": 13.807
+ },
+ "schema": "holmes-compare-trial-1",
+ "status": "completed",
+ "written_at": "2026-11-21T09:27:58.927864+00:00"
+}

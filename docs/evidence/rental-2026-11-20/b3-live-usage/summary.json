@@ -1,0 +1,1233 @@
+{
+ "schema": "lane-l-b3-live/1",
+ "question": "Right now, which pods in the otel-demo namespace are using the most CPU and memory, and how loaded is the cluster's node? I want the current live usage, not history.",
+ "env_switches": {
+  "OPSPILOT_K8S_LIVE_METRICS": "1"
+ },
+ "run": {
+  "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+  "incident_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+  "run": {
+   "state": "completed",
+   "control_generation": 0,
+   "budget_limit": 100,
+   "model_requests_used": 2,
+   "deadline": "2026-11-20T23:21:37.519769+00:00",
+   "bound_target_id": "m0-otel-20260909",
+   "question": "Right now, which pods in the otel-demo namespace are using the most CPU and memory, and how loaded is the cluster's node? I want the current live usage, not history.",
+   "authorized_window": {
+    "end": "2026-11-20T21:21:37+00:00",
+    "start": "2026-11-19T21:21:37+00:00"
+   }
+  },
+  "incident": {
+   "incident_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+   "target_id": "2880c4ad-75eb-4439-83ff-2b841c09449c",
+   "lifecycle": "open",
+   "state": "queued",
+   "mode": "automatic",
+   "control_generation": 0,
+   "current_run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+   "created_at": "2026-11-20T21:21:37.540414+00:00"
+  },
+  "incident_runs": [
+   {
+    "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+    "control_generation": 0,
+    "state": "completed"
+   }
+  ],
+  "versions": {
+   "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+   "tool_schema_revision": "otel-demo-ext-4730c27997c9",
+   "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+  },
+  "report": {
+   "schema_version": "m0-report-v3",
+   "assessment_status": "completed",
+   "conclusion": "supported",
+   "summary": "Current (not historical) usage snapshots from the cluster metrics API for namespace otel-demo and for the cluster's nodes. 22 pods were returned for otel-demo (pods_shown 22, pods_omitted 0), sampled between 2026-11-20T21:21:08Z and 2026-11-20T21:21:26Z. Highest CPU: recommendation 12m, otel-collector 11m, frontend-proxy 8m, then cart, load-generator and prometheus-server at 4m each. Highest memory: jaeger ~255.6 MB, ad ~228.1 MB, prometheus-server ~222.0 MB, frontend ~105.7 MB, otel-collector ~78.7 MB, cart ~74.6 MB, payment ~74.4 MB. Absolute usage is low across the board (max 12 millicores per pod). The single node returned, opspilot-m1-control-plane, was at 424 millicores (5% of allocatable CPU) and 5,627,080,704 bytes (16% of allocatable memory) at 2026-11-20T21:21:20Z, so the node was not heavily loaded at that instant. These are instantaneous snapshots only: they say nothing about the incident window, throttling, OOM, or pod requests/limits, which were not examined.",
+   "claims": [
+    {
+     "kind": "fact",
+     "text": "Highest CPU consumers among the 22 otel-demo pods returned were recommendation 12 millicores, otel-collector 11 millicores and frontend-proxy 8 millicores; cart, load-generator and prometheus-server each used 4 millicores, and all remaining pods used 1–3 millicores.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "fact",
+     "text": "Highest memory consumers among the same 22 otel-demo pods were jaeger 255,627,264 bytes, ad 228,122,624 bytes, prometheus-server 222,027,776 bytes, frontend 105,656,320 bytes, otel-collector 78,716,928 bytes, cart 74,620,928 bytes and payment 74,424,320 bytes.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "fact",
+     "text": "Smaller memory footprints in otel-demo at the same sample were load-generator 63,295,488, email 50,737,152, recommendation 42,774,528, flagd 27,254,784, kube-state-metrics 18,972,672, quote 16,818,176, alertmanager 16,814,080, frontend-proxy 16,269,312, checkout 10,809,344, product-catalog 10,489,856, valkey-cart 3,543,040, image-provider 3,387,392, currency 2,985,984, shipping 2,236,416 and prometheus-readonly-proxy 2,162,688 bytes.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "fact",
+     "text": "The only node returned, opspilot-m1-control-plane, used 424 millicores (5% of allocatable CPU) and 5,627,080,704 bytes (16% of allocatable memory) at 2026-11-20T21:21:20Z; no nodes were omitted from the result.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "counter_evidence",
+     "text": "Against any reading of these numbers as resource stress: the highest per-pod CPU in otel-demo was 12 millicores and node CPU was 5% of allocatable at sample time, so this snapshot does not show a CPU-saturated node or pod.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "hypothesis",
+     "text": "otel-collector, jaeger and prometheus-server combine elevated CPU and elevated memory relative to the demo application pods, which is consistent with observability-stack overhead rather than application load; this is not verified since requests/limits and per-container workload roles were not examined.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    },
+    {
+     "kind": "recommendation",
+     "text": "To judge whether these usages are safe rather than merely small in absolute terms, compare them with pod/container requests and limits (kubernetes_tabular_query on pods) and with CPU-throttling and container memory-working-set/limit series in Prometheus.",
+     "evidence_ids": [
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+      "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373"
+     ],
+     "target_refs": [
+      "m0-otel-20260909"
+     ],
+     "time_scope_ref": "policy-window-1"
+    }
+   ],
+   "gaps": [
+    "These are instantaneous metrics-server snapshots sampled at 2026-11-20T21:21:08Z–21:21:26Z (pods) and 2026-11-20T21:21:20Z (node), 11–29 s before the authorized window end; they do not describe usage during the rest of the 2026-11-19T21:21:37Z–2026-11-20T21:21:37Z window.",
+    "Pod and container requests/limits were not queried, so headroom and any request/limit mismatch is unknown.",
+    "CPU throttling and memory pressure (e.g. container throttling or OOMKilled history) were not checked; high or low usage alone cannot confirm or exclude them.",
+    "The top-pods result cannot prove that no other otel-demo pod exists: a pod absent from the result may have just started, ended, or not been scraped yet.",
+    "Only one node was returned by the cluster's metrics API; whether the cluster has additional nodes that this target does not report is not shown here.",
+    "Usage per pod is aggregate across each pod's containers; the returned view lists one container per pod, so multi-container breakdowns beyond these rows are unknown."
+   ],
+   "next_steps": [
+    "Compare the highlighted pods' usage against their declared requests and limits to see whether any pod is close to its ceiling.",
+    "If the goal is SLO rather than capacity review, check Prometheus CPU-throttling and OOM series plus the affected services' own error and latency signals rather than raw utilization."
+   ],
+   "root_cause": null
+  },
+  "report_present": true,
+  "conclusion_step": {
+   "sequence": 2,
+   "logical_key": "conclusion:g0:ctx0:round-2",
+   "status": "response_committed",
+   "observed_at": "2026-11-20T21:21:52.199071+00:00"
+  },
+  "steps": [
+   {
+    "sequence": 0,
+    "logical_key": "ctx0:round-1",
+    "status": "tool_result_committed",
+    "observed_at": "2026-11-20T21:21:39.340771+00:00",
+    "kind": null
+   },
+   {
+    "sequence": 1,
+    "logical_key": "ctx0:round-2",
+    "status": "response_committed",
+    "observed_at": "2026-11-20T21:21:52.190147+00:00",
+    "kind": null
+   },
+   {
+    "sequence": 2,
+    "logical_key": "conclusion:g0:ctx0:round-2",
+    "status": "response_committed",
+    "observed_at": "2026-11-20T21:21:52.199071+00:00",
+    "kind": "conclusion"
+   }
+  ],
+  "tokens": {
+   "model_rounds_with_usage": 2,
+   "prompt_tokens": 29830,
+   "completion_tokens": 3007,
+   "total_tokens": 32837,
+   "prompt_cache_hit_tokens": 25600,
+   "prompt_cache_miss_tokens": 4230
+  },
+  "tool_requests": [
+   {
+    "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+    "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0",
+    "epoch": 1,
+    "tool": "kubectl_top_pods",
+    "target_id": "m0-otel-20260909",
+    "result_code": "ok",
+    "reason": null,
+    "outbound": true,
+    "source_contact": null,
+    "time_basis": "tool_event",
+    "record_kind": "result"
+   },
+   {
+    "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+    "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1",
+    "epoch": 1,
+    "tool": "kubectl_top_nodes",
+    "target_id": "m0-otel-20260909",
+    "result_code": "ok",
+    "reason": null,
+    "outbound": true,
+    "source_contact": null,
+    "time_basis": "tool_event",
+    "record_kind": "result"
+   }
+  ],
+  "observations": [
+   {
+    "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+    "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+    "status": "ok",
+    "adopted": true,
+    "tool": "kubectl_top_pods",
+    "tool_version": "v1",
+    "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+    "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "query": {
+     "namespace": "otel-demo"
+    },
+    "window": {
+     "end": "2026-11-20T21:21:37+00:00",
+     "start": "2026-11-19T21:21:37+00:00"
+    },
+    "lookback_seconds": null,
+    "lookback_start_at": null,
+    "observed_at": "2026-11-20T21:21:39.384235+00:00",
+    "data_as_of": null,
+    "freshness_seconds": null,
+    "projection_revision": "m1-01-tool-view-v11",
+    "resolvable": true,
+    "missing_fields": []
+   },
+   {
+    "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+    "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+    "status": "ok",
+    "adopted": true,
+    "tool": "kubectl_top_nodes",
+    "tool_version": "v1",
+    "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+    "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "query": {},
+    "window": {
+     "end": "2026-11-20T21:21:37+00:00",
+     "start": "2026-11-19T21:21:37+00:00"
+    },
+    "lookback_seconds": null,
+    "lookback_start_at": null,
+    "observed_at": "2026-11-20T21:21:39.404943+00:00",
+    "data_as_of": null,
+    "freshness_seconds": null,
+    "projection_revision": "m1-01-tool-view-v11",
+    "resolvable": true,
+    "missing_fields": []
+   }
+  ],
+  "investigation_evidence": {
+   "incident_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+   "observations": [
+    {
+     "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "status": "ok",
+     "adopted": true,
+     "tool": "kubectl_top_pods",
+     "tool_version": "v1",
+     "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+     "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd",
+     "source": "otel-demo",
+     "target_id": "m0-otel-20260909",
+     "query": {
+      "namespace": "otel-demo"
+     },
+     "window": {
+      "end": "2026-11-20T21:21:37+00:00",
+      "start": "2026-11-19T21:21:37+00:00"
+     },
+     "lookback_seconds": null,
+     "lookback_start_at": null,
+     "observed_at": "2026-11-20T21:21:39.384235+00:00",
+     "data_as_of": null,
+     "freshness_seconds": null,
+     "projection_revision": "m1-01-tool-view-v11",
+     "resolvable": true,
+     "missing_fields": []
+    },
+    {
+     "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "status": "ok",
+     "adopted": true,
+     "tool": "kubectl_top_nodes",
+     "tool_version": "v1",
+     "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+     "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd",
+     "source": "otel-demo",
+     "target_id": "m0-otel-20260909",
+     "query": {},
+     "window": {
+      "end": "2026-11-20T21:21:37+00:00",
+      "start": "2026-11-19T21:21:37+00:00"
+     },
+     "lookback_seconds": null,
+     "lookback_start_at": null,
+     "observed_at": "2026-11-20T21:21:39.404943+00:00",
+     "data_as_of": null,
+     "freshness_seconds": null,
+     "projection_revision": "m1-01-tool-view-v11",
+     "resolvable": true,
+     "missing_fields": []
+    }
+   ],
+   "refused_operations": [],
+   "reports": [
+    {
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "claims": {
+      "fact": [
+       {
+        "text": "Highest CPU consumers among the 22 otel-demo pods returned were recommendation 12 millicores, otel-collector 11 millicores and frontend-proxy 8 millicores; cart, load-generator and prometheus-server each used 4 millicores, and all remaining pods used 1–3 millicores.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       },
+       {
+        "text": "Highest memory consumers among the same 22 otel-demo pods were jaeger 255,627,264 bytes, ad 228,122,624 bytes, prometheus-server 222,027,776 bytes, frontend 105,656,320 bytes, otel-collector 78,716,928 bytes, cart 74,620,928 bytes and payment 74,424,320 bytes.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       },
+       {
+        "text": "Smaller memory footprints in otel-demo at the same sample were load-generator 63,295,488, email 50,737,152, recommendation 42,774,528, flagd 27,254,784, kube-state-metrics 18,972,672, quote 16,818,176, alertmanager 16,814,080, frontend-proxy 16,269,312, checkout 10,809,344, product-catalog 10,489,856, valkey-cart 3,543,040, image-provider 3,387,392, currency 2,985,984, shipping 2,236,416 and prometheus-readonly-proxy 2,162,688 bytes.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       },
+       {
+        "text": "The only node returned, opspilot-m1-control-plane, used 424 millicores (5% of allocatable CPU) and 5,627,080,704 bytes (16% of allocatable memory) at 2026-11-20T21:21:20Z; no nodes were omitted from the result.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       }
+      ],
+      "hypothesis": [
+       {
+        "text": "otel-collector, jaeger and prometheus-server combine elevated CPU and elevated memory relative to the demo application pods, which is consistent with observability-stack overhead rather than application load; this is not verified since requests/limits and per-container workload roles were not examined.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       }
+      ],
+      "recommendation": [
+       {
+        "text": "To judge whether these usages are safe rather than merely small in absolute terms, compare them with pod/container requests and limits (kubernetes_tabular_query on pods) and with CPU-throttling and container memory-working-set/limit series in Prometheus.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         },
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       }
+      ],
+      "counter_evidence": [
+       {
+        "text": "Against any reading of these numbers as resource stress: the highest per-pod CPU in otel-demo was 12 millicores and node CPU was 5% of allocatable at sample time, so this snapshot does not show a CPU-saturated node or pod.",
+        "evidence": [
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         },
+         {
+          "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+          "resolvable": true,
+          "ok": true,
+          "citable_as_fact": true
+         }
+        ]
+       }
+      ],
+      "rejected_hypothesis": []
+     },
+     "collection_truncated": false
+    }
+   ],
+   "coverage": [
+    {
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "sources_recorded": true,
+     "sources": [
+      {
+       "name": "jaeger",
+       "ok": 0,
+       "no_data": 0,
+       "non_ok": 0,
+       "reasons": {},
+       "state": "not_queried",
+       "gap": true
+      },
+      {
+       "name": "kubernetes",
+       "ok": 2,
+       "no_data": 0,
+       "non_ok": 0,
+       "reasons": {},
+       "state": "all_ok",
+       "gap": false
+      },
+      {
+       "name": "prometheus",
+       "ok": 0,
+       "no_data": 0,
+       "non_ok": 0,
+       "reasons": {},
+       "state": "not_queried",
+       "gap": true
+      },
+      {
+       "name": "change_history",
+       "ok": 0,
+       "no_data": 0,
+       "non_ok": 0,
+       "reasons": {},
+       "state": "not_integrated",
+       "gap": true
+      }
+     ],
+     "duplicates_skipped": 0
+    }
+   ]
+  },
+  "cited_evidence": [
+   {
+    "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+    "resolvable": true,
+    "tool": "kubectl_top_pods",
+    "status": "ok",
+    "stored": {
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "subject_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+     "status": "ok",
+     "view": {
+      "tool": "kubectl_top_pods",
+      "notes": [
+       "Sampled at 2026-11-20T21:21:08Z–2026-11-20T21:21:26Z: current usage, 29 s before the end of the authorized window (2026-11-20T21:21:37Z)."
+      ],
+      "query": {
+       "namespace": "otel-demo"
+      },
+      "scope": {
+       "namespace": "otel-demo",
+       "all_namespaces": false
+      },
+      "trust": "untrusted-evidence",
+      "source": "otel-demo",
+      "status": "ok",
+      "window": {
+       "end": "2026-11-20T21:21:37+00:00",
+       "start": "2026-11-19T21:21:37+00:00"
+      },
+      "adopted": true,
+      "content": [
+       {
+        "pod": "ad-757d59f5dd-d4427",
+        "window": "18.879s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:13Z",
+        "containers": [
+         {
+          "name": "ad",
+          "memory_bytes": 228122624,
+          "cpu_millicores": 2
+         }
+        ],
+        "memory_bytes": 228122624,
+        "cpu_millicores": 2
+       },
+       {
+        "pod": "alertmanager-0",
+        "window": "19.736s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:10Z",
+        "containers": [
+         {
+          "name": "alertmanager",
+          "memory_bytes": 16814080,
+          "cpu_millicores": 2
+         }
+        ],
+        "memory_bytes": 16814080,
+        "cpu_millicores": 2
+       },
+       {
+        "pod": "cart-549b8757d-zjgcd",
+        "window": "19.706s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:24Z",
+        "containers": [
+         {
+          "name": "cart",
+          "memory_bytes": 74620928,
+          "cpu_millicores": 4
+         }
+        ],
+        "memory_bytes": 74620928,
+        "cpu_millicores": 4
+       },
+       {
+        "pod": "checkout-6578865d87-5zx6n",
+        "window": "19.603s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:21Z",
+        "containers": [
+         {
+          "name": "checkout",
+          "memory_bytes": 10809344,
+          "cpu_millicores": 2
+         }
+        ],
+        "memory_bytes": 10809344,
+        "cpu_millicores": 2
+       },
+       {
+        "pod": "currency-6db8974b78-8g7s7",
+        "window": "14.175s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:25Z",
+        "containers": [
+         {
+          "name": "currency",
+          "memory_bytes": 2985984,
+          "cpu_millicores": 2
+         }
+        ],
+        "memory_bytes": 2985984,
+        "cpu_millicores": 2
+       },
+       {
+        "pod": "email-6cd97b67f9-nhnxc",
+        "window": "12.217s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:24Z",
+        "containers": [
+         {
+          "name": "email",
+          "memory_bytes": 50737152,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 50737152,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "flagd-d6485586b-9t42n",
+        "window": "19.49s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:11Z",
+        "containers": [
+         {
+          "name": "flagd",
+          "memory_bytes": 27254784,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 27254784,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "frontend-6c9bc688bf-58jmw",
+        "window": "16.371s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:19Z",
+        "containers": [
+         {
+          "name": "frontend",
+          "memory_bytes": 105656320,
+          "cpu_millicores": 3
+         }
+        ],
+        "memory_bytes": 105656320,
+        "cpu_millicores": 3
+       },
+       {
+        "pod": "frontend-proxy-844799bcdb-pv5mn",
+        "window": "17.408s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:18Z",
+        "containers": [
+         {
+          "name": "frontend-proxy",
+          "memory_bytes": 16269312,
+          "cpu_millicores": 8
+         }
+        ],
+        "memory_bytes": 16269312,
+        "cpu_millicores": 8
+       },
+       {
+        "pod": "image-provider-575d7b4846-9lxjv",
+        "window": "24.407s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:26Z",
+        "containers": [
+         {
+          "name": "image-provider",
+          "memory_bytes": 3387392,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 3387392,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "jaeger-698d849b7b-sjz9c",
+        "window": "14.963s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:08Z",
+        "containers": [
+         {
+          "name": "jaeger",
+          "memory_bytes": 255627264,
+          "cpu_millicores": 3
+         }
+        ],
+        "memory_bytes": 255627264,
+        "cpu_millicores": 3
+       },
+       {
+        "pod": "kube-state-metrics-7cbf5b996-df4sz",
+        "window": "16.124s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:18Z",
+        "containers": [
+         {
+          "name": "kube-state-metrics",
+          "memory_bytes": 18972672,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 18972672,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "load-generator-5ff476786d-xg5nz",
+        "window": "16.744s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:22Z",
+        "containers": [
+         {
+          "name": "load-generator",
+          "memory_bytes": 63295488,
+          "cpu_millicores": 4
+         }
+        ],
+        "memory_bytes": 63295488,
+        "cpu_millicores": 4
+       },
+       {
+        "pod": "otel-collector-789c64b9bf-tl55c",
+        "window": "15.864s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:22Z",
+        "containers": [
+         {
+          "name": "opentelemetry-collector",
+          "memory_bytes": 78716928,
+          "cpu_millicores": 11
+         }
+        ],
+        "memory_bytes": 78716928,
+        "cpu_millicores": 11
+       },
+       {
+        "pod": "payment-6f7bc865d6-9z92d",
+        "window": "11.004s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:19Z",
+        "containers": [
+         {
+          "name": "payment",
+          "memory_bytes": 74424320,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 74424320,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "product-catalog-777f5468d4-hc8rj",
+        "window": "17.442s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:20Z",
+        "containers": [
+         {
+          "name": "product-catalog",
+          "memory_bytes": 10489856,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 10489856,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "prometheus-9bc78b5f7-c9wx8",
+        "window": "13.844s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:14Z",
+        "containers": [
+         {
+          "name": "prometheus-server",
+          "memory_bytes": 222027776,
+          "cpu_millicores": 4
+         }
+        ],
+        "memory_bytes": 222027776,
+        "cpu_millicores": 4
+       },
+       {
+        "pod": "prometheus-readonly-proxy-f4866f767-62bgn",
+        "window": "10.042s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:22Z",
+        "containers": [
+         {
+          "name": "nginx",
+          "memory_bytes": 2162688,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 2162688,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "quote-75774ddb4c-kpbqh",
+        "window": "13.62s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:18Z",
+        "containers": [
+         {
+          "name": "quote",
+          "memory_bytes": 16818176,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 16818176,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "recommendation-9d497476-bxbjw",
+        "window": "10.684s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:21Z",
+        "containers": [
+         {
+          "name": "recommendation",
+          "memory_bytes": 42774528,
+          "cpu_millicores": 12
+         }
+        ],
+        "memory_bytes": 42774528,
+        "cpu_millicores": 12
+       },
+       {
+        "pod": "shipping-6fc5f694db-9sq2c",
+        "window": "17.005s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:10Z",
+        "containers": [
+         {
+          "name": "shipping",
+          "memory_bytes": 2236416,
+          "cpu_millicores": 1
+         }
+        ],
+        "memory_bytes": 2236416,
+        "cpu_millicores": 1
+       },
+       {
+        "pod": "valkey-cart-d6456b5b6-5dlsx",
+        "window": "17.34s",
+        "namespace": "otel-demo",
+        "timestamp": "2026-11-20T21:21:12Z",
+        "containers": [
+         {
+          "name": "valkey-cart",
+          "memory_bytes": 3543040,
+          "cpu_millicores": 2
+         }
+        ],
+        "memory_bytes": 3543040,
+        "cpu_millicores": 2
+       }
+      ],
+      "target_id": "m0-otel-20260909",
+      "truncated": false,
+      "data_as_of": null,
+      "incomplete": false,
+      "pods_shown": 22,
+      "sampled_at": {
+       "latest": "2026-11-20T21:21:26Z",
+       "earliest": "2026-11-20T21:21:08Z"
+      },
+      "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+      "observed_at": "2026-11-20T21:21:39.384235+00:00",
+      "cannot_prove": "This is usage at this moment, not usage during the incident window, and not a history (use Prometheus for change over time). A Pod missing from the result may have just started, ended or not been scraped yet; it is not proof the Pod is not running. High usage is not proof of throttling or OOM; requests and limits are in kubernetes_tabular_query.",
+      "omitted_rows": 0,
+      "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0",
+      "pods_omitted": 0,
+      "result_count": 22,
+      "tool_version": "v1",
+      "omitted_bytes": 0,
+      "source_end_at": null,
+      "returned_count": 22,
+      "citable_as_fact": true,
+      "source_start_at": null,
+      "lookback_seconds": null,
+      "freshness_seconds": null,
+      "lookback_start_at": null,
+      "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+      "dispatch_started_at": "2026-11-20T21:21:39.353515+00:00",
+      "projection_revision": "m1-01-tool-view-v11",
+      "backend_pods_returned": 22,
+      "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd"
+     }
+    }
+   },
+   {
+    "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+    "resolvable": true,
+    "tool": "kubectl_top_nodes",
+    "status": "ok",
+    "stored": {
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "subject_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+     "status": "ok",
+     "view": {
+      "tool": "kubectl_top_nodes",
+      "notes": [
+       "Sampled at 2026-11-20T21:21:20Z–2026-11-20T21:21:20Z: current usage, 17 s before the end of the authorized window (2026-11-20T21:21:37Z)."
+      ],
+      "query": {},
+      "trust": "untrusted-evidence",
+      "source": "otel-demo",
+      "status": "ok",
+      "window": {
+       "end": "2026-11-20T21:21:37+00:00",
+       "start": "2026-11-19T21:21:37+00:00"
+      },
+      "adopted": true,
+      "content": [
+       {
+        "node": "opspilot-m1-control-plane",
+        "window": "10.09s",
+        "timestamp": "2026-11-20T21:21:20Z",
+        "cpu_percent": 5,
+        "memory_bytes": 5627080704,
+        "cpu_millicores": 424,
+        "memory_percent": 16
+       }
+      ],
+      "target_id": "m0-otel-20260909",
+      "truncated": false,
+      "data_as_of": null,
+      "incomplete": false,
+      "sampled_at": {
+       "latest": "2026-11-20T21:21:20Z",
+       "earliest": "2026-11-20T21:21:20Z"
+      },
+      "evidence_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+      "nodes_shown": 1,
+      "observed_at": "2026-11-20T21:21:39.404943+00:00",
+      "cannot_prove": "This is usage at this moment, not usage during the incident window, and not a history (use Prometheus for change over time). A Pod missing from the result may have just started, ended or not been scraped yet; it is not proof the Pod is not running. High usage is not proof of throttling or OOM; requests and limits are in kubernetes_tabular_query.",
+      "omitted_rows": 0,
+      "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1",
+      "result_count": 1,
+      "tool_version": "v1",
+      "nodes_omitted": 0,
+      "omitted_bytes": 0,
+      "source_end_at": null,
+      "returned_count": 1,
+      "citable_as_fact": true,
+      "source_start_at": null,
+      "lookback_seconds": null,
+      "freshness_seconds": null,
+      "lookback_start_at": null,
+      "registry_revision": "5d12423111a18327391eff3b983c78ea5736a8bb0c7f1b091a5d99c35d186ed1",
+      "dispatch_started_at": "2026-11-20T21:21:39.362985+00:00",
+      "projection_revision": "m1-01-tool-view-v11",
+      "backend_nodes_returned": 1,
+      "tool_registry_revision": "6f193e47a444ae927c71b0f668f1f8a0e3f3eeb82b44edadb1c6c54be6b05cfd"
+     }
+    }
+   }
+  ],
+  "audit": {
+   "incident_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729",
+   "entries": [
+    {
+     "recorded_at": "2026-11-20T21:21:37.550834+00:00",
+     "sequence": 0,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "1",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "intake_accepted",
+      "sequence": 1
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:37.550834+00:00",
+     "sequence": 1,
+     "category": "state_change",
+     "source": "opspilot_runs",
+     "record_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697:1",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "action": "created",
+      "time_basis": "subject_event",
+      "event_sequence": 1
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:38.233657+00:00",
+     "sequence": 2,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "2",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "run_claimed",
+      "sequence": 2
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.340771+00:00",
+     "sequence": 3,
+     "category": "input",
+     "source": "opspilot_input_rounds",
+     "record_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697:e510e8d8-84b4-497b-9d4d-4d5f694b1fb9",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "control_generation": 0,
+      "input_watermark": 0,
+      "committed": true,
+      "time_basis": "step_recorded"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.346157+00:00",
+     "sequence": 4,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "3",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "step_committed",
+      "sequence": 3
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.429400+00:00",
+     "sequence": 5,
+     "category": "query",
+     "source": "opspilot_tool_charges",
+     "record_id": "5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0",
+      "epoch": 1,
+      "tool": "kubectl_top_pods",
+      "target_id": "m0-otel-20260909",
+      "result_code": "ok",
+      "reason": null,
+      "outbound": true,
+      "source_contact": null,
+      "time_basis": "tool_event",
+      "record_kind": "result"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.429400+00:00",
+     "sequence": 6,
+     "category": "evidence",
+     "source": "opspilot_evidence",
+     "record_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "time_basis": "tool_event",
+      "status": "ok",
+      "adopted": true,
+      "committed": true,
+      "record_kind": "result"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.429400+00:00",
+     "sequence": 7,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "4",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "tool_committed",
+      "sequence": 4
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.439996+00:00",
+     "sequence": 8,
+     "category": "query",
+     "source": "opspilot_tool_charges",
+     "record_id": "8a4245af-d4ec-40f2-b310-055592cb9373",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "operation_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1",
+      "epoch": 1,
+      "tool": "kubectl_top_nodes",
+      "target_id": "m0-otel-20260909",
+      "result_code": "ok",
+      "reason": null,
+      "outbound": true,
+      "source_contact": null,
+      "time_basis": "tool_event",
+      "record_kind": "result"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.439996+00:00",
+     "sequence": 9,
+     "category": "evidence",
+     "source": "opspilot_evidence",
+     "record_id": "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "time_basis": "tool_event",
+      "status": "ok",
+      "adopted": true,
+      "committed": true,
+      "record_kind": "result"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:39.439996+00:00",
+     "sequence": 10,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "5",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "tool_committed",
+      "sequence": 5
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:52.190147+00:00",
+     "sequence": 11,
+     "category": "input",
+     "source": "opspilot_input_rounds",
+     "record_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697:6b7dfc41-9b9e-41b1-8bac-5cefed809d85",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "control_generation": 0,
+      "input_watermark": 0,
+      "committed": true,
+      "time_basis": "step_recorded"
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:52.194783+00:00",
+     "sequence": 12,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "6",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "step_committed",
+      "sequence": 6
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:52.208154+00:00",
+     "sequence": 13,
+     "category": "state_change",
+     "source": "opspilot_subject_events",
+     "record_id": "7",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "kind": "run_completed",
+      "sequence": 7
+     }
+    },
+    {
+     "recorded_at": "2026-11-20T21:21:52.208154+00:00",
+     "sequence": 14,
+     "category": "state_change",
+     "source": "opspilot_runs",
+     "record_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697:7",
+     "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+     "actor": null,
+     "detail": {
+      "action": "ended",
+      "time_basis": "subject_event",
+      "event_sequence": 7
+     }
+    }
+   ],
+   "counts": {
+    "input": 2,
+    "query": 2,
+    "evidence": 2,
+    "state_change": 9,
+    "human_correction": 0,
+    "recovery_observation": 0,
+    "postmortem_review": 0
+   },
+   "missing": [
+    "human_correction",
+    "recovery_observation",
+    "postmortem_review"
+   ]
+  },
+  "audit_undated": {},
+  "alert_delivery_outcomes": [],
+  "alert_deliveries": [],
+  "outcome": {
+   "available": true,
+   "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+   "scenario_id": "frozen-run",
+   "final_state": "completed",
+   "evidence_ids": [
+    "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t0:5fcf6d35-8a5d-4d0c-a9a4-0f1cc075ac35",
+    "e510e8d8-84b4-497b-9d4d-4d5f694b1fb9-t1:8a4245af-d4ec-40f2-b310-055592cb9373"
+   ],
+   "decision": "report_available",
+   "actions": [
+    "read_only_query"
+   ],
+   "permissions": [
+    "read_only",
+    "human_control"
+   ],
+   "human_interaction": null,
+   "handoff_reasons": [],
+   "report_available": true
+  },
+  "collected_at_db": "2026-11-20T21:21:53.131926+00:00"
+ },
+ "trace": {
+  "project": "opspilot-lab-holmes-evals-l-b3-live",
+  "project_id": "22e5924b-c48c-4e79-9391-ec4dcc7436b0",
+  "trace_tier": null,
+  "read_back": "found",
+  "roots": [
+   {
+    "langsmith_run_id": "00000000-0000-0000-f666-3b657a58e988",
+    "start_time": "2026-11-20T21:21:38.234558+00:00",
+    "end_time": "2026-11-20T21:21:52.208874+00:00",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/22e5924b-c48c-4e79-9391-ec4dcc7436b0/r/00000000-0000-0000-f666-3b657a58e988?poll=true"
+   }
+  ]
+ },
+ "meta": {
+  "round": "l-b3-live",
+  "project": "opspilot-lab-holmes-evals-l-b3-live",
+  "started_at": "2026-11-20T21:21:29.381601+00:00",
+  "web_pid": 37267,
+  "worker_pid": 37308,
+  "delivery": {
+   "status": 201,
+   "code": null,
+   "run_id": "4bc182d1-4eef-54d8-a1c8-c2abfcb4a697",
+   "incident_id": "ccf7e3ac-008f-52ee-9f02-bcd66619c729"
+  },
+  "terminal_state": "completed"
+ }
+}
