@@ -746,8 +746,11 @@ def test_v7_constants():
 
     assert context.INPUT_VERSION_RUNBOOK_CATALOG == V7
     assert context.RUNBOOK_CATALOG == CATALOG_KEY
-    assert context.KNOWN_INPUT_VERSIONS[-1] == V7
-    assert V7 not in context.KNOWN_INPUT_VERSIONS[:-1]
+    # v7 is known exactly once and ranks above v6; later inputs (v8, #722)
+    # may follow it without changing what v7 means.
+    known = list(context.KNOWN_INPUT_VERSIONS)
+    assert known.count(V7) == 1
+    assert known.index(V7) > known.index("opspilot-investigation-input-v6")
     boundary = context.RUNBOOK_CATALOG_BOUNDARY
     assert isinstance(boundary, str) and boundary
     lower = boundary.lower()

@@ -63,13 +63,21 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   rule (``HELM_RELEASES_INVALID``), and the worker does not start when the
   cluster address is not a lab host (``HELM_NOT_LAB``).
 
+``otel-demo-ext`` also reads ``OPSPILOT_CLUSTER_NAME`` (#722, r10 H-U1), the
+operator's name for the cluster its Kubernetes access reads: when set, the
+investigation prompt gains a multi-cluster paragraph naming it and fresh Runs
+record it in their input. Both processes read it; whether it is set picks the
+prompt variant and so ``prompt_revision``. An empty value is unset; any other
+value outside ``discipline.CLUSTER_NAME_PATTERN`` refuses to start
+(``CLUSTER_NAME_INVALID``). ``fixture`` and ``otel-demo`` never read it.
+
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
 ``OPSPILOT_VICTORIALOGS_URL``, ``OPSPILOT_SQL_URL`` and
 ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` each set (to the same value) in both or
 in neither, and
-``OPSPILOT_K8S_LIVE_METRICS``, ``OPSPILOT_KNOWLEDGE_TOOL`` and
-``OPSPILOT_HELM_RELEASES`` the same in
+``OPSPILOT_K8S_LIVE_METRICS``, ``OPSPILOT_KNOWLEDGE_TOOL``,
+``OPSPILOT_HELM_RELEASES`` and ``OPSPILOT_CLUSTER_NAME`` the same in
 both).
 """
 
@@ -78,6 +86,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from opspilot.instructions.discipline import valid_cluster_name
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.investigation.todo import todo_write_enabled
@@ -118,9 +127,16 @@ from opspilot.tools.victorialogs_logs import (
     victorialogs_enabled,
 )
 
-__all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
+__all__ = [
+    "CLUSTER_NAME_ENV",
+    "PROFILE_ENV",
+    "PROFILE_NAMES",
+    "ToolProfile",
+    "select_profile",
+]
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
+CLUSTER_NAME_ENV = "OPSPILOT_CLUSTER_NAME"
 PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-ext")
 
 
@@ -184,6 +200,17 @@ _STARTUP_CODES = frozenset(
 )
 
 
+def _cluster_name(env: Mapping[str, str]) -> str | None:
+    """#722 CN-9: unset or empty is no name; anything else must be a valid
+    name exactly as given (no trimming), or the process does not start."""
+    value = env.get(CLUSTER_NAME_ENV)
+    if not value:
+        return None
+    if not valid_cluster_name(value):
+        raise SystemExit("CLUSTER_NAME_INVALID")
+    return value
+
+
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     config = OtelDemoConfig.from_env(env)
     # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
@@ -195,6 +222,9 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     # C5-14: likewise the Loki address; never an ``OPSPILOT_LOKI_*``
     # credential or tenant in the web.
     loki = loki_enabled(env)
+    # #722 CN-10: both processes read the name; the web records it in the
+    # Run input, and whether it is set enters both processes' versions.
+    cluster_name = _cluster_name(env)
     victorialogs = victorialogs_enabled(env)
     # B3-1: the switch only; it adds no credential or address.
     live_metrics = live_metrics_enabled(env)
@@ -270,6 +300,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             mongodb=mongodb,
             helm=helm,
             argocd=argocd,
+            cluster_name=cluster_name,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -283,6 +314,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             mongodb=mongodb,
             helm=helm,
             argocd=argocd,
+            cluster_name=cluster_name,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,

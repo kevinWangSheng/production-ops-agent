@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 from opspilot.instructions.discipline import prompt_revision
 from opspilot.investigation.context import (
     ALERT_CONTEXT_BOUNDARY,
+    CLUSTER_NAME,
     COMPACTION_INSTRUCTION,
     COMPACTION_KIND,
     CONCLUSION_KIND,
@@ -293,6 +294,10 @@ class InvestigationRequest:
     # Contract B8: the Run's ``scope_facts["prior_replies"]`` (validated
     # replies earlier Runs gave), rendered beside the messages they answer.
     prior_replies: Mapping[str, Any] | None = None
+    # #722: the Run's ``scope_facts["cluster_name"]`` (the operator's local
+    # cluster name, rendered into the multi-cluster paragraph of a variant
+    # with that slot); ``None`` for every other Run.
+    cluster_name: str | None = None
 
     def as_input(self) -> InvestigationInput:
         """The persistable snapshot a later attempt rebuilds this request from."""
@@ -305,6 +310,8 @@ class InvestigationRequest:
             facts[CONVERSATION] = dict(self.conversation)
         if self.prior_replies is not None:
             facts[PRIOR_REPLIES] = dict(self.prior_replies)
+        if self.cluster_name is not None:
+            facts[CLUSTER_NAME] = self.cluster_name
         return InvestigationInput(
             question=self.question,
             model_requests=self.model_requests,
@@ -589,6 +596,7 @@ class InvestigationLoop:
             limits=input.limits,
             conversation=input.scope_facts.get(CONVERSATION),
             prior_replies=prior_replies_of(input.scope_facts),
+            cluster_name=input.scope_facts.get(CLUSTER_NAME),
         )
         self._check_identity(request)
         system = transcript.messages[0]["content"] if transcript.messages else ""

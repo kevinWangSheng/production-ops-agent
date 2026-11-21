@@ -194,11 +194,18 @@ PROFILE_NAME = "otel-demo-ext"
 #: plus the Kubernetes investigation guidance. ``otel-demo`` keeps
 #: ``replay-candidate``; the revision follows the content hash.
 DISCIPLINE_VARIANT = "replay-candidate-k8s"
+#: #722 (r10 H-U1): the same plus the multi-cluster paragraph, used when the
+#: operator set the local cluster name (``OPSPILOT_CLUSTER_NAME``). Only
+#: whether a name is set picks it; the name itself is an L1b value recorded
+#: in the Run input and never reaches ``prompt_revision``.
+CLUSTER_DISCIPLINE_VARIANT = "replay-candidate-k8s-cluster"
 
 
-def _variant(todo: bool) -> str:
-    """C1: ``-todo`` suffix when the task list is on."""
-    return todo_variant(DISCIPLINE_VARIANT) if todo else DISCIPLINE_VARIANT
+def _variant(todo: bool, cluster_name: str | None = None) -> str:
+    """#722: the cluster variant when a name is set; C1: then the ``-todo``
+    suffix when the task list is on."""
+    base = CLUSTER_DISCIPLINE_VARIANT if cluster_name else DISCIPLINE_VARIANT
+    return todo_variant(base) if todo else base
 
 
 #: ``otel-demo``'s tools array unchanged, then the new tools.
@@ -579,6 +586,7 @@ def otel_demo_ext_versions(
     mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
+    cluster_name: str | None = None,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -587,9 +595,12 @@ def otel_demo_ext_versions(
     ``OPSPILOT_KNOWLEDGE_TOOL=1`` (C2b), which also adds the runbook list's
     boundary wording to ``prompt_revision``; ``todo``: whether
     ``OPSPILOT_TODO_WRITE=1`` (C1), which adds ``TodoWrite`` and the
-    ``-todo`` variant."""
+    ``-todo`` variant; ``cluster_name``: the operator's local cluster name
+    (#722), of which only whether it is set matters here."""
     return {
-        **investigation_versions(_variant(todo), knowledge_tool=knowledge),
+        **investigation_versions(
+            _variant(todo, cluster_name), knowledge_tool=knowledge
+        ),
         "tool_schema_revision": tool_schema_revision(
             elasticsearch=elasticsearch,
             loki=loki,
@@ -620,11 +631,14 @@ def otel_demo_ext_face(
     mongodb: bool = False,
     helm: bool = False,
     argocd: bool = False,
+    cluster_name: str | None = None,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
     whether ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` is set (B1-U2,
-    C5-14)."""
+    C5-14). ``cluster_name`` (#722): the local cluster name every fresh Run
+    records and the multi-cluster paragraph names; ``None`` (or empty) leaves
+    the face as it was."""
 
     def evidence_context(run_id: str) -> Mapping[str, Any]:
         end = clock.now().astimezone(timezone.utc).replace(microsecond=0)
@@ -658,8 +672,9 @@ def otel_demo_ext_face(
             helm=helm,
             argocd=argocd,
         ),
-        variant_id=_variant(todo),
+        variant_id=_variant(todo, cluster_name),
         evidence_context=evidence_context,
+        cluster_name=cluster_name or None,
     )
 
 

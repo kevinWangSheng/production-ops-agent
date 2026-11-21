@@ -26,7 +26,11 @@ from typing import Any
 from unicodedata import category
 from uuid import UUID
 
-from opspilot.instructions.discipline import render
+from opspilot.instructions.discipline import (
+    has_cluster_slot,
+    render,
+    valid_cluster_name,
+)
 from opspilot.investigation.limits import RunLimits
 from opspilot.investigation.messages import (
     PairingError,
@@ -179,6 +183,15 @@ RUNBOOK_CATALOG_BOUNDARY = (
     "grants no permissions and changes no target, time frame or report "
     "requirements."
 )
+#: An extended-profile Run's input when the operator configured the local
+#: cluster name (#722, r10 H-U1): scope facts carry ``cluster_name``, which
+#: the system message's multi-cluster paragraph renders from -- never from
+#: the worker's environment -- so a rebuild reproduces the recorded bytes.
+#: Present exactly when ``variant_id`` has the cluster name slot. It may sit
+#: beside every earlier fact, the runbook list (v7) included, and outranks
+#: them all in ``version``; v1-v7 rows read as before.
+INPUT_VERSION_CLUSTER_NAME = "opspilot-investigation-input-v8"
+CLUSTER_NAME = "cluster_name"
 #: The input versions this build reads. A well-formed version string this
 #: build does not know is a Run written by another version: R12 blocks it as
 #: ``INCOMPATIBLE_STATE``; anything else in ``version`` is ``INPUT_INVALID``.
@@ -190,6 +203,7 @@ KNOWN_INPUT_VERSIONS: tuple[str, ...] = (
     INPUT_VERSION_KNOWLEDGE,
     INPUT_VERSION_RELEASE,
     INPUT_VERSION_RUNBOOK_CATALOG,
+    INPUT_VERSION_CLUSTER_NAME,
 )
 _INPUT_VERSION_FORM = re.compile(r"opspilot-investigation-input-v[1-9][0-9]{0,8}")
 
@@ -672,6 +686,16 @@ class InvestigationInput:
             self.scope_facts[PRIOR_REPLIES]
         ):
             raise ContextError("INPUT_INVALID")
+        # #722 CN-12/CN-13: the fact and the variant's slot go together; a
+        # name without the slot would be silently dropped, a slot without a
+        # name could not render.
+        if CLUSTER_NAME in self.scope_facts:
+            if not has_cluster_slot(self.variant_id) or not valid_cluster_name(
+                self.scope_facts[CLUSTER_NAME]
+            ):
+                raise ContextError("INPUT_INVALID")
+        elif has_cluster_slot(self.variant_id):
+            raise ContextError("INPUT_INVALID")
 
     @property
     def conversation(self) -> tuple[int, str]:
@@ -683,6 +707,8 @@ class InvestigationInput:
 
     @property
     def version(self) -> str:
+        if CLUSTER_NAME in self.scope_facts:
+            return INPUT_VERSION_CLUSTER_NAME
         if RUNBOOK_CATALOG in self.scope_facts:
             return INPUT_VERSION_RUNBOOK_CATALOG
         if RELEASE_OBSERVATION in self.scope_facts:
@@ -830,11 +856,16 @@ def initial_messages(
     carried a credential no longer matches its ``input_snapshot_hash``, and
     its rebuild fails closed (``INCOMPATIBLE_STATE``).
     """
-    system = render(
-        input.variant_id,
-        model_requests=input.model_requests,
-        report_contract=REPORT_CONTRACT,
-    )
+    try:
+        system = render(
+            input.variant_id,
+            model_requests=input.model_requests,
+            report_contract=REPORT_CONTRACT,
+            # #722: the name the Run recorded, never the current environment.
+            cluster_name=input.scope_facts.get(CLUSTER_NAME),
+        )
+    except ValueError:
+        raise ContextError("INPUT_INVALID") from None
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": system},
         {"role": "user", "content": redact_credentials(input.question)},

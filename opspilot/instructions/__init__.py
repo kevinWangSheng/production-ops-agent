@@ -9,10 +9,12 @@ from .discipline import (
     Segment,
     UnknownVariantError,
     discipline_revision,
+    has_cluster_slot,
     prompt_face_sha256,
     prompt_revision,
     render,
     template_projection,
+    valid_cluster_name,
 )
 
 __all__ = [
@@ -20,8 +22,10 @@ __all__ = [
     "Segment",
     "UnknownVariantError",
     "discipline_revision",
+    "has_cluster_slot",
     "prompt_face_sha256",
     "prompt_revision",
     "render",
     "template_projection",
+    "valid_cluster_name",
 ]
