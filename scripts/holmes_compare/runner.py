@@ -795,6 +795,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "scores":
             evidence = args.evidence_root / f"holmes-compare-{args.round}"
             out = args.out or evidence / "scores.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(
                 json.dumps(
                     scores(evidence, _score_questions(args.questions)),

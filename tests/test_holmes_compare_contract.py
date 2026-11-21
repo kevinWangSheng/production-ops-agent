@@ -578,3 +578,88 @@ def test_plugin_selects_one_question_and_captures_judge_text(
     for needle in POISON:
         assert needle not in stored
     assert "EXPECTED-ANSWER-7x9k" not in proc.stdout + proc.stderr
+
+
+def _fake_rental_repo(tmp_path: Path) -> tuple[Path, Path]:
+    """A throwaway git checkout holding run_rental.sh with recording stubs."""
+    root = tmp_path / "repo"
+    pkg = root / "scripts" / "holmes_compare"
+    pkg.mkdir(parents=True)
+    (pkg / "run_rental.sh").write_text(
+        (REPO / "scripts" / "holmes_compare" / "run_rental.sh").read_text()
+    )
+    (pkg / "install_upstream.sh").write_text("#!/usr/bin/env bash\nexit 0\n")
+    log = tmp_path / "calls.log"
+    venv = root / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").write_text(f'#!/usr/bin/env bash\necho "$*" >> {log}\n')
+    for p in (pkg / "run_rental.sh", pkg / "install_upstream.sh", venv / "python"):
+        p.chmod(0o755)
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    return root, log
+
+
+@pytest.mark.parametrize("form", ["split", "equals"])
+def test_run_rental_scores_use_the_round_evidence_root_and_questions(
+    tmp_path: Path, form: str
+) -> None:
+    root, log = _fake_rental_repo(tmp_path)
+    ev = str(tmp_path / "ev")
+    extra = (
+        ["--evidence-root", ev, "--questions", "c5", "--trials", "1"]
+        if form == "split"
+        else [f"--evidence-root={ev}", "--questions=c5", "--trials", "1"]
+    )
+    subprocess.run(
+        ["scripts/holmes_compare/run_rental.sh", "r9", "env.txt", *extra],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    round_call, scores_call = log.read_text().splitlines()
+    assert round_call.startswith("-m scripts.holmes_compare.runner round --round r9")
+    assert scores_call.split() == [
+        "-m",
+        "scripts.holmes_compare.runner",
+        "scores",
+        "--round",
+        "r9",
+        "--evidence-root",
+        ev,
+        "--questions",
+        "c5",
+    ]
+
+
+def test_run_rental_scores_default_root_without_extra_args(tmp_path: Path) -> None:
+    root, log = _fake_rental_repo(tmp_path)
+    subprocess.run(
+        ["scripts/holmes_compare/run_rental.sh", "r9", "env.txt"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert log.read_text().splitlines()[1] == (
+        "-m scripts.holmes_compare.runner scores --round r9"
+    )
+
+
+def test_scores_creates_the_output_directory(tmp_path: Path) -> None:
+    out = tmp_path / "fresh" / "holmes-compare-r9" / "scores.json"
+    assert (
+        runner.main(
+            [
+                "scores",
+                "--round",
+                "r9",
+                "--evidence-root",
+                str(tmp_path / "ev"),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(out.read_text())["track"] == runner.TRACK
