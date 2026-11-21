@@ -13,9 +13,13 @@
 downloads ArgoCD v3.6.1 ``core-install.yaml``, refuses it unless the sha256
 matches, pins every ``quay.io/argoproj/argocd`` image to the recorded digest,
 installs it into a labelled ``argocd`` namespace and waits for the
-controllers. It then creates the ``guestbook`` Application (automated sync
-into the labelled namespace ``c4-demo``), syncs it at two target revisions
-(two history entries) and finally points it at the missing path
+controllers. ``core-install.yaml`` has no argocd-server, which is what
+creates the ``default`` AppProject, so setup applies the upstream default
+project itself (labelled). It then creates the ``guestbook`` Application
+(automated sync into the labelled namespace ``c4-demo``), syncs it at two
+target revisions (two history entries; the two commits render the same
+``helm-guestbook`` manifests, so the second sync is requested explicitly
+through ``operation``) and finally points it at the missing path
 ``guestbook-missing`` (ComparisonError, Unknown/OutOfSync). ``helm.values``
 carries the canary ``CANARY-C4-SCENARIO``. The ArgoCD overlay ClusterRole for
 OpsPilot's read-only identity is applied. The question to ask is printed.
@@ -27,8 +31,8 @@ deploy time, and the canary appears nowhere in either. It prints a JSON
 verdict and exits 1 when it fails.
 
 ``teardown`` deletes only what setup built, by name after checking the
-scenario label: the ``guestbook`` Application, the ``c4-demo`` namespace, the
-objects of the pinned core manifest and the ``argocd`` namespace. The overlay
+scenario label: the ``guestbook`` Application, the labelled ``default``
+AppProject, the ``c4-demo`` namespace, the objects of the pinned core manifest and the ``argocd`` namespace. The overlay
 ClusterRole stays (other lab runs use it; applying it again is idempotent).
 """
 
@@ -67,6 +71,7 @@ REVISIONS = (
     "8088f4c0d970abb09e250248cc97e35623447cb5",
 )
 APP = "guestbook"
+PROJECT = "default"
 ARGOCD_NS = "argocd"
 DEMO_NS = "c4-demo"
 LABEL_KEY = "app.kubernetes.io/managed-by"
@@ -102,7 +107,7 @@ def application(path: str, revision: str) -> dict[str, Any]:
             "labels": {LABEL_KEY: LABEL_VALUE},
         },
         "spec": {
-            "project": "default",
+            "project": PROJECT,
             "source": {
                 "repoURL": REPO_URL,
                 "path": path,
@@ -115,6 +120,36 @@ def application(path: str, revision: str) -> dict[str, Any]:
             },
             "syncPolicy": {"automated": {}},
         },
+    }
+
+
+def default_project() -> dict[str, Any]:
+    """ArgoCD's own ``default`` AppProject (v3.6.1 server/server.go
+    ``initializeDefaultProject``), which argocd-server creates and the core
+    install lacks."""
+    return {
+        "apiVersion": "argoproj.io/v1alpha1",
+        "kind": "AppProject",
+        "metadata": {
+            "name": PROJECT,
+            "namespace": ARGOCD_NS,
+            "labels": {LABEL_KEY: LABEL_VALUE},
+        },
+        "spec": {
+            "sourceRepos": ["*"],
+            "destinations": [{"server": "*", "namespace": "*"}],
+            "clusterResourceWhitelist": [{"group": "*", "kind": "*"}],
+        },
+    }
+
+
+def sync_operation(revision: str) -> dict[str, Any]:
+    """Merge patch that asks the controller for one sync at ``revision``."""
+    return {
+        "operation": {
+            "initiatedBy": {"username": LABEL_VALUE},
+            "sync": {"revision": revision},
+        }
     }
 
 
@@ -226,8 +261,14 @@ def setup(args: argparse.Namespace) -> int:
     kubectl.run("rollout", "status", "--timeout=600s", "statefulset/argocd-application-controller",
                 "-n", ARGOCD_NS)  # fmt: skip
     kubectl.run("apply", "-f", str(OVERLAY))
-    for revision in REVISIONS:
+    kubectl.apply(default_project())
+    for index, revision in enumerate(REVISIONS):
         kubectl.apply(application(APP_PATH, revision))
+        if index:
+            # Same rendered manifests at both commits: automated sync sees
+            # nothing to do and writes no second history row.
+            kubectl.run("patch", "applications.argoproj.io", APP, "-n", ARGOCD_NS,
+                        "--type", "merge", "-p", json.dumps(sync_operation(revision)))  # fmt: skip
         _wait(f"sync at {revision}", lambda r=revision: _synced_at(kubectl.app(), r))
     kubectl.apply(application(MISSING_PATH, REVISIONS[-1]))
     _wait("ComparisonError", lambda: _comparison_error(kubectl.app()))
@@ -253,6 +294,9 @@ def teardown(args: argparse.Namespace) -> int:
         return 1
     kubectl.run("delete", "applications.argoproj.io", APP, "-n", ARGOCD_NS,
                 "--ignore-not-found", "--timeout=300s")  # fmt: skip
+    if kubectl.label("appprojects.argoproj.io", PROJECT, ARGOCD_NS) == LABEL_VALUE:
+        kubectl.run("delete", "appprojects.argoproj.io", "-n", ARGOCD_NS, "-l",
+                    f"{LABEL_KEY}={LABEL_VALUE}", "--timeout=300s")  # fmt: skip
     kubectl.run("delete", "namespace", DEMO_NS, "--ignore-not-found", "--timeout=300s")
     with tempfile.TemporaryDirectory() as work:
         rendered = Path(work) / "core-install.yaml"

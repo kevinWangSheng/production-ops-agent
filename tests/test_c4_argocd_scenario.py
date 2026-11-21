@@ -88,3 +88,29 @@ def test_core_manifest_sha_mismatch_is_refused_and_images_are_pinned(
         scenario.render_core_manifest(raw)
     monkeypatch.setattr(scenario, "CORE_SHA256", hashlib.sha256(raw).hexdigest())
     assert scenario.render_core_manifest(raw) == f"image: {scenario.IMAGE_PINNED}"
+
+
+def test_default_project_matches_upstream_and_is_labelled() -> None:
+    project = scenario.default_project()
+    assert project["kind"] == "AppProject"
+    assert project["metadata"] == {
+        "name": "default",
+        "namespace": scenario.ARGOCD_NS,
+        "labels": {scenario.LABEL_KEY: scenario.LABEL_VALUE},
+    }
+    assert project["spec"] == {
+        "sourceRepos": ["*"],
+        "destinations": [{"server": "*", "namespace": "*"}],
+        "clusterResourceWhitelist": [{"group": "*", "kind": "*"}],
+    }
+    app = scenario.application(scenario.APP_PATH, scenario.REVISIONS[0])
+    assert app["spec"]["project"] == project["metadata"]["name"]
+
+
+def test_sync_operation_requests_the_given_revision() -> None:
+    assert scenario.sync_operation(scenario.REVISIONS[1]) == {
+        "operation": {
+            "initiatedBy": {"username": "c4-argocd-scenario"},
+            "sync": {"revision": scenario.REVISIONS[1]},
+        }
+    }
