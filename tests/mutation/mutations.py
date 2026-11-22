@@ -381,4 +381,39 @@ MUTATIONS: tuple[Mutation, ...] = (
         "                if key in readable and isinstance(item, (str, bool)):\n",
         "                if key in readable:\n",
     ),
+    # #773 R18: the three Redis/Valkey layers, killed by
+    # tests/safety/test_safety_redis_inspect.py. ASSUMPTION (test author,
+    # implementation unseen): each ``old`` is a placeholder naming the
+    # target code; the runner reports ``stale`` until the lead pins the exact
+    # line in opspilot/tools/redis_inspect.py.
+    Mutation(
+        "M44",
+        "read-only: _send refuses any Redis command outside the frozen allowlist (#773 R3)",
+        # Target: the allowlist assertion at the top of ``_send(argv)``, before
+        # any byte is written. Mutated: the check never fires.
+        "opspilot/tools/redis_inspect.py",
+        "        if _command_key(argv) not in _ALLOWED_COMMANDS:\n",
+        "        if False:\n",
+    ),
+    Mutation(
+        "M45",
+        "read-only: a Redis account beyond the read-only grant is refused (#773 R4)",
+        # Target: ``account_problem(getuser_reply)``. Mutated: it always
+        # returns None (every account passes).
+        "opspilot/tools/redis_inspect.py",
+        "def account_problem(getuser_reply: object) -> str | None:\n",
+        "def account_problem(getuser_reply: object) -> str | None:\n    return None\n",
+    ),
+    Mutation(
+        "M46",
+        "credentials: CONFIG GET always redacts denylisted Redis parameters (#773 R9)",
+        # Target: the tool-side denylist test applied to each CONFIG GET
+        # parameter name (requirepass, masterauth, masteruser, tls-*-pass,
+        # names containing pass/auth/secret). Mutated: no name is denylisted,
+        # leaving only the shared redaction (which misses requirepass,
+        # masterauth and masteruser).
+        "opspilot/tools/redis_inspect.py",
+        "    if _denied_config_name(name):\n",
+        "    if False:\n",
+    ),
 )
