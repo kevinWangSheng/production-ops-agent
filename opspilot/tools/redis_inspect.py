@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from opspilot.redaction import REDACTED_CREDENTIAL, _credential_name
+from opspilot.redaction import REDACTED_CREDENTIAL, _credential_name, _session_word
 from opspilot.tools import otel_demo
 from opspilot.tools.executor import (
     TransportError,
@@ -1219,7 +1219,7 @@ class RedisTransport:
                 if full and isinstance(data, bytes)
                 else _value(data)
             )
-            if _credential_name(key):
+            if _credential_name(key) or _session_word(key):
                 value = REDACTED_CREDENTIAL
             elif full:
                 # only the first 8 KiB were read: the value may go on
@@ -1228,7 +1228,12 @@ class RedisTransport:
         elif kind == "hash":
             unit = "fields"
             items, more, stopped = self._scan_members(send, "HSCAN", key, limit, True)
-            raw = [{name: _value(value)} for name, value in items[:limit]]
+            # A field named for a session (``sessionAttr:…``) keeps the
+            # pre-#366 rule: its value is a stored session, never shown.
+            raw = [
+                {name: REDACTED_CREDENTIAL if _session_word(name) else _value(value)}
+                for name, value in items[:limit]
+            ]
         elif kind == "set":
             items, more, stopped = self._scan_members(send, "SSCAN", key, limit, False)
             raw = [{"member": name} for name, _ in items[:limit]]

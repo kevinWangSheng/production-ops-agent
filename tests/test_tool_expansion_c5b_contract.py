@@ -121,25 +121,25 @@ RUN_ID = "c5b-run"
 # Pinned on main a18e61e9 (before any C5b code), computed with
 # ``_surface_sha256`` below (RUN_ID ``c5b-run``): these four extension faces and otel-demo must
 # stay byte-identical when C5b lands (C5-14).
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-8c7b8e310cdc"
-BASE_SURFACE_SHA256 = "b7c5ca13e31d38bbcf6bd7f02c20b50b7358c9f619a094afcc3fa3bb3dae652a"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-a0d4ab251db2"
+BASE_SURFACE_SHA256 = "c58061f187fc588a3d7c1ff0cabbbbf34a4fbd9547fc04c81ab626ac323bdfd9"
 PINNED = {
     # (elasticsearch, loki): (revision, surface sha256)
     (False, False): (
-        "otel-demo-ext-9b1547d77ecd",
-        "70ea37de605c2fbeb035c15404876c1562f83360369aff87c71870f75dda94c0",
+        "otel-demo-ext-a4e56f2fb767",
+        "31df7a198ca4da1f13d0c68bcb7b3251e59eec103aa5d50a753b1b7121d937e9",
     ),
     (True, False): (
-        "otel-demo-ext-1fce458c3579",
-        "81abf9509e0c9675ced14ceeae6502827c892adf339a7bff212f9f751c5852b8",
+        "otel-demo-ext-5f0deb3445bb",
+        "e879746fa6ec800907536698e6078c50f185823a760fcc87688f0c18ab50bf62",
     ),
     (False, True): (
-        "otel-demo-ext-ab1feb76ec12",
-        "ed37243cb102ad170427a7e19dcbba10040b44f57ca82c161ed987b412f5854c",
+        "otel-demo-ext-eb02af2a52d7",
+        "96cf8574d3f77104413a68a37bb57a3458ee13ad1566d7d866d23e18d6e24c91",
     ),
     (True, True): (
-        "otel-demo-ext-ce9b52089d38",
-        "b368161879b540e895536461b26cd8503c36b113d17a2ab860639e74517878f5",
+        "otel-demo-ext-d511171c18e9",
+        "de7b4f1a0a83990b6b206ba092a6facbd644d66b1435b83962c252ec87ac738b",
     ),
 }
 # ``render`` output of the Loki gateway on main a18e61e9 (default backend).

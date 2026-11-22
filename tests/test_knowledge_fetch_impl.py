@@ -163,10 +163,10 @@ def test_switch_off_keeps_every_revision() -> None:
         != prompt_revision_versions()["prompt_revision"]
     )
     assert otel_demo_ext.tool_schema_revision() == otel_demo_ext.TOOL_SCHEMA_REVISION
-    assert otel_demo_ext.TOOL_SCHEMA_REVISION == "otel-demo-ext-9b1547d77ecd"
+    assert otel_demo_ext.TOOL_SCHEMA_REVISION == "otel-demo-ext-a4e56f2fb767"
     assert (
         otel_demo_ext.tool_schema_revision(live_metrics=True)
-        == "otel-demo-ext-c8b4dae03fe3"
+        == "otel-demo-ext-7578a8704d3d"
     )
     assert otel_demo_ext.KNOWLEDGE_TOOL_SCHEMA_REVISION not in {
         otel_demo_ext.TOOL_SCHEMA_REVISION,

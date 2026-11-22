@@ -218,7 +218,7 @@ OTHER_BACKEND_ENV = (
 
 # -- pinned surfaces (main d28b4631, before any C3 code) ---------------------------
 
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-8c7b8e310cdc"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-a0d4ab251db2"
 SWITCHES = {
     "elasticsearch": ("OPSPILOT_ES_URL", "http://127.0.0.1:9200"),
     "loki": ("OPSPILOT_LOKI_URL", "http://127.0.0.1:3100"),
@@ -229,14 +229,14 @@ SWITCHES = {
 }
 ALL = tuple(SWITCHES)
 PINNED = {
-    (): "otel-demo-ext-9b1547d77ecd",
-    ("elasticsearch",): "otel-demo-ext-1fce458c3579",
-    ("loki",): "otel-demo-ext-ab1feb76ec12",
-    ("victorialogs",): "otel-demo-ext-1021ae4ff05b",
-    ("live_metrics",): "otel-demo-ext-c8b4dae03fe3",
-    ("knowledge",): "otel-demo-ext-31b81f7a0466",
-    ("todo",): "otel-demo-ext-38acd2e46dbe",
-    ALL: "otel-demo-ext-58a6e60357c9",
+    (): "otel-demo-ext-a4e56f2fb767",
+    ("elasticsearch",): "otel-demo-ext-5f0deb3445bb",
+    ("loki",): "otel-demo-ext-eb02af2a52d7",
+    ("victorialogs",): "otel-demo-ext-dcdb77b05009",
+    ("live_metrics",): "otel-demo-ext-7578a8704d3d",
+    ("knowledge",): "otel-demo-ext-5185d58cdcb3",
+    ("todo",): "otel-demo-ext-ff4dc5d516ed",
+    ALL: "otel-demo-ext-07c1944e79a1",
 }
 BACKENDS_ONLY = ("elasticsearch", "loki", "victorialogs", "live_metrics")
 

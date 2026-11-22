@@ -415,4 +415,41 @@ MUTATIONS: tuple[Mutation, ...] = (
         "            if _config_secret(name):\n",
         "            if False:\n",
     ),
+    # #366 (B1-U3 a): killed by
+    # tests/safety/test_safety_narrow_credential_names.py.
+    Mutation(
+        "M47",
+        "credentials: a *tokens name keeps its value only when the whole value is a number (#366)",
+        # Target: ``_token_count``. Mutated: any value of a count-named field
+        # is kept, so ``access_tokens=<credential>`` would reach the model.
+        "opspilot/redaction.py",
+        "    return _COUNT_NUMBER.fullmatch(value) is not None and _count_name(name)\n",
+        "    return _count_name(name)\n",
+    ),
+    Mutation(
+        "M48",
+        "credentials: a *tokens name whose prefix is a credential name is not a count (#366)",
+        # Target: the prefix check in ``_count_name``. Mutated: the
+        # credential-name half is dropped, so ``auth_tokens: 5`` is shown.
+        "opspilot/redaction.py",
+        "    return not (_credential_name(rest) or words & _CODE_WORDS)\n",
+        "    return not (words & _CODE_WORDS)\n",
+    ),
+    Mutation(
+        "M49",
+        "credentials: session before a word naming the session (jwt, store, ...) is a credential (#366)",
+        # Target: the words after ``session`` that keep a name a credential.
+        # Mutated: only the ruling's original id/key/cookie remain.
+        "opspilot/redaction.py",
+        '        *("id", "key", "cookie", "jwt", "ticket", "sid", "uuid", "nonce"),\n',
+        '        *("id", "key", "cookie"),\n',
+    ),
+    Mutation(
+        "M50",
+        "credentials: otp/pin/mfa/passcode/refresh *tokens values are not counts (#366)",
+        # Target: the code-word guard in ``_count_name``. Mutated: none.
+        "opspilot/redaction.py",
+        '_CODE_WORDS = frozenset({"otp", "pin", "mfa", "passcode", "refresh"})\n',
+        "_CODE_WORDS: frozenset[str] = frozenset()\n",
+    ),
 )
