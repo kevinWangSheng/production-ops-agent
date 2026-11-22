@@ -1,0 +1,695 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "527-orphan-reservations",
+  "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+  "frozen_at": "2026-11-22T20:09:11.678428+00:00",
+  "run": {
+    "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+    "incident_id": "d4486d6f-9e66-572d-93c6-34dd84a482d9",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 3,
+      "deadline": "2026-11-22T21:45:27.797988+00:00",
+      "bound_target_id": "checkout-prod",
+      "question": "Checkout appears to show elevated HTTP errors. Query the authorized metrics and return a json investigation report for the authorized window.",
+      "authorized_window": {
+        "end": "2026-09-14T01:00:00+00:00",
+        "start": "2026-09-14T00:00:00+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "d4486d6f-9e66-572d-93c6-34dd84a482d9",
+      "target_id": "370e684c-b01e-4dcc-a324-80703beb505b",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+      "created_at": "2026-11-22T19:45:27.808231+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-f3c3018f981b",
+      "tool_schema_revision": "fixture-5",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "inconclusive",
+      "summary": "Only one metric expression was available in this Run (rate(http_errors[5m])) and it returned status ok for target checkout-prod over the authorized window 2026-09-14T00:00:00Z–2026-09-14T01:00:00Z: a single series http_errors_rate with value 0.042, no truncation or omitted rows. That single sample is timestamped data_as_of 2026-09-14T00:00:00Z (the window start) while the view was observed at 2026-11-22T11:45:29Z, a freshness of about 6,032,729 seconds (~69.8 days). The premise that HTTP errors are 'elevated' is therefore unverified: the view contains exactly one value, carries no service/operation/status labels or per-series breakdown, and no prior or comparison window was retrieved, so no baseline exists against which 0.042 errors/sec could be called high or normal. A value of 0.042 exists and is recorded as a fact; whether it represents a real error condition, and where it originates, remains a hypothesis. No dependency, trace, log, Kubernetes-state or change-history source is integrated, so the checkout dependency chain could not be examined and no affected downstream entity can be named. Conclusion is inconclusive rather than supported: the sampled data neither confirms nor refutes elevated Checkout HTTP errors, and no root-cause object can be identified.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "The only available expression, PromQL rate(http_errors[5m]) against target checkout-prod, returned status ok with result_count 1 / returned_count 1: one series named http_errors_rate with value 0.042, truncated=false and omitted_rows=0.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The returned view carries data_as_of 2026-09-14T00:00:00Z (the start of the authorized window) while dispatch_started_at/observed_at is 2026-11-22T11:45:29Z with freshness_seconds 6032729.43525 (~69.8 days), and the view is a single projected value rather than a series of samples across the window.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "The claim that Checkout HTTP errors are 'elevated' is not supported by the retrieved view: it supplies exactly one reading (0.042) with no comparison baseline, no prior window, and no label breakdown, so no reference value exists against which elevation could be judged.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "The 0.042 http_errors_rate reading may reflect a genuine error condition on checkout-prod, but its onset, duration, magnitude relative to normal, and the specific operations or status codes involved cannot be determined from a single unlabeled sample; this remains unconfirmed.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "A failure in a dependency of checkout-prod could produce HTTP errors at the checkout target, but no dependency-level metric, trace span, log or Kubernetes-state evidence was available in this Run to implicate any specific downstream entity; no dependency is named as affected or as cause.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "recommendation",
+          "text": "To evaluate the 'elevated' claim, obtain a baseline for http_errors over a prior comparable window plus per-service, per-operation and per-status-code breakdowns, and confirm whether the 2026-09-14T00:00:00Z reading is representative rather than a single stale-timestamped sample; the current sample is ~69.8 days old at observation time.",
+          "evidence_ids": [
+            "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "No baseline or comparison window: the only available expression rate(http_errors[5m]) was resolved to a single value for the authorized window, so elevation relative to normal cannot be assessed, and no trend is inferred.",
+        "No label or series breakdown (service, operation, status code, instance) was returned, so the error rate cannot be attributed to a specific Checkout operation or error type.",
+        "Only one projected value with data_as_of 2026-09-14T00:00:00Z was supplied for a one-hour window; samples across 00:00–01:00Z and any data after 01:00Z are unknown, not zero.",
+        "ERROR-specific and latency metric series were not available/queried via the permitted expression list, so a service that is up or ready cannot be assessed for its own error or latency behavior beyond this single rate value.",
+        "The traces integration is not integrated in this Run, so no span-level parent-child call edge or per-operation error span could be checked.",
+        "The kubernetes_state integration is not integrated, so no Kubernetes object (Deployment, Pod, Service, Node) health, readiness or restart evidence exists to place a root cause.",
+        "The pod_logs integration is not integrated, so error text for checkout-prod or its dependencies could not be examined.",
+        "The change_history integration is not integrated, so no deployment, config or restart change during 2026-09-14T00:00:00Z–01:00:00Z could be correlated or ruled out.",
+        "No dependency target was authorized beyond checkout-prod, so the dependency investigation could not proceed and no named downstream service can be called unaffected (it was not checked)."
+      ],
+      "next_steps": [
+        "Provide a Prometheus expression/authorization for a historical baseline (e.g. prior-day or prior-week rate(http_errors[5m])) and for labeled series to compare against the 0.042 reading at 2026-09-14T00:00:00Z.",
+        "Enable the traces integration and inspect checkout-prod spans in 2026-09-14T00:00:00Z–01:00:00Z for error spans and parent-child edges to identify any failing dependency.",
+        "Enable kubernetes_state and pod_logs for checkout-prod and its dependencies to check pod readiness, restarts and error text during the window.",
+        "Enable change_history to check for deployments or config changes on checkout-prod and its dependencies around 2026-09-14T00:00:00Z before attributing the reading to a cause.",
+        "Confirm whether the single value 0.042 errors/sec is above or below the service's normal range; without that reference, the reported 'elevation' should be treated as unconfirmed."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 2,
+      "logical_key": "conclusion:g0:ctx0:round-2",
+      "status": "response_committed",
+      "observed_at": "2026-11-22T19:52:47.360338+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-22T19:45:29.422120+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "response_committed",
+        "observed_at": "2026-11-22T19:52:47.353660+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "conclusion:g0:ctx0:round-2",
+        "status": "response_committed",
+        "observed_at": "2026-11-22T19:52:47.360338+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 2,
+      "prompt_tokens": 5088,
+      "completion_tokens": 3451,
+      "total_tokens": 8539,
+      "prompt_cache_hit_tokens": 4608,
+      "prompt_cache_miss_tokens": 480
+    },
+    "tool_requests": [
+      {
+        "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+        "operation_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0",
+        "epoch": 1,
+        "tool": "metrics_range_query",
+        "target_id": "checkout-prod",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+        "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+        "status": "ok",
+        "adopted": true,
+        "tool": "metrics_range_query",
+        "tool_version": "v1",
+        "registry_revision": "c79dd5f27852cb4db7e85a672a42456fa9cfb27f29d3aacfd6769c3784ec0207",
+        "tool_registry_revision": "a0b29d1f48354d60afd6c0dffaadb01ff0615de781d7d4657e27216bebbafbf2",
+        "source": "prometheus",
+        "target_id": "checkout-prod",
+        "query": {
+          "expr": "rate(http_errors[5m])"
+        },
+        "window": {
+          "end": "2026-09-14T01:00:00+00:00",
+          "start": "2026-09-14T00:00:00+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-22T11:45:29.435250-08:00",
+        "data_as_of": "2026-09-14T00:00:00+00:00",
+        "freshness_seconds": 6032729.43525,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "d4486d6f-9e66-572d-93c6-34dd84a482d9",
+      "observations": [
+        {
+          "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "status": "ok",
+          "adopted": true,
+          "tool": "metrics_range_query",
+          "tool_version": "v1",
+          "registry_revision": "c79dd5f27852cb4db7e85a672a42456fa9cfb27f29d3aacfd6769c3784ec0207",
+          "tool_registry_revision": "a0b29d1f48354d60afd6c0dffaadb01ff0615de781d7d4657e27216bebbafbf2",
+          "source": "prometheus",
+          "target_id": "checkout-prod",
+          "query": {
+            "expr": "rate(http_errors[5m])"
+          },
+          "window": {
+            "end": "2026-09-14T01:00:00+00:00",
+            "start": "2026-09-14T00:00:00+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-22T11:45:29.435250-08:00",
+          "data_as_of": "2026-09-14T00:00:00+00:00",
+          "freshness_seconds": 6032729.43525,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "claims": {
+            "fact": [
+              {
+                "text": "The only available expression, PromQL rate(http_errors[5m]) against target checkout-prod, returned status ok with result_count 1 / returned_count 1: one series named http_errors_rate with value 0.042, truncated=false and omitted_rows=0.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The returned view carries data_as_of 2026-09-14T00:00:00Z (the start of the authorized window) while dispatch_started_at/observed_at is 2026-11-22T11:45:29Z with freshness_seconds 6032729.43525 (~69.8 days), and the view is a single projected value rather than a series of samples across the window.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "The 0.042 http_errors_rate reading may reflect a genuine error condition on checkout-prod, but its onset, duration, magnitude relative to normal, and the specific operations or status codes involved cannot be determined from a single unlabeled sample; this remains unconfirmed.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "A failure in a dependency of checkout-prod could produce HTTP errors at the checkout target, but no dependency-level metric, trace span, log or Kubernetes-state evidence was available in this Run to implicate any specific downstream entity; no dependency is named as affected or as cause.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [
+              {
+                "text": "To evaluate the 'elevated' claim, obtain a baseline for http_errors over a prior comparable window plus per-service, per-operation and per-status-code breakdowns, and confirm whether the 2026-09-14T00:00:00Z reading is representative rather than a single stale-timestamped sample; the current sample is ~69.8 days old at observation time.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "counter_evidence": [
+              {
+                "text": "The claim that Checkout HTTP errors are 'elevated' is not supported by the retrieved view: it supplies exactly one reading (0.042) with no comparison baseline, no prior window, and no label breakdown, so no reference value exists against which elevation could be judged.",
+                "evidence": [
+                  {
+                    "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "prometheus",
+              "ok": 1,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "traces",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            },
+            {
+              "name": "kubernetes_state",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            },
+            {
+              "name": "pod_logs",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+        "resolvable": true,
+        "tool": "metrics_range_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "subject_id": "d4486d6f-9e66-572d-93c6-34dd84a482d9",
+          "status": "ok",
+          "view": {
+            "tool": "metrics_range_query",
+            "query": {
+              "expr": "rate(http_errors[5m])"
+            },
+            "trust": "untrusted-evidence",
+            "source": "prometheus",
+            "status": "ok",
+            "window": {
+              "end": "2026-09-14T01:00:00+00:00",
+              "start": "2026-09-14T00:00:00+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "value": 0.042,
+                "metric": "http_errors_rate"
+              }
+            ],
+            "target_id": "checkout-prod",
+            "truncated": false,
+            "data_as_of": "2026-09-14T00:00:00+00:00",
+            "incomplete": false,
+            "evidence_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+            "observed_at": "2026-11-22T11:45:29.435250-08:00",
+            "omitted_rows": 0,
+            "operation_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": 6032729.43525,
+            "lookback_start_at": null,
+            "registry_revision": "c79dd5f27852cb4db7e85a672a42456fa9cfb27f29d3aacfd6769c3784ec0207",
+            "dispatch_started_at": "2026-11-22T11:45:29.429941-08:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "a0b29d1f48354d60afd6c0dffaadb01ff0615de781d7d4657e27216bebbafbf2"
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "d4486d6f-9e66-572d-93c6-34dd84a482d9",
+      "entries": [
+        {
+          "recorded_at": "2026-11-22T19:45:27.815863+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:27.815863+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "073fa595-b2a5-57b1-b151-f29f51f26209:1",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:28.399138+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:29.422120+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "073fa595-b2a5-57b1-b151-f29f51f26209:6dc714d7-a19e-42f1-bb80-0dabb1ba7a74",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:29.426555+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:29.449346+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "a8385725-26bf-46b9-aba6-d0ceeb20017e",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "operation_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0",
+            "epoch": 1,
+            "tool": "metrics_range_query",
+            "target_id": "checkout-prod",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:29.449346+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:45:29.449346+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:52:31.269373+00:00",
+          "sequence": 8,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:52:47.353660+00:00",
+          "sequence": 9,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "073fa595-b2a5-57b1-b151-f29f51f26209:2bb2c8a1-d511-4b54-afad-b136c30c81eb",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:52:47.357622+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:52:47.367831+00:00",
+          "sequence": 11,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-22T19:52:47.367831+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "073fa595-b2a5-57b1-b151-f29f51f26209:7",
+          "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 7
+          }
+        }
+      ],
+      "counts": {
+        "input": 2,
+        "query": 1,
+        "evidence": 1,
+        "state_change": 9,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "073fa595-b2a5-57b1-b151-f29f51f26209",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "6dc714d7-a19e-42f1-bb80-0dabb1ba7a74-t0:a8385725-26bf-46b9-aba6-d0ceeb20017e"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query",
+        "worker_resumed"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-22T20:09:08.574197+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-527-orphan-reservations",
+    "project_id": "5df3f14f-a2a2-492c-9d63-27747d60ec96",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-1e5b-8020c713f2a3",
+        "start_time": "2026-11-22T19:52:31.270257+00:00",
+        "end_time": "2026-11-22T19:52:47.368003+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/5df3f14f-a2a2-492c-9d63-27747d60ec96/r/00000000-0000-0000-1e5b-8020c713f2a3?poll=true"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "7dd631f82573c72b4f917748936a6822e6aaacca643e94f228e56f56d5cc95b7",
+    "bytes": 37429,
+    "path": "tmp/lab-ledgers/527-orphan-reservations/073fa595-b2a5-57b1-b151-f29f51f26209/ledger.json",
+    "in_repository": false
+  }
+}
