@@ -12,6 +12,7 @@
 | b1 | 190_elasticsearch_cross_service_correlation | rerun-o-b1-x1 | 3/3 | 1/1 | ok |  |
 | b1 | 191_elasticsearch_query_profile | rerun-o-b1-x1b | 3/3 | 1/1 | ok |  |
 | b1 | 193_elasticsearch_large_mapping_search | rerun-o-b1-x1b | 3/3 | 1/1 | ok |  |
+| b1 | 235_elasticsearch_cluster_mismatch | rerun-o-b1-235-isolated | 2/3 | 3/3 | ok, ok, ok |  |
 | b1 | 235_elasticsearch_cluster_mismatch | rerun-o-b1-x3 | 2/3 | 1/3 | ok, ok, ok |  |
 | b1 | 245_elasticsearch_trace_large_fields | rerun-o-b1-x1b | 2/3 | 1/1 | ok |  |
 | b1 | 254_elasticsearch_dr_test_log_check | rerun-o-b1-x1b | 3/3 | 1/1 | ok |  |

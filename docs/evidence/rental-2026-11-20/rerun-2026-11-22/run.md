@@ -23,6 +23,12 @@
 - 结果 3/3（judge 均 A，报告均 `completed/partial`，模型请求 12、24、22）；t2 第 1 次机会因上一遍 web 尚未释放 35080 端口记 infra（`PROCESS_EXITED`），驱动按设计重来一次。合计 100a 3/4。
 - 首轮失败原因（取自原始 ledger 的步骤，不入库）：报告 JSON 与 schema 均有效（用 `ReportV2` 重放通过），`assessment_status: completed`、`conclusion: partial`，与全量 3 遍同形（全量也是 `completed/partial`，18–19 次请求），不涉及 #776 新增的 completed/incomplete 措辞。拒收来自引用校验：第 19 轮的报告里第 17 条 `recommendation` 引用了不存在的 evidence_id（SOURCE_UNAVAILABLE 的 `traces_search` 操作号拼上编造的后缀），产品回退要求改写；第 20 轮（本 Run 最后一轮）改写后该条仍引用 `b3c1bf99-…-t0`，即那次不可用查询的操作号而非 evidence_id，仍不通过，Run 以 `REPORT_INVALID` 转人工。属于与全量 235 t2 同类的偶发引用错误。
 
+### 235 隔离重跑 3 遍（12:56–13:01 UTC，`origin/main` `7cb78c32`，轮 `rerun-o-b1-235-isolated`）
+
+- 原因：`rerun-o-b1-x3` 里 235 与 S 线 C2 的 162 并行，162 的夹具命名空间 `app-162` 同时存在于共享 kind 集群，3 份报告里 2 份点名了 `app-162`/`payments-secrets`，该轮 235 的 1/3 受污染。
+- 隔离做法：主机新 worktree `~/poa-235`（`origin/main` `7cb78c32`，#772/#775/#776 已合入，无本地合并分支），`uv sync --locked`；开跑前 lab 集群（`kind-opspilot-m1`）无任何 `app-NNN` 命名空间、无其他评测进程，无须删除；同一时间该集群只跑 235（SREGym 集群未动）；ES 为新起的 `localhost:30920`，跑完停掉。三遍 Run 行与 worker 日志的 `prompt_revision` 均为 `prompt-replay-candidate-k8s-068c56342888`。
+- 结果 3/3（judge 均 A，模型请求 20、11、17），报告里出现的命名空间只有 `app-235`；跑完后集群仍无 `app-NNN` 命名空间。trace：[t1](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/026fb564-e6d4-4f7e-baba-75b7a082517e/r/00000000-0000-0000-1d89-c99dad467e53?poll=true)、[t2](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/026fb564-e6d4-4f7e-baba-75b7a082517e/r/00000000-0000-0000-6f2c-571e5938656c?poll=true)、[t3](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/026fb564-e6d4-4f7e-baba-75b7a082517e/r/00000000-0000-0000-e44e-589b05248c1b?poll=true)。
+
 ## 各 PR 的对应 Run
 
 | PR | Run | summary | trace |
@@ -34,10 +40,10 @@
 
 ## 费用
 
-- DeepSeek（token × 单价，94 个 Run 的 summary `run.tokens`，含 100a 追加 3 遍）：缓存命中 48 055 552、未命中 4 017 467、输出 1 407 677 token；Run 开始时刻 2026-11-22 08:45–10:58 UTC 为周日，全部闲时；单价取自 https://api-docs.deepseek.com/quick_start/pricing（2026-11-22 读取，deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60，高峰为周一至周五 01–04、06–10 UTC，价格翻倍）：约 **$1.59**（若全按高峰价 $3.18）。不含 Z.ai judge。
+- DeepSeek（token × 单价，97 个 Run 的 summary `run.tokens`，含 100a 追加 3 遍与 235 隔离 3 遍）：缓存命中 49 498 240、未命中 4 101 028、输出 1 455 758 token；Run 开始时刻 2026-11-22 08:45–13:00 UTC 为周日，全部闲时；单价取自 https://api-docs.deepseek.com/quick_start/pricing（2026-11-22 读取，deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60，高峰为周一至周五 01–04、06–10 UTC，价格翻倍）：约 **$1.64**（若全按高峰价 $3.27）；其中 235 隔离 3 遍约 $0.046（命中 1 442 688、未命中 83 561、输出 48 081）。不含 Z.ai judge。
 
 ## 披露
 
-- 凭据扫描：104 个文件、15 个凭据值（DeepSeek、LangSmith、ZAI、两组 ES 工程师 key 与 elastic 口令、K8s token、Prometheus 口令与账号名、两个 lab token），0 命中；正对照命中。
+- 凭据扫描：104 个文件（235 隔离轮另扫 4 个文件，0 命中）、15 个凭据值（DeepSeek、LangSmith、ZAI、两组 ES 工程师 key 与 elastic 口令、K8s token、Prometheus 口令与账号名、两个 lab token），0 命中；正对照命中。
 - p13 报告引用了题目 ConfigMap `init.sql` 中的 lab 数据库口令原文（SREGym 注入的故障数据，非本项目凭据）；全量已入库的 p13 summary 同样含该值，非本次新增。
 - 未跑：Holmes 侧、280（已归类为时间盒受限）、C1-U2 todo-hard 对照、摇摆题补跑。
