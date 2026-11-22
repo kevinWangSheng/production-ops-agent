@@ -322,7 +322,7 @@ def test_existing_revision_constants_keep_their_values():
     assert ext.LOKI_TOOL_SCHEMA_REVISION == "otel-demo-ext-dd942a2f1292"
     assert ext.VICTORIALOGS_TOOL_SCHEMA_REVISION == "otel-demo-ext-840df01f3bce"
     assert ext.LIVE_METRICS_TOOL_SCHEMA_REVISION == "otel-demo-ext-4730c27997c9"
-    assert ext.KNOWLEDGE_TOOL_SCHEMA_REVISION == "otel-demo-ext-70c2f18484d7"
+    assert ext.KNOWLEDGE_TOOL_SCHEMA_REVISION == "otel-demo-ext-b478179bc212"
     assert ext.TODO_TOOL_SCHEMA_REVISION == "otel-demo-ext-f5e4ed53f220"
     assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-be3a9913af82"
     assert ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-ffed48334876"

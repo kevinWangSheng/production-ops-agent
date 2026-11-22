@@ -234,9 +234,9 @@ PINNED = {
     ("loki",): "otel-demo-ext-dd942a2f1292",
     ("victorialogs",): "otel-demo-ext-840df01f3bce",
     ("live_metrics",): "otel-demo-ext-4730c27997c9",
-    ("knowledge",): "otel-demo-ext-70c2f18484d7",
+    ("knowledge",): "otel-demo-ext-b478179bc212",
     ("todo",): "otel-demo-ext-f5e4ed53f220",
-    ALL: "otel-demo-ext-56c7a90c65fa",
+    ALL: "otel-demo-ext-98bf11a1173f",
 }
 BACKENDS_ONLY = ("elasticsearch", "loki", "victorialogs", "live_metrics")
 

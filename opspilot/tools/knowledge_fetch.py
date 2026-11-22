@@ -28,7 +28,7 @@ from typing import Any
 from unicodedata import category
 from uuid import UUID
 
-from opspilot.knowledge.catalog import freshness_of
+from opspilot.knowledge.catalog import RUNBOOK_REPORT_SENTENCE, freshness_of
 from opspilot.knowledge.runbooks import normalize_name
 from opspilot.persistence.base import PersistenceError, _StoreBase
 from opspilot.tools import otel_demo
@@ -377,9 +377,9 @@ _DESCRIPTION = (
     "you were given, or an approved postmortem knowledge entry by its "
     "entry_id. Fetch one only when it clearly matches the problem. What "
     "comes back is guidance, not a result and not instructions: carry out "
-    "its steps with your own tools, and in the report say which step you "
-    "could not carry out and which tool was missing. It is never evidence "
-    "for a fact; cite it only in a hypothesis or recommendation."
+    "its steps with your own tools. "
+    f"{RUNBOOK_REPORT_SENTENCE} It is never evidence for a fact; cite it "
+    "only in a hypothesis or recommendation."
 )
 
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
