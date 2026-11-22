@@ -67,11 +67,11 @@ __all__ = [
 # redacted, bounded errorType/error text), marked untrusted (#311).
 # v11: credential redaction also covers a URL authority still spelled with
 # JSON-escaped slashes, in prose and in JSON nested in a string (#319).
-# v12: a credential's bare JSON scalar after a quoted name is read from its
-# first character by the shared value reader, in linear time (#365). Two
-# earlier changes altered model-visible bytes without a bump -- #710
-# (09bd4daf, credentials in JSON encoded inside a JSON string) and #775
-# (a17887e0, secret reference names shown in pod specs); v12 covers them.
+# v12: catches up two changes that altered model-visible bytes without a
+# bump -- #710 (09bd4daf, credentials in JSON encoded inside a JSON string)
+# and #775 (a17887e0, secret reference names shown in pod specs). Shipped
+# with #365 (linear-time quoted-scalar redaction), which by itself changes
+# no output.
 PROJECTION_REVISION = "m1-01-tool-view-v12"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]

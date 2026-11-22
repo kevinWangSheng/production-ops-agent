@@ -439,9 +439,10 @@ def _redact_quoted(text: str) -> str:
             else None
         )
         if redaction is None:
-            # Ordinary name, or nothing to hide: keep it and examine the
-            # value from its first character on.
-            end = match.end() if scalar else start + 1
+            # Ordinary name, or nothing to hide: keep it. A bare scalar is
+            # skipped whole, read once here so the scan stays linear (#365);
+            # any other value is examined from its first character on.
+            end = _SCALAR_VALUE.match(text, start).end() if scalar else start + 1
             parts.append(text[pos:end])
             pos = end
             continue
