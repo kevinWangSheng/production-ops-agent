@@ -87,6 +87,13 @@ join last when ``OPSPILOT_MONGODB_URL`` is set, listed under ``mongodb`` in
 what it was before C6c. The worker routes them to their own ``MongoTransport``
 (``mongodb-ro`` slot, address in the selector ``mongodb_endpoint``).
 
+#773: the six ``redis_*`` tools of :mod:`opspilot.tools.redis_inspect` join
+last, after the MongoDB tools, when ``OPSPILOT_REDIS_URL`` is set, listed under
+``redis`` in ``data_sources.available``; every set without the address is byte
+for byte what it was before #773. The worker routes them to their own
+``RedisTransport`` (``redis-ro`` slot, address in the selector
+``redis_endpoint``).
+
 B4 (#563): ``helm_list``, ``helm_history`` and ``helm_status`` of
 :mod:`opspilot.tools.helm_releases` join when ``OPSPILOT_HELM_RELEASES=1``,
 after the live usage tools and before ``fetch_skill`` and ``TodoWrite`` (the
@@ -127,6 +134,7 @@ from opspilot.tools import (
     mongodb_query,
     otel_demo,
     prometheus_ext,
+    redis_inspect,
     sql_query,
     victorialogs_logs,
 )
@@ -173,6 +181,8 @@ __all__ = [
     "KAFKA_TOOL_SCHEMA_REVISION",
     "MONGODB_TOOL_NAMES",
     "MONGODB_TOOL_SCHEMA_REVISION",
+    "REDIS_TOOL_NAMES",
+    "REDIS_TOOL_SCHEMA_REVISION",
     "SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION",
     "SQL_MSSQL_TOOL_SCHEMA_REVISION",
     "SQL_MYSQL_TOOL_SCHEMA_REVISION",
@@ -235,6 +245,7 @@ def _tool_schemas(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> tuple[Mapping[str, Any], ...]:
@@ -272,6 +283,9 @@ def _tool_schemas(
     if mongodb:
         # C6c (#570): after every earlier item.
         schemas = (*schemas, *mongodb_query.TOOL_SCHEMAS)
+    if redis:
+        # #773: after every earlier item.
+        schemas = (*schemas, *redis_inspect.TOOL_SCHEMAS)
     return schemas
 
 
@@ -294,6 +308,7 @@ def _data_sources(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> dict[str, Any]:
@@ -330,6 +345,8 @@ def _data_sources(
         available["kafka"] = sorted(kafka_admin.TOOL_NAMES)
     if mongodb:
         available["mongodb"] = sorted(mongodb_query.TOOL_NAMES)
+    if redis:
+        available["redis"] = sorted(redis_inspect.TOOL_NAMES)
     return {
         "available": available,
         "not_integrated": [
@@ -350,6 +367,7 @@ def _registrations(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> tuple[ToolRegistration, ...]:
@@ -439,6 +457,13 @@ def _registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
+    if redis:
+        base = (
+            *base,
+            *redis_inspect.redis_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+        )
     return base
 
 
@@ -453,6 +478,7 @@ def tool_schema_revision(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
 ) -> str:
@@ -476,6 +502,7 @@ def tool_schema_revision(
                     sql=sql,
                     kafka=kafka,
                     mongodb=mongodb,
+                    redis=redis,
                     helm=helm,
                     argocd=argocd,
                 )
@@ -490,6 +517,7 @@ def tool_schema_revision(
                     sql=sql,
                     kafka=kafka,
                     mongodb=mongodb,
+                    redis=redis,
                     helm=helm,
                     argocd=argocd,
                 )
@@ -505,6 +533,7 @@ def tool_schema_revision(
                 sql=sql,
                 kafka=kafka,
                 mongodb=mongodb,
+                redis=redis,
                 helm=helm,
                 argocd=argocd,
             ),
@@ -558,6 +587,11 @@ MONGODB_TOOL_SCHEMA_REVISION = tool_schema_revision(mongodb=True)
 MONGODB_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(mongodb=True)
 )
+#: #773: the same with only ``OPSPILOT_REDIS_URL`` set.
+REDIS_TOOL_SCHEMA_REVISION = tool_schema_revision(redis=True)
+REDIS_TOOL_NAMES: tuple[str, ...] = tuple(
+    item.name for item in _registrations(redis=True)
+)
 KAFKA_TOOL_NAMES: tuple[str, ...] = tuple(
     item.name for item in _registrations(kafka=True)
 )
@@ -584,6 +618,7 @@ def otel_demo_ext_versions(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
     cluster_name: str | None = None,
@@ -611,6 +646,7 @@ def otel_demo_ext_versions(
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            redis=redis,
             helm=helm,
             argocd=argocd,
         ),
@@ -629,6 +665,7 @@ def otel_demo_ext_face(
     sql: str | None = None,
     kafka: bool = False,
     mongodb: bool = False,
+    redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
     cluster_name: str | None = None,
@@ -653,6 +690,7 @@ def otel_demo_ext_face(
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            redis=redis,
             helm=helm,
             argocd=argocd,
         )
@@ -669,6 +707,7 @@ def otel_demo_ext_face(
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            redis=redis,
             helm=helm,
             argocd=argocd,
         ),
@@ -687,6 +726,7 @@ def _target(
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
     mongodb: mongodb_query.MongoConfig | None = None,
+    redis: redis_inspect.RedisConfig | None = None,
 ) -> RegisteredTarget:
     base = otel_demo._target(config)
     selector = {
@@ -706,6 +746,8 @@ def _target(
         selector[kafka_admin.ENDPOINT_SELECTOR] = kafka.bootstrap_servers
     if mongodb is not None:
         selector[mongodb_query.ENDPOINT_SELECTOR] = mongodb.endpoint
+    if redis is not None:
+        selector[redis_inspect.ENDPOINT_SELECTOR] = redis.endpoint
     return RegisteredTarget(
         target_id=base.target_id,
         source=base.source,
@@ -735,6 +777,7 @@ def otel_demo_ext_registrations(
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
     mongodb: mongodb_query.MongoConfig | None = None,
+    redis: redis_inspect.RedisConfig | None = None,
     helm: bool = False,
     argocd: bool = False,
 ) -> OtelDemoExtRegistrations:
@@ -749,6 +792,7 @@ def otel_demo_ext_registrations(
             sql=None if sql is None else sql.dialect,
             kafka=kafka is not None,
             mongodb=mongodb is not None,
+            redis=redis is not None,
             helm=helm,
             argocd=argocd,
         ),
@@ -762,6 +806,7 @@ def otel_demo_ext_registrations(
                 sql,
                 kafka,
                 mongodb,
+                redis,
             ),
         ),
     )
@@ -804,6 +849,8 @@ def _overflow_summary(
         return kafka_admin.overflow_summary(tool, rows, query)
     if tool in mongodb_query.TOOL_NAMES:
         return mongodb_query.overflow_summary(tool, rows, query)
+    if tool in redis_inspect.TOOL_NAMES:
+        return redis_inspect.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -823,6 +870,7 @@ def otel_demo_ext_executor_factory(
     sql: sql_query.SqlConfig | None = None,
     kafka: kafka_admin.KafkaConfig | None = None,
     mongodb: mongodb_query.MongoConfig | None = None,
+    redis: redis_inspect.RedisConfig | None = None,
     helm: bool = False,
     argocd: bool = False,
     jq_path: str | None = None,
@@ -884,6 +932,7 @@ def otel_demo_ext_executor_factory(
         sql=sql,
         kafka=kafka,
         mongodb=mongodb,
+        redis=redis,
         helm=helm,
         argocd=argocd,
     )
@@ -976,6 +1025,10 @@ def otel_demo_ext_executor_factory(
         # C6c: its own ``mongodb-ro`` slot, one short client per call.
         documents = mongodb_query.MongoTransport(mongodb)
         routes.update(dict.fromkeys(mongodb_query.TOOL_NAMES, documents))
+    if redis is not None:
+        # #773: its own ``redis-ro`` slot, one short connection per call.
+        keyspace = redis_inspect.RedisTransport(redis)
+        routes.update(dict.fromkeys(redis_inspect.TOOL_NAMES, keyspace))
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
