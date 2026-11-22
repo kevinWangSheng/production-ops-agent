@@ -171,10 +171,32 @@ class PollRecord:
     """What the sampling thread last saw, read by the health listener,
     which itself never queries (F8-R4): after a pass whose sweeps and claims
     were all served, one count; the pass is a "successful poll" only when
-    that count is served too. A refused pass records nothing."""
+    that count is served too. A refused pass records nothing.
+
+    A claimed sample in flight is recorded too (#522): ``sampling_since``
+    is when it started, ``None`` between samples, and ``sample_ended`` when
+    the last one returned, so a pass of several long samples stays ready
+    between them while a loop stuck after a sample is stale within three
+    intervals. Neither changes ``last_success`` (the metrics' poll age)."""
 
     last_success: float | None = None
     observation_due: int | None = None
+    sampling_since: float | None = None
+    sample_ended: float | None = None
+
+    def on_sample(self, started: bool) -> None:
+        now = time.monotonic()
+        if started:
+            self.sampling_since = now
+        else:
+            self.sample_ended = now
+            self.sampling_since = None
+
+    def liveness(self) -> float | None:
+        """The later of the last successful poll and the last sample's end:
+        the readiness clock between samples."""
+        marks = [m for m in (self.last_success, self.sample_ended) if m is not None]
+        return max(marks) if marks else None
 
     def after_poll(self, store: ObservationStore, *, ok: bool) -> None:
         if not ok:
@@ -194,13 +216,17 @@ def _start_health(
 ) -> health.HealthServer | None:
     record = PollRecord()
     loop.on_poll = lambda ok: record.after_poll(loop.store, ok=ok)
+    loop.on_sample = record.on_sample
 
     def readiness() -> health.Readiness:
         return health.poll_readiness(
-            last_success_monotonic=record.last_success,
+            last_success_monotonic=record.liveness(),
             poll_interval_seconds=loop.poll_seconds,
             now_monotonic=time.monotonic(),
             stopping=loop.stop.is_set(),
+            # an in-flight sample is alive within its lease (F8-R4, #522)
+            in_progress_since=record.sampling_since,
+            in_progress_bound=loop.lease_seconds,
         )
 
     def metrics() -> str:

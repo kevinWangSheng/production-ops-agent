@@ -21,7 +21,7 @@
 | F8-R1 | 共用小模块 `opspilot/health.py`：stdlib `ThreadingHTTPServer` 守护线程，只接 GET 三路由，其余 404，响应 ≤ 4 KiB；空值关闭 | 不给 worker/observer 引入 uvicorn/fastapi |
 | F8-R2 | 指标名与队列口径见下方代码块；复用 `incidents.py:207-211` 与 `observation/store.py:1866` 的 SQL 口径；不按 Run/事故打标签 | 不另造定义；无界基数 |
 | F8-R3 | 在 `worker_main.slot_runner` 用计数包装器包住 `DeepSeekClient.complete`，复盘线程的客户端同样包装；不改 `loop.py` | 不触碰调查 loop |
-| F8-R4 | `/readyz`：web 查 `alembic_version` = head 且池可用；worker/observer 用「上次成功轮询 ≤ 3×poll 间隔」+ 未收到 stop，不查库；不满足 503，body 给原因码 | worker 池 4 = 2 槽 + 轮询 + 复盘，无余量（`worker_main.py:498-507`） |
+| F8-R4 | `/readyz`：web 查 `alembic_version` = head 且池可用；worker/observer 用「上次成功轮询 ≤ 3×poll 间隔」+ 未收到 stop，不查库；不满足 503，body 给原因码。Observer 领到采样任务后到提交之前也算存活，以该任务的租约（120 秒）为上限（用户裁决 2026-11-22，B3-U1） | worker 池 4 = 2 槽 + 轮询 + 复盘，无余量（`worker_main.py:498-507`） |
 | F8-R5 | lab `values.yaml` 加 scrape job `opspilot`（见下），靠 `roll_prometheus_on_config_change`（`kind_lab.py:637`）生效 | 与 Alertmanager 到宿主的路径一致（M1-04 E14） |
 | F8-R6 | 两条规则见下，promtool 校验（沿 M1-04 R11） | 阈值 2 对齐 loop 重试上限（`loop.py:1320-1324`）；`for` 对齐现有规则 |
 | F8-R7 | web healthcheck 改为请求 `127.0.0.1:9464/readyz`，worker/observer 加同样 healthcheck；端口发布只在 `deploy/compose/compose.lab.yaml` | 默认文件保持「只有 web 发布」（`test_392_compose_static_impl.py:26` 相应调整） |
