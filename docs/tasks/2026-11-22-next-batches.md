@@ -1,9 +1,9 @@
 # 四批后续实施（部署健壮性 → 凭据脱敏 → 工作台 → 数据面与补分）
 
-- 状态：合同 r1 已裁决（用户 2026-11-22「全部按推荐」），待开工
+- 状态：批 3 完成（2026-11-22）；下一步批 1
 - 更新日期：2026-11-22
 - 依据：2026-11-22 开放 issue 重新分诊（23 个关闭、0 个须立即修）；四份独立预审（见「合同」）；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)；[C3](../design/technical-proposal-2026-09-07.md)
-- 工作区：每个 PR 一个 worktree，开工时填写
+- 工作区：每个 PR 一个 worktree（`../poa-<issue>-<名>`），合并后已删除
 
 ## 目标与范围
 
@@ -57,7 +57,20 @@
 
 ## 执行进展与证据
 
-（开工后填写）
+### 批 3 部署健壮性（2026-11-22 完成）
+
+| issue | PR | 验证 |
+|---|---|---|
+| #443 revision 对齐 | #791 | 参数化单测；审查无阻塞 |
+| #444 模型客户端 DNS 有界 | #794 | 独立测试（main 红）；一次真实 Run，[证据](../evidence/444-model-client-dns/README.md) |
+| #527 接管结算遗留预留 | #796 | 独立 PG 测试（main 红）；kill worker 真实 Run，[证据](../evidence/527-orphan-reservations/README.md) |
+| #522 采样中 `/readyz` 就绪 | #792 | 独立测试（main 6/7 红）；审查发现「被拒的轮次延长存活」已修 |
+| #683 固定 web 会话密钥 | #793 | 本地 install/restart/upgrade 实测，[证据](../evidence/683-session-secret/README.md) |
+| #476 日志轮转 | #795 | `docker compose config`（含 soak 覆盖） |
+| #391、#485 文档 | #789 | — |
+| #373 C3 已知偏离 | #790 | — |
+
+偏离：#527 真实 Run 用本机原生进程 + `kill -9` 代替 Compose + `docker kill`（swap 紧张）；#476 未做本地 install + `docker inspect`；#444 Run 的原始 ledger 在删 worktree 时丢失（冻结的 `summary.json` 与 trace 在）。费用：#444 约 0.03 CNY 上限，#527 约 0.003 USD（token×单价）。
 
 ## 待决
 
