@@ -11,6 +11,7 @@ import json
 import shutil
 import socket
 import threading
+import time
 from collections.abc import Sequence
 from datetime import timedelta
 from typing import Any
@@ -91,6 +92,10 @@ class Script:
                         b"0",
                         b"masteruser",
                         b"x",
+                        b"primaryuser",
+                        b"x",
+                        b"primaryauth",
+                        b"",
                         b"tls-key-file-pass",
                         CANARY.encode(),
                     ]
@@ -316,6 +321,9 @@ def test_config_denylist_redacts_even_empty_values(fake) -> None:
     rows = {row["name"]: row["value"] for row in view["content"]}
     assert rows["requirepass"] == "[REDACTED_CREDENTIAL]"
     assert rows["masteruser"] == "[REDACTED_CREDENTIAL]"
+    # #783: Valkey's names for masteruser / masterauth
+    assert rows["primaryuser"] == "[REDACTED_CREDENTIAL]"
+    assert rows["primaryauth"] == "[REDACTED_CREDENTIAL]"
     assert rows["tls-key-file-pass"] == "[REDACTED_CREDENTIAL]"
     assert rows["maxmemory"] == "0"
     assert CANARY not in json.dumps(view)
@@ -339,6 +347,38 @@ def test_string_and_hash_values(fake) -> None:
     view = _view(_execute(ri.VALUE_TOOL, {"key": "user:1"}))
     assert {"name": "ann"} in view["content"] and CANARY not in json.dumps(view)
     assert not any(argv[0] in ("GET", "HGETALL") for argv in fake.sent)
+
+
+def test_capped_string_keeps_text_cut_mid_character(fake) -> None:
+    # #783: the 8 KiB read ends inside a 3-byte character; the partial
+    # character is dropped so the value stays text (and visible to redaction)
+    fake.keys = {
+        "utf8": ("string", ("é" * 1000).encode() + b"a" * 6190 + "€".encode()),
+        "blob": ("string", b"\xff" * 9000),
+    }
+    view = _view(_execute(ri.VALUE_TOOL, {"key": "utf8"}))
+    row = view["content"][0]
+    assert row["value"] == "é" * 1000 + "a" * (ri.MAX_VALUE_CHARS - 1000)
+    assert row["_truncated_fields"] == ["value"]
+    view = _view(_execute(ri.VALUE_TOOL, {"key": "blob"}))
+    assert view["content"][0]["value"].startswith("0xffff")
+    assert view["content"][0]["_truncated_fields"] == ["value"]
+
+
+@pytest.mark.parametrize(
+    "data, shown",
+    [
+        (b"ab\xe2\x82", "ab"),  # cut inside a 3-byte character
+        (b"ab\xf0\x9f\x98", "ab"),  # cut inside a 4-byte character
+        (b"ab\xc3", "ab"),
+        ("ab€".encode(), "ab€"),
+        (b"ab\xff", "0x6162ff"),  # invalid, not a cut character
+        (b"\xffab\xe2\x82", "0xff6162e282"),
+        (b"ab\xe2\x41", "0x6162e241"),
+    ],
+)
+def test_prefix_value_drops_only_a_cut_trailing_character(data, shown) -> None:
+    assert ri._prefix_value(data) == shown
 
 
 def test_limit_marks_incomplete_only_past_it(fake) -> None:
@@ -600,3 +640,35 @@ def test_refused_port_is_unavailable() -> None:
 
     with pytest.raises(TransportUnavailable):
         ri.RedisTransport(config)._session(lambda send, legacy: pytest.fail("no"))
+
+
+def test_stuck_dns_is_unavailable_within_the_connect_timeout(monkeypatch) -> None:
+    # #783: the lookup runs under the connect timeout, not before the watchdog
+    release = threading.Event()
+    real = socket.getaddrinfo
+
+    def stuck(host: Any, *args: Any, **kwargs: Any) -> Any:
+        if host == "redis.stuck.example":
+            release.wait(10)
+            raise socket.gaierror("released")
+        return real(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", stuck)
+    config = ri.RedisConfig(
+        url="redis://redis.stuck.example:6379",
+        username="u",
+        password="p",
+        tls="disable",
+    )
+    from opspilot.tools.executor import TransportUnavailable
+
+    started = time.monotonic()
+    try:
+        with pytest.raises(TransportUnavailable) as error:
+            ri.RedisTransport(config, request_timeout_seconds=3.5)._session(
+                lambda send, legacy: pytest.fail("no tool command")
+            )
+        assert time.monotonic() - started < 2.5  # connect timeout is 1.5 s
+        assert error.value.args == ("REDIS_UNAVAILABLE",)
+    finally:
+        release.set()
