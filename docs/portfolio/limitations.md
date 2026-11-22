@@ -64,9 +64,7 @@ See the [threat model](threat-model.md).
 
 ## Known defects
 
-- A budget reservation stays `reserved` when a worker is killed mid model call ([#527](https://github.com/kevinWangSheng/production-ops-agent/issues/527)).
-- The Observer's `/readyz` briefly reports `POLL_STALE` during slow samples ([#522](https://github.com/kevinWangSheng/production-ops-agent/issues/522)).
-- Other open items carry the `post-m3` label in [GitHub Issues](https://github.com/kevinWangSheng/production-ops-agent/issues?q=is%3Aopen+label%3Apost-m3).
+- Open items carry the `post-m3` label in [GitHub Issues](https://github.com/kevinWangSheng/production-ops-agent/issues?q=is%3Aopen+label%3Apost-m3).
 
 ## Documentation language
 
