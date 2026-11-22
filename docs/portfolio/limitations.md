@@ -18,6 +18,7 @@ All evidence pages mark themselves as integration runs, drills or a lab soak. No
 
 - One target workload (the demo's checkout path), one HealthProfile, one model provider, one team, one replica of each runtime.
 - The M3 evidence used the Prometheus and Jaeger tools only. The read-only Kubernetes, log, database, Kafka, Argo CD, Helm and Redis/Valkey tools added afterwards (`otel-demo-ext` profile) were exercised only in the benchmark runs below, not in an M3-style acceptance or soak.
+- Release observation is authorized only for the dev kind cluster. The calibration manifest ([release-calibrations.json](../../opspilot/observation/policies/release-calibrations.json)) pins the target to that cluster's `cluster_uid`, and the path is fixed in `release_policy.py`. A new cluster (a rented host, a staging cluster) does not get release observation automatically; the rental installs even register the lab target with `cluster_uid` `opspilot-m1`, which the manifest does not match. Extending it needs its own contract review ([#391](https://github.com/kevinWangSheng/production-ops-agent/issues/391)).
 - The soak ran for 72 hours once. Its control side ran on a host shared with other workloads, and the target side on a shared-vCPU host ([m3-soak-2026-11-07](../evidence/m3-soak-2026-11-07/README.md)). It had no numeric targets, and its latency and resource figures describe that run only.
 
 ## Evaluation
