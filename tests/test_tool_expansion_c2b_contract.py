@@ -76,11 +76,11 @@ BACKEND_URLS = {
 }
 
 CONTEXT_POLICY = "ctx-ctx-policy-v1-a30e65ea52f4"
-EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-1137251eea4d"
-BASE_PROMPT_REVISION = "prompt-replay-candidate-860b743085d1"
-EXT_MESSAGES_SHA256 = "8e542808e4df7995047d40a23ee9c35a871cd586a471623f1781d40ef9ec26d5"
+EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-068c56342888"
+BASE_PROMPT_REVISION = "prompt-replay-candidate-f3c3018f981b"
+EXT_MESSAGES_SHA256 = "9561adb973434550006a3adaf2a8ffe48ebb16e9267d3fff0d73d92f685b5ec0"
 BASE_MESSAGES_SHA256 = (
-    "bce95832a645fcabd40627817df44450f51e879c66bf8e162685702d310f1b2e"
+    "4aa59670fc0455e02c07ad397480b018f63d8275b0653eff4636de7bfd496fb7"
 )
 
 # (elasticsearch, loki, victorialogs, live_metrics):
@@ -88,82 +88,82 @@ BASE_MESSAGES_SHA256 = (
 PINNED: dict[tuple[bool, bool, bool, bool], tuple[str, str, str]] = {
     (False, False, False, False): (
         "otel-demo-ext-c63f058afb18",
-        "18d3c85939845310421eb3a27a560b16a0ca133fc1a7826e411ebb0a16317aa8",
+        "80ebd7eafdbf841090f1d049ace53cf95d0aea7491a1f171e02302f0a23551aa",
         "167eb2504579f810931fdcb414311c1782d587165c38aa8386460149dfeacbe4",
     ),
     (False, False, False, True): (
         "otel-demo-ext-4730c27997c9",
-        "80aab8084c51c17ff63099d444e440ba29a7ce27cbcb02f20273d998945bf17c",
+        "3ae5ec9a274392a047349e214906295256ed5f44486cc922af7d707ddcc2afbf",
         "844668a81822d06c8f4478dea506dddec6fc17933f958923b774c6743ccd973d",
     ),
     (False, False, True, False): (
         "otel-demo-ext-840df01f3bce",
-        "93b5bd0996251fd51ad01c890e649dda5f363749c7f66b683a6321392d32b3f5",
+        "73f8de59bde21c46350f2035ddc87ae64980c997686f8ff20b11fe9fb4887beb",
         "a5a2a5acfee23ecb775957f20b96b33ac43c9a8f67491dd35a5701e7122dbefb",
     ),
     (False, False, True, True): (
         "otel-demo-ext-3eec17c97bae",
-        "3a734ff0876d76e00fea38cfa4c45257a4025c060831000bdf36bd340feb5aa9",
+        "6c62165bde1d404e6d88c6de7b995b52b77663794973401dae7b0ede154fb437",
         "098acfa266446587abb073cce02b0a4fe9e59d5cc0b8e73e1744d879512517a7",
     ),
     (False, True, False, False): (
         "otel-demo-ext-dd942a2f1292",
-        "0e9632b8710c7e2dbbe3be9a9f9584b6e7749307d12ee99d7e27e66a46c5ae0e",
+        "2b9ae1a020fe844393f43490a1edd0a48e267e79fb8e0c8011a89aac2e4accaa",
         "a01ab367e0c8d817fb8e5f36f4a841d10a65749b53fe4520031e99ada6494e6e",
     ),
     (False, True, False, True): (
         "otel-demo-ext-4994814c7688",
-        "2da185bc52efd9df74fbe5400d1d30222cc287c56f7b8ec7335cd1d5f906d6fc",
+        "e8bdfa9940d3309c29620b232975691154967ccf8ac56f7cec0d04012b355e48",
         "a9be872e3bab0f877588023c8feee0c1b6fbe868c739d69ce375b823fa47cc5d",
     ),
     (False, True, True, False): (
         "otel-demo-ext-cbd3b6aaa6b8",
-        "910c45e46fc5a90457d33b410467237d3a49d6f84f6d1b1071f47a0ddd6f2a1e",
+        "a310a6203b486b2ca740b0e07112ef655cc03ec9e5e3f0ebabebb45e5c609a73",
         "fe0b2c62592425dd462ad1021a7340d51657972f50b5283b1de52ab10d43618d",
     ),
     (False, True, True, True): (
         "otel-demo-ext-61aad69191fd",
-        "7cfb7fefd1b50a9a47231190b4ef07bbb4ea57efa532f04bcd8a407b3a1d275f",
+        "a5b0a25fe1ef50321582a95fb36adb35d5c26c9795fe65db031cd934fd2a4fb1",
         "80f67c7f1efaae9c778b1ecfb7ac82c37e44008753e1ae86c379ce58736fcd29",
     ),
     (True, False, False, False): (
         "otel-demo-ext-4f7faf728706",
-        "589cca6d4f1180e751ea3148c1b6f93c5a521f5d9c2793bb4226272cec6d1558",
+        "0321e6526eb4f22a81879f941b8728869ff63bc6254cad5e3ba6180c78325044",
         "3c01779513c347a3eeddce1ae961294310b4486653f42402c5e306c494ca93b9",
     ),
     (True, False, False, True): (
         "otel-demo-ext-f49f281c318a",
-        "cfe170bb5beb8965c3970f5e97dcd0b3e9589f7a4b8457abda58a445d8dea2f1",
+        "893c9ec40312434202fa11a190419395018f97106c9a5b63a0b272309c99c79b",
         "f7b9bf97f5080299aaa0bb8d2172b7c8f027c9c2222b3be1490d73f6bf03b1b9",
     ),
     (True, False, True, False): (
         "otel-demo-ext-381e74cfe8d0",
-        "53593ba1b1feed4813bd6090357b3da801bcc7976e27efdd49d9c6c0b1228855",
+        "aa2ef8626702f4820c949697c332111fda28587502be47a307cd5cd3c0276a23",
         "f2bfa31e415bb65b3d15de74e630aa1540deee9a1a8c047b5585e3d727fec380",
     ),
     (True, False, True, True): (
         "otel-demo-ext-884953bd455e",
-        "7ae52b0c77aa7269fe76335fa0367e813b305ee0244d7734967f99e28ac3dffe",
+        "d1b64e76a92e71b2aaf8413aa100e0318c29920e06d64f0ac901f94929d20201",
         "fa98d3484b77c21c5941e6e3cc66a0dbc481fadd49b292f274b6aaf6eb455105",
     ),
     (True, True, False, False): (
         "otel-demo-ext-f11fc2ce4d18",
-        "497b5b0ed0545bf71a1c2d0eef329178b3fd7810bd3be46b2494b9467148d5fe",
+        "515f501c4ed297add17c5056623dc73b305fbd36eaffc2dece7f166b007fb929",
         "e7f4592215ed71585250478ab03810aded896cff8e11190be8fcbff1dfb10a07",
     ),
     (True, True, False, True): (
         "otel-demo-ext-ebbaaaa09494",
-        "d9c375caffc6a01b27e78afc89b92c8d04240165dcf0422d4cf09a0d0955e9c2",
+        "cb38513d5eff6009ae0cf1804b5596e2f25c2380d3e07379732bd6f6eabd3859",
         "3001a2698911118e2c9963dd568ebc1796e3a0ecb8d1e368866a2784822025f0",
     ),
     (True, True, True, False): (
         "otel-demo-ext-da924862e562",
-        "ed1e27fc7c7e06b215796f7366cb706bf880eaa4f3063f40a7f7c67dad4135b9",
+        "6b86d37a28f192af2da9375ad762478d258b8794ea4fd50fabddda7bc92d7958",
         "9db3e6fb5059d1b79f3efa9d549f780653601024c5a0018c3377b7cb1e1e4320",
     ),
     (True, True, True, True): (
         "otel-demo-ext-263512312688",
-        "214b096ea1168a386e033e62a69f3b6ced54b83836884bce565cb764d7743b4d",
+        "57208dc36f20d4d977a5543a2c377bfef1f3aab80f83c41567c035f2168daf30",
         "1a1559268626f68549ec7c43bcdc00b6e408e6f7619e6800e2fcbd24b95f0d3b",
     ),
 }
@@ -171,12 +171,12 @@ PINNED: dict[tuple[bool, bool, bool, bool], tuple[str, str, str]] = {
 BASE_PINNED = {
     "fixture": (
         "fixture-5",
-        "a7263ba46b9d855a928df880691344d2f442375036aded1ac7d0d8ad7b391601",
+        "e891566cf26698a2c8f949139ead032ea5794e37c743aab61013433cef6f025f",
         "96c7053481005a5b30d702a3ec001e31e2c7020135727eee51ecb071a43888e4",
     ),
     "otel-demo": (
         "otel-demo-a3a95a0f888e",
-        "fc5ace171d3e5ee2fd9db87d73fc5c51299618a665c5ee6f6d26520dd5ac22bf",
+        "ff9bcd59a3f85413ff7dd5466a95148d488e99be4a92ccb8c54f7a5b8dc66b91",
         "ac2cae4d0900f2e7a5a9f76c1661452b3a5180bc14102c83f8471aa1c1ee9420",
     ),
 }
