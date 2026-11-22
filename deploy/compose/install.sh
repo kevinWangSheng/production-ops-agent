@@ -50,7 +50,8 @@
 # the operator; the web only gets its PBKDF2 hash) and the Alertmanager bearer
 # token (alertmanager_token; the web only gets its sha256). Secret values are
 # never printed. target_identities.json (the web's OPSPILOT_TARGET_IDENTITIES)
-# starts as {} and is the operator's to edit.
+# starts as {} and is the operator's to edit. web_session_secret signs the
+# workbench session cookie, so a login survives a web restart or upgrade.
 set -euo pipefail
 
 readonly COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -360,6 +361,9 @@ ensure_secrets() {
     # before #393 gets it on upgrade. {} hands every alert to a human; an
     # entry with a `match` lets an alert open a Run on that target.
     write_once target_identities.json printf '{}\n'
+    # Not tied to the database either: an older install gets it on upgrade
+    # (signing everyone out once). Delete it and upgrade to rotate it.
+    write_once web_session_secret random_hex
     export_auth_revision
 }
 

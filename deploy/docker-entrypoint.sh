@@ -8,7 +8,8 @@ set -eu
 
 for name in \
     OPSPILOT_UI_USERS \
-    OPSPILOT_EVENT_TOKENS; do
+    OPSPILOT_EVENT_TOKENS \
+    OPSPILOT_SESSION_SECRET; do
     eval "file=\${${name}_FILE:-}"
     [ -n "$file" ] || continue
     eval "inline=\${${name}:-}"
