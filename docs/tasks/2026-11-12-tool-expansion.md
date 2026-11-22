@@ -95,6 +95,7 @@
 - 检查点 1：每个新工具一次真实 Run，全部通过（证据在 `../evidence/rental-2026-11-20/` 各工具目录；C5 Loki 101 首跑平移失败，#762 修复后通过）。检查点 2 冒烟：各组都跑了，发现并合并的修复：#762 Loki 平移、#763 ES 只读 key、#764 compare 分数证据根、#765 C4 场景、#766 Mongo 行数上限、#725 集群名、#767 SREGym workload 与 MCP 端口。
 - Holmes 题集全量（main `8b912caa`，53 题 × 3 遍 × 两侧）：OpsPilot 133/159（83.6%），Holmes 150/159（94.3%）；OpsPilot 15 遍 no_report 全是多集群题上的产品转人工。分组见 [#666 记录](2026-11-18-holmes-evals-666.md#租机结果2026-11-2021669) 与 [全量记录](../evidence/rental-2026-11-20/full/run.md)。
 - SREGym Lite 全量（main `e9550ecd`，17 题 × 3 遍）：43/51（84.3%），无环境失败；见 [#667 记录](2026-11-19-sregym-667.md#租机结果2026-11-21669)。
+- SREGym 第 13 题 3 遍丢 2 遍：脱敏把字段名含 secret 的 Secret 引用整段抹掉。用户 2026-11-22 批准窄例外：`env[].valueFrom.secretKeyRef.{name,key,optional}`、`envFrom[].secretRef.{name,optional}`、`volumes[].secret.{secretName,optional}` 可见；引用内其他字段整段替换，可见字段仍过文本脱敏，Secret 对象照旧不可读（A2-6）。volumes 一并放开，理由：与 env 引用同为纯名字引用、不含值。安全测试 `tests/safety/test_safety_secret_references.py`，变异 M41、M42。真实 Run 待主机重跑第 13 题。
 - lead 租机期间裁决：上游禁用 K8s 的题不带 `--k8s-env-file`；摇摆题补跑（4–6 遍）两侧都不跑，照实披露；凭据扫描误报由用户加的两条钉死的 allowlist 条目处理。
 - 费用（token × 单价，按[租机手册](2026-11-13-rental-runbook.md#4-费用对账)）：DeepSeek 约 $5.52，覆盖 262 个 OpsPilot Run，全部在非高峰时段；单价来源 https://api-docs.deepseek.com/quick_start/pricing（2026-11-21 读取），deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60；若全按高峰价上限 $11.04。不含 Holmes 侧（summary 无 token 记录）与 Z.ai judge；未产出 summary 的失败尝试也未计入。
 

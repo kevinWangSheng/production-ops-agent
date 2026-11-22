@@ -474,3 +474,39 @@ def test_a_resumed_run_records_the_revision_its_input_implies(
     outcome = loop.resume(transcript)
     expected = prompt_revision_versions(knowledge_tool=with_catalog)["prompt_revision"]
     assert outcome.prompt_revision == expected
+
+
+# -- runbook report sentence (2026-11-21, after the 2026-11-20 rental) -------------
+
+
+class _StillClock:
+    def now(self) -> datetime:
+        return NOW
+
+
+def test_the_runbook_report_sentence_rides_only_with_the_knowledge_tool() -> None:
+    from opspilot.knowledge.catalog import RUNBOOK_REPORT_SENTENCE
+
+    for word in ("skill_id", "summary", "next_steps", "which tool was missing"):
+        assert word in RUNBOOK_REPORT_SENTENCE, word
+
+    def sent(knowledge: bool) -> list[str]:
+        face = otel_demo_ext.otel_demo_ext_face(_StillClock(), knowledge=knowledge)
+        texts = [s["function"]["description"] for s in face.tool_schemas]
+        facts = (
+            {
+                RUNBOOK_CATALOG: build_catalog(
+                    _rows("db"), retrieved_at=NOW, max_age_seconds=3600
+                )
+            }
+            if knowledge
+            else {}
+        )
+        messages, _ = initial_messages(_input(facts), evidence_context=None)
+        return texts + [str(m["content"]) for m in messages]
+
+    on = [t for t in sent(True) if RUNBOOK_REPORT_SENTENCE in t]
+    assert len(on) == 2
+    assert any(t.startswith(RUNBOOK_CATALOG_BOUNDARY) for t in on)
+    assert knowledge_fetch.TOOL_SCHEMAS[0]["function"]["description"] in on
+    assert not [t for t in sent(False) if RUNBOOK_REPORT_SENTENCE in t]
