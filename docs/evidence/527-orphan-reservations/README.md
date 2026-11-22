@@ -26,3 +26,7 @@ B3-R5 写的是本地 Compose 加 `docker kill` worker 容器。这里改用本�
 | Run `completed`（19:52:47Z） | 0 / 2 / 1，总数 3 = 3 条预留行 | `unknown`，`seconds=360` |
 
 结束时该 Run 没有一条预留还是 `reserved`（`still_reserved = 0`，见 psql 结果）。worker B 和 web 的日志里没有 ERROR。
+
+## 费用
+
+按 token × 官方单价（deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60，https://api-docs.deepseek.com/quick_start/pricing）。summary 的 `tokens` 只含 2 个有用量记录的轮次：命中 4608、未命中 480、输出 3451，约 $0.0022。被杀的那次请求没有用量记录，未计入，按同量级估计再加约 $0.001。合计约 $0.003。
