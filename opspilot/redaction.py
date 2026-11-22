@@ -487,6 +487,29 @@ def redact_credentials(text: str) -> str:
     )
 
 
+# Kubernetes reference names that point at a Secret without holding any of
+# its bytes (2026-11-22 user decision, SREGym p13): a Pod spec saying which
+# Secret and key it reads is the evidence for "references Secret X / key Y,
+# which does not exist", and the key-name rule below would otherwise wipe the
+# whole reference because its field name contains "secret". Exempted only at
+# the exact Kubernetes spelling and position -- (field, parent field) ->
+# readable sub-fields:
+#
+# * ``env[].valueFrom.secretKeyRef.{name,key,optional}``
+# * ``envFrom[].secretRef.{name,optional}``
+# * ``volumes[].secret.{secretName,optional}``
+#
+# Inside such a reference every other field is replaced whole (fail closed),
+# a readable string still passes ``redact_credentials``, and anything that is
+# not a string or a bool is replaced too. Secret objects themselves stay
+# unreadable (``kubernetes_core.resolve_kind``, A2-6).
+_SECRET_REFERENCES: dict[tuple[str, str], frozenset[str]] = {
+    ("secretKeyRef", "valueFrom"): frozenset({"name", "key", "optional"}),
+    ("secretRef", "envFrom"): frozenset({"name", "optional"}),
+    ("secret", "volumes"): frozenset({"secretName", "optional"}),
+}
+
+
 def redact_payload(value: object) -> object:
     """Redact JSON string values, object keys and credential-named fields, purely.
 
@@ -502,18 +525,50 @@ def redact_payload(value: object) -> object:
     # A tuple serializes as a JSON array (``json.dumps``, ``canonical``), so it
     # is walked like a list and comes back as one (bot review).
     result: dict[str, object] | list[object] = {} if isinstance(value, dict) else []
-    stack = [(value, result)]
+    # Each entry also carries the field the container sits under (a list's
+    # items inherit the list's field) and, inside a Secret reference, the
+    # sub-fields that stay readable.
+    stack: list[
+        tuple[
+            dict[str, object] | list[object] | tuple[object, ...],
+            dict[str, object] | list[object],
+            str | None,
+            frozenset[str] | None,
+        ]
+    ] = [(value, result, None, None)]
     suffixes: dict[tuple[int, str], int] = {}
     changed = False
     while stack:
-        source, destination = stack.pop()
+        source, destination, parent, readable = stack.pop()
         items = source.items() if isinstance(source, dict) else enumerate(source)
         for raw_key, item in items:
             # A non-string key is serialized by JSON as its scalar text
             # (``1`` -> ``"1"``), so it is examined and stored as that text.
             key = raw_key if isinstance(raw_key, str) else json.dumps(raw_key)
             changed |= key is not raw_key and isinstance(source, dict)
-            if (
+            reference = (
+                _SECRET_REFERENCES.get((key, parent))
+                if isinstance(source, dict) and readable is None and parent
+                else None
+            )
+            redacted: object
+            if readable is not None:
+                # Inside a Secret reference: only the named sub-fields, and
+                # only as a string (still prose-redacted) or a bool.
+                if key in readable and isinstance(item, (str, bool)):
+                    redacted = (
+                        redact_credentials(item) if isinstance(item, str) else item
+                    )
+                elif item is None:
+                    redacted = None
+                else:
+                    redacted = REDACTED_CREDENTIAL
+                changed |= redacted != item
+            elif reference is not None and isinstance(item, dict):
+                child_ref: dict[str, object] = {}
+                stack.append((item, child_ref, key, reference))
+                redacted = child_ref
+            elif (
                 isinstance(source, dict)
                 # The marker's own word must not make a key a credential
                 # name (a second pass would wipe ``https://[REDACTED_
@@ -526,7 +581,7 @@ def redact_payload(value: object) -> object:
                 # Whatever a credential-named field holds -- a string, a
                 # number, an object -- is replaced whole, as the prose rule
                 # does for ``"password": 4711`` or ``"token": {...}``.
-                redacted: object = REDACTED_CREDENTIAL
+                redacted = REDACTED_CREDENTIAL
                 changed |= redacted != item
             elif isinstance(item, str):
                 redacted = redact_credentials(item)
@@ -535,7 +590,9 @@ def redact_payload(value: object) -> object:
                 child: dict[str, object] | list[object] = (
                     {} if isinstance(item, dict) else []
                 )
-                stack.append((item, child))
+                stack.append(
+                    (item, child, key if isinstance(source, dict) else parent, None)
+                )
                 redacted = child
             else:
                 redacted = item
