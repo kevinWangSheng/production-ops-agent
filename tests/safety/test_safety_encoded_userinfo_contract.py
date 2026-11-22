@@ -7,7 +7,8 @@ encoded ``//`` precedes the userinfo: percent-encoding (``%2F%2F``, ``@`` may
 be ``%40``), any depth of backslash escaping (``\\\\\\/``), and HTML entities
 (``&#x2F;``/``&#47;``/``&sol;``, ``@`` may be ``&#64;``/``&#x40;``/
 ``&commat;``). Output has #319's shape: the prefix as written, the marker, a
-literal ``@``, then the host. Ordinary encoded text (an e-mail in a query
+``@`` as written (``%40``, ``&#64;`` ... kept, lead decision replacing
+B1-D7), then the host. Ordinary encoded text (an e-mail in a query
 string, a redirect URL, HTML paths) is left alone. Mixed spellings
 (``%2F/``), double percent-encoding (``%252F``) and base64 are not decided
 and are not pinned here.
@@ -37,7 +38,7 @@ EXACT = [
     ),
     (
         "https%3A%2F%2Fuser%3As3cret%40db.example.com",
-        f"https%3A%2F%2F{M}@db.example.com",
+        f"https%3A%2F%2F{M}%40db.example.com",
     ),
     # backslash-escaped, any depth
     (
@@ -55,7 +56,7 @@ EXACT = [
     ),
     (
         "&#47;&#47;user:s3cret&#64;db.example.com",
-        f"&#47;&#47;{M}@db.example.com",
+        f"&#47;&#47;{M}&#64;db.example.com",
     ),
     ("&sol;&sol;default:pw@redis", f"&sol;&sol;{M}@redis"),
     # pre-existing behaviour (#319 and before), unchanged
@@ -105,7 +106,9 @@ def test_encoded_userinfo_exact_output(text, expected):
 def test_encoded_userinfo_secret_hidden(text, host):
     once = redact_credentials(text)
     assert "s3cret" not in once
-    assert f"{M}@{host}" in once
+    assert any(
+        f"{M}{at}{host}" in once for at in ("@", "%40", "&#64;", "&#x40;", "&commat;")
+    )
     assert redact_credentials(once) == once
 
 

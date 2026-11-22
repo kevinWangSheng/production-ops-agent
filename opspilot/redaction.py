@@ -179,8 +179,9 @@ _ESCAPED_AUTHORITY_USERINFO = re.compile(
     r"(?P<host>[^\s/:?#\\\"]+)"
 )
 # The same authority encoded three more ways (#359), one rule each, each
-# anchored on its own encoded ``//`` and with the same output shape (prefix as
-# written, marker, a literal ``@``, host). Userinfo and host stop at the
+# anchored on its own encoded ``//``. Output: prefix as written, marker,
+# the ``@`` as written (``%40``, ``&#64;``, ``&#x40;``, ``&commat;`` or ``@``),
+# host. Userinfo and host stop at the
 # encoding's own spelling of ``/``, ``?``, ``#`` and ``@`` (and at ``\``,
 # ``"``, ``<``, ``>``, ``'`` and whitespace), so a match never runs past the
 # authority; each part is possessive, so a scan is a single forward pass.
@@ -190,7 +191,7 @@ _ESCAPED_AUTHORITY_USERINFO = re.compile(
 _PERCENT_AUTHORITY_USERINFO = re.compile(
     r"(?P<prefix>(?:%2[fF]){2})"
     r"(?P<userinfo>(?:[^\s/@%?#&\\\"<>']|%(?!2[fF]|3[fF]|23|40)[0-9A-Fa-f]{2})++)"
-    r"(?:@|%40)(?P<host>[^\s/:?#%&\\\"<>']+)"
+    r"(?P<at>@|%40)(?P<host>[^\s/:?#%&\\\"<>']+)"
 )
 # * backslashes: ``//`` escaped two or more levels deep (``\\\/`` is JSON
 #   in a JSON string in a JSON string; ``\\\\u002f`` likewise). Tried only
@@ -207,7 +208,7 @@ _ENTITY_AUTHORITY_USERINFO = re.compile(
     r"(?P<userinfo>(?:[^\s/@&?#<>\"'\\]"
     r"|&(?!#(?:[xX]0*2[fF]|0*47|[xX]0*40|0*64|[xX]0*3[fF]|0*63|[xX]0*23|0*35);"
     r"|sol;|commat;|quest;|num;)[#A-Za-z0-9]{1,8};)++)"
-    r"(?:@|&#(?:[xX]0*40|0*64);|&commat;)(?P<host>[^\s/:?#&<>\"'\\]+)"
+    r"(?P<at>@|&#(?:[xX]0*40|0*64);|&commat;)(?P<host>[^\s/:?#&<>\"'\\]+)"
 )
 # The forms the unquoted value above stops at: JSON ``"name":"v"``, YAML
 # ``name: "v"``, ``name='v'``, and a JSON value that is an object, an array
@@ -607,7 +608,10 @@ _ENCODED_AUTHORITY_USERINFO = (
 def _redact_userinfo(text: str, *rules: re.Pattern[str]) -> str:
     for rule in rules:
         text = rule.sub(
-            lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}",
+            lambda m: (
+                f"{m.group('prefix')}{REDACTED_CREDENTIAL}"
+                f"{m.groupdict().get('at') or '@'}{m.group('host')}"
+            ),
             text,
         )
     return text
@@ -627,14 +631,11 @@ def _redact_prose(text: str) -> str:
 def redact_credentials(text: str) -> str:
     """Replace credential-bearing spans in prose with ``REDACTED_CREDENTIAL``."""
 
-    redacted = _redact_prose(text)
     # The encoded forms (#359) run after the rules above, so whatever those
     # hid stays hidden and these only replace userinfo still in view. Their
-    # output spells ``@`` literally, which can complete a literal authority
-    # or expose a name (``%40token=``) to the rules above; when they changed
-    # anything those rules run once more, so a second call finds nothing new.
-    encoded = _redact_userinfo(redacted, *_ENCODED_AUTHORITY_USERINFO)
-    return redacted if encoded == redacted else _redact_prose(encoded)
+    # output keeps ``@`` as it was spelled (``%40``, ``&#64;``, ...), so it
+    # never completes a literal authority to its left or exposes a name.
+    return _redact_userinfo(_redact_prose(text), *_ENCODED_AUTHORITY_USERINFO)
 
 
 # Kubernetes reference names that point at a Secret without holding any of
