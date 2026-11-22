@@ -240,11 +240,14 @@ _COUNT_NUMBER = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
 
 
 def _count_name(name: str) -> bool:
-    folded = "".join(char for char in name.lower() if char.isalnum())
-    if not folded.endswith("tokens"):
+    end = len(name)
+    while end and not name[end - 1].isalnum():
+        end -= 1  # ``prompt_tokens_``, as a key may be cut
+    if not name[:end].lower().endswith("tokens"):
         return False
-    rest = folded[: -len("tokens")]
-    return not any(stem in rest for stem in _AUTHENTICATION_SUBSTRINGS)
+    # The rest of the name, as spelled, by the same credential-name rule:
+    # ``auth_tokens``, ``session_tokens``, ``cookieTokens`` stay credentials.
+    return not _credential_name(name[: end - len("tokens")])
 
 
 def _token_count(name: str, value: str) -> bool:

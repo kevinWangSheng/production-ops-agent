@@ -426,4 +426,13 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    return _COUNT_NUMBER.fullmatch(value) is not None and _count_name(name)\n",
         "    return _count_name(name)\n",
     ),
+    Mutation(
+        "M48",
+        "credentials: a *tokens name whose prefix is a credential name is not a count (#366)",
+        # Target: the prefix check in ``_count_name``. Mutated: every name
+        # ending in ``tokens`` is a count, so ``auth_tokens: 5`` is shown.
+        "opspilot/redaction.py",
+        '    return not _credential_name(name[: end - len("tokens")])\n',
+        "    return True\n",
+    ),
 )

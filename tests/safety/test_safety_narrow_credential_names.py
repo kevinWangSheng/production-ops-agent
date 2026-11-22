@@ -6,7 +6,8 @@ annotations carry token counts, session settings, session credentials and
 ``imagePullSecrets``: counts (a bare number under a name ending in
 ``tokens``), session settings and the pull-Secret *name* reach the model;
 a non-numeric ``access_tokens`` value, session identifiers and every other
-field of an ``imagePullSecrets`` entry never do. Guarded by mutation M47.
+field of an ``imagePullSecrets`` entry never do. Guarded by mutations M47
+and M48.
 """
 
 from __future__ import annotations
@@ -105,3 +106,13 @@ def test_redis_session_store_values_stay_redacted(monkeypatch, tmp_path):
         seen += everything_seen(outcome, tools.sinks[-1])
     assert "canary-session-66" not in seen and "canary-session-67" not in seen
     assert "1763812800" in seen  # positive control: other fields shown
+
+
+def test_a_count_name_whose_prefix_is_a_credential_name_stays_redacted():
+    """M48: ``auth_tokens``, ``session_tokens``, ``cookie_tokens`` are
+    credential names first; a number under them is not a count."""
+    for name in ("auth_tokens", "authTokens", "session_tokens", "cookie_tokens"):
+        for text in (f"{name}: 5", f"{name}=5", f'"{name}": 5', f'{{\\"{name}\\": 5}}'):
+            assert "5" not in redact_credentials(text), text
+        assert redact_payload({name: 123456}) == {name: REDACTED_CREDENTIAL}, name
+    assert redact_credentials("prompt_tokens: 5") == "prompt_tokens: 5"  # control
