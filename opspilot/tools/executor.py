@@ -1835,9 +1835,12 @@ class ReadOnlyToolExecutor:
             # rule ("fact-like claims cite ok views only") was invisible to
             # the model while ``adopted: true`` on a ``no_data`` view looked
             # like an invitation to cite it (v4 packet, normal-2 / fault-1).
+            # #742: a slice of kept evidence is citable only when its parent
+            # tool's registration is, not on ``read_evidence``'s own.
             "citable_as_fact": adopted
             and status == "ok"
-            and registration.citable_as_fact,
+            and registration.citable_as_fact
+            and (carried is None or carried["citable_as_fact"] is True),
             "tool": registration.name,
             "tool_version": registration.version,
             "source": registration.source if carried is None else carried["source"],
@@ -2308,6 +2311,7 @@ _CARRIED_KEYS = frozenset(
         "observed_at",
         "dispatch_started_at",
         "incomplete",
+        "citable_as_fact",
         "omitted_rows",
         "omitted_bytes",
     }
@@ -2358,6 +2362,8 @@ def _carried_problem(
     if response.source_end_at is not None and response.source_end_at > observed:
         return True
     if type(carried["incomplete"]) is not bool:
+        return True
+    if type(carried["citable_as_fact"]) is not bool:
         return True
     counts = (carried["omitted_rows"], carried["omitted_bytes"])
     return any(type(count) is not int or count < 0 for count in counts)

@@ -291,6 +291,7 @@ def _transport_refusal(
             run_id=scope.run_id,
             target_ids=scope.target_ids,
             result_paths={},
+            citable={},
         )
     elif reg.source == OTEL_SOURCE and reg.name in TOOL_NAMES:
         transport = OtelDemoTransport(
