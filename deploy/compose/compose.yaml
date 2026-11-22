@@ -15,6 +15,15 @@
 # container port 9464, opspilot.health) backs its healthcheck and is published
 # to the host only by the lab/development override compose.lab.yaml.
 
+# Log rotation for every service (#476): 50 MB x 5 files per container. This
+# overrides the log driver configured on the Docker daemon; to use your own
+# (journald, Loki, ...), delete x-logging and the `logging:` lines below.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 x-product: &product
   image: ${OPSPILOT_IMAGE:-opspilot:local}
   pull_policy: never
@@ -28,6 +37,7 @@ x-product: &product
     - ALL
   security_opt:
     - no-new-privileges:true
+  logging: *logging
 
 x-owner-dsn: &owner-dsn "host=postgres port=5432 dbname=opspilot user=opspilot_owner passfile=/run/secrets/owner_pgpass"
 
@@ -50,6 +60,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    logging: *logging
     restart: unless-stopped
 
   migrate:
