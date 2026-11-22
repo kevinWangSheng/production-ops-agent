@@ -94,8 +94,10 @@ class _BudgetOps(_StoreBase):
         ``budget_unknown`` and is never released. Settling the same
         reservation twice with the same outcome is a no-op; a different
         outcome is an identity conflict. Fenced by the lease like every
-        other write path, so a revoked attempt leaves its reservation as
-        ``reserved`` -- still counted against the limit.
+        other write path, so a revoked attempt cannot settle its own
+        reservation; the next ``claim()`` that takes the Run over with a new
+        epoch settles every reservation still ``reserved`` as ``unknown``
+        (#527), so it stays counted against the limit.
         """
         if outcome not in _SETTLEMENTS:
             raise PersistenceError("INVALID_INPUT")
