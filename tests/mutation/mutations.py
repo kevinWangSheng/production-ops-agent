@@ -374,4 +374,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         "                        redact_credentials(item) if isinstance(item, str) else item\n",
         "                        item\n",
     ),
+    Mutation(
+        "M43",
+        "credentials: a readable Secret reference field holds only a string or bool (2026-11-22)",
+        "opspilot/redaction.py",
+        "                if key in readable and isinstance(item, (str, bool)):\n",
+        "                if key in readable:\n",
+    ),
 )

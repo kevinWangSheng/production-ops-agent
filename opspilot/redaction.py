@@ -503,6 +503,7 @@ def redact_credentials(text: str) -> str:
 # a readable string still passes ``redact_credentials``, and anything that is
 # not a string or a bool is replaced too. Secret objects themselves stay
 # unreadable (``kubernetes_core.resolve_kind``, A2-6).
+# The exemption keys on field shape and position, not on resource kind.
 _SECRET_REFERENCES: dict[tuple[str, str], frozenset[str]] = {
     ("secretKeyRef", "valueFrom"): frozenset({"name", "key", "optional"}),
     ("secretRef", "envFrom"): frozenset({"name", "optional"}),

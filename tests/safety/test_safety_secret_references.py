@@ -5,7 +5,7 @@ Through the shipped ``otel-demo-ext`` gateway: ``env[].valueFrom.secretKeyRef``,
 ``envFrom[].secretRef`` and ``volumes[].secret`` show which Secret and key a
 Pod reads; any other field inside them is replaced, a credential-shaped
 string in a readable field is still redacted, and Secret objects stay
-unreadable (A2-6). Guarded by mutations M41 and M42.
+unreadable (A2-6). Guarded by mutations M41, M42 and M43.
 """
 
 from __future__ import annotations
@@ -96,6 +96,37 @@ def test_values_inside_or_beside_a_reference_stay_redacted(monkeypatch, tmp_path
     assert "orders-db-key" in seen and "orders-tls-ref" in seen
     for value in HIDDEN:
         assert value not in seen, value
+
+
+def test_a_non_string_in_a_readable_field_is_replaced(monkeypatch, tmp_path):
+    """Mutation: an object or a list where a reference name belongs is
+    replaced, never copied out."""
+    seen = _seen(
+        monkeypatch,
+        tmp_path,
+        _pod(
+            {
+                "name": {"pass" + "word": "canary-ref-object-45"},
+                "key": ["canary-ref-list-46"],
+            },
+            {"name": "orders-env-ref"},
+            {"secretName": "orders-tls-ref"},
+        ),
+    )
+    assert "orders-env-ref" in seen
+    assert "canary-ref-object-45" not in seen
+    assert "canary-ref-list-46" not in seen
+
+
+def test_a_reference_under_another_parent_is_not_exempt(monkeypatch, tmp_path):
+    pod = {
+        "metadata": {"name": "orders-0", "namespace": "otel-demo"},
+        "spec": {"data": {"secretKeyRef": {"name": "canary-ref-parent-47"}}},
+    }
+    body = json.dumps({"kind": "PodList", "items": [pod]}).encode()
+    seen = _seen(monkeypatch, tmp_path, body)
+    assert "orders-0" in seen
+    assert "canary-ref-parent-47" not in seen
 
 
 @pytest.mark.parametrize("kind", ["secrets", "Secret"])
