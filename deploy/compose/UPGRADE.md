@@ -44,6 +44,12 @@ it when its container is created: after editing it run
 `install.sh compose up -d --force-recreate web` (a plain `restart` keeps the
 old file mount, so an editor that replaces the file leaves web on the old map).
 
+`<secrets dir>/web_session_secret` signs the workbench session cookie, so a
+login survives a web restart or an upgrade. An install from before it gets it
+on upgrade, and that first upgrade signs everyone out once. To rotate it,
+delete the file and run `install.sh upgrade`: a new one is generated and
+everyone is signed out.
+
 An older image does not start on a database a newer release has migrated:
 each runtime refuses it on start. To go back to the previous release, see
 [Rolling back](#rolling-back). Run one web replica only; worker and Observer
