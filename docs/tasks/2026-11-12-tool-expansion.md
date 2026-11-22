@@ -1,7 +1,7 @@
 # 工具面拓展（对标 HolmesGPT，M3 之后）
 
-- 状态：阶段 A 与 B2 完成（代码已合并；2026-11-14 至 11-15 租机完成 #580 集群取证、A7 主路径 Run #559 与 ITBench-Lite 35 题 #571，均已关闭，见 [租机记录](../evidence/rental-2026-11/run.md)）。B/C 九项与评测接线 #666–#668 已合并，2026-11-20/21 集中租机（#669、#671）已跑完，结果见下文「集中租机结果」；剩余待决为用户门（见「待决」）
-- 更新日期：2026-11-21
+- 状态：阶段 A 与 B2 完成（代码已合并；2026-11-14 至 11-15 租机完成 #580 集群取证、A7 主路径 Run #559 与 ITBench-Lite 35 题 #571，均已关闭，见 [租机记录](../evidence/rental-2026-11/run.md)）。B/C 九项与评测接线 #666–#668 已合并，2026-11-20/21 集中租机（#669、#671）已跑完，修复 #772、#774、#775、#776 后 2026-11-22 定向重跑完成，结果见下文「集中租机结果」；剩余待决为用户门（见「待决」）
+- 更新日期：2026-11-22
 - 2026-11-16：阶段 A 与租机取证已完成（见 ROADMAP）；剩余 B/C 项改由 [B/C 批次记录](2026-11-16-tool-expansion-bc.md) 与决定表 r8 跟踪，本记录的阶段 B/C 表只作历史计划。
 - 依据：用户 2026-11-11 方向「对标上游拓宽调查数据面、只保自动化主路径」，2026-11-12 补充标注（下文「范围与状态」「范围原则」）；C3 第 8 节；`PRODUCT-CONSTRAINTS.md:12`；上游 HolmesGPT `a0009195`（工具集清单见 `scripts/holmes_baseline/config.py:48-98`，共 48 个）。完整计划与 Kubernetes 预审在仓库外，本记录已收录其中决定所需的内容。
 - 工作区：各实施项开工时另开 worktree 并写入各自的任务记录。
@@ -91,13 +91,15 @@
 
 ## 集中租机结果（2026-11-20/21，#669、#671）
 
-- 主机 Vultr `opspilot-tool-1`（8 vCPU / 31 GB），2026-11-20 08:14 PT 起开机，待用户确认 Destroy。主机与准备见 [租机记录](../evidence/rental-2026-11-20/run.md)。
+- 主机 Vultr `opspilot-tool-1`（8 vCPU / 31 GB），2026-11-20 08:14 PT 起开机；重跑证据已入库（#777），待用户在供应商控制台 Destroy。主机与准备见 [租机记录](../evidence/rental-2026-11-20/run.md)。
 - 检查点 1：每个新工具一次真实 Run，全部通过（证据在 `../evidence/rental-2026-11-20/` 各工具目录；C5 Loki 101 首跑平移失败，#762 修复后通过）。检查点 2 冒烟：各组都跑了，发现并合并的修复：#762 Loki 平移、#763 ES 只读 key、#764 compare 分数证据根、#765 C4 场景、#766 Mongo 行数上限、#725 集群名、#767 SREGym workload 与 MCP 端口。
 - Holmes 题集全量（main `8b912caa`，53 题 × 3 遍 × 两侧）：OpsPilot 133/159（83.6%），Holmes 150/159（94.3%）；OpsPilot 15 遍 no_report 全是多集群题上的产品转人工。分组见 [#666 记录](2026-11-18-holmes-evals-666.md#租机结果2026-11-2021669) 与 [全量记录](../evidence/rental-2026-11-20/full/run.md)。
 - SREGym Lite 全量（main `e9550ecd`，17 题 × 3 遍）：43/51（84.3%），无环境失败；见 [#667 记录](2026-11-19-sregym-667.md#租机结果2026-11-21669)。
-- SREGym 第 13 题 3 遍丢 2 遍：脱敏把字段名含 secret 的 Secret 引用整段抹掉。用户 2026-11-22 批准窄例外：`env[].valueFrom.secretKeyRef.{name,key,optional}`、`envFrom[].secretRef.{name,optional}`、`volumes[].secret.{secretName,optional}` 可见；引用内其他字段整段替换，可见字段仍过文本脱敏，Secret 对象照旧不可读（A2-6）。volumes 一并放开，理由：与 env 引用同为纯名字引用、不含值。安全测试 `tests/safety/test_safety_secret_references.py`，变异 M41、M42。真实 Run 待主机重跑第 13 题。
+- SREGym 第 13 题 3 遍丢 2 遍：脱敏把字段名含 secret 的 Secret 引用整段抹掉。用户 2026-11-22 批准窄例外：`env[].valueFrom.secretKeyRef.{name,key,optional}`、`envFrom[].secretRef.{name,optional}`、`volumes[].secret.{secretName,optional}` 可见；引用内其他字段整段替换，可见字段仍过文本脱敏，Secret 对象照旧不可读（A2-6）。volumes 一并放开，理由：与 env 引用同为纯名字引用、不含值。安全测试 `tests/safety/test_safety_secret_references.py`，变异 M41、M42（#775）。
+- 全量后修复：#772 报告点名所取 runbook 及各步结果；#774 Holmes 第 280 题归入 `TIME_BOX_LIMITED`（数据在 A3-1 固定 24 小时窗外）；#775 上条 Secret 引用名可见；#776 报告合同定义 completed 与 incomplete（修 #771）。
+- 定向重跑（2026-11-22，main `d3c7558d` 合入 #772/#775/#776，只跑 OpsPilot 侧与 SREGym p13，88 个 trial + p13 3 遍，无环境失败；[重跑记录](../evidence/rental-2026-11-20/rerun-2026-11-22/run.md)、[逐题对照](../evidence/rental-2026-11-20/rerun-2026-11-22/compare.md)）：同批题 no_report 15 遍 → 1 遍；3 遍题 B1 22/36 → 30/36、C2 10/18 → 12/18，259_wrong、264、266 由 0/3 到 3/3；1 遍题 33/34；SREGym p13 仍 1/3。退步：100a 首遍 `REPORT_INVALID`（引用了不存在的 evidence_id），追加 3 遍 3/3；267 3/3 → 2/3，235 2/3 → 1/3，185 仍 0/3。三个 PR 各有对应 Run 与 trace（见重跑记录「各 PR 的对应 Run」）。未跑：Holmes 侧、280、摇摆题补跑。
 - lead 租机期间裁决：上游禁用 K8s 的题不带 `--k8s-env-file`；摇摆题补跑（4–6 遍）两侧都不跑，照实披露；凭据扫描误报由用户加的两条钉死的 allowlist 条目处理。
-- 费用（token × 单价，按[租机手册](2026-11-13-rental-runbook.md#4-费用对账)）：DeepSeek 约 $5.52，覆盖 262 个 OpsPilot Run，全部在非高峰时段；单价来源 https://api-docs.deepseek.com/quick_start/pricing（2026-11-21 读取），deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60；若全按高峰价上限 $11.04。不含 Holmes 侧（summary 无 token 记录）与 Z.ai judge；未产出 summary 的失败尝试也未计入。
+- 费用（token × 官方单价，按[租机手册](2026-11-13-rental-runbook.md#4-费用对账)，单价来源 https://api-docs.deepseek.com/quick_start/pricing，deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60）：DeepSeek 全量约 $5.52（262 个 Run，下表）加重跑约 $1.59（94 个 Run，含 100a 追加 3 遍），全部闲时；不含 Z.ai judge、Holmes 侧与未产出 summary 的尝试。主机租金：待用户的供应商账单。
 
 | 阶段 | Run | 命中输入 | 未命中输入 | 输出 | 合计 token | 费用（USD） |
 |---|---|---|---|---|---|---|
@@ -118,7 +120,7 @@
 | N6 | 工具 search/catalog 值不值得做 | 未决定，不改固定档位、注册表与 schema revision |
 | R-1 | 是否据集中租机结果翻转相关 feature `passes` | 用户门，本记录不改 `feature_list.json` |
 | R-2 | 接受三处窄例外：F11 第 4 步 Helm（[B4 记录](2026-11-20-tool-expansion-b4.md)）、F11 第 4 步 ArgoCD、F7 第 1 步 ArgoCD（[C4 记录](2026-11-20-tool-expansion-c4.md)） | 用户门，推荐接受；验收步骤原文不改 |
-| R-3 | 租机主机 `opspilot-tool-1` Destroy | 待用户确认 Destroy |
+| R-3 | 租机主机 `opspilot-tool-1` Destroy | 证据已入库（#777），待用户在供应商控制台 Destroy |
 
 ## 下一步与交接
 
