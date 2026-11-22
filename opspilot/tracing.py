@@ -228,6 +228,10 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     mongodb_url = env.get("OPSPILOT_MONGODB_URL") or ""
     if mongodb_url and not _is_lab_host(mongodb_url):
         failures.append("MONGODB_NOT_LAB")
+    # #773: the Redis/Valkey address, whenever it is set.
+    redis_url = env.get("OPSPILOT_REDIS_URL") or ""
+    if redis_url and not _is_lab_host(redis_url):
+        failures.append("REDIS_NOT_LAB")
     kafka_servers = env.get("OPSPILOT_KAFKA_BOOTSTRAP_SERVERS") or ""
     if kafka_servers and not all(
         _is_lab_host(f"kafka://{server}") for server in kafka_servers.split(",")

@@ -1108,6 +1108,11 @@ jobs:
           CLICKHOUSE_IMAGE: clickhouse/clickhouse-server@sha256:360a13d58afe559036b13ae5e21ba361d990081c93987d3fef0e5d7ea2dcd074
           # C6c: mongo:7.0.17 multi-platform index, read on 2026-11-20.
           MONGO_IMAGE: mongo@sha256:ac9e83c57e32bf767f875ac2b9a9d87800d2d91a7829180c3a4826e0599698e8
+          # #773: the Valkey 9.0.1 Alpine 3.23 image, multi-platform index, read on
+          # 2026-11-22.
+          REDIS_IMAGE: valkey/valkey@sha256:c106a0c03bcb23cbdf9febe693114cb7800646b11ca8b303aee7409de005faa8
+          # A CI-only read-only account password, never a real secret.
+          C6_VALKEY_RO_PASSWORD: readonly773
           MSSQL_IMAGE: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f
           # SQL Server requires a complex password; CI only, never a real secret.
           C6_MSSQL_ADMIN_PASSWORD: Changeme570!
@@ -1132,6 +1137,8 @@ jobs:
           docker run -d --name c6-mongo --cpus=1 --memory=512m \
             -e MONGO_INITDB_ROOT_USERNAME=root -e MONGO_INITDB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53206:27017 "$MONGO_IMAGE"
+          docker run -d --name c6-valkey --cpus=1 --memory=256m \
+            -p 127.0.0.1:53207:6379 "$REDIS_IMAGE" --requirepass "$C6_ADMIN_PASSWORD"
           docker run -d --name c6-mariadb --cpus=1 --memory=512m \
             -e MARIADB_ROOT_PASSWORD="$C6_ADMIN_PASSWORD" \
             -p 127.0.0.1:53203:3306 "$MARIADB_IMAGE" --general-log=1 --log-output=TABLE
@@ -1185,6 +1192,22 @@ jobs:
             sleep 2
           done
           [ -n "$ready" ] || { docker logs c6-mongo >&2; exit 1; }
+          ready=
+          for _ in $(seq 1 30); do
+            if docker exec c6-valkey valkey-cli --no-auth-warning -a "$C6_ADMIN_PASSWORD" \
+                PING 2>/dev/null | grep -q PONG; then
+              ready=1; break
+            fi
+            sleep 1
+          done
+          [ -n "$ready" ] || { docker logs c6-valkey >&2; exit 1; }
+          # #773: the documented lab grant for the read-only account.
+          docker exec c6-valkey valkey-cli --no-auth-warning -a "$C6_ADMIN_PASSWORD" \
+            ACL SETUSER opspilot_ro reset on ">$C6_VALKEY_RO_PASSWORD" '~*' resetchannels \
+            -@all +@read +info +ping +hello +auth +select '+client|setname' '+config|get' \
+            '+slowlog|get' '+slowlog|len' '+acl|whoami' '+acl|getuser'
+          docker exec c6-valkey valkey-cli --no-auth-warning -a "$C6_ADMIN_PASSWORD" \
+            INFO server | grep -E '^(valkey|redis)_version'
           docker exec c6-postgres psql -U postgres -tAc 'SELECT version()'
           curl -fsS -H "X-ClickHouse-User: default" -H "X-ClickHouse-Key: $C6_ADMIN_PASSWORD" \
             'http://127.0.0.1:53204/?query=SELECT%20version()'
@@ -1228,6 +1251,10 @@ jobs:
           C6_MONGO_PORT: "53206"
           C6_MONGO_ADMIN_USER: root
           C6_MONGO_CONTAINER: c6-mongo
+          C6_VALKEY_PORT: "53207"
+          C6_VALKEY_CONTAINER: c6-valkey
+          C6_VALKEY_RO_USER: opspilot_ro
+          C6_VALKEY_RO_PASSWORD: readonly773
         run: |
           jq --version
           files=""
@@ -1236,7 +1263,9 @@ jobs:
               tests/integration/test_tool_expansion_c6b_sql.py \
               tests/integration/test_tool_expansion_c6b_sql_impl.py \
               tests/integration/test_tool_expansion_c6c_mongo.py \
-              tests/integration/test_tool_expansion_c6c_mongo_impl.py; do
+              tests/integration/test_tool_expansion_c6c_mongo_impl.py \
+              tests/integration/test_redis_inspect_valkey.py \
+              tests/integration/test_redis_inspect_valkey_impl.py; do
             [ -f "$name" ] && files="$files $name"
           done
           [ -n "$files" ] || { echo "no C6a integration test file" >&2; exit 1; }
@@ -1245,7 +1274,7 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: |
-          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql c6-mongo; do
+          for name in c6-postgres c6-mysql c6-mariadb c6-clickhouse c6-mssql c6-mongo c6-valkey; do
             echo "--- $name"
             docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' "$name" 2>&1 || true
             docker logs --tail 200 "$name" 2>&1 || true

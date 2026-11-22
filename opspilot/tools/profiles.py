@@ -56,6 +56,11 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   (``OPSPILOT_MONGODB_DATABASE``, ``_USERNAME``, ``_PASSWORD``,
   ``_AUTH_SOURCE``, ``_TLS``, ``_CA_FILE``; ``MONGODB_CONFIG_MISSING``/
   ``_INVALID``, ``MONGODB_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_REDIS_URL`` adds the six Redis/Valkey tools (#773): the web
+  reads the address only, the worker the ``redis-ro`` settings
+  (``OPSPILOT_REDIS_DATABASE``, ``_USERNAME``, ``_PASSWORD``, ``_TLS``,
+  ``_CA_FILE``; ``REDIS_CONFIG_MISSING``/``_INVALID``,
+  ``REDIS_TARGETS_OPSPILOT_DB``).
   ``OPSPILOT_HELM_RELEASES=1`` adds ``helm_list``, ``helm_history`` and
   ``helm_status`` (B4) over the existing cluster connection;
   ``OPSPILOT_ARGOCD=1`` adds the four ``argocd_app_*`` tools (C4) the same way
@@ -120,6 +125,7 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_face,
     otel_demo_ext_versions,
 )
+from opspilot.tools.redis_inspect import RedisConfig, redis_enabled
 from opspilot.tools.registry import ToolContractError
 from opspilot.tools.sql_query import SqlConfig, sql_dialect
 from opspilot.tools.victorialogs_logs import (
@@ -192,6 +198,10 @@ _STARTUP_CODES = frozenset(
         "MONGODB_CONFIG_MISSING",
         "MONGODB_CONFIG_INVALID",
         "MONGODB_TARGETS_OPSPILOT_DB",
+        "REDIS_CONFIG_MISSING",
+        "REDIS_CONFIG_INVALID",
+        "REDIS_TARGETS_OPSPILOT_DB",
+        "REDIS_NOT_LAB",
         "KAFKA_CONFIG_MISSING",
         "KAFKA_CONFIG_INVALID",
         "ARGOCD_INVALID",
@@ -242,6 +252,8 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     kafka = kafka_enabled(env)
     # C6c: the address only; never an ``OPSPILOT_MONGODB_*`` credential.
     mongodb = mongodb_enabled(env)
+    # #773: the address only; never an ``OPSPILOT_REDIS_*`` credential.
+    redis = redis_enabled(env)
     # B4-2: the switch only (not an ``OPSPILOT_K8S_*`` name, A2-3); the
     # worker alone checks the cluster address is a lab host (B4-3).
     helm = helm_releases_enabled(env)
@@ -276,6 +288,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 sql=SqlConfig.from_env(env),
                 kafka=KafkaConfig.from_env(env),
                 mongodb=MongoConfig.from_env(env),
+                redis=RedisConfig.from_env(env),
                 helm=helm,
                 argocd=argocd,
             )
@@ -298,6 +311,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            redis=redis,
             helm=helm,
             argocd=argocd,
             cluster_name=cluster_name,
@@ -312,6 +326,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             sql=sql,
             kafka=kafka,
             mongodb=mongodb,
+            redis=redis,
             helm=helm,
             argocd=argocd,
             cluster_name=cluster_name,
