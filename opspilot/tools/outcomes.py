@@ -76,7 +76,10 @@ __all__ = [
 # ``tokens`` and session *settings* (``sessionAffinity``, ``SESSION_TIMEOUT``)
 # are shown; ``sessionid`` is now redacted; ``spec.imagePullSecrets[].name``
 # is shown like the #775 reference names.
-PROJECTION_REVISION = "m1-01-tool-view-v13"
+# v14: URL userinfo is also redacted when the authority's ``//`` is
+# percent-encoded, escaped two or more levels deep, or written as HTML
+# entities (#359).
+PROJECTION_REVISION = "m1-01-tool-view-v14"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

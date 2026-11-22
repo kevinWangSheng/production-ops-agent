@@ -2,519 +2,519 @@
  "_comment": "Computed on origin/main 0c0492f1 + C6b interface commit c0c1068c (C6a merged, no C6b code): PostgreSQL and MySQL/MariaDB extension surfaces must stay byte for byte (C6b record). Keys: dialect|flags (es, loki, victorialogs, live_metrics, knowledge, todo) -> [tool_schema_revision, surface sha256]; dialect|desc|tool -> sha256 of that tool schema.",
  "pins": {
   "mysql|000000": [
-   "otel-demo-ext-33f9dfd58833",
-   "4b2e18efd520f85e9629fb91ed9571bcb2eacf36a650900ff7f2a822eded5ce9"
+   "otel-demo-ext-764db0f5049f",
+   "61480ff26e6db35d191cb7b65ee71a66414b35a3cf417e8352bc66c2973b8a39"
   ],
   "mysql|000001": [
-   "otel-demo-ext-218d428524ea",
-   "a913f48beef8724c11fe126fca77f2125dae8a58fce4933192e8cbee86f83da5"
+   "otel-demo-ext-22c978bcb0e0",
+   "70c9e1fecf5a8c8b93a982d07240003a660cab9a443dbdee4bb7d150e3d95c33"
   ],
   "mysql|000010": [
-   "otel-demo-ext-8d82da6568c0",
-   "57e18a1971bcc695ab9d89b28242391bff9ef3821de97ed27fd6548a6918c4db"
+   "otel-demo-ext-c128d197680e",
+   "dbd1d37529c1e6164cb2e3b0338c8ec63b50a291e7eb9ecf9ac2dc816a7a001a"
   ],
   "mysql|000011": [
-   "otel-demo-ext-3b7241657746",
-   "f2ad1efac694087b021a357311cde7960610fe25f06a9d7d65647b2648f1b83d"
+   "otel-demo-ext-61b71a0a2248",
+   "5e7a09c58a930a64cd0ef2345ba0efd64471e722883bbfee27a2234076277235"
   ],
   "mysql|000100": [
-   "otel-demo-ext-9dab46d8d1c3",
-   "04fdd2de9e25b4dfb6a1ca2bb729efd776801982c0d07e26bff4bb64f1c2d8cf"
+   "otel-demo-ext-d3decc8fabfa",
+   "f53659038b0171e30dbcb357648bb65136501fab78ff7b7934dd2f0f5e835878"
   ],
   "mysql|000101": [
-   "otel-demo-ext-3dd131000451",
-   "351cc47845b3d0301c91cdcaf8359b327d37701e2e6d4e17a2a414c2be3ae7c0"
+   "otel-demo-ext-12abcad3cb5e",
+   "207de4912368197012fd5571fa679d7abb527faa073435477c6036b78905b57b"
   ],
   "mysql|000110": [
-   "otel-demo-ext-9447b8078bfe",
-   "7430a8af9ec2c831d1d0491694b17231f2ca14fed55405c4e5dd91bb3535b73e"
+   "otel-demo-ext-0cbc73e4bb31",
+   "3438e840ca78f5e1d9d9b8f9fd83c7eae2cb0eda686530280c3f4b23d6d9efb7"
   ],
   "mysql|000111": [
-   "otel-demo-ext-d0c741105796",
-   "5f43091c3ef7c23ef3355ba53d6db069e7314502be7c6e7df111025c36a132b2"
+   "otel-demo-ext-b614494e7f52",
+   "e4cc0057a3abd230e265df09d49d3c5eff140969e568a94e0f0c52483fc06ef4"
   ],
   "mysql|001000": [
-   "otel-demo-ext-668de5b8a65c",
-   "4ccfcb054805866614195b93d9042269424ec8c6110d59e13080e8bc10c74a60"
+   "otel-demo-ext-51ce4d43c2df",
+   "21a7a9533c585094c74093dc8d665d640c60d421eb008c96728daca7dea99ff1"
   ],
   "mysql|001001": [
-   "otel-demo-ext-c979aaf9f57c",
-   "807e2c161ada5154c8881fc1c109ecaaf458949789401f5e6773446ac48557fb"
+   "otel-demo-ext-f6f6059332b3",
+   "babc0e5e1b8868d729bd514bb177e48be3f5c5e35b19cdaa8c1e72a9eaf54ec9"
   ],
   "mysql|001010": [
-   "otel-demo-ext-25a847d30825",
-   "bfdabe2f6a130849edd424e4ec3640c1c73a52e104193cac848e0ccb97fbfcc9"
+   "otel-demo-ext-d5104ed010b8",
+   "d1965e4c24d6da6f576ab42242d003ed64799e31aafdb01dbb5c6658c8cf994e"
   ],
   "mysql|001011": [
-   "otel-demo-ext-c6f6d1fbab70",
-   "dec022b16ea8e608c39ab96518b1913168f1e2765515262fab66ebf5d0b1e1ce"
+   "otel-demo-ext-2b52760ef4c8",
+   "e2868eb75c837f73ca19aca8f3a239fcb0c6c07a97277fb3a7b7d106d47539a2"
   ],
   "mysql|001100": [
-   "otel-demo-ext-013a2f54fafc",
-   "d4aacb9491b63afea7e92358698cbd9ab1795970224da5b3fc0e12cffe462f09"
+   "otel-demo-ext-c54cb4dc5de2",
+   "00e8931ae687316513bc764d4b383822071a118e58b406899baec023552f7887"
   ],
   "mysql|001101": [
-   "otel-demo-ext-9dada8deed11",
-   "64eec226ac0f66ae301df34596d48a928a94c4593f40b76a1deddbe3e7a21d03"
+   "otel-demo-ext-6db9291ce794",
+   "47b823491b477716ee923ffcb9e2315c6a0a06cabe4ad1532832120abffd2e53"
   ],
   "mysql|001110": [
-   "otel-demo-ext-df56c2f7f1ee",
-   "d5c7ec8c97bfb74828c9a92bd085ede891c7f9a7e6fceef334fc2c1d62edc550"
+   "otel-demo-ext-baffbd9aab8b",
+   "a0c50bb225ec75aff8cec2a6ed0f04a64d269bfcf7a0a980222e6d22815b32d2"
   ],
   "mysql|001111": [
-   "otel-demo-ext-77e8d2a6802f",
-   "54afbedac198a6acb324cb5134ead79e15523a33803c2e0a6976b5b951eab275"
+   "otel-demo-ext-94f062b15cd3",
+   "c0fa4ee0eb9ef86213ab93536b8cbb692f074975885a7a50d48a6b41c9f6f782"
   ],
   "mysql|010000": [
-   "otel-demo-ext-ae4dedcd548b",
-   "e2814a43d994dbf2a84dd7ce5ffff1ba0d66a0da256914f864eb6e5cae013dd1"
+   "otel-demo-ext-8559132f2e85",
+   "d811048d427ad9199d59e5f8218e7e9b1bd87a8d6be3010f9dcfd0597a746100"
   ],
   "mysql|010001": [
-   "otel-demo-ext-8762154e7a42",
-   "78157e0f1708d9ddcbab838278c0c0c766aed7ffea431a6eba031e4736483410"
+   "otel-demo-ext-ee36cdae9a28",
+   "d2cee4fd9347b4543e000c50886e012ba2bd0a2e49714414f594d62080e18751"
   ],
   "mysql|010010": [
-   "otel-demo-ext-2f2cc368b9c7",
-   "e63de7d3fe26386dc3f632e2d2512264de37bd38686da92a0e50708863a9a82f"
+   "otel-demo-ext-5931e755d2a7",
+   "ce198ddbc1d6bc09a1261b19abbd649b99f9bae9478b85ddf4870e9630a067c8"
   ],
   "mysql|010011": [
-   "otel-demo-ext-83dd03379497",
-   "8c846fb7eee07f17e77a57c2f8cac8362bbfbfaac431e057b5b654d8a7dd7121"
+   "otel-demo-ext-26226b615e98",
+   "9b901dc6347b2d2c6a969d7bd9d52c2663e6902e80664d67cf9da3921bd12b6a"
   ],
   "mysql|010100": [
-   "otel-demo-ext-657204c76589",
-   "a0fa1315193e1823e5ce4c2aae8359ff6ebefe167f433f8e17ac4f928c6a93ab"
+   "otel-demo-ext-6f8b52c1fb28",
+   "45adee0e5b70b0433d451fc257a21c0db858dd6b4fdbda0fb77ab10729aebef1"
   ],
   "mysql|010101": [
-   "otel-demo-ext-f8254fa4850c",
-   "e66c9ed37336147d8bbdb7260e0aae0b512ebb7f97c923c7c8f79e5adb03ba88"
+   "otel-demo-ext-bbccd0f58508",
+   "0238db7316160cbb42c2850894cc466b6788726fcc0e51c354f0261dc27fc1a5"
   ],
   "mysql|010110": [
-   "otel-demo-ext-e5bbf3a6f8cb",
-   "2a87c32db58594e6863ab4086e6c923025d934bbd4190fd3f1288c58eb51cb1a"
+   "otel-demo-ext-4a203894dedd",
+   "342036d47412039b85edcab7f1de2ec8be3bd1a70d37ebd4a465e22c15278ac1"
   ],
   "mysql|010111": [
-   "otel-demo-ext-1192ed9532b8",
-   "432217603af60ed44dbd762967b420579643e0315c02a25cc06211935c1d3143"
+   "otel-demo-ext-031ac92546a5",
+   "39f27569efc91db1992d9302a0d6f44cdbb4769360f132679b11e5504cc7ed27"
   ],
   "mysql|011000": [
-   "otel-demo-ext-4eec9501c3c6",
-   "3cb099543d71fd3030c96fd12a8dadba863b3e609c8f2bd7f78c22e20a61196f"
+   "otel-demo-ext-b6c3172f7d9c",
+   "47280ea6252a6dd12b658f41f9ed7d1c08dedc96362178802ff5dd1405f78e9f"
   ],
   "mysql|011001": [
-   "otel-demo-ext-832b3b811e36",
-   "7bd128ec636f00195c8ccbbcc333cc9856ae99e3f431a8c7a6f0d40307fb8856"
+   "otel-demo-ext-756487b6b4ec",
+   "7e3f4a44bb038fbd698842d6641bad77f429dadc652532462513502b3767ae15"
   ],
   "mysql|011010": [
-   "otel-demo-ext-f69bef648883",
-   "4e897248c86ea368d1e1ddc4bbe5e203e41a045e5c42d34cbc991121b6cb3020"
+   "otel-demo-ext-47b167c5e433",
+   "dc6dfbe8f4bbfdf8b52de9c39556416395d415face2007df5f51713d4fef38af"
   ],
   "mysql|011011": [
-   "otel-demo-ext-6e69785dcfa7",
-   "0017ff4afd1eab655bb506f2ed16368c187da3a5ee549e1452b492470ca786a1"
+   "otel-demo-ext-f73be2996546",
+   "297391609f41de649553ceaca0cfae44bd5629cb404e6c20ba84dd47262719fb"
   ],
   "mysql|011100": [
-   "otel-demo-ext-f6bfbb22553a",
-   "c6eeea40130bc01257d8d8525b7027eaf5467d4743eaf9f2dfbde7b19e3161fc"
+   "otel-demo-ext-014d2a9592ee",
+   "c391bd30e803fd689349d801d04c76c5ddc85e2b560bd13e1cdc6b806da3122d"
   ],
   "mysql|011101": [
-   "otel-demo-ext-69830bf5a92f",
-   "2e9b8225074938983b31243c068f82af1fd66c23931f11d3edb80d02df9c94ab"
+   "otel-demo-ext-9a979d7ac7f7",
+   "e8ffc0b5fbd59f2df45bc1966231c5db301651c68586583f8ccec3371f097ce9"
   ],
   "mysql|011110": [
-   "otel-demo-ext-27e0bba54f28",
-   "893d8062d610b368a1357f231fa09d150a10195ca0df578e8a8c480b0660ff4b"
+   "otel-demo-ext-68172edc6411",
+   "d4d3d4deb4bc228d0e34f79c7f2b2dbff03e6a0e0d0a7b85d0db25cd3deccfe8"
   ],
   "mysql|011111": [
-   "otel-demo-ext-b3f42fe65901",
-   "27750299dac18d14012815beccf76658954f8a6927c47af024f82d7652a8fbe7"
+   "otel-demo-ext-c683ccac968d",
+   "b248cebd9a80cb9cffbc3d58b4b02e4a93f7862e6042dee63ff2f6b6953495c3"
   ],
   "mysql|100000": [
-   "otel-demo-ext-4c4cfdc04b61",
-   "8338d2d67ced4dde535e45dc0ad8e5ef6409b809046777586c414c333df07796"
+   "otel-demo-ext-596c0d18ff4e",
+   "4c622e7c27f5e171a979bed54a03205c6f8ce8926f6ccff03093a8f2c299f2f3"
   ],
   "mysql|100001": [
-   "otel-demo-ext-94f432d74eb4",
-   "9cf90fe21656ebc3ff6471ced9763acf69f3896a2a4364bde5f4b43337a01967"
+   "otel-demo-ext-f05e27692256",
+   "2e60fde1af0244a3944cb8c1c1cdc372e1d1be509dab9739ba9fb8a60d437c16"
   ],
   "mysql|100010": [
-   "otel-demo-ext-2cc25191090e",
-   "f661ebb52d25b9b888d101324cf4efeb31e667a949ca520ae0518e26a96a6ef0"
+   "otel-demo-ext-deb7bef5ec05",
+   "839f2a1622339eb29533c8d5387da27eb92de204743d76ed416bd8e0daab6a73"
   ],
   "mysql|100011": [
-   "otel-demo-ext-5b45b633b4ec",
-   "4d5b1759574f0d65b2c8beebbb9a55fb355f1f422a713a155f006c2c74926561"
+   "otel-demo-ext-08beca33b9ca",
+   "af9bc3d27b10a0dc8a3605bab0ad2905436452fa4ed487ceaa77014e5e44a3a6"
   ],
   "mysql|100100": [
-   "otel-demo-ext-d5c829533ac6",
-   "aa2a2ac5e921c181b696a55eeb02157e68d2679f429c4afeff3c37dea0f98e80"
+   "otel-demo-ext-73072dd2cd36",
+   "a2d828c7ad27b77207a597160a57edf024fcdb5118e516ebc2049e636922c12c"
   ],
   "mysql|100101": [
-   "otel-demo-ext-08dcc00a16b7",
-   "e83927747b2c40a63419ba60283e0fc0945b1c4464eba6c4857ffd6b4da9102c"
+   "otel-demo-ext-fe570c1503b6",
+   "e5dd7cff31e1f6a7bbde4aa19aa9fe9ea81b59dd943edb8634631850b0f8491f"
   ],
   "mysql|100110": [
-   "otel-demo-ext-66c239e9e8b9",
-   "4fd363b2b679274fe279845ebcfbd0001b34405b255947d2c296d9b14522461f"
+   "otel-demo-ext-2341d9472667",
+   "a86e2396e7815ab0f3822e614590913ad869268e1b0319d4788f6efb899592b6"
   ],
   "mysql|100111": [
-   "otel-demo-ext-159dc74f0d19",
-   "4a700a4f694c6cce418e6c18f83146a44bd1fc1dea9872b3fe1ffe3f0c730430"
+   "otel-demo-ext-4b1262ca68d3",
+   "35bfbceafdeaf06d0cc7757ae7665d89159c5503d693db7f49643c5d4117ff23"
   ],
   "mysql|101000": [
-   "otel-demo-ext-51c02beae944",
-   "aaec774e1ed6d8f72df0f542e99246dba77de10229a9f59f733e3a295eacac4f"
+   "otel-demo-ext-46ef82fc3401",
+   "9bdf09fb038827a70188cad0a1e935725e9328d2109caebdcf1bb980d85d1d0b"
   ],
   "mysql|101001": [
-   "otel-demo-ext-d0032a365191",
-   "ccc1cb1e58b2189033c2a2d319eeed96a718ef848880bdcdf07deee35f809de0"
+   "otel-demo-ext-1578efee8cef",
+   "37d32b1d857669d7e363bd67a7d7b2276ea78ad933cf8606da21994ba7954a6a"
   ],
   "mysql|101010": [
-   "otel-demo-ext-50c7e881066e",
-   "3a31dfc402de1fd8212b3598e12f811f977eb46789155d65ac75d9c729007d5b"
+   "otel-demo-ext-c279f65ae1b1",
+   "2c50e66cb556c1577a42f248365eef609d39ea109fb964603cb307b16bedb023"
   ],
   "mysql|101011": [
-   "otel-demo-ext-92694bc27528",
-   "08f10143a486e181baf80455c1c441ebed5ad60a80435656ecc07afa578c14f6"
+   "otel-demo-ext-ede60767607b",
+   "97b44329be9c86bf991dfacd533d08b88f0e633acd81eca28a71d479e147129e"
   ],
   "mysql|101100": [
-   "otel-demo-ext-3fecbb4cb402",
-   "9b3b9e6d61db9f891f064f9f2d851ef082c51f55dc0961791d00c81240f882e8"
+   "otel-demo-ext-f20caf8c67f2",
+   "dc91ac41a5e7f685c3109e8ca45dd11f9522e20b157677e8a54e5fe9e3f412f8"
   ],
   "mysql|101101": [
-   "otel-demo-ext-edadf4689438",
-   "0494a8973c0d215cedfd1ee563c186d3149df3effe75c4c6c2981a50de853a90"
+   "otel-demo-ext-5295e95b4a40",
+   "7c70f46f809fcc3f4b3e9bd9cee2a433f7f616db305ab45a29a65399f664fe60"
   ],
   "mysql|101110": [
-   "otel-demo-ext-59145096a9da",
-   "e998d25daf21d52af3c1a68787fe8d3cec35d294258473b3fabdaad7569f9706"
+   "otel-demo-ext-9fe75356b16a",
+   "fca67c6214b0bceb7c2a3351ce11e2629c118817bf2f2303de69fc60b5c1b518"
   ],
   "mysql|101111": [
-   "otel-demo-ext-eaf2a76f938e",
-   "0bf0bd06d623ff250993347e7dce594bd8529db9b26fa13ae38ed3c03323f811"
+   "otel-demo-ext-a93a5e3cfd1d",
+   "9d7e60ce1006f6bebb83784c920c15a1445106718b346c9b6c1a8fb9c6fbae77"
   ],
   "mysql|110000": [
-   "otel-demo-ext-97c931a7f4b9",
-   "7164852ccde598ce9387be2e669d3ae479dbd472eb225042c8082e12330417da"
+   "otel-demo-ext-9ea690b682ed",
+   "7f9de66d39c41efeda517de46a43c39cc2e65625b2d2bf5c011a2ed326659d2a"
   ],
   "mysql|110001": [
-   "otel-demo-ext-0a435071354d",
-   "035e8488d420f6abfc6ff8535b2b0bcc15f91e9636a1a53ad908b73878fe4a36"
+   "otel-demo-ext-6fa516af2b3b",
+   "3c34f3d10f8eae69155d58d05c878945b9a3a6a3b1fa1037e3ba628d1104c1f0"
   ],
   "mysql|110010": [
-   "otel-demo-ext-c4ee71dddd69",
-   "8a9ffd1d03e3f1b7e3f563e222656213d01a3a2b51b760711aa514178c29633d"
+   "otel-demo-ext-fa682e6e69e3",
+   "9b756e76bb872465689e2e814815e5d49e02695b78b0543721eca6abeb626d3a"
   ],
   "mysql|110011": [
-   "otel-demo-ext-e86132da8dd1",
-   "7cffbda39901d69fbbd0461c2d0a0cc00ab3b54c5b8aa869a1d18e4ef743e3ee"
+   "otel-demo-ext-d76ff6c35155",
+   "a359d013f852f50815d492eb8dfd6bd31dcd9fdfa591d37298f91c2fb4dee15b"
   ],
   "mysql|110100": [
-   "otel-demo-ext-63ac13b2d43b",
-   "0028cc715a724aaf79b245215781ea982d65069724786392ca6184d9fbff4e4e"
+   "otel-demo-ext-11010cdbb65c",
+   "27c2136b27f6cd7d2d1e75e6e695509a822512172735874b3f46fb59bd38d5b5"
   ],
   "mysql|110101": [
-   "otel-demo-ext-b5a19cc8a36f",
-   "9844ce9d1b667a89888eb2380df13796e4f8f95053dd474a02a47519244850e5"
+   "otel-demo-ext-35c9ed5191e3",
+   "5b4928294b334052c79d0f380a8848a7b86006329e600980c42139d84bd1c02f"
   ],
   "mysql|110110": [
-   "otel-demo-ext-17bdd533982a",
-   "454333393438f085f5b755528f165dc402124cf125f871e2301e768a6ada0e20"
+   "otel-demo-ext-83161329e6cf",
+   "0f6a260621a53dd721b2c86741aba85d9673a3b67b648b3314bcaffe8e1760ca"
   ],
   "mysql|110111": [
-   "otel-demo-ext-bcd99a63bba0",
-   "fc36d5bd710b844f0e2317b5f157c335258b7b4959b78df4a95861b344c5a023"
+   "otel-demo-ext-5365e81ea066",
+   "f4fa94055721a72092258478715d86e00a00c13f39881effb44f34ed69b98239"
   ],
   "mysql|111000": [
-   "otel-demo-ext-9c44beb8c790",
-   "d0c1f524f66ade3d6bfb71f007cc7299c9758167e82b9d00ff208a5528322a89"
+   "otel-demo-ext-1c2ca857d0a0",
+   "b665ba8a8841740e2865b48bf29c7ca7a305f2f5c43d3c857b387e3ad9108f94"
   ],
   "mysql|111001": [
-   "otel-demo-ext-13034fe3a249",
-   "ec244b72c1d1d75ddf578a445f98535baf9608fb39bb913eca07521001d1e0c6"
+   "otel-demo-ext-431c5ef11311",
+   "346d53d979a2a0e30e7a2553c8736090ff40a96c96a4504bf70df9af9d53f98b"
   ],
   "mysql|111010": [
-   "otel-demo-ext-6d618a45803a",
-   "26041c70b7daa8d80b1d81dde96f6c12441465fa1fcd95e16ee0ab2a335a47ec"
+   "otel-demo-ext-b8e9484360cf",
+   "920c54ca2aa6313915a86e22462085e124b2fec2571ffbd675d13f5a6ca51e12"
   ],
   "mysql|111011": [
-   "otel-demo-ext-5d17815532a1",
-   "a62680dd29f9f8a6ed4402bb263b38ef3ab22e0772b1325835b58663fa4f9bbc"
+   "otel-demo-ext-8201d5791c79",
+   "137d59c936daf9c636ac4f4483440b6f9c8d04d4147f5f6b1365d6267a370ae3"
   ],
   "mysql|111100": [
-   "otel-demo-ext-059d05304efb",
-   "b6d8e0414d2c1945650187f06e11ea0a7a52288d672147e34f407b0a00055642"
+   "otel-demo-ext-51fd51b97a32",
+   "1183f67de67b7637b6913726525008f2e80c750eb73f3e41e864ca3b9d43095b"
   ],
   "mysql|111101": [
-   "otel-demo-ext-55b1e6e6c1a6",
-   "455b52afc398487b0d2636f418c0a685501183f4710bd6c39abded6690a8f4d5"
+   "otel-demo-ext-750f0160eb0e",
+   "46f4d622bc590bc8e2f535f51c0bb5c7b7e4466fee3fa1b51826b5e0a8493c84"
   ],
   "mysql|111110": [
-   "otel-demo-ext-a7dcebdeeddb",
-   "8f0999312b4dd78ba5deea768d8e571fc7e58c6178afe768c7eefad6719e3a2d"
+   "otel-demo-ext-0c479d5859ec",
+   "c17c88ee09817c2413a2e77bbcc1f1a23e00e82c9d37ca7d454be2aac0281baa"
   ],
   "mysql|111111": [
-   "otel-demo-ext-d96bdc4f57be",
-   "d649a4fcc97ef99240a52c26f366486b3a796a732c79ffd139e9145e8b57c57d"
+   "otel-demo-ext-63827a8ab35b",
+   "e0319284cd18fb565a82f5dfc3c1663af20ef8b7c96e9a989c2d66b820baf21b"
   ],
   "mysql|desc|database_sql_describe_table": "bccd26fbd154b0a5c268848c2ff20adfd6f14b65f4d25c3dd70bb8b40e1820d2",
   "mysql|desc|database_sql_list_tables": "656c55cf8060b4edd86d9fbd5499657af558963c8481f5a0c7f0fc5666d58468",
   "mysql|desc|database_sql_query": "86609fc93b5a5c58629c28983577fb417da81a37380eae71f62796f1e176772a",
   "postgresql|000000": [
-   "otel-demo-ext-c4442e1279ad",
-   "28691ba758f021338ce4841d845f3d1efc01e97c74e94a8b1816bf3ffa15b395"
+   "otel-demo-ext-e234c8313538",
+   "7f729be0499cbb94e89d338762be26f84e59b48240a25ce2e88e8ee303f99393"
   ],
   "postgresql|000001": [
-   "otel-demo-ext-b15f1d217cec",
-   "4d2a345002badb07afcc11485f9afd31397df8c47752bad16b3c9304a301124d"
+   "otel-demo-ext-e2ce6dc43e5d",
+   "55fda66eca8b8a01be76f0537db3566febc67263d2cbace2d847ae7a59788b25"
   ],
   "postgresql|000010": [
-   "otel-demo-ext-648942d566b6",
-   "ae7ef45d33c582136669dda5fdb6130b5590e0217e3d1d4775c09278bffcfba8"
+   "otel-demo-ext-15036ca376e7",
+   "abaa2027b57048228f8bf4ee4c6aac241cebe5fde09e8be323851533a3bc4ca0"
   ],
   "postgresql|000011": [
-   "otel-demo-ext-51c1aeef3c1e",
-   "02c611b566c23db20c3cdea3487c7c6ebee9cb3c5e2a528e5ca9f7e31c524b0b"
+   "otel-demo-ext-9fd00abd15d1",
+   "655b71bb24d75ca5e1be8de249dce331a04278a958df2241665979838f9594c0"
   ],
   "postgresql|000100": [
-   "otel-demo-ext-fe7a141ee94a",
-   "bcaf86ddcc127cdbf62ed667309643c3f2ff894e2e7a1e7ca704cce84240be5f"
+   "otel-demo-ext-53888dd72ec7",
+   "7de582ec87bc773db5ebf7ca4f5c05be2badc571fd9a78934f24f7a35cfb80da"
   ],
   "postgresql|000101": [
-   "otel-demo-ext-b98b3949c62c",
-   "39eacf1b4a28559b336acbd5c71e1c048e3e1c791e3052e38adc6e2e7b56ae7f"
+   "otel-demo-ext-865189fbf8de",
+   "9be08f09a8fed1b2b90cc964fa734e67cd8ec2621ee545f96ab80639830146ed"
   ],
   "postgresql|000110": [
-   "otel-demo-ext-2bfb4d42990f",
-   "f08ac70b5d56df01c2459a53f1b40498d644c0cda503cfefd2ba829846e48b39"
+   "otel-demo-ext-9fd6cb2bf52d",
+   "c28abad5660b23f029fbedc15d2f04f494301e283ec5f1bfd9d56e39a377a4eb"
   ],
   "postgresql|000111": [
-   "otel-demo-ext-9c1b96fc683f",
-   "c11a708ac27a7c34d922416fea8dd94248b3f798a4030650f620841bd2b36bdf"
+   "otel-demo-ext-cf76a3c3682c",
+   "8a954b1c6374e91cb1f9eba325d8eedc31d6eef04b3ca45caf0859ef900e8691"
   ],
   "postgresql|001000": [
-   "otel-demo-ext-c49c2c6c10dc",
-   "680839e5a4d9a36008e0ba9a413725930dd12ccfb259a363caab0f7ed9941436"
+   "otel-demo-ext-a0b0dee5f240",
+   "fff986c68b3f64b996428895d1f953c323e22c5236d29aab6053db04a46c0acb"
   ],
   "postgresql|001001": [
-   "otel-demo-ext-801f4602cdc9",
-   "f094cee12d58d762e1ca81a5ea58e0c0ac0d7eb807a60dd1782af27b857c022a"
+   "otel-demo-ext-652a0056898f",
+   "96c6f385a598dfb2ec6f01bdc54ce296909668813004f3a7f6ebf94dc2a67f3d"
   ],
   "postgresql|001010": [
-   "otel-demo-ext-7c6fdf33b48e",
-   "5f45691de27b70be5f4238e85305e0bd68fec63a7243bd6c8a32de250890e0e0"
+   "otel-demo-ext-b77c89036bfe",
+   "340f63c5aa8226c136461c173db718d5a3f475f7cd670795de4aaaca04c6b8a1"
   ],
   "postgresql|001011": [
-   "otel-demo-ext-a1ff856339d6",
-   "8e0c567af225c11d7f0ba4901cc527b81dbbc0336dca8ed326b771c1d114572a"
+   "otel-demo-ext-c6f11c3673be",
+   "f49f6e373576b5110cf1212eedcde132f0f0aa333b716aea55faccb41f6e8e70"
   ],
   "postgresql|001100": [
-   "otel-demo-ext-140ab479917a",
-   "48317296ec8d261fdca83d0d899a9a791119fb612107c232907397fccfe5f52f"
+   "otel-demo-ext-d6c673e99539",
+   "16ede74c02e6f30d38473ad36b63a542c86e4dfb3bc57e5db4aad01ddec8e077"
   ],
   "postgresql|001101": [
-   "otel-demo-ext-395fa2e87982",
-   "6fce32065435be029cb07efc06a3ed396ed6b3354f8045898ec074ebfd5c18aa"
+   "otel-demo-ext-bef47bb73187",
+   "812b22c621150561f57181df63d2ee177f1f5d8325a2b2077c9527df4eb0681c"
   ],
   "postgresql|001110": [
-   "otel-demo-ext-d157cde3a29a",
-   "c604cabfc496200e20707cf136500d8a74c01b8f6c8e7aea72f84d08b7895627"
+   "otel-demo-ext-8bb0eb07712e",
+   "4d614701cde12f3896e811c0d8e4c7445ccb5535176f5078ef08fadb40c08a0d"
   ],
   "postgresql|001111": [
-   "otel-demo-ext-527e939c121b",
-   "8d1ea6f28cbd99757c6bde8266ca358f40e3832bb0a0fdffca18f42e48182034"
+   "otel-demo-ext-57b56e113d8d",
+   "3dedcea4d86d66f0287310b68703ca292605a0744b0bb71e6639ed4a06c39968"
   ],
   "postgresql|010000": [
-   "otel-demo-ext-bec5227ad08f",
-   "e9b553e673d6aa5b4146e9feadb4f8349c2288d9f8213f3c6f5105d069557f0d"
+   "otel-demo-ext-ee8f5a69aa33",
+   "0f4f2986956118ae67653977b50f99531a06189741a1f01a69c56537965a48ec"
   ],
   "postgresql|010001": [
-   "otel-demo-ext-2927a1204105",
-   "44686b55fe9045fe45bb706af18d9b52eff4a4cac9ed95dfb322092b1c8183e6"
+   "otel-demo-ext-6d72cdfc48c1",
+   "e091f9b157384842e731db5c99d0e6de4c5746d65aacb8991fced5dffe45b085"
   ],
   "postgresql|010010": [
-   "otel-demo-ext-516884701bd3",
-   "41841db5a29ed2d020ca6670f491ec7d59d6274ae58854766637ebab5facb189"
+   "otel-demo-ext-9366a7d46ed3",
+   "56198c21f2224508e738650ba72f7dda1682423317bd372478e18c1386d683f0"
   ],
   "postgresql|010011": [
-   "otel-demo-ext-527b66a8658f",
-   "2e88369021455449fd84ced962f3f4c269874a191b5fca83bd005a8e5c8dfb6b"
+   "otel-demo-ext-ada2179281e4",
+   "ddefff1d8edcc4d0a6b79b26b20be35e1ee13ce7bc3243211c291c54f6319d00"
   ],
   "postgresql|010100": [
-   "otel-demo-ext-44bbcc67c50f",
-   "7c6c2b8916d2cc5b8995016fa629d5fe8e6130364da135a31d1b9d87788a3875"
+   "otel-demo-ext-2c2a5d9787eb",
+   "9f6a4a6699ec7f5660df8b136a804839a663a40255ec551e42a335d2b99b5413"
   ],
   "postgresql|010101": [
-   "otel-demo-ext-fd7c09a6db91",
-   "2602af1ffac3121eb7a91410c6d59088c78a7c825a8c411f287161b97663db2c"
+   "otel-demo-ext-87a3bea8b47f",
+   "c6477c5b7392ac80106d920ee7d6936371e65333736cfd337be34dab72215c91"
   ],
   "postgresql|010110": [
-   "otel-demo-ext-f8206aa4a96f",
-   "04481d03d63e7fda49ab3d74c2dfaa703cf13bd4bad107b450c3e49febff3ce0"
+   "otel-demo-ext-8bd43175466a",
+   "4a97d849c73aad3ada94bdf1e48f13eee1e95a2882108a20320a341f6e9a6bc3"
   ],
   "postgresql|010111": [
-   "otel-demo-ext-ef788074f963",
-   "b8f50956b226573a22282e77a7d717b5fc85c96fcb14618981f7e8377fce4728"
+   "otel-demo-ext-8221d8c2ec77",
+   "b2fa385963224164bca063c747ddbdf822f111fd00f4eb4e8e2b3079e4fd4a53"
   ],
   "postgresql|011000": [
-   "otel-demo-ext-0f7e7d2e8424",
-   "99dea062b0d2055bb6f6fe21f3a2b0a640ba31560adbc1a1389ab7a78f724b9f"
+   "otel-demo-ext-8f9b0c77a6f7",
+   "30a7a70de7f96285c43424a2eb7f3eed447dc0dcca5efa7992e4b563f6ed42fd"
   ],
   "postgresql|011001": [
-   "otel-demo-ext-4f28e2a9db96",
-   "e989ce5a7ffbc003536e203f5944a5318a1b11db19e719c2892f34409d1b82e4"
+   "otel-demo-ext-942260d5eafd",
+   "86a39eb355b44ecef29f4eb6227bcce38d561a75f7b016c38d1845589436267f"
   ],
   "postgresql|011010": [
-   "otel-demo-ext-5a0b6f9fa0c3",
-   "9e8a457a44efab18da007dba655a6d163dcf5f8f551f537016789077fac51e7c"
+   "otel-demo-ext-70adfd76bead",
+   "81e843cbd5206ee70db7ced7ec463dc3dbce9b42da78e87bd6249e160a59f529"
   ],
   "postgresql|011011": [
-   "otel-demo-ext-ea0bd255d209",
-   "fa0e9135a2e3e6936be5c764129254bb77161cba28387d75c62637529a462010"
+   "otel-demo-ext-2e492ca50901",
+   "fa072908e1238e6812c524942660764eecb29da23a06fccec99ed630db1c7654"
   ],
   "postgresql|011100": [
-   "otel-demo-ext-3598494acbe0",
-   "ebe6e1d0472cd1ec30cf11676c6215a4a3601d5a96257cadc3ce4169e5b4537b"
+   "otel-demo-ext-253d29325561",
+   "34d2f8087c2cdd1b37d61ba9e7451421fe81d0e7487fcc988539ae0308a25ec2"
   ],
   "postgresql|011101": [
-   "otel-demo-ext-5cf7227d380c",
-   "1555aff41cc61a8f13d420bc019526506a4c2d046560208792276c8277aebdd0"
+   "otel-demo-ext-3cef3251eb9a",
+   "bf3568be024238a01406f076632a70444fc74bb3b806f1652adfc46eb69b8a5b"
   ],
   "postgresql|011110": [
-   "otel-demo-ext-4154ed7b00b6",
-   "d264adaee84010a1ba023f17a22d928db1966d98a2e6956f7c694a055fbc8342"
+   "otel-demo-ext-0443c338566b",
+   "535c993f724bc1a3d64676d40a8b8b7fe65b7c93f1553611422ba057c3f613e3"
   ],
   "postgresql|011111": [
-   "otel-demo-ext-56ca689ffd60",
-   "8e73abcad6d3e278949c1bfcd510edf4c195d9dd306a85d8bf6dcae9684bac5c"
+   "otel-demo-ext-45f69560cb71",
+   "7d802b53192b72a0bd9179d64d34d618ce40dc2d86db2bd773b3cf34fb80940d"
   ],
   "postgresql|100000": [
-   "otel-demo-ext-0e91df56a4f4",
-   "14717bf750ed55aacaca0dfb2733776721c589ecde0579ef5e4150e0adb9eeea"
+   "otel-demo-ext-a8b2d1b82f93",
+   "4e50fabbb37f585d34bbce67ec41832bc98950c6efed76bca79afae19e56303d"
   ],
   "postgresql|100001": [
-   "otel-demo-ext-cb6595bdb12b",
-   "ed45a4729e76518db3878c3452847a11a7e60cf223772d552d9c2001a20ae3e8"
+   "otel-demo-ext-1dc264a996e0",
+   "0af2847e9dbd2e2e3398f7924ecb05651155be3b8b8121c24fd1a5c327a06ea9"
   ],
   "postgresql|100010": [
-   "otel-demo-ext-250a0776e496",
-   "2a7bf189b7cd849b5990d4cd80c17b5daf3c1aeefe992e20194a155af6e4ae3e"
+   "otel-demo-ext-a807fbe9d5bd",
+   "465a554a0c45f4e8a57820e7ee355494fa4d3826c22999ac8558888ac7a71a23"
   ],
   "postgresql|100011": [
-   "otel-demo-ext-ddbd1e2647f0",
-   "6ea880cdfc4b6b408123bc0a8869a5735d1fb2c3633f4ef535866a26364b69e4"
+   "otel-demo-ext-0bb26e30d45a",
+   "abded31d2ef7347130bc7a368e276b04d1e1647e6f1cc83fdd34865eec8b3d14"
   ],
   "postgresql|100100": [
-   "otel-demo-ext-2297b3741f5d",
-   "b74b75fd497615f266722ef247e55240cb838c987e9a2e0aa304f44ea64315ab"
+   "otel-demo-ext-813370460fb9",
+   "406bf484d2932e64ba021a085d3e4f5f560717640aa9a549b2680c4c2361c866"
   ],
   "postgresql|100101": [
-   "otel-demo-ext-5c5f4af33fb3",
-   "55fc08eff5f8f2843adff70af9f7742d6eebafbdbcb6601ac6b4fd410621c305"
+   "otel-demo-ext-186b530fa351",
+   "8334e69fc108d2fde115c54c4fb45f42a11317d4cf0b1be3b794a382724943ca"
   ],
   "postgresql|100110": [
-   "otel-demo-ext-39d219f87457",
-   "80fd11f9fe8c1dbb2623cb5473d7d8a6bd445369fa2af2eca7a61f8e691613eb"
+   "otel-demo-ext-b4b7fddd3ad4",
+   "6bd6437443131c2f422f7668f4581972a98f38311205ba0744ab4a320d0da1ea"
   ],
   "postgresql|100111": [
-   "otel-demo-ext-d8fba9b40eb6",
-   "61f3ba409c4df8879d3f24bb503712ef99a690073bc96a63e749758572da0f29"
+   "otel-demo-ext-709c3431e805",
+   "47b5fe86b42fe0e4ab8b1b5987a6aa10c66d9460ef1c38b99f44b6ebc26e44fe"
   ],
   "postgresql|101000": [
-   "otel-demo-ext-44ddd01b4129",
-   "3c9304f73293ae61a263316bf8b48a6d7ba5e0ef5c07bae0fb6c1cbb1db65e92"
+   "otel-demo-ext-17a2eb343f4f",
+   "822d3aa60a8222f35b9ccecd513291d387c0ee4b86cdc7e2e0d62f2e6e21163c"
   ],
   "postgresql|101001": [
-   "otel-demo-ext-302d24897b9a",
-   "328a4b587ce9de890e62d5bb462e4d46d4b1abec2a2e5102ffe26cc9ee297dbe"
+   "otel-demo-ext-f0dca3f9389d",
+   "5e56a67bd0b588fd5df49d32a264c831249eda1bf46782691b3a957aae28a24a"
   ],
   "postgresql|101010": [
-   "otel-demo-ext-0b2f7733ab8e",
-   "7dca739de06f1037dd517d421eee4d0348d29e90b4554045e4c363291af44ee4"
+   "otel-demo-ext-56e212ee480e",
+   "89b50d84fa3166144d7d763d3158aeda0870234fecaf62d68a7eaf508017e07a"
   ],
   "postgresql|101011": [
-   "otel-demo-ext-4909f2146fa8",
-   "3a6c3fa1690fe77a075d086dacc1969892b3d8d64a4c1653b6cefaa67940f7ca"
+   "otel-demo-ext-36860a21ded0",
+   "c5505a2f84eb477bc01daa37cfaacf2a9676f3c7e11fc8a700f976a0446cd9d8"
   ],
   "postgresql|101100": [
-   "otel-demo-ext-e717ebc5c4a3",
-   "b5428e1f2e20f436d025a0327cc2e2d1aaac96a686ad7239c6d106751f05e9a8"
+   "otel-demo-ext-607091cd0d9f",
+   "05a03a8819bdd135afea27c8f82e7501747ef2480c699f0e93b6336ffae977d0"
   ],
   "postgresql|101101": [
-   "otel-demo-ext-d3ad3c63ad0a",
-   "e1d46865b976c0b5e4813e0c42f6bbd59af70a75e55b2a3f059defa48e3a824b"
+   "otel-demo-ext-1ca1229f3fea",
+   "0b317f217e534bb96cfc3677fa26faef982867bae8f06333d55e15647cf6e809"
   ],
   "postgresql|101110": [
-   "otel-demo-ext-54450a40e3ef",
-   "1ce97275b5fdd068e17cab2d68805c2c92f2675a02759b883ec3d6904bda1ac6"
+   "otel-demo-ext-1e4b0551d521",
+   "cf0a782fa5b39f0a63ee2adad781ee2e6c7ebcfe7f6dc4c6f8cedfde44d900c7"
   ],
   "postgresql|101111": [
-   "otel-demo-ext-20890ed3bd21",
-   "976cc82671dd3b4adf70055efa1e0c71f631815733d93f8ca2de50e2cb893460"
+   "otel-demo-ext-c66cbdd432c1",
+   "51a3c6ce88a86cff73cbd6c996996c911ad0b7a4476311ce0a38150a48407a08"
   ],
   "postgresql|110000": [
-   "otel-demo-ext-69f2ce403056",
-   "2b9dd1352d67830aae15a92429b0a5ba81936d25eb6cf1990e6c03c9c8db9229"
+   "otel-demo-ext-08d24aecce9c",
+   "9e892c53bc8d9fe8e59cb1451d451dcd03319986b2118776d678072a723b3be3"
   ],
   "postgresql|110001": [
-   "otel-demo-ext-8b4b44194a8d",
-   "bbc00ccd675265afb9bfc4dfd0ebbdaf09b8e8ea5ede96fba780397c10644dee"
+   "otel-demo-ext-f568a92dc768",
+   "5b074794614579ca38f1f2f8ef63c1b0de8192dd394a07c19f11d131c77aa417"
   ],
   "postgresql|110010": [
-   "otel-demo-ext-5c884fd55ce4",
-   "cfc44938a23d338795a50085936648197b9b5c7db165d936a0baf18d19851199"
+   "otel-demo-ext-3fdf0a4e6b7a",
+   "956d1a122ed80ff628bcac72b005f4893c786c0970bd80f975727fd973b73abb"
   ],
   "postgresql|110011": [
-   "otel-demo-ext-5e68b1f9cb29",
-   "09406f5d2fb4ce8bb64c09a733b9b1792f3a7cfc1db6161cecf03670b5c5ccde"
+   "otel-demo-ext-fb37aef23979",
+   "6d7723e60cfc2047c013788d3494a4a702a1e3481f53fdc87e0db8ca6aea1a7c"
   ],
   "postgresql|110100": [
-   "otel-demo-ext-4a2fc1f6aa58",
-   "ad233c2629ef453d9d3197afe36f8905ce71a9aaf182e4001256457b0a8fc7da"
+   "otel-demo-ext-096f2a0c6212",
+   "0840dbaec6107a511bd30aba18dffaa3f3489c0f9bf932a36e4f25c6afe42959"
   ],
   "postgresql|110101": [
-   "otel-demo-ext-3b4c5b10e8a7",
-   "a8137b7f4d1756387f23b270d0f8534d063933bb921d03b7e401920ea2309d07"
+   "otel-demo-ext-089f93a56bf7",
+   "bb635bdaf31d621af57727465d599f5a4652efdc6dec89d32ff4a1be621202b5"
   ],
   "postgresql|110110": [
-   "otel-demo-ext-6387304c6e5f",
-   "ce4769b92dd8c0558ada6a50759895593bdf91cf29d03b928262cd2b92910766"
+   "otel-demo-ext-4f0b2dce0a44",
+   "12b938a9ad52857d1c85aeb664305610db0321cb61e772a31a7ac0540077c7d3"
   ],
   "postgresql|110111": [
-   "otel-demo-ext-134895d0953b",
-   "7789d7a0696b44dd7f507bd1dc284572fc4055913b9ce5c4db158a2b8ae6fafb"
+   "otel-demo-ext-de5845ae40be",
+   "b1160ae55d6c58cd9691fa30e65175c487e5c92b7ead841efdcdc39bcbd389b1"
   ],
   "postgresql|111000": [
-   "otel-demo-ext-28ec2ece2f1d",
-   "75ad548cbb1a4737737a6ace48cad8496a3e8b67b746b35c3984e70db592583a"
+   "otel-demo-ext-eda9ce691c75",
+   "2aa0cd9f0c2b25cad44de65d0308caadfdf0644b9e00cc7661d38a9a83619fc9"
   ],
   "postgresql|111001": [
-   "otel-demo-ext-59ab2ecc683f",
-   "eebe48660afd6cdfc09348c08f4b3ef54bde0ed14d9439d605de2ca06a168874"
+   "otel-demo-ext-f34bc18250d3",
+   "30feffacd6bf5238dd2f80ed7ef601cde9b6ca4107aea8a50a0450896dc5823e"
   ],
   "postgresql|111010": [
-   "otel-demo-ext-5636caf85ece",
-   "01f3e0e7d370ce2baf4239f2d8781e6ed8edac488f36b165688338dc030b3872"
+   "otel-demo-ext-988843d4a7b4",
+   "4b28ee15db1d6324e05555033170a9f9cc32449c3c2fd61d020626e6ba8ffc97"
   ],
   "postgresql|111011": [
-   "otel-demo-ext-c860a2087e9c",
-   "c758702cacca8254cf21f324fec350f42905322e0dc8fd7eb1102bce8197f2b7"
+   "otel-demo-ext-1a21a9f46c4a",
+   "e5ccd74e9753ae1c9dd067665fb28e25563fbdf8bfdb3b3ea16820e9ba19cfce"
   ],
   "postgresql|111100": [
-   "otel-demo-ext-c8b81f227421",
-   "cc11a2d81c5cc3f296ee9fa2ce36dfe06b53ce94a87cf28b7042bb45437b5522"
+   "otel-demo-ext-cfa3403beeae",
+   "4c03711a4fb7f3c2be9acb396f32fd5a12932dbaed2944fd8c742dcf3f9d3fa3"
   ],
   "postgresql|111101": [
-   "otel-demo-ext-43e9312b13ab",
-   "645abf8642dbc6283471bccc8f66c9b522f4b2ebd5a5e85c536517499b15afd8"
+   "otel-demo-ext-fb90eb501c04",
+   "afd902e2fb20ca0d6e02c9d81188650e8cde8bceccc2f95235d1d75f15a308b7"
   ],
   "postgresql|111110": [
-   "otel-demo-ext-2c162c865332",
-   "4c1d5b06527abab7d4ea7dc6a9916b87873da65481df4829ba59cc16378f658b"
+   "otel-demo-ext-59ae6bba884c",
+   "9eda71c1dd94472091879a6102104a991995b07b06b1b773ac821fe941613f82"
   ],
   "postgresql|111111": [
-   "otel-demo-ext-268b70f377df",
-   "58e2018282e35ad2041990599511952369c47ab069565a0fe4f86adbc3b5733c"
+   "otel-demo-ext-960390e6e830",
+   "1d44d10b4d3aafbff51ff6d35fa7a8e0bd33735b0a567bb52130006a97726cfe"
   ],
   "postgresql|desc|database_sql_describe_table": "bccd26fbd154b0a5c268848c2ff20adfd6f14b65f4d25c3dd70bb8b40e1820d2",
   "postgresql|desc|database_sql_list_tables": "656c55cf8060b4edd86d9fbd5499657af558963c8481f5a0c7f0fc5666d58468",
