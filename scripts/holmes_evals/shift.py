@@ -96,6 +96,8 @@ TIME_BOX_LIMITED: frozenset[str] = frozenset(
         "185_elasticsearch_cross_region_search",
         "189_elasticsearch_timeseries_gap",
         "235_elasticsearch_cluster_mismatch",
+        # 2026-11-20 rental: data lies outside the fixed 24 h ES window (A3-1).
+        "280_es_multi_quirk",
     }
 )
 #: H-24: index C is written with the current UTC date.
