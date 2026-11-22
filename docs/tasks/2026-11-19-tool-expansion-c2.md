@@ -132,6 +132,7 @@ C2a 已合并（#737，`8c68d9f1`）。与上文第 5–7 节一致，这里只�
 16. （C2b）v7 事实校验另查 `age_seconds` 等于批准到读取之间的整秒数：改过年龄或时间戳的快照被拒（测试作者的篡改用例）。
 17. （C2b，lead 裁决 a，2026-11-20）残余：Run 进行中撤销后，与先前调用完全相同的 `fetch_skill` 调用（同一 `skill_id` 写法）被既有 B5 去重拦下（`loop.py` 的 `DUPLICATE_TOOL_CALL`），模型会再看到撤销前的那次结果；换一种写法（entry_id 或规整后相同的名字）会读到实时状态并返回 `KNOWLEDGE_NOT_AVAILABLE`。B5 不改。
 13. （C2b）DAL 夹具标题转名字时，所有非 `[a-z0-9]` 字符各段折成一个连字符（162 的标题含空格与大写）；SKILL.md 的 `name` 也走同一函数。
+18. （C2b）2026-11-21 租机后修订：C2-9 不照搬上游格式的本意保留，但补一句要求报告点名所用 runbook 及各步结果（94/89 通过与否恰好对应是否点名）。这句（`knowledge.catalog.RUNBOOK_REPORT_SENTENCE`）同时进 runbook 列表边界与 `fetch_skill` 描述，开关开时 `prompt_revision` 变为 `prompt-replay-candidate-fd0736744449`、仅知识 `otel-demo-ext-b478179bc212`，含知识的钉值随之重算（只有知识位为 1 的键变）；开关关的值不变。
 
 ## 证据
 

@@ -110,12 +110,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "4de46d36aa6ec9fa2b3120abb813374a6dc313a28235d9e8ae156143f6087c6a",
     ),
     (False, False, False, False, True, False): (
-        "otel-demo-ext-70c2f18484d7",
-        "e8055386618350c75bf627d58587b88fc741f75accfeb9534225fc46a6549d5c",
+        "otel-demo-ext-b478179bc212",
+        "d50ccc11c8d8d5f1e9e25ec855d6f7336986f150d2d25b1a2a0badf74f7503e1",
     ),
     (False, False, False, False, True, True): (
-        "otel-demo-ext-3b5bf566649f",
-        "a416d091a4cb9a0424815772f5d237c1a8cbe8e3a9084407a976e36966647f6e",
+        "otel-demo-ext-d106c02180ba",
+        "327869cff17915d73fac7049059ab3855a6026b6fb077a14d12e9fe12cbb1aff",
     ),
     (False, False, False, True, False, False): (
         "otel-demo-ext-4730c27997c9",
@@ -126,12 +126,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "7be774fcb9391223ec97977240075bc85c209ce586a86e4436ccc84b87c65586",
     ),
     (False, False, False, True, True, False): (
-        "otel-demo-ext-e08e49921fa8",
-        "c7ad9c195c13e14f3747a1d0c3f978214f0b13f9f24b22447b1cce2ca071397a",
+        "otel-demo-ext-2ccc8623a304",
+        "712f7ab3e85133bf390e2d3d4006870810ba739658764e5c24bc7935618738fd",
     ),
     (False, False, False, True, True, True): (
-        "otel-demo-ext-2ab2a1a7fe31",
-        "9e839eab357d1650bf81aa3ae587b86cce666e41bdd5e92041a4aead68298cd6",
+        "otel-demo-ext-e26e19873a37",
+        "271c6160f102243c8aab348989378db67376d74404afe35d690c7df06374d8f1",
     ),
     (False, False, True, False, False, False): (
         "otel-demo-ext-840df01f3bce",
@@ -142,12 +142,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "babdbb8d99d2769957f90aed0f9d42c0c63374c6660364d2006457ef75c794b1",
     ),
     (False, False, True, False, True, False): (
-        "otel-demo-ext-b5a52b7647a0",
-        "5eeeb4e619cac678ff184059fe59ba05fc3d484b9c13b3fb44295e07f96345e7",
+        "otel-demo-ext-08aeabe7db49",
+        "46b708fc3b15c025f4c4e61c13e6fa52b1d749420e23e611d4b17cecd32da0a3",
     ),
     (False, False, True, False, True, True): (
-        "otel-demo-ext-6834f4f97c76",
-        "20194b07811c0391b8ba0ae9ce429ef2d629e113e684ff33e1ae3fe47cba3817",
+        "otel-demo-ext-5cecdf3e5356",
+        "9964e08b847bfdf7f783f2253b0b5c965f59990076a1ea1349b122b31b402bbe",
     ),
     (False, False, True, True, False, False): (
         "otel-demo-ext-3eec17c97bae",
@@ -158,12 +158,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "b5ca482d22d4e0910794c6a80673add2dceef2aebfa0f5377cacae846a89c7c1",
     ),
     (False, False, True, True, True, False): (
-        "otel-demo-ext-f0ff7dbcc0a9",
-        "e9b2ae41945486987137b67be267f226a28a07dc81f426316ac8e0ccd345d40c",
+        "otel-demo-ext-8c481b12121d",
+        "519a5a9f4b090e4afb042a2ba0a26ad7fa3984d3ab50dc20d1efdb2c61d471c3",
     ),
     (False, False, True, True, True, True): (
-        "otel-demo-ext-645fca3af992",
-        "01f20e30aa4ca75f6155eaab97bab85022cdee79e492b4cb198f714813175c91",
+        "otel-demo-ext-870e7cd605ee",
+        "d6c940740df35dd0e2dcf4eddd8c69a0328d6f4dee320df6a8784f55af0a5a7e",
     ),
     (False, True, False, False, False, False): (
         "otel-demo-ext-dd942a2f1292",
@@ -174,12 +174,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "7a4e7bbbb5f972d86939633f9e6e6e4b6457eada5756c74652680eb7dce0399f",
     ),
     (False, True, False, False, True, False): (
-        "otel-demo-ext-ce0f81b9dab2",
-        "832eb75b7e38b601a588a9b79bb3a79f98c38d301fe5cb4eb6a19c005b1c4974",
+        "otel-demo-ext-0a9474cb2a38",
+        "d0588847ea14f14e036ac8daf4ec12d96bd9ed129a18e492532b2a2e048228d7",
     ),
     (False, True, False, False, True, True): (
-        "otel-demo-ext-7395e1e2e78f",
-        "3f6c7db00c74a819b3b8627ce226154dbbb69780270b8f4b65bac3de1e222681",
+        "otel-demo-ext-e869cf409b4c",
+        "916a0c1f9e1a87122f65fd728388b3ba63e5802c9c90d25dedefb5daeb8e2831",
     ),
     (False, True, False, True, False, False): (
         "otel-demo-ext-4994814c7688",
@@ -190,12 +190,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "ec824af09e6b137721d5bfea11982bde6d605e26eeffaac251e1ed863540f17b",
     ),
     (False, True, False, True, True, False): (
-        "otel-demo-ext-e43e5f12aac8",
-        "62151c2ecd10c0fa589883d05efd1dd54a202ecebc146dbf6cbec7e84edf5051",
+        "otel-demo-ext-2e03b6d5942f",
+        "e578c06347e207cf39d10ef7a6bdbc05765b13e474b909c0ed89b247eadb6edc",
     ),
     (False, True, False, True, True, True): (
-        "otel-demo-ext-033df77c5682",
-        "440ac5b97d69ba66e5292ced65c1db49651c06769b914ef6698cb2dc51b2cd1f",
+        "otel-demo-ext-c503aa921af1",
+        "c6eb44b0cc0a6ca3904e58be9ed45fb5fde970013dd0e9a14fe768073df596f9",
     ),
     (False, True, True, False, False, False): (
         "otel-demo-ext-cbd3b6aaa6b8",
@@ -206,12 +206,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "44b0333e9444a9592c68c94cb0237c640c1fdf68a49dda4448b4075be2399263",
     ),
     (False, True, True, False, True, False): (
-        "otel-demo-ext-755cb7b16927",
-        "2ca161f55405193456b2407dbf994a67c96a5626b4d924a6bda770b0506f3957",
+        "otel-demo-ext-f6a19a986de2",
+        "4b797a063065459901e3e3d03c30395047d23684207fac5a4a57d9f0fdae6f6e",
     ),
     (False, True, True, False, True, True): (
-        "otel-demo-ext-0e42f6c32105",
-        "c0eac0cc54d477d310d6ab23668f005aca12eb50439cab65bc65974aef715fee",
+        "otel-demo-ext-dfdfb26794bd",
+        "b9cc489a2e73388915eecc51cbc16ba0c519a3746ff57475e98af3d5ae73b838",
     ),
     (False, True, True, True, False, False): (
         "otel-demo-ext-61aad69191fd",
@@ -222,12 +222,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "5fba22e4754fe034d2b4207dc862769aecd17f5a401fdabc48be2ce2d54081b4",
     ),
     (False, True, True, True, True, False): (
-        "otel-demo-ext-fba1ec9b1cc6",
-        "48ca735167a5b574dd6e585c4825dbfb70f3e9b1875256d702409fdefd65d4e9",
+        "otel-demo-ext-887025871d38",
+        "623177148d4d5a60a409f4e9d660d33a055be14318abf1a005f06f6e26daa61b",
     ),
     (False, True, True, True, True, True): (
-        "otel-demo-ext-ac5337398d35",
-        "24a3361831c3c994a6d482daf368c37d19807d3ee3e37eaadc0170039c9b8865",
+        "otel-demo-ext-847af8287827",
+        "efb0da6854c6f0d1db6e69d09f010e6de1c0defed63deb188039baf0a0454db0",
     ),
     (True, False, False, False, False, False): (
         "otel-demo-ext-4f7faf728706",
@@ -238,12 +238,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "17b4f45785fe7a9d736b2c178e893119e880a193491ef4e0f6d91ba807eef3ba",
     ),
     (True, False, False, False, True, False): (
-        "otel-demo-ext-5470f700aed7",
-        "6d2840e391a10e58a06c9ede64870d61816cacd0af749105a1466519401b5265",
+        "otel-demo-ext-963351391eff",
+        "e0face02090feadae1176abc39391d647dfd1cbb1787fd422cd1894e71fdf5f1",
     ),
     (True, False, False, False, True, True): (
-        "otel-demo-ext-d286597aa5ac",
-        "034cb26952fc9dab84707891fc6f8eca59b3028658cfdc7330603e0bdc23836a",
+        "otel-demo-ext-7aa202c9d9f6",
+        "16f6fd103c52de44762390e87b96f5ebb87f604bf7e0a95fa6e04169a4669d36",
     ),
     (True, False, False, True, False, False): (
         "otel-demo-ext-f49f281c318a",
@@ -254,12 +254,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "499659852090610311a0b1f6ed9d872f3616fcc5d635217fed8d1bd0aeddd302",
     ),
     (True, False, False, True, True, False): (
-        "otel-demo-ext-6068f8b7f7d7",
-        "e80ba6bbc0baf85ce265b1de7e3f4430d353589a0cd0f05d5059f3cdb07df0df",
+        "otel-demo-ext-1c5703eee208",
+        "de5e5392d91627a628aa2d75e1c7f6c4fbe1335a5cf9d1097cdb28c048fadd6a",
     ),
     (True, False, False, True, True, True): (
-        "otel-demo-ext-7a8ff4fc42b0",
-        "ae46dee7f59a6c5de49d8c92da04f6a29722000edd6b223e18fc8c00f9b64dc1",
+        "otel-demo-ext-f88a23d4cec4",
+        "b764106601e10268fb7040b2a679f3eb285a3a257a0fac1caa95c5e0bd785d45",
     ),
     (True, False, True, False, False, False): (
         "otel-demo-ext-381e74cfe8d0",
@@ -270,12 +270,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "d8c73ed2d229a29376810cc2cec0d0b81627edde6cddf1a37fce114950d5a80c",
     ),
     (True, False, True, False, True, False): (
-        "otel-demo-ext-960f8bbc2809",
-        "5f4fd881911193e47310929d578167f05ba3cfa9dbb5c331527584698e017af4",
+        "otel-demo-ext-357ef95fb165",
+        "e7d0eeabce85fe43b6cb6df79dea652d4c4e7419822badbe1393d906da3929c0",
     ),
     (True, False, True, False, True, True): (
-        "otel-demo-ext-67a2c04c0062",
-        "34dece6f8ba458a2dbafc381cd126e75b0af10ae8cfaf056995d9a8b1d0b35df",
+        "otel-demo-ext-54d7fc1f5d63",
+        "55eb01c08d31dcbcfaae7a6bae7cd0e54dd06656b30078e1a26f3eecb05d6aaf",
     ),
     (True, False, True, True, False, False): (
         "otel-demo-ext-884953bd455e",
@@ -286,12 +286,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "8efc369a0abae8ae3aaa63a1c952db70073db52bc1d887cd1c8653ab0a7d9a9a",
     ),
     (True, False, True, True, True, False): (
-        "otel-demo-ext-531dfc2006df",
-        "5b13318b939f58acf358296035be60c416980712e4bd7ec7c66c1a35ddf83ef5",
+        "otel-demo-ext-304259988d53",
+        "51b525395485d477e1751a183a6c7c027de18b329a2dc675fed8a85cbfad9c66",
     ),
     (True, False, True, True, True, True): (
-        "otel-demo-ext-ad45e726d2ea",
-        "f55b29c39feb5e7f10757e9ac888e0281d1ba75e53c802170c41f870787f5771",
+        "otel-demo-ext-97785c2abd49",
+        "9b91d35e40a6895de8b2c92ad0ace8c1cdcd0db4c5e159d78b2ef9e678df220e",
     ),
     (True, True, False, False, False, False): (
         "otel-demo-ext-f11fc2ce4d18",
@@ -302,12 +302,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "717823fbfebdde36514a25ddb0cc2988b887482c482c70935a4a2de480e70062",
     ),
     (True, True, False, False, True, False): (
-        "otel-demo-ext-f464e1b47bf6",
-        "7665962c8913bab6bbeb99e44f830ef5aff934e48a84589ccf827076c3f28572",
+        "otel-demo-ext-76f1393a7ecc",
+        "7e2061c2a359fe3893c901b7136a841eb5a7bcd6b3c996a504008a00570ee6d9",
     ),
     (True, True, False, False, True, True): (
-        "otel-demo-ext-eaaa3f7c4675",
-        "63a56a93eb0642a2857ff3362043c6b9d702e0d52079bfaf4d2a03d2d6e17b58",
+        "otel-demo-ext-f269e268cafc",
+        "774b80d6c17d68572d62d2c37fb7f48b325634879e5f10202361649eeab4fdcb",
     ),
     (True, True, False, True, False, False): (
         "otel-demo-ext-ebbaaaa09494",
@@ -318,12 +318,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "dcd384bd442a37b61ad0ec4b602cc3b8eadeb5ea8ba0434fb3d033d0255dc8f5",
     ),
     (True, True, False, True, True, False): (
-        "otel-demo-ext-ba4aaca03a64",
-        "d0f49ffe2145cb6fbe7e0af40cd4519f745187d66cd4dd860a84166f32b3cef3",
+        "otel-demo-ext-0c77ddf8c44c",
+        "17c521eb6d6484553bd19f6b195750b0db4a332975a8d7807e942cf7bb81e0ff",
     ),
     (True, True, False, True, True, True): (
-        "otel-demo-ext-e1f8a91107fa",
-        "32b3ab416bff2786c8cfe7fc0e7f7875cda2beb125bbdc1184dfbe6b6f2a13a1",
+        "otel-demo-ext-12eee7829dad",
+        "1ceee76f75af296712066aff1374494b0045b998a1c3bb2ac3d45a0b9489d317",
     ),
     (True, True, True, False, False, False): (
         "otel-demo-ext-da924862e562",
@@ -334,12 +334,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "f2300cf81c5a445ab0d5f5a7a0b9ce6ffb0b4b66ff66daacbf0b6f79ff3d79af",
     ),
     (True, True, True, False, True, False): (
-        "otel-demo-ext-8f8b5b9599e2",
-        "8ce064755130a2e3d8777943c04fcb7f21264bf42e33e613f694398b4c9ff802",
+        "otel-demo-ext-a5fba6d19b27",
+        "1bcde2d89b4487fbcc4fabe7a1202d4cc4d2b1ea76dd92c26eb200f7c062b907",
     ),
     (True, True, True, False, True, True): (
-        "otel-demo-ext-19936f676e74",
-        "2e98eda4ba53a1747e817e6186411d9bfd6e5f81553679ad0ec100f82b5113da",
+        "otel-demo-ext-3e0ad5dfaa86",
+        "42d5f98ccf59e5b0ce3d5ff24f7d8753fc189a88a8ebd470d55f1c13c6e57b4c",
     ),
     (True, True, True, True, False, False): (
         "otel-demo-ext-263512312688",
@@ -350,12 +350,12 @@ PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
         "c4b1107ad7162798bbfdbcebc6aa12ddb4582f7f1b201025980e38ef796465c8",
     ),
     (True, True, True, True, True, False): (
-        "otel-demo-ext-d5f09e525161",
-        "fd3aede98b9a3891211cd2bc9c4dd7b897dfe227841e5865f7be8e66dbef824f",
+        "otel-demo-ext-0eed81430d65",
+        "a1807912e0104dbb977cc1d867e7fa7ea6d0c50ab4c993b475c707a47fc2d145",
     ),
     (True, True, True, True, True, True): (
-        "otel-demo-ext-56c7a90c65fa",
-        "6ab7921bb94e47ab1aae116efb588eccdb2cf7f45d9b216cb879ac42aadeac8a",
+        "otel-demo-ext-98bf11a1173f",
+        "0d5b847f97d304296ba7995a72ac9970b7a83541a3bbbc9d7feaca1e8ceffbdb",
     ),
 }
 BASE_PINNED = {

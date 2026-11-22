@@ -21,6 +21,19 @@ from uuid import UUID
 
 from opspilot.tools.registry import canonical, redact_credentials
 
+#: What a report says about a runbook it fetched (2026-11-21, after the
+#: 2026-11-20 rental: reports that named the runbook and its step results
+#: passed, the rest failed). Shared verbatim by the runbook-list boundary
+#: (``opspilot.investigation.context.RUNBOOK_CATALOG_BOUNDARY``) and the
+#: fetch_skill description (``opspilot.tools.knowledge_fetch``), so both
+#: revisions move together.
+RUNBOOK_REPORT_SENTENCE = (
+    "If you fetched a runbook, the report summary names it by its skill_id "
+    "and, for each of its steps, says what you checked and found, or that you "
+    "could not carry it out and which tool was missing; when the question "
+    "asks what to check, give the runbook's steps as next_steps."
+)
+
 POLICY_VERSION = "opspilot-runbook-catalog-v1"
 MAX_ENTRIES = 50
 #: The model-visible part (``visible_entries``) in canonical UTF-8 bytes.
