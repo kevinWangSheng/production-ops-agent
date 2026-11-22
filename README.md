@@ -131,6 +131,8 @@ deploy/compose/install.sh compose ps
 deploy/compose/install.sh compose logs worker
 ```
 
+Every container's log is rotated at 50 MB × 5 files (`x-logging` in `deploy/compose/compose.yaml`). This default overrides any other log driver configured on the Docker daemon; to use your own driver, remove `x-logging` and its `logging:` references from `compose.yaml`.
+
 ### 5. Route alerts to a target and send them
 
 `$SECRETS/target_identities.json` starts as `{}`: every alert is then handed to a human without a Run. To let matching alerts open a Run, add an entry keyed by the target id. With the default tool profile `fixture`, the worker knows only the target `checkout-prod` and investigates a fixed sample data set, not your live system; any other key makes the Run's tool calls fail with `TARGET_NOT_REGISTERED`.
