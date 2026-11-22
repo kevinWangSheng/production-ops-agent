@@ -1,12 +1,12 @@
 # Limitations
 
-What the evidence in this repository does and does not show, as of 2026-11-11.
+What the evidence in this repository does and does not show, as of 2026-11-11, with the benchmark runs of 2026-11-17 to 2026-11-22 added under [Evaluation](#evaluation).
 
 ## No production observation
 
 OpsPilot has never been deployed against a real production system. There is no production evidence of any kind in this repository.
 
-Every run, test and measurement used one lab: the OpenTelemetry Demo on a kind cluster, created by [scripts/kind_lab.py](../../scripts/kind_lab.py), on a local VM or on one rented shared-vCPU host.
+Every M3 run, test and measurement used one lab: the OpenTelemetry Demo on a kind cluster, created by [scripts/kind_lab.py](../../scripts/kind_lab.py), on a local VM or on one rented shared-vCPU host. The later benchmark runs used the benchmarks' own fixtures and applications in kind clusters on rented hosts.
 
 - **Traffic is synthetic.** It is the demo's own load generator. In some runs, Alertmanager-format alerts were also posted straight to the intake endpoint.
 - **Faults are injected.** Almost all are flagd feature flags switched by `kind_lab.py fault inject`, mostly `paymentFailure`. The F1 exam and the soak add a fixed whitelist of further faults, noise switches and operational drills (stopping the worker, cutting model egress, a tunnel outage).
@@ -17,7 +17,7 @@ All evidence pages mark themselves as integration runs, drills or a lab soak. No
 ## Scope of what was tried
 
 - One target workload (the demo's checkout path), one HealthProfile, one model provider, one team, one replica of each runtime.
-- Tools read Prometheus and Jaeger only. There are no Kubernetes or log tools ([#307](https://github.com/kevinWangSheng/production-ops-agent/issues/307)).
+- The M3 evidence used the Prometheus and Jaeger tools only. The read-only Kubernetes, log, database, Kafka, Argo CD, Helm and Redis/Valkey tools added afterwards (`otel-demo-ext` profile) were exercised only in the benchmark runs below, not in an M3-style acceptance or soak.
 - The soak ran for 72 hours once. Its control side ran on a host shared with other workloads, and the target side on a shared-vCPU host ([m3-soak-2026-11-07](../evidence/m3-soak-2026-11-07/README.md)). It had no numeric targets, and its latency and resource figures describe that run only.
 
 ## Evaluation
@@ -27,6 +27,10 @@ All evidence pages mark themselves as integration runs, drills or a lab soak. No
 - The holdout set was written by an independent session in the same environment. There was no technical isolation and the test was not blind. Since publication, it counts as seen.
 - The evaluation scripts were fixed after the exam started. Those fixes are disclosed on the [results page](../results/f1-same-condition-comparison-2026-11.md).
 - No latency comparison was made, because the exam host had shared vCPUs.
+- HolmesGPT public evals (53 questions × 3 trials, same model and judge): the full run of 2026-11-21 scored OpsPilot 133/159 and HolmesGPT 150/159. The post-fix 145/159 is composed from a targeted OpsPilot-only rerun on 2026-11-22, not a single full run; HolmesGPT was not rerun, and wobbly questions were not given extra trials on either side. HolmesGPT ran its upstream default configuration, including tools OpsPilot leaves out; its 5 database misses are pytest errors or skips with no answer, and whether the upstream harness is at fault is not confirmed. See the [README](../../README.md#benchmark-results-2026-11) and the [rerun record](../evidence/rental-2026-11-20/rerun-2026-11-22/run.md).
+- The benchmark judge is Z.ai `glm-5.3-flashx`, not the upstream judges, and it is not calibrated against human labels either.
+- ITBench-Lite (82/105) is the official evaluator's root-cause pass@1 on offline snapshots, with that judge; OpsPilot's own deterministic entity match scores the same trials 22/105, and most conclusions are `partial`. There is no HolmesGPT run on ITBench-Lite or SREGym.
+- Known gaps behind failed questions: the lookback window is fixed at 24 hours by design ([#779](https://github.com/kevinWangSheng/production-ops-agent/issues/779)); there is no input for standing per-target operator instructions ([#780](https://github.com/kevinWangSheng/production-ops-agent/issues/780)); SREGym problem p12 (Valkey, 0/3) has no read-only account to give the Redis/Valkey tools ([#773](https://github.com/kevinWangSheng/production-ops-agent/issues/773)).
 
 ## Acceptance status
 
