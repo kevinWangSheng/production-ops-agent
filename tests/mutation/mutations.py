@@ -382,17 +382,16 @@ MUTATIONS: tuple[Mutation, ...] = (
         "                if key in readable:\n",
     ),
     # #773 R18: the three Redis/Valkey layers, killed by
-    # tests/safety/test_safety_redis_inspect.py. ASSUMPTION (test author,
-    # implementation unseen): each ``old`` is a placeholder naming the
-    # target code; the runner reports ``stale`` until the lead pins the exact
-    # line in opspilot/tools/redis_inspect.py.
+    # tests/safety/test_safety_redis_inspect.py. The test author named the
+    # targets; the implementer pinned each ``old`` to the real line in
+    # opspilot/tools/redis_inspect.py.
     Mutation(
         "M44",
         "read-only: _send refuses any Redis command outside the frozen allowlist (#773 R3)",
         # Target: the allowlist assertion at the top of ``_send(argv)``, before
         # any byte is written. Mutated: the check never fires.
         "opspilot/tools/redis_inspect.py",
-        "        if _command_key(argv) not in _ALLOWED_COMMANDS:\n",
+        "        if not _command_allowed(command):\n",
         "        if False:\n",
     ),
     Mutation(
@@ -413,7 +412,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         # leaving only the shared redaction (which misses requirepass,
         # masterauth and masteruser).
         "opspilot/tools/redis_inspect.py",
-        "    if _denied_config_name(name):\n",
-        "    if False:\n",
+        "            if _config_secret(name):\n",
+        "            if False:\n",
     ),
 )

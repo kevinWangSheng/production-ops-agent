@@ -278,7 +278,7 @@ def test_send_refuses_commands_outside_the_table(argv) -> None:
         def close(self) -> None: ...
 
     with pytest.raises(ri.RedisCommandRefused):
-        ri.RedisTransport._send(Conn(), argv)
+        ri._Wire(Conn())._send(argv)
     assert sent == []
 
 

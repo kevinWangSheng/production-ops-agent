@@ -740,6 +740,21 @@ def _reply_failure(error: RedisReplyError, stage: str) -> TransportResponse:
     return _answered("REDIS_SOURCE_ERROR: the server failed the call.")
 
 
+class _Wire:
+    """One call's connection behind the single send point."""
+
+    def __init__(self, conn: RedisConnection) -> None:
+        self._conn = conn
+
+    def _send(self, argv: Sequence[str]) -> Any:
+        """Every command of every call passes here; anything outside the
+        frozen table is refused before a byte is written."""
+        command = list(argv)
+        if not _command_allowed(command):
+            raise RedisCommandRefused("REDIS_COMMAND_NOT_ALLOWED")
+        return self._conn.command(command)
+
+
 Send = Callable[[Sequence[str]], Any]
 Plan = Callable[[Send, bool], TransportResponse]
 
@@ -761,17 +776,6 @@ class RedisTransport:
         self._connector = connector or default_connector
         self._timeout = request_timeout_seconds
         self._monotonic = monotonic or time.monotonic
-
-    # -- the single send point ------------------------------------------------
-
-    @staticmethod
-    def _send(conn: RedisConnection, argv: Sequence[str]) -> Any:
-        """Every command of every call passes here; anything outside the
-        frozen table is refused before a byte is written."""
-        command = list(argv)
-        if not _command_allowed(command):
-            raise RedisCommandRefused("REDIS_COMMAND_NOT_ALLOWED")
-        return conn.command(command)
 
     # -- input checks ---------------------------------------------------------
 
@@ -907,10 +911,11 @@ class RedisTransport:
         timer.daemon = True
         timer.start()
         stage = "auth"
+        wire = _Wire(conn)
 
         def send(argv: Sequence[str]) -> Any:
             remaining()
-            return self._send(conn, argv)
+            return wire._send(argv)
 
         try:
             config = self._config
