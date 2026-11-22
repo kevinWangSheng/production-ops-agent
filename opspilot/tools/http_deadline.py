@@ -36,17 +36,25 @@ def _is_ip_literal(host: str) -> bool:
     return True
 
 
-def resolve(host: str, port: int, deadline: float) -> _AddrInfo:
+def resolve(
+    host: str,
+    port: int,
+    deadline: float,
+    slots: threading.BoundedSemaphore | None = None,
+) -> _AddrInfo:
     """``getaddrinfo`` for a TCP peer, bounded by ``deadline`` (monotonic).
 
     IP literals need no lookup and bypass the slots; any hostname, including
     ``localhost``, takes a slot. Raises ``TimeoutError`` when the deadline
-    passes first, whether waiting for a slot or for the lookup.
+    passes first, whether waiting for a slot or for the lookup. ``slots``
+    defaults to the pool shared by query transports; the model client passes
+    its own (#444) so a stuck data-source hostname cannot queue model calls.
     """
+    pool = _resolver_slots if slots is None else slots
     if _is_ip_literal(host):
         return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     remaining = deadline - time.monotonic()
-    if remaining <= 0 or not _resolver_slots.acquire(timeout=remaining):
+    if remaining <= 0 or not pool.acquire(timeout=remaining):
         raise TimeoutError
     result: Future[_AddrInfo] = Future()
 
@@ -56,12 +64,12 @@ def resolve(host: str, port: int, deadline: float) -> _AddrInfo:
         except BaseException as error:
             result.set_exception(error)
         finally:
-            _resolver_slots.release()
+            pool.release()
 
     try:
         threading.Thread(target=lookup, daemon=True, name="otel-resolve").start()
     except BaseException:
-        _resolver_slots.release()
+        pool.release()
         raise
     # concurrent.futures.TimeoutError is the builtin TimeoutError (3.11+).
     return result.result(timeout=max(0.0, deadline - time.monotonic()))
