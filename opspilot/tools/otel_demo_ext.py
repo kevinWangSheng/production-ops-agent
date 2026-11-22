@@ -1039,6 +1039,11 @@ def otel_demo_ext_executor_factory(
         for item in registrations.tools
         if item.source == otel_demo.SOURCE
     }
+    citable = {
+        item.name: item.citable_as_fact
+        for item in registrations.tools
+        if item.source == otel_demo.SOURCE
+    }
 
     def factory(lease: Lease, input: InvestigationInput) -> ReadOnlyToolExecutor:
         run = store.rebuild(lease.incident_id)["run"]
@@ -1078,6 +1083,7 @@ def otel_demo_ext_executor_factory(
                     run_id=scope.run_id,
                     target_ids=scope.target_ids,
                     result_paths=result_paths,
+                    citable=citable,
                 ),
                 sources=sources,
                 kubernetes=cluster,
