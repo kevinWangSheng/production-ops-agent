@@ -1,0 +1,156 @@
+"""Safety: URL userinfo stays hidden when the authority's ``//`` is encoded
+(#359, user decision B1-U4 a, B1-D7).
+
+Through the shipped ``otel-demo-ext`` gateway, a Pod whose annotations hold
+connection strings with the ``//`` percent-encoded, escaped two levels deep
+and written as HTML entities: the password never reaches the model and the
+host still does: prefix as written, marker, the ``@`` as written, host.
+Ordinary encoded text -- a ``%40`` in a query string, a redirect URL, an
+``&#x2F;`` path -- passes unchanged. Guarded by mutations M51, M52 and M53.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from opspilot.redaction import REDACTED_CREDENTIAL, redact_credentials
+from tests.safety.gateway_support import everything_seen, gateway
+
+JQ_CALL = {"kind": "pods", "jq_expr": ".items[]"}
+#: Synthetic passwords (low entropy), one per encoding.
+PERCENT = "canary-pct-71"
+DEEP = "canary-deep-72"
+ENTITY = "canary-ent-73"
+ENCODED = {
+    "percent": f"https%3A%2F%2Forders%3A{PERCENT}%40db-pct.example%2Forders",
+    "deep": f"https:\\\\\\/\\\\\\/orders:{DEEP}@db-deep.example",
+    "entity": f"https:&#x2F;&#x2F;orders:{ENTITY}&#64;db-ent.example",
+}
+#: Must pass unchanged.
+ORDINARY = (
+    "/search?q=a%40b.com&page=2",
+    "redirect=https%3A%2F%2Fexample.com%3Fnext%3Dbob%40x.com",
+    "next=%2F%2Fcdn.example.com%2Fa%40b.png",
+    '<a href="&#x2F;docs&#x2F;x">docs</a>',
+    "&#x2F;&#x2F;cdn.example.com&#x2F;img.png",
+    "git@github.com:org/repo.git",
+)
+
+
+def _pod() -> bytes:
+    annotations = {f"conn/{k}": v for k, v in ENCODED.items()}
+    annotations.update({f"plain/{i}": text for i, text in enumerate(ORDINARY)})
+    pod = {
+        "metadata": {
+            "name": "orders-0",
+            "namespace": "otel-demo",
+            "annotations": annotations,
+        },
+        "spec": {"containers": [{"name": "orders"}]},
+    }
+    return json.dumps({"kind": "PodList", "items": [pod]}).encode()
+
+
+def test_encoded_userinfo_never_reaches_the_model(monkeypatch, tmp_path):
+    gw = gateway(monkeypatch, tmp_path, body=_pod())
+    outcome = gw.call("kubernetes_jq_query", JQ_CALL)
+    assert gw.source.requests, "the call must reach the source"
+    assert outcome.status == "ok", outcome.model_view
+    seen = everything_seen(outcome, gw.evidence)
+    for password in (PERCENT, DEEP, ENTITY):
+        assert password not in seen, password
+    for host in ("db-pct.example", "db-deep.example", "db-ent.example"):
+        assert host in seen, host
+    for text in ORDINARY[2:]:  # JSON keeps these bytes as written
+        assert json.dumps(text)[1:-1] in seen, text
+
+
+@pytest.mark.parametrize("kind", sorted(ENCODED))
+def test_each_encoding_keeps_the_319_shape(kind):
+    """M51-M53: one rule per encoding, prefix as written, ``@`` as written."""
+    prefix = {"percent": "https%3A%2F%2F", "deep": "https:\\\\\\/\\\\\\/"}.get(
+        kind, "https:&#x2F;&#x2F;"
+    )
+    host = {"percent": "db-pct.example", "deep": "db-deep.example"}.get(
+        kind, "db-ent.example"
+    )
+    at = {"percent": "%40", "deep": "@"}.get(kind, "&#64;")
+    assert redact_credentials(ENCODED[kind]).startswith(
+        f"{prefix}{REDACTED_CREDENTIAL}{at}{host}"
+    )
+
+
+def test_ordinary_encoded_text_is_left_alone():
+    for text in ORDINARY:
+        assert redact_credentials(text) == text, text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # hex escapes are case-insensitive
+        (
+            "https%3a%2f%2forders%3apw%40db.example%2fx",
+            "https%3a%2f%2f[REDACTED_CREDENTIAL]%40db.example%2fx",
+        ),
+        (
+            "https:&#X2F;&#x2f;orders:pw&#X40;db.example",
+            "https:&#X2F;&#x2f;[REDACTED_CREDENTIAL]&#X40;db.example",
+        ),
+        # the two slashes may be different entity kinds
+        (
+            "https:&#x2F;&#47;orders:pw@db.example",
+            "https:&#x2F;&#47;[REDACTED_CREDENTIAL]@db.example",
+        ),
+        (
+            "https:&sol;&#x2f;orders:pw&#x40;db.example",
+            "https:&sol;&#x2f;[REDACTED_CREDENTIAL]&#x40;db.example",
+        ),
+        # the host ends at an encoded port or path, as #319's ends at : or /
+        (
+            "https%3A%2F%2Forders%3Apw%40db.example%3A5432%2Fdb",
+            "https%3A%2F%2F[REDACTED_CREDENTIAL]%40db.example%3A5432%2Fdb",
+        ),
+        (
+            "https:&#x2F;&#x2F;orders:pw&#64;db.example&#58;5432&#x2F;db",
+            "https:&#x2F;&#x2F;[REDACTED_CREDENTIAL]&#64;db.example&#58;5432&#x2F;db",
+        ),
+    ],
+)
+def test_case_mixed_entities_and_host_end(text, expected):
+    assert redact_credentials(text) == expected
+
+
+# PR #804 review: an encoded authority inside the query or fragment of an
+# outer URL. Only the inner userinfo is replaced; the outer URL is untouched.
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            "GET https://app.example.com?next=https%3A%2F%2Fsvc%3As3cr3t%40db.internal HTTP/1.1",
+            "GET https://app.example.com?next=https%3A%2F%2F[REDACTED_CREDENTIAL]%40db.internal HTTP/1.1",
+        ),
+        (
+            "302 Location: https://login.example.com#return=https%3A%2F%2Fu%3Ap%40h.example",
+            "302 Location: https://login.example.com#return=https%3A%2F%2F[REDACTED_CREDENTIAL]%40h.example",
+        ),
+        (
+            '{"location":"https:\\/\\/app.example.com?next=https%3A%2F%2Fu%3Ap%40h"}',
+            '{"location":"https:\\/\\/app.example.com?next=https%3A%2F%2F[REDACTED_CREDENTIAL]%40h"}',
+        ),
+        (
+            '<a href="https://app.example.com?x=&#x2F;&#x2F;u:p&#64;h">',
+            '<a href="https://app.example.com?x=&#x2F;&#x2F;[REDACTED_CREDENTIAL]&#64;h">',
+        ),
+        (
+            "https:\\\\\\/\\\\\\/app.example.com?next=https%3A%2F%2Fu%3Ap%40h",
+            "https:\\\\\\/\\\\\\/app.example.com?next=https%3A%2F%2F[REDACTED_CREDENTIAL]%40h",
+        ),
+    ],
+)
+def test_an_encoded_authority_inside_an_outer_url_keeps_the_outer_url(text, expected):
+    once = redact_credentials(text)
+    assert once == expected
+    assert redact_credentials(once) == once

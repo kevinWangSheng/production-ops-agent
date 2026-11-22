@@ -548,7 +548,7 @@ def test_config_errors(env, code) -> None:
 
 
 def test_profile_and_lab_gate(fake) -> None:
-    assert ext.tool_schema_revision() == "otel-demo-ext-a4e56f2fb767"
+    assert ext.tool_schema_revision() == "otel-demo-ext-bdb3eda167eb"
     assert ext.MONGODB_TOOL_SCHEMA_REVISION != ext.TOOL_SCHEMA_REVISION
     profile = select_profile(_env())
     assert (

@@ -85,8 +85,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         "M07",
         "credentials: URL userinfo is redacted",
         "opspilot/redaction.py",
-        "for rule in (_AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO):",
-        "for rule in ():",
+        "    redacted = _redact_userinfo(text, _AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO)\n",
+        "    redacted = text\n",
     ),
     Mutation(
         "M08",
@@ -451,5 +451,29 @@ MUTATIONS: tuple[Mutation, ...] = (
         "opspilot/redaction.py",
         '_CODE_WORDS = frozenset({"otp", "pin", "mfa", "passcode", "refresh"})\n',
         "_CODE_WORDS: frozenset[str] = frozenset()\n",
+    ),
+    # #359 (B1-U4 a): one per encoded-authority rule, killed by
+    # tests/safety/test_safety_encoded_userinfo.py. Mutated: the rule is
+    # dropped from the encoded pass.
+    Mutation(
+        "M51",
+        "credentials: userinfo after a percent-encoded // is redacted (#359)",
+        "opspilot/redaction.py",
+        "    _PERCENT_AUTHORITY_USERINFO,\n",
+        "",
+    ),
+    Mutation(
+        "M52",
+        "credentials: userinfo after a // escaped two or more levels deep is redacted (#359)",
+        "opspilot/redaction.py",
+        "    _DEEP_ESCAPED_AUTHORITY_USERINFO,\n",
+        "",
+    ),
+    Mutation(
+        "M53",
+        "credentials: userinfo after an HTML-entity // is redacted (#359)",
+        "opspilot/redaction.py",
+        "    _ENTITY_AUTHORITY_USERINFO,\n",
+        "",
     ),
 )
