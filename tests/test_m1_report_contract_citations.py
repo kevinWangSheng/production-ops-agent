@@ -100,6 +100,23 @@ def test_contract_forbids_citing_operation_id():
     ), "REPORT_CONTRACT must say operation_id is never an evidence_id / cited"
 
 
+def test_contract_defines_completed_versus_incomplete():
+    """#771: 14 of 15 rental handoffs marked themselves incomplete after
+    running every available check (subject absent, source not configured).
+    The contract must say that is completed-with-gaps, and reserve
+    incomplete for checks that were cut short."""
+    text = REPORT_CONTRACT
+    assert (
+        "completed means you ran the checks the available tools allow, "
+        "including when the subject asked about is not present or the tool or "
+        "source the question needs is not configured or unreachable" in text
+    )
+    assert (
+        "incomplete is only for checks you still needed and could run but "
+        "were cut short" in text
+    )
+
+
 def test_prompt_revision_moved_with_the_contract_text():
     """C3 §5: the prompt revision is a hash of the L2 bytes, so a changed
     contract must not reclaim Runs recorded under the pre-fix literal."""

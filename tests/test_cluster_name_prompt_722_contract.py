@@ -68,12 +68,12 @@ V8 = "opspilot-investigation-input-v8"
 V7_C2B = "opspilot-investigation-input-v7"
 
 # -- pins computed on origin/main 23f362f2 (see module docstring) ------------
-BASE_PROMPT_REVISION = "prompt-replay-candidate-860b743085d1"
-BASE_SYSTEM_CHARS = 7741
-BASE_SYSTEM_SHA256 = "3908f85568327c52a402b46fa7b85d7749603c0f671fcded8aa0cd4f5cdf7cb2"
-EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-1137251eea4d"
-EXT_SYSTEM_CHARS = 12417
-EXT_SYSTEM_SHA256 = "8e6cd839d72f3165f4bc0fb2303e79ba2f4841ced93e46e94af7a88bec8b15b8"
+BASE_PROMPT_REVISION = "prompt-replay-candidate-f3c3018f981b"
+BASE_SYSTEM_CHARS = 8081
+BASE_SYSTEM_SHA256 = "23a7e4335cf5ffd60fa21cee4afdf8cbc8f56ca61c2dae9cf22ffbdf04d77a94"
+EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-068c56342888"
+EXT_SYSTEM_CHARS = 12757
+EXT_SYSTEM_SHA256 = "b031c1ed2e749413c97ee73b0f55e2bcfa3def7e258233dc16e79e28fd4188d9"
 EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-c63f058afb18"
 INPUT_SHA256_PIN = {
     "fixture": "feb355dc6906cb8085766da0b6c6056041f723b0cd34bebb5e8c2bf4f75299ed",

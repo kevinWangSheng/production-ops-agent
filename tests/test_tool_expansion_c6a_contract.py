@@ -103,269 +103,269 @@ SWITCHES = (
 PINNED: dict[tuple[bool, ...], tuple[str, str]] = {
     (False, False, False, False, False, False): (
         "otel-demo-ext-c63f058afb18",
-        "b9e5d775c369a2bd011660d402ef0bfd11e483d36c38bd9799bbbdcbb0283595",
+        "46f34b6e1ecf4c36cddc9b3b57f437f5b07dfe6cd7add88c936d33e0abd04ba1",
     ),
     (False, False, False, False, False, True): (
         "otel-demo-ext-f5e4ed53f220",
-        "4de46d36aa6ec9fa2b3120abb813374a6dc313a28235d9e8ae156143f6087c6a",
+        "b556353cf444a5f9f499a825f05b116f0e08ce7c32376a1c709f3c7f111f1307",
     ),
     (False, False, False, False, True, False): (
         "otel-demo-ext-70c2f18484d7",
-        "e8055386618350c75bf627d58587b88fc741f75accfeb9534225fc46a6549d5c",
+        "7d7176b1294420425c4948bd0e765ad1e898bc2224a3b65447b8e405c27560c2",
     ),
     (False, False, False, False, True, True): (
         "otel-demo-ext-3b5bf566649f",
-        "a416d091a4cb9a0424815772f5d237c1a8cbe8e3a9084407a976e36966647f6e",
+        "ac0771afa62506ed2318cd35dba2b66b222f45c20dbc49f32eca3210ad031324",
     ),
     (False, False, False, True, False, False): (
         "otel-demo-ext-4730c27997c9",
-        "a6f8352a6bdc1f054f6b1adf840eafeb82af9118f7e9efb85f7a56c7455e94ff",
+        "42a8de274da6a095513bf9632c9eaa1dea0a6d0c4cbb7246d1d30987746c7181",
     ),
     (False, False, False, True, False, True): (
         "otel-demo-ext-3a2608526746",
-        "7be774fcb9391223ec97977240075bc85c209ce586a86e4436ccc84b87c65586",
+        "a01553478a404fb660ad0809b922f7c672d597d7d825f5f90e36de08ae2bc351",
     ),
     (False, False, False, True, True, False): (
         "otel-demo-ext-e08e49921fa8",
-        "c7ad9c195c13e14f3747a1d0c3f978214f0b13f9f24b22447b1cce2ca071397a",
+        "4513a738bec746577edbfbe2bf08b9aff90570403ab8c92833ab4d4b49a303b6",
     ),
     (False, False, False, True, True, True): (
         "otel-demo-ext-2ab2a1a7fe31",
-        "9e839eab357d1650bf81aa3ae587b86cce666e41bdd5e92041a4aead68298cd6",
+        "fa5ceba1f798bdda0df6c09d02a48242bfdcab707de5a27be597a852d18f501a",
     ),
     (False, False, True, False, False, False): (
         "otel-demo-ext-840df01f3bce",
-        "1453c622857509086b33c2ae4d40e75ac6c1e046bf68bc303b1fd7649c54637e",
+        "43f33bf040746b4297461340389011b10be3dfe6d365989686c7d5ec69339ab8",
     ),
     (False, False, True, False, False, True): (
         "otel-demo-ext-596626e3a941",
-        "babdbb8d99d2769957f90aed0f9d42c0c63374c6660364d2006457ef75c794b1",
+        "2b80107e703d0a3484e88bf94c4a7331cada198b547d72dd690bb0945700ffae",
     ),
     (False, False, True, False, True, False): (
         "otel-demo-ext-b5a52b7647a0",
-        "5eeeb4e619cac678ff184059fe59ba05fc3d484b9c13b3fb44295e07f96345e7",
+        "1fda45cbdecf17a7f9b8e46e3dbc37e2807ca89a0d59ae36da5200b3c4e7b865",
     ),
     (False, False, True, False, True, True): (
         "otel-demo-ext-6834f4f97c76",
-        "20194b07811c0391b8ba0ae9ce429ef2d629e113e684ff33e1ae3fe47cba3817",
+        "e7fc4ecdb9e0659189723a578f699084e3deb5cf463e9fba4864585308398dd9",
     ),
     (False, False, True, True, False, False): (
         "otel-demo-ext-3eec17c97bae",
-        "792d590f82b334e81642332ba713b6a9e687ba86297a7cba86ce563caa925033",
+        "e4bbeb1a4ebf20478d0705f7fe21f542354489a4c539cdc340b61f54608c415f",
     ),
     (False, False, True, True, False, True): (
         "otel-demo-ext-0e2dcad7fb3b",
-        "b5ca482d22d4e0910794c6a80673add2dceef2aebfa0f5377cacae846a89c7c1",
+        "03eaef62108b20b7f7c4e157d31537304f1cf963a3ccc0c22ac55282a3c0cb77",
     ),
     (False, False, True, True, True, False): (
         "otel-demo-ext-f0ff7dbcc0a9",
-        "e9b2ae41945486987137b67be267f226a28a07dc81f426316ac8e0ccd345d40c",
+        "86f882c16fb08d61ed00785b00805bf4cc97fb46d2ec5cfb095644d8c582ab60",
     ),
     (False, False, True, True, True, True): (
         "otel-demo-ext-645fca3af992",
-        "01f20e30aa4ca75f6155eaab97bab85022cdee79e492b4cb198f714813175c91",
+        "db1c6817b1640bcdf0696880af15ee0f0a4453e13fdcc37fd4722ad811a7b449",
     ),
     (False, True, False, False, False, False): (
         "otel-demo-ext-dd942a2f1292",
-        "145e3966c24d3d7f47bd4645a1a548be595a1aac3f4f872d806760ff30fae0a8",
+        "db5d2a478912fb21373b0eed433b6bbfc851e971a64e50f2314ed84d8e933e22",
     ),
     (False, True, False, False, False, True): (
         "otel-demo-ext-85be06c0b7ff",
-        "7a4e7bbbb5f972d86939633f9e6e6e4b6457eada5756c74652680eb7dce0399f",
+        "e05a42bc008d39db361bbc4f1e694d4ddb018363f980bfaa04c0c5e658bc0444",
     ),
     (False, True, False, False, True, False): (
         "otel-demo-ext-ce0f81b9dab2",
-        "832eb75b7e38b601a588a9b79bb3a79f98c38d301fe5cb4eb6a19c005b1c4974",
+        "7a9d624f87ef1beaf3ede96c990d2753000e817eb04d336069f463ed39ff3861",
     ),
     (False, True, False, False, True, True): (
         "otel-demo-ext-7395e1e2e78f",
-        "3f6c7db00c74a819b3b8627ce226154dbbb69780270b8f4b65bac3de1e222681",
+        "8c736cbcec9e0de260fbaacb74f9102ae6e93daf6838382d4a3ec1a4305d80b4",
     ),
     (False, True, False, True, False, False): (
         "otel-demo-ext-4994814c7688",
-        "fb9178163ccce56b5382f389ed8a268079406c457bdf9caebb30b5b5b2d10f35",
+        "a4d33c87ee980e69f4b8549f7b95857bc30c7ec2f2cdc2b2294b87a1ffc032c7",
     ),
     (False, True, False, True, False, True): (
         "otel-demo-ext-0d723a8e7280",
-        "ec824af09e6b137721d5bfea11982bde6d605e26eeffaac251e1ed863540f17b",
+        "abdc3f7f0e6fdee3384696be0b0b374d7b7cd3dca7f362a02dfa1d806f29c259",
     ),
     (False, True, False, True, True, False): (
         "otel-demo-ext-e43e5f12aac8",
-        "62151c2ecd10c0fa589883d05efd1dd54a202ecebc146dbf6cbec7e84edf5051",
+        "bdcd91cf06ba78a92e8669dfe0e0a8b6e7aa05ee03806dbb0fb53061d8eab88f",
     ),
     (False, True, False, True, True, True): (
         "otel-demo-ext-033df77c5682",
-        "440ac5b97d69ba66e5292ced65c1db49651c06769b914ef6698cb2dc51b2cd1f",
+        "2ff40bc5388723d08af14fe02a239907643923ed37d6db5c91e6a62d1d543d76",
     ),
     (False, True, True, False, False, False): (
         "otel-demo-ext-cbd3b6aaa6b8",
-        "6e4538e26699eedbdb187537c00db11d4839c9c984e06a16bc2e53a75cb2e61e",
+        "68f1f62d281b5984cef6940b16052f5223b7ab34ca2057f46252c714ebc2bf41",
     ),
     (False, True, True, False, False, True): (
         "otel-demo-ext-39b272e9fe31",
-        "44b0333e9444a9592c68c94cb0237c640c1fdf68a49dda4448b4075be2399263",
+        "ee51c27e82494975f83674484aaaf038649b728f17485316712409efed652655",
     ),
     (False, True, True, False, True, False): (
         "otel-demo-ext-755cb7b16927",
-        "2ca161f55405193456b2407dbf994a67c96a5626b4d924a6bda770b0506f3957",
+        "430457c9c503422706c6e691aff7dba3e08b5f56c8b9c4a7c5ff6522f34b0ed6",
     ),
     (False, True, True, False, True, True): (
         "otel-demo-ext-0e42f6c32105",
-        "c0eac0cc54d477d310d6ab23668f005aca12eb50439cab65bc65974aef715fee",
+        "4b9d380af3cd42e365accd9a7b1ca7784400b1509e5f93e9b2b33e8365f63243",
     ),
     (False, True, True, True, False, False): (
         "otel-demo-ext-61aad69191fd",
-        "bbd65f66ef720c1e480d33701e1c4d1e241b83a6c5c03a31924766542d1d3508",
+        "344c6146e488c29ba31147fe8a137e890d7b8acdd12ec172c142b34064c6e62b",
     ),
     (False, True, True, True, False, True): (
         "otel-demo-ext-4d54816ee82f",
-        "5fba22e4754fe034d2b4207dc862769aecd17f5a401fdabc48be2ce2d54081b4",
+        "729028ca6dd81c0a7013b5fbf4577027fbf7b5b2ecd44422e7eebe9ee8a304f2",
     ),
     (False, True, True, True, True, False): (
         "otel-demo-ext-fba1ec9b1cc6",
-        "48ca735167a5b574dd6e585c4825dbfb70f3e9b1875256d702409fdefd65d4e9",
+        "d62a2008bdcf812719be0d3c52057d314a154af3d7c68b2619d8419d5476e26c",
     ),
     (False, True, True, True, True, True): (
         "otel-demo-ext-ac5337398d35",
-        "24a3361831c3c994a6d482daf368c37d19807d3ee3e37eaadc0170039c9b8865",
+        "85e673bd25b85bb7cb2f01e427055c87ac9b936583638da2629ea86bf1b48d47",
     ),
     (True, False, False, False, False, False): (
         "otel-demo-ext-4f7faf728706",
-        "ef2f7e822005f8682bb74f4e8695c7e1bce16a6a439441383dd1db986c7cbe84",
+        "97aa05da3739c97a5ab47647387760a68d0ffd34aee64da6f36387b72a810f5b",
     ),
     (True, False, False, False, False, True): (
         "otel-demo-ext-54395c6ad55a",
-        "17b4f45785fe7a9d736b2c178e893119e880a193491ef4e0f6d91ba807eef3ba",
+        "1cb3aea3493a2f472fe38ce3a6f7c4c9ba6c432070b4f9aa30722f2181f368ab",
     ),
     (True, False, False, False, True, False): (
         "otel-demo-ext-5470f700aed7",
-        "6d2840e391a10e58a06c9ede64870d61816cacd0af749105a1466519401b5265",
+        "c3ce27f8a3166ad3841296b1f94a1d53f0c77d21fe3b2940b076e6d79bed4d31",
     ),
     (True, False, False, False, True, True): (
         "otel-demo-ext-d286597aa5ac",
-        "034cb26952fc9dab84707891fc6f8eca59b3028658cfdc7330603e0bdc23836a",
+        "c656d93e3c98e867c37625ffa2c61d02389f9a90ef538b0ef165e7f537e519fe",
     ),
     (True, False, False, True, False, False): (
         "otel-demo-ext-f49f281c318a",
-        "e980ed348ebee5be21f71fd11ce34916d017daad1af0265528146e309943d3da",
+        "501f950e3b51cbf7950e175d324d76bf16857e4b89db9465c4fdc8d8d68e336b",
     ),
     (True, False, False, True, False, True): (
         "otel-demo-ext-1595c5775240",
-        "499659852090610311a0b1f6ed9d872f3616fcc5d635217fed8d1bd0aeddd302",
+        "1cee441f831daceabf3f4def18424de66bc94aef6067d8e9b345171588fce4d4",
     ),
     (True, False, False, True, True, False): (
         "otel-demo-ext-6068f8b7f7d7",
-        "e80ba6bbc0baf85ce265b1de7e3f4430d353589a0cd0f05d5059f3cdb07df0df",
+        "63e31600a2e6fbfdf026d8b5fee5201705f68240a16a5987adc2f4356cd5b79c",
     ),
     (True, False, False, True, True, True): (
         "otel-demo-ext-7a8ff4fc42b0",
-        "ae46dee7f59a6c5de49d8c92da04f6a29722000edd6b223e18fc8c00f9b64dc1",
+        "bf6704a2bd0991b75336bfc2d2f148cf966aca0f12fc46d8f52edac913371bae",
     ),
     (True, False, True, False, False, False): (
         "otel-demo-ext-381e74cfe8d0",
-        "1ee83de389edfc4da503548c38b94a526b1dc9b4d691481a1a661539cc7ec008",
+        "fb71c70a1a8cb93abfb36dcc8ff65811732fec161511c78a849364b1878b9f05",
     ),
     (True, False, True, False, False, True): (
         "otel-demo-ext-2b742c1a2380",
-        "d8c73ed2d229a29376810cc2cec0d0b81627edde6cddf1a37fce114950d5a80c",
+        "5947bf3df6f87611b75eb688c7fd08da91dd7eec4b360e41ba592375d37bc650",
     ),
     (True, False, True, False, True, False): (
         "otel-demo-ext-960f8bbc2809",
-        "5f4fd881911193e47310929d578167f05ba3cfa9dbb5c331527584698e017af4",
+        "3135428c8c210127bb1b9e84bea619ae9f24bf88a935b970136e57ccd62b2030",
     ),
     (True, False, True, False, True, True): (
         "otel-demo-ext-67a2c04c0062",
-        "34dece6f8ba458a2dbafc381cd126e75b0af10ae8cfaf056995d9a8b1d0b35df",
+        "b149dda69137b13c32a514ea556b5e4e83e1cfefb8218da19415601f3c15da1c",
     ),
     (True, False, True, True, False, False): (
         "otel-demo-ext-884953bd455e",
-        "957fcbd52c026b3f5f160cd718a7e07d1d1777446cf6bf071ec9857172189b49",
+        "78e1bf2bb42b7b517a61a3c855c807f3be25f109779b14686caad5d400db39ef",
     ),
     (True, False, True, True, False, True): (
         "otel-demo-ext-0c362dc85592",
-        "8efc369a0abae8ae3aaa63a1c952db70073db52bc1d887cd1c8653ab0a7d9a9a",
+        "d98c49f95345292629a63df72a8e6149ff2e2642a07f1a70518f7ca443519152",
     ),
     (True, False, True, True, True, False): (
         "otel-demo-ext-531dfc2006df",
-        "5b13318b939f58acf358296035be60c416980712e4bd7ec7c66c1a35ddf83ef5",
+        "d1a46aaf7ed284d85870d78086badb25395483fac0742cca636274dabdcfdbbd",
     ),
     (True, False, True, True, True, True): (
         "otel-demo-ext-ad45e726d2ea",
-        "f55b29c39feb5e7f10757e9ac888e0281d1ba75e53c802170c41f870787f5771",
+        "e826b3c9a73525eaf6e0e04f20b5869e01459d9d8dc5d49f302d58ad6c411dca",
     ),
     (True, True, False, False, False, False): (
         "otel-demo-ext-f11fc2ce4d18",
-        "79253a92887f855d00c5e0ba46267bcb699d9ea62fb3eeeb037743fd14340f81",
+        "41d5eea74a65a5c34478cbfa268ca59c7fee5b13e6962c1846dae4dec1a7e578",
     ),
     (True, True, False, False, False, True): (
         "otel-demo-ext-b62634d96bd3",
-        "717823fbfebdde36514a25ddb0cc2988b887482c482c70935a4a2de480e70062",
+        "663dacc29b5faf46aef448e33b19efb49f5e98234961f83f54bbdd9f3b9d4b65",
     ),
     (True, True, False, False, True, False): (
         "otel-demo-ext-f464e1b47bf6",
-        "7665962c8913bab6bbeb99e44f830ef5aff934e48a84589ccf827076c3f28572",
+        "076415bb3bb29ae76af9dcf4179910921ffdb3b6566a3126f7e77d5bc02f57b7",
     ),
     (True, True, False, False, True, True): (
         "otel-demo-ext-eaaa3f7c4675",
-        "63a56a93eb0642a2857ff3362043c6b9d702e0d52079bfaf4d2a03d2d6e17b58",
+        "647510473ebf59833d33defb1537878b803d52b14ff3e85451a53bbaeb534e08",
     ),
     (True, True, False, True, False, False): (
         "otel-demo-ext-ebbaaaa09494",
-        "93ce995594a84fb3af325343bd0addb2a87063d6b6f3786ebc41d492629c4e45",
+        "e3af16ff56d5d8cceabd52e7d6e712a6c24f9af18b6efe9c162c619583f3ac03",
     ),
     (True, True, False, True, False, True): (
         "otel-demo-ext-be0074f762d0",
-        "dcd384bd442a37b61ad0ec4b602cc3b8eadeb5ea8ba0434fb3d033d0255dc8f5",
+        "f8ae7ab3f1ac0e70da02c7696110a5fe869bc481bc3903027238e2a224fb832f",
     ),
     (True, True, False, True, True, False): (
         "otel-demo-ext-ba4aaca03a64",
-        "d0f49ffe2145cb6fbe7e0af40cd4519f745187d66cd4dd860a84166f32b3cef3",
+        "a86acd9e75c4a2f3a83b381e42591b73d699575b8c4fdad51f2062dcfb461f56",
     ),
     (True, True, False, True, True, True): (
         "otel-demo-ext-e1f8a91107fa",
-        "32b3ab416bff2786c8cfe7fc0e7f7875cda2beb125bbdc1184dfbe6b6f2a13a1",
+        "892eeafe457a4f347f3ad9fcbde5c219dc9be917699e99d505cb48e655887d77",
     ),
     (True, True, True, False, False, False): (
         "otel-demo-ext-da924862e562",
-        "445440729055fde53968119817e430a35e0aa95e1e53cb2f9e1f4ff6a5a2e536",
+        "c0792ef4c64d2203c881745ae00e26fcc2ef391ad03861b48434189165bab9d2",
     ),
     (True, True, True, False, False, True): (
         "otel-demo-ext-5d45a802901c",
-        "f2300cf81c5a445ab0d5f5a7a0b9ce6ffb0b4b66ff66daacbf0b6f79ff3d79af",
+        "c46fd5ca33fec094aa72649b508d5f73660d75e115641a4b3c43f19fa9f57943",
     ),
     (True, True, True, False, True, False): (
         "otel-demo-ext-8f8b5b9599e2",
-        "8ce064755130a2e3d8777943c04fcb7f21264bf42e33e613f694398b4c9ff802",
+        "24d9f0664e49458a9be8422574d3dc118fdf28acbb395999d8eb9605c9847e15",
     ),
     (True, True, True, False, True, True): (
         "otel-demo-ext-19936f676e74",
-        "2e98eda4ba53a1747e817e6186411d9bfd6e5f81553679ad0ec100f82b5113da",
+        "29a41e8624f591f85c148440e066bf445d25e444abb4bfa524331b4ddb93ce15",
     ),
     (True, True, True, True, False, False): (
         "otel-demo-ext-263512312688",
-        "577d1d067639011dbe58df7f1d1fb573cde6dfb0d2bcb25f6c5a2e0d5919a68c",
+        "54e4812e17a8a27dbad36f5721ba8b2362932ff7dce9e91caa01505598628f93",
     ),
     (True, True, True, True, False, True): (
         "otel-demo-ext-f3fc5256acae",
-        "c4b1107ad7162798bbfdbcebc6aa12ddb4582f7f1b201025980e38ef796465c8",
+        "efbd20e367cd0b493e6abf6a253fbd86d4c8d5390b236f3cb2ccad5213c53c62",
     ),
     (True, True, True, True, True, False): (
         "otel-demo-ext-d5f09e525161",
-        "fd3aede98b9a3891211cd2bc9c4dd7b897dfe227841e5865f7be8e66dbef824f",
+        "5702337db105e43966212621b42ab4c515100452f59dfc8d5f1f5b2428d078fa",
     ),
     (True, True, True, True, True, True): (
         "otel-demo-ext-56c7a90c65fa",
-        "6ab7921bb94e47ab1aae116efb588eccdb2cf7f45d9b216cb879ac42aadeac8a",
+        "45f7cfa90ba314434cac8742e626bd54e06452f2fef3a697ba855dc8edf86329",
     ),
 }
 BASE_PINNED = {
     "otel-demo": (
         "otel-demo-a3a95a0f888e",
-        "053eadd8ceb4ce40b0f5aca1030304ffa16f99b1c730f20eb4dfd158560766cb",
+        "af9cd88eaa10ec43d961169b2c0d1c9ba95ebd29fdf3acde5962854c602e459e",
     ),
     "fixture": (
         "fixture-5",
-        "7d58dbe2e2d44065178586d077133b841f44612b1433f2fd9d77515e7fcc7cd6",
+        "d0e306ef25f0312bdc8c16450e44a1adf463503104ff5ab7fb0cc5351f512645",
     ),
 }
 
