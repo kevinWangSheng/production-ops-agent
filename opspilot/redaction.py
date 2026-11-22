@@ -442,7 +442,11 @@ def _redact_quoted(text: str) -> str:
             # Ordinary name, or nothing to hide: keep it. A bare scalar is
             # skipped whole, read once here so the scan stays linear (#365);
             # any other value is examined from its first character on.
-            end = _SCALAR_VALUE.match(text, start).end() if scalar else start + 1
+            end = start + 1
+            if scalar:
+                # Never None: the scalar group matched one char of this class.
+                value = _SCALAR_VALUE.match(text, start)
+                end = value.end() if value is not None else match.end()
             parts.append(text[pos:end])
             pos = end
             continue
