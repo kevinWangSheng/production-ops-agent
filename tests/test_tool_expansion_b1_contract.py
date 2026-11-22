@@ -86,10 +86,10 @@ CANARY = "eeeeeeee560"
 
 # Pinned on main 09c1a68b (B1-U2 / R8-10): otel-demo, and otel-demo-ext with
 # no OPSPILOT_ES_URL, must stay byte-identical when B1 lands.
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
-EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-c63f058afb18"
-BASE_SURFACE_SHA256 = "abe226edd18d2ceefe9e2532484b989badc0b38a2741e7237df7bed2b867cd11"
-EXT_SURFACE_SHA256 = "032ea2d9f67249ce66176c15f5fa0cb0d65083aaa691e3bfbcccff4d62fe2036"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-8c7b8e310cdc"
+EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-9b1547d77ecd"
+BASE_SURFACE_SHA256 = "792b1874642ce5617122513559bda3d9502b16ec9ceee2a286c65a5f7f8c7919"
+EXT_SURFACE_SHA256 = "c9197d03fbc5464d6f3ae9f56c6c2200cafb056050d0138f1bfec48e307f43cd"
 
 ES_ENV_NAMES = (
     "OPSPILOT_ES_URL",

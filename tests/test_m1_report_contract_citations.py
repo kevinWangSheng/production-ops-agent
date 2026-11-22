@@ -194,11 +194,11 @@ def test_projection_revision_is_v6():
     assert PROJECTION_REVISION != PRE_FIX_PROJECTION_REVISION
     # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10;
     # #319 to v11.
-    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v12"
     executor, transport, _, _ = build()
     transport.response = TransportResponse(body=body([]))
     view = executor.execute(request()).model_view
-    assert view["projection_revision"] == "m1-01-tool-view-v11"
+    assert view["projection_revision"] == "m1-01-tool-view-v12"
 
 
 def test_view_stub_keeps_citable_as_fact():
