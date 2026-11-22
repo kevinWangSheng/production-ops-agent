@@ -1,7 +1,7 @@
 # #668 Holmes 同题同模型对照（租机前准备）
 
-- 状态：进行中（本机准备完成，lead 裁决已落实，待独立审查；真实跑在 #669）
-- 更新日期：2026-11-19
+- 状态：准备已合并（#732；租机修复 #760、#764）；2026-11-20/21 集中租机（#669）Holmes 侧 53 题 × 3 遍全量已跑完，结果见下文「租机结果」
+- 更新日期：2026-11-21
 - 依据：issue #668；[B/C 批次记录](2026-11-16-tool-expansion-bc.md)；[决定表](2026-11-12-tool-expansion-contract.md) R8-3、R8-4、R8-5、R8-13、R8-15、R10-1；[#666 记录](2026-11-18-holmes-evals-666.md)；上游 HolmesGPT `a0009195`
 - 工作区：`../poa-668-compare`，分支 `feature/668-holmes-compare`，起点 `origin/main` `7fe919df`
 
@@ -47,7 +47,12 @@ scripts/holmes_compare/run_rental.sh <轮次> <env 文件> [--judge-path upstrea
 - 269：租机有 kind 就跑，没有集群照实记 `env_broken`。
 - 282_loki：加入 R8-13 题单。B1 的 `SKILL_ASSERTION_DROPPED` 被 #666 合同测试钉成 B1 五题且是 B1 子集，所以另加 `R8_13_SKILL_ASSERTION_DROPPED`（B1 五题 + 282），对照侧读它；只改数据，不读答案。282 要等 C5 题进入题单（runner 目前只认 B1）才会实际跑到。
 
-## 未确认
+## 租机结果（2026-11-20/21，#669）
+
+- 同题同模型（deepseek-flash），两侧同一 opspilot judge 口径，main `8b912caa`，2026-11-20 20:29 至 11-21 01:30 PT。主集合 Holmes 150/159（94.3%），OpsPilot 133/159（83.6%）；分组与逐题见 [全量记录](../evidence/rental-2026-11-20/full/run.md) 与 `../evidence/rental-2026-11-20/full/compare-*.md`。
+- Holmes 5 遍 no_report：MongoDB 题 229×3、230×2，pytest call 阶段 KeyError 或 Skipped，记 HOLMES_NO_ANSWER；是否是上游 harness 问题未确认。
+- 冒烟核实（[检查点 2 线 L](../evidence/rental-2026-11-20/cp2/L/run.md)）：上游 classifier 预检打 DeepSeek 未失败；scores 落在 `--evidence-root` 下（#764）。R8-13 外网 URL、184/185 判分文本大小未执行。
+- 上游 harness 已在租机装好（[主机记录](../evidence/rental-2026-11-20/run.md)，收集 294 项）；下文「未确认」其余各项本次未单独核实。
 
 - 上游 harness 在租机上的单题耗时、安装时长与磁盘占用；首跑先 `--questions 254 --trials 1` 冒烟。
 - 上游 `additional_system_prompt` 夹具在含 frontend 工具的题（R8-13 五题）会从上游默认 URL 拉附加提示词，需要租机能出网。
