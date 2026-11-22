@@ -170,3 +170,13 @@ def test_web_uses_file_secrets_without_plaintext_credentials_in_compose() -> Non
                 or value.startswith("/run/secrets/")
                 or key.endswith("_FILE")
             ), f"{key} must not carry a plaintext credential in Compose"
+
+
+def test_product_image_carries_the_license_notices() -> None:
+    # #542: the image ships HolmesGPT excerpts (Apache-2.0), so it carries the
+    # project LICENSE and third_party/ notices, and the build context admits them.
+    dockerfile = (REPO / "Dockerfile").read_text()
+    assert "COPY LICENSE /usr/share/doc/opspilot/LICENSE" in dockerfile
+    assert "COPY third_party /usr/share/doc/opspilot/third_party" in dockerfile
+    ignore = (REPO / ".dockerignore").read_text().splitlines()
+    assert {"!LICENSE", "!third_party/"} <= set(ignore)

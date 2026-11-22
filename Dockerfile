@@ -35,6 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /v
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY opspilot /app/opspilot
+# License notices (#542): the project's MIT LICENSE and the Apache-2.0
+# notices for the HolmesGPT excerpts, in the Debian place for them.
+COPY LICENSE /usr/share/doc/opspilot/LICENSE
+COPY third_party /usr/share/doc/opspilot/third_party
 COPY deploy/docker-entrypoint.sh /usr/local/bin/opspilot-entrypoint
 # The runtimes' health listener (opspilot.health) answers on the container
 # network; Compose publishes it to the host only in compose.lab.yaml.

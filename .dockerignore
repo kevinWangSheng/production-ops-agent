@@ -5,6 +5,8 @@
 !.python-version
 !opspilot/
 !deploy/docker-entrypoint.sh
+!LICENSE
+!third_party/
 
 # Never in the image, even below an allowed path.
 **/__pycache__
