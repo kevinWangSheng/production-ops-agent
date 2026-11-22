@@ -177,7 +177,8 @@ class PollRecord:
     is when it started, ``None`` between samples, and ``sample_ended`` when
     the last one returned, so a pass of several long samples stays ready
     between them while a loop stuck after a sample is stale within three
-    intervals. Neither changes ``last_success`` (the metrics' poll age)."""
+    intervals. A refused pass clears ``sample_ended``. Neither changes
+    ``last_success`` (the metrics' poll age)."""
 
     last_success: float | None = None
     observation_due: int | None = None
@@ -199,13 +200,17 @@ class PollRecord:
         return max(marks) if marks else None
 
     def after_poll(self, store: ObservationStore, *, ok: bool) -> None:
+        # a refused pass extends nothing past its own samples (F8-R4 counts
+        # only claim to commit): readiness falls back to the last success
         if not ok:
+            self.sample_ended = None
             return
         try:
             with store.transaction(snapshot=True) as conn:
                 row = conn.execute(_DUE_SQL).fetchone()
         except PersistenceError as exc:
             _log.warning("due count refused code=%s", exc)
+            self.sample_ended = None
             return
         self.observation_due = int(row["due"]) if row is not None else 0
         self.last_success = time.monotonic()
@@ -219,13 +224,16 @@ def _start_health(
     loop.on_sample = record.on_sample
 
     def readiness() -> health.Readiness:
+        # read before liveness(): ``on_sample`` writes ``sample_ended``
+        # before it clears ``sampling_since``, so this order sees one of them
+        sampling_since = record.sampling_since
         return health.poll_readiness(
             last_success_monotonic=record.liveness(),
             poll_interval_seconds=loop.poll_seconds,
             now_monotonic=time.monotonic(),
             stopping=loop.stop.is_set(),
             # an in-flight sample is alive within its lease (F8-R4, #522)
-            in_progress_since=record.sampling_since,
+            in_progress_since=sampling_since,
             in_progress_bound=loop.lease_seconds,
         )
 
