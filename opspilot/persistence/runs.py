@@ -224,6 +224,22 @@ class _RunOps(_StoreBase):
                     "UPDATE opspilot_runs SET state='running',owner=%s,epoch=%s,control_generation=%s,lease_until=LEAST(clock_timestamp()+make_interval(secs=>%s),deadline) WHERE run_id=%s",
                     (owner, epoch, row["incident_generation"], lease_seconds, run_id),
                 )
+                # #527: the previous attempt's lease has expired, so its
+                # settle_budget() is fenced off; any reservation still
+                # 'reserved' is orphaned. Settle it as 'unknown' (outcome not
+                # known, amount stays occupied, C3 §13) and move its amount
+                # from budget_reserved to budget_unknown; the total is
+                # unchanged. Same transaction, under the incident->run locks.
+                orphaned = conn.execute(
+                    "UPDATE opspilot_budget_reservations SET state='unknown',seconds=COALESCE(seconds,reserved_seconds) WHERE run_id=%s AND state='reserved' RETURNING amount",
+                    (run_id,),
+                ).fetchall()
+                moved = sum(int(r["amount"]) for r in orphaned)
+                if moved:
+                    conn.execute(
+                        "UPDATE opspilot_runs SET budget_reserved=budget_reserved-%s,budget_unknown=budget_unknown+%s WHERE run_id=%s",
+                        (moved, moved, run_id),
+                    )
                 lease = Lease(
                     incident_id,
                     run_id,
