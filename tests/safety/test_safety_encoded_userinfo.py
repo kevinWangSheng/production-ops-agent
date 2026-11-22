@@ -84,3 +84,39 @@ def test_each_encoding_keeps_the_319_shape(kind):
 def test_ordinary_encoded_text_is_left_alone():
     for text in ORDINARY:
         assert redact_credentials(text) == text, text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # hex escapes are case-insensitive
+        (
+            "https%3a%2f%2forders%3apw%40db.example%2fx",
+            "https%3a%2f%2f[REDACTED_CREDENTIAL]@db.example%2fx",
+        ),
+        (
+            "https:&#X2F;&#x2f;orders:pw&#X40;db.example",
+            "https:&#X2F;&#x2f;[REDACTED_CREDENTIAL]@db.example",
+        ),
+        # the two slashes may be different entity kinds
+        (
+            "https:&#x2F;&#47;orders:pw@db.example",
+            "https:&#x2F;&#47;[REDACTED_CREDENTIAL]@db.example",
+        ),
+        (
+            "https:&sol;&#x2f;orders:pw&#x40;db.example",
+            "https:&sol;&#x2f;[REDACTED_CREDENTIAL]@db.example",
+        ),
+        # the host ends at an encoded port or path, as #319's ends at : or /
+        (
+            "https%3A%2F%2Forders%3Apw%40db.example%3A5432%2Fdb",
+            "https%3A%2F%2F[REDACTED_CREDENTIAL]@db.example%3A5432%2Fdb",
+        ),
+        (
+            "https:&#x2F;&#x2F;orders:pw&#64;db.example&#58;5432&#x2F;db",
+            "https:&#x2F;&#x2F;[REDACTED_CREDENTIAL]@db.example&#58;5432&#x2F;db",
+        ),
+    ],
+)
+def test_case_mixed_entities_and_host_end(text, expected):
+    assert redact_credentials(text) == expected
