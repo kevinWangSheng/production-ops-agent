@@ -78,6 +78,11 @@ class ObserverLoop:
     # the pass's sweeps and claims were all served (the process's health
     # record, F8-R4); its failure is logged, never fatal
     on_poll: Callable[[bool], None] | None = None
+    # called on the sampling thread with ``True`` once a sample job is
+    # claimed, before it is sampled, and with ``False`` once that sample has
+    # returned or raised: an in-flight sample counts as alive for readiness
+    # within its lease (F8-R4, #522); its failure is logged, never fatal
+    on_sample: Callable[[bool], None] | None = None
     # set by ``poll_once`` when storage refused a sweep or a claim
     last_pass_refused: bool = field(default=False, init=False)
 
@@ -128,6 +133,7 @@ class ObserverLoop:
             if not leases:
                 break
             lease = leases[0]
+            self._sample_hook(True)
             try:
                 receipt = self.sample(lease)
             except PersistenceError as exc:
@@ -146,10 +152,20 @@ class ObserverLoop:
                     type(exc).__name__,
                 )
                 continue
+            finally:
+                self._sample_hook(False)
             results.append((lease.session_id, receipt))
         if compare:
             self.compare_once()
         return results
+
+    def _sample_hook(self, started: bool) -> None:
+        if self.on_sample is None:
+            return
+        try:
+            self.on_sample(started)
+        except Exception as exc:  # noqa: BLE001 - keep sampling
+            _log.warning("sample hook failed error=%s", type(exc).__name__)
 
     def compare_once(self) -> int:
         """Claim and collect before/after comparisons of anomaly endings.
