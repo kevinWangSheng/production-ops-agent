@@ -1,0 +1,330 @@
+{
+  "track": "SREGym Lite 诊断段（中立第三方现场题，自测）",
+  "main": {
+    "passes": 1,
+    "denominator": 51,
+    "rate": 0.0196078431372549
+  },
+  "per_question": {
+    "cronjob_sidecar_blocks_completion_hotel_reservation": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "edge_request_filter_cpu_saturation": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "network_policy_block": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "env_variable_shadowing_astronomy_shop": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "mutating_webhook_resource_limits_social_network": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "finalizer_deadlock_controller_hotel_reservation": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "kafka_poison_pill_hol_block": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "internal_traffic_policy_local_astronomy_shop": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "service_dns_resolution_failure_social_network": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "service_wrong_pod_selection_hotel_reservation": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "namespace_memory_limit": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "valkey_auth_disruption": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "secret_rotation_stale_env_credentials_astronomy_shop": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": false,
+          "category": "ok"
+        },
+        "3": {
+          "passed": false,
+          "category": "ok"
+        }
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "unschedulable_incorrect_port_assignment": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "duplicate_pvc_mounts_social_network": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "rolling_update_misconfigured_social_network": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "search_rate_retry_collapse_hotel_reservation": {
+      "passes": 0,
+      "denominator": 3,
+      "rate": 0.0,
+      "trials": {
+        "1": null,
+        "2": null,
+        "3": null
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    }
+  },
+  "swing_questions": [
+    "secret_rotation_stale_env_credentials_astronomy_shop"
+  ],
+  "rerun": {
+    "questions": {},
+    "passes": 0,
+    "trials": 0,
+    "rate": null,
+    "in_main_score": false
+  },
+  "zero_scored": {
+    "no_report": [],
+    "judge_exhausted": [],
+    "env_broken": []
+  },
+  "missing_trials": [
+    "cronjob_sidecar_blocks_completion_hotel_reservation#1",
+    "cronjob_sidecar_blocks_completion_hotel_reservation#2",
+    "cronjob_sidecar_blocks_completion_hotel_reservation#3",
+    "edge_request_filter_cpu_saturation#1",
+    "edge_request_filter_cpu_saturation#2",
+    "edge_request_filter_cpu_saturation#3",
+    "network_policy_block#1",
+    "network_policy_block#2",
+    "network_policy_block#3",
+    "env_variable_shadowing_astronomy_shop#1",
+    "env_variable_shadowing_astronomy_shop#2",
+    "env_variable_shadowing_astronomy_shop#3",
+    "mutating_webhook_resource_limits_social_network#1",
+    "mutating_webhook_resource_limits_social_network#2",
+    "mutating_webhook_resource_limits_social_network#3",
+    "finalizer_deadlock_controller_hotel_reservation#1",
+    "finalizer_deadlock_controller_hotel_reservation#2",
+    "finalizer_deadlock_controller_hotel_reservation#3",
+    "kafka_poison_pill_hol_block#1",
+    "kafka_poison_pill_hol_block#2",
+    "kafka_poison_pill_hol_block#3",
+    "internal_traffic_policy_local_astronomy_shop#1",
+    "internal_traffic_policy_local_astronomy_shop#2",
+    "internal_traffic_policy_local_astronomy_shop#3",
+    "service_dns_resolution_failure_social_network#1",
+    "service_dns_resolution_failure_social_network#2",
+    "service_dns_resolution_failure_social_network#3",
+    "service_wrong_pod_selection_hotel_reservation#1",
+    "service_wrong_pod_selection_hotel_reservation#2",
+    "service_wrong_pod_selection_hotel_reservation#3",
+    "namespace_memory_limit#1",
+    "namespace_memory_limit#2",
+    "namespace_memory_limit#3",
+    "valkey_auth_disruption#1",
+    "valkey_auth_disruption#2",
+    "valkey_auth_disruption#3",
+    "unschedulable_incorrect_port_assignment#1",
+    "unschedulable_incorrect_port_assignment#2",
+    "unschedulable_incorrect_port_assignment#3",
+    "duplicate_pvc_mounts_social_network#1",
+    "duplicate_pvc_mounts_social_network#2",
+    "duplicate_pvc_mounts_social_network#3",
+    "rolling_update_misconfigured_social_network#1",
+    "rolling_update_misconfigured_social_network#2",
+    "rolling_update_misconfigured_social_network#3",
+    "search_rate_retry_collapse_hotel_reservation#1",
+    "search_rate_retry_collapse_hotel_reservation#2",
+    "search_rate_retry_collapse_hotel_reservation#3"
+  ],
+  "excluding_env_broken": {
+    "questions": [
+      "cronjob_sidecar_blocks_completion_hotel_reservation",
+      "duplicate_pvc_mounts_social_network",
+      "edge_request_filter_cpu_saturation",
+      "env_variable_shadowing_astronomy_shop",
+      "finalizer_deadlock_controller_hotel_reservation",
+      "internal_traffic_policy_local_astronomy_shop",
+      "kafka_poison_pill_hol_block",
+      "mutating_webhook_resource_limits_social_network",
+      "namespace_memory_limit",
+      "network_policy_block",
+      "rolling_update_misconfigured_social_network",
+      "search_rate_retry_collapse_hotel_reservation",
+      "secret_rotation_stale_env_credentials_astronomy_shop",
+      "service_dns_resolution_failure_social_network",
+      "service_wrong_pod_selection_hotel_reservation",
+      "unschedulable_incorrect_port_assignment",
+      "valkey_auth_disruption"
+    ],
+    "passes": 1,
+    "denominator": 51,
+    "rate": 0.0196078431372549,
+    "excluded": []
+  }
+}

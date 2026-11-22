@@ -125,6 +125,12 @@ paths = ['(^|/)docs/evidence/rental-2026-11-20/full/sregym/sregym-lite-full/p[0-
 regexTarget = "secret"
 regexes = ['^9\\.0\\.1-alpine3\\.23$']
 [[rules.allowlists]]
+description = "valkey image tag in the 2026-11-22 rental SREGym rerun evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-20/rerun-2026-11-22/sregym/sregym-lite-rerun/p[0-9]+/trial-[0-9]+/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^9\\.0\\.1-alpine3\\.23$']
+[[rules.allowlists]]
 description = "idempotency label in the 2026-11-20 rental SREGym smoke evidence (not a credential)"
 condition = "AND"
 paths = ['(^|/)docs/evidence/rental-2026-11-20/cp2/sregym/sregym-lite-cp2-smoke/p10/trial-1/summary\\.json$']
