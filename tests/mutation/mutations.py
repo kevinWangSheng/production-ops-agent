@@ -360,4 +360,25 @@ MUTATIONS: tuple[Mutation, ...] = (
         '        "rollback_revision": rollback,\n    }\n',
         '        "rollback_revision": rollback,\n        "config": record.get("config"),\n    }\n',
     ),
+    Mutation(
+        "M41",
+        "credentials: inside a Secret reference only its name fields are readable (2026-11-22)",
+        "opspilot/redaction.py",
+        "                if key in readable and isinstance(item, (str, bool)):\n",
+        "                if isinstance(item, (str, bool)):\n",
+    ),
+    Mutation(
+        "M42",
+        "credentials: a Secret reference name is still prose-redacted (2026-11-22)",
+        "opspilot/redaction.py",
+        "                        redact_credentials(item) if isinstance(item, str) else item\n",
+        "                        item\n",
+    ),
+    Mutation(
+        "M43",
+        "credentials: a readable Secret reference field holds only a string or bool (2026-11-22)",
+        "opspilot/redaction.py",
+        "                if key in readable and isinstance(item, (str, bool)):\n",
+        "                if key in readable:\n",
+    ),
 )
