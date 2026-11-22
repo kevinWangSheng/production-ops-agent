@@ -72,7 +72,11 @@ __all__ = [
 # and #775 (a17887e0, secret reference names shown in pod specs). Shipped
 # with #365 (linear-time quoted-scalar redaction), which by itself changes
 # no output.
-PROJECTION_REVISION = "m1-01-tool-view-v12"
+# v13: narrower credential names (#366): a number held by a name ending in
+# ``tokens`` and session *settings* (``sessionAffinity``, ``SESSION_TIMEOUT``)
+# are shown; ``sessionid`` is now redacted; ``spec.imagePullSecrets[].name``
+# is shown like the #775 reference names.
+PROJECTION_REVISION = "m1-01-tool-view-v13"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

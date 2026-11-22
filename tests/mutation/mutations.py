@@ -415,4 +415,15 @@ MUTATIONS: tuple[Mutation, ...] = (
         "            if _config_secret(name):\n",
         "            if False:\n",
     ),
+    # #366 (B1-U3 a): killed by
+    # tests/safety/test_safety_narrow_credential_names.py.
+    Mutation(
+        "M47",
+        "credentials: a *tokens name keeps its value only when the whole value is a number (#366)",
+        # Target: ``_token_count``. Mutated: any value of a count-named field
+        # is kept, so ``access_tokens=<credential>`` would reach the model.
+        "opspilot/redaction.py",
+        "    return _COUNT_NUMBER.fullmatch(value) is not None and _count_name(name)\n",
+        "    return _count_name(name)\n",
+    ),
 )

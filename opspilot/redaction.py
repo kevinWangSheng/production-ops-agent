@@ -63,8 +63,15 @@ _AUTHENTICATION_SUBSTRINGS = (
     "truststore",
 )
 _AUTHENTICATION_TOKENS = frozenset(
-    {"auth", "cert", "cookie", "p12", "pem", "pfx", "session", "sig"}
+    {"auth", "cert", "cookie", "p12", "pem", "pfx", "sessionid", "sessionids", "sig"}
 )
+# ``session`` names a credential only as a name's last word or before
+# ``id``/``key``/``cookie`` (#366, B1-U3 a; plurals too, so ``session_ids``
+# stays hidden): ``session``, ``session_id``, ``sessionKey`` are session
+# credentials; ``sessionAffinity``, ``SESSION_TIMEOUT``,
+# ``session_timeout_ms`` and ``ssoSessionIdleTimeout`` are configuration
+# about sessions.
+_SESSION_CREDENTIAL_NEXT = frozenset({"id", "ids", "key", "keys", "cookie", "cookies"})
 _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 
 
@@ -87,9 +94,16 @@ def _authentication_name(name: str) -> bool:
     # ``COOKIE``/``SESSION``/``SIG`` through while their lowercase forms were
     # refused (bot review finding). The camelCase pass is kept as well, so
     # ``refreshAuth`` still matches while ``author_filter`` still does not.
-    words = {word.lower() for word in _WORDS.findall(name)}
-    words.update(part for part in re.split(r"[^a-z0-9]+", name.lower()) if part)
-    return bool(words & _AUTHENTICATION_TOKENS)
+    camel = [word.lower() for word in _WORDS.findall(name)]
+    split = [part for part in re.split(r"[^a-z0-9]+", name.lower()) if part]
+    if (set(camel) | set(split)) & _AUTHENTICATION_TOKENS:
+        return True
+    return any(
+        word == "session"
+        and (index == len(seq) - 1 or seq[index + 1] in _SESSION_CREDENTIAL_NEXT)
+        for seq in (camel, split)
+        for index, word in enumerate(seq)
+    )
 
 
 # Prose redaction for free text that is about to become model input (human
@@ -205,6 +219,50 @@ _ESCAPED_QUOTE = re.compile(r"\\(?:\\\\)*+\"")
 
 def _credential_name(name: str) -> bool:
     return name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name)
+
+
+def _session_word(name: str) -> bool:
+    """Whether ``session`` is any word of ``name`` -- the rule before #366.
+    A Redis key such as ``session:4f1c`` or ``spring:session:sessions:…``
+    names a stored web session, whose value stays hidden (#366 keeps
+    session values redacted; only session *settings* became visible)."""
+    words = {word.lower() for word in _WORDS.findall(name)}
+    words.update(part for part in re.split(r"[^a-z0-9]+", name.lower()) if part)
+    return "session" in words
+
+
+# A count, not a credential (#366, B1-U3 a): a name ending in ``tokens``
+# whose whole value is a number (``prompt_tokens: 12``, ``max_tokens=4000``)
+# keeps its value. Only a bare number counts -- a quoted ``"12"``, a list or
+# any other text is still redacted (``access_tokens=abc``) -- and not when the
+# rest of the name is itself a credential word (``secret_tokens: 5``).
+_COUNT_NUMBER = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
+
+
+def _count_name(name: str) -> bool:
+    folded = "".join(char for char in name.lower() if char.isalnum())
+    if not folded.endswith("tokens"):
+        return False
+    rest = folded[: -len("tokens")]
+    return not any(stem in rest for stem in _AUTHENTICATION_SUBSTRINGS)
+
+
+def _token_count(name: str, value: str) -> bool:
+    """Whether ``value``, the whole text a credential rule would replace, is
+    a number held by a count-named field."""
+    return _COUNT_NUMBER.fullmatch(value) is not None and _count_name(name)
+
+
+def _count_redaction(
+    name: str, text: str, start: int, redaction: tuple[str, int] | None
+) -> bool:
+    """Whether ``_value_redaction``'s result would replace a bare number of a
+    count-named field (a quoted or bracketed value never is one)."""
+    return (
+        redaction is not None
+        and redaction[0] == REDACTED_CREDENTIAL
+        and _token_count(name, text[start : redaction[1]])
+    )
 
 
 def _container_end(text: str, start: int) -> int:
@@ -345,7 +403,9 @@ def _redact_escaped_keys(text: str) -> str:
         if separator is None:
             continue
         redaction = _value_redaction(text, separator.end())
-        if redaction is None:
+        if redaction is None or _count_redaction(
+            _decoded_name(name), text, separator.end(), redaction
+        ):
             continue
         marker, value_end = redaction
         parts.append(text[pos : separator.end()] + marker)
@@ -413,6 +473,8 @@ def _redact_escaped_quotes(text: str) -> str:
         elif _SCALAR_VALUE.match(text, start) is not None:
             marker = REDACTED_CREDENTIAL
             end = _value_end(text, start, _JSON_STOPS)
+            if _token_count(match.group("name"), text[start:end]):
+                continue
         else:
             continue
         parts.append(text[pos:start] + marker)
@@ -438,6 +500,8 @@ def _redact_quoted(text: str) -> str:
             if _credential_name(match.group("name"))
             else None
         )
+        if _count_redaction(match.group("name"), text, start, redaction):
+            redaction = None
         if redaction is None:
             # Ordinary name, or nothing to hide: keep it. A bare scalar is
             # skipped whole, read once here so the scan stays linear (#365);
@@ -467,9 +531,15 @@ def _redact_assignments(text: str) -> str:
             pos = match.start("value")
             continue
         body = match.start("value") + len(match.group("scheme") or "")
+        end = _value_end(text, body, _UNQUOTED_STOPS)
+        if match.group("scheme") is None and _token_count(name, text[body:end]):
+            # ``total_tokens=5``: a count, kept (#366).
+            parts.append(text[pos:end])
+            pos = end
+            continue
         parts.append(text[pos : match.start("sep")] + match.group("sep"))
         parts.append(REDACTED_CREDENTIAL)
-        pos = _value_end(text, body, _UNQUOTED_STOPS)
+        pos = end
     parts.append(text[pos:])
     return "".join(parts)
 
@@ -513,6 +583,16 @@ _SECRET_REFERENCES: dict[tuple[str, str], frozenset[str]] = {
     ("secretKeyRef", "valueFrom"): frozenset({"name", "key", "optional"}),
     ("secretRef", "envFrom"): frozenset({"name", "optional"}),
     ("secret", "volumes"): frozenset({"secretName", "optional"}),
+}
+# A list of references at the same kind of position (B1-D8, with the #775
+# decision): ``spec.imagePullSecrets[].name`` -- which registry Secret a Pod
+# pulls with. (field, parent field) -> readable sub-fields of each element;
+# an element that is not an object is replaced whole.
+_SECRET_REFERENCE_LISTS: dict[tuple[str, str], frozenset[str]] = {
+    ("imagePullSecrets", "spec"): frozenset({"name"}),
+}
+_SECRET_REFERENCE_ITEMS = {
+    field: names for (field, _), names in _SECRET_REFERENCE_LISTS.items()
 }
 
 
@@ -576,6 +656,29 @@ def redact_payload(value: object) -> object:
                 redacted = child_ref
             elif (
                 isinstance(source, dict)
+                and parent is not None
+                and (key, parent) in _SECRET_REFERENCE_LISTS
+                and isinstance(item, (list, tuple))
+            ):
+                # Walked element by element below; only reachable here, so a
+                # list under this field name anywhere else is still replaced.
+                child_refs: list[object] = []
+                stack.append((item, child_refs, key, None))
+                redacted = child_refs
+            elif (
+                isinstance(source, (list, tuple)) and parent in _SECRET_REFERENCE_ITEMS
+            ):
+                if isinstance(item, dict):
+                    element: dict[str, object] = {}
+                    stack.append(
+                        (item, element, parent, _SECRET_REFERENCE_ITEMS[parent])
+                    )
+                    redacted = element
+                else:
+                    redacted = None if item is None else REDACTED_CREDENTIAL
+                    changed |= redacted != item
+            elif (
+                isinstance(source, dict)
                 # The marker's own word must not make a key a credential
                 # name (a second pass would wipe ``https://[REDACTED_
                 # CREDENTIAL]@host``'s value), but a marker in the source is
@@ -583,6 +686,12 @@ def redact_payload(value: object) -> object:
                 # (``api_key_[REDACTED_CREDENTIAL]``; independent review).
                 and _credential_name(key.replace(REDACTED_CREDENTIAL, ""))
                 and item is not None
+                and not (
+                    # ``"prompt_tokens": 12``: a count, kept (#366).
+                    isinstance(item, (int, float))
+                    and not isinstance(item, bool)
+                    and _count_name(key.replace(REDACTED_CREDENTIAL, ""))
+                )
             ):
                 # Whatever a credential-named field holds -- a string, a
                 # number, an object -- is replaced whole, as the prose rule
