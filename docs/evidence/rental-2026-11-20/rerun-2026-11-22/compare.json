@@ -750,6 +750,25 @@
   "flag": ""
  },
  {
+  "qid": "100a_loki_historical_logs",
+  "group": "c5k",
+  "round": "rerun-o-c5k-100a",
+  "full": [
+   3,
+   3
+  ],
+  "rerun": [
+   3,
+   3
+  ],
+  "categories": [
+   "ok",
+   "ok",
+   "ok"
+  ],
+  "flag": ""
+ },
+ {
   "qid": "257_victorialogs_log_search",
   "group": "c5n",
   "round": "rerun-o-c5n",

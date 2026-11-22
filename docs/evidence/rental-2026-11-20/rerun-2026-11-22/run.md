@@ -1,4 +1,4 @@
-# 定向重跑（#772、#775、#776 合入后，2026-11-22 08:44–10:34 UTC）
+# 定向重跑（#772、#775、#776 合入后，2026-11-22 08:44–10:58 UTC）
 
 性质：有界真实运行（opspilot-tool-1），只跑 OpsPilot 侧与 SREGym p13，不跑 Holmes 侧；DeepSeek 真调，judge glm-5.3-flashx，`--trace lab`。不是生产证明。
 
@@ -18,6 +18,11 @@
 - 全量通过、本次未通过：100a_loki_historical_logs 0/1（全量 3/3），产品转人工 `REPORT_INVALID`（Run 终态 waiting_human，judge 未调用）；267_cluster_name_alias 2/3（全量 3/3），t2 judge 判 B。
 - 本次全部 88 遍里 no_report 只有 100a 这 1 遍；全量同一批题 no_report 15 遍。
 
+### 100a 追加 3 遍（10:38–10:58 UTC，同一构建 `8d805153`，轮 `rerun-o-c5k-100a`）
+
+- 结果 3/3（judge 均 A，报告均 `completed/partial`，模型请求 12、24、22）；t2 第 1 次机会因上一遍 web 尚未释放 35080 端口记 infra（`PROCESS_EXITED`），驱动按设计重来一次。合计 100a 3/4。
+- 首轮失败原因（取自原始 ledger 的步骤，不入库）：报告 JSON 与 schema 均有效（用 `ReportV2` 重放通过），`assessment_status: completed`、`conclusion: partial`，与全量 3 遍同形（全量也是 `completed/partial`，18–19 次请求），不涉及 #776 新增的 completed/incomplete 措辞。拒收来自引用校验：第 19 轮的报告里第 17 条 `recommendation` 引用了不存在的 evidence_id（SOURCE_UNAVAILABLE 的 `traces_search` 操作号拼上编造的后缀），产品回退要求改写；第 20 轮（本 Run 最后一轮）改写后该条仍引用 `b3c1bf99-…-t0`，即那次不可用查询的操作号而非 evidence_id，仍不通过，Run 以 `REPORT_INVALID` 转人工。属于与全量 235 t2 同类的偶发引用错误。
+
 ## 各 PR 的对应 Run
 
 | PR | Run | summary | trace |
@@ -25,14 +30,14 @@
 | #772 报告点名所取 runbook | C2 94_skill_transparency t1（报告摘要写明 "runbook fetched and followed: database-troubleshooting"） | `opspilot/holmes-evals-rerun-o-c2/94_skill_transparency/trial-1/summary.json` | [LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/5dd61723-33d4-4828-9c7b-d4da2eb3ece6/r/00000000-0000-0000-fa63-0cb82fcdbc84?poll=true) |
 | #775 Pod spec 显示 Secret 引用名 | SREGym p13 t1（报告点名 Secret `product-catalog-db-conn`，凭据值仍显示为 `[REDACTED_CREDENTIAL]`，通过） | `sregym/sregym-lite-rerun/p13/trial-1/summary.json` | [LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d2cf3b94-025d-4839-a5ce-495e7c328668/r/00000000-0000-0000-cc9a-13a4950a4af8?poll=true) |
 | #776 completed/incomplete 边界 | B1 266_toolset_disabled_vs_no_data t1（报告 `assessment_status: completed`、`conclusion: inconclusive` 被产品接受，judge A；全量 3 遍均被拒） | `opspilot/holmes-evals-rerun-o-b1-x3/266_toolset_disabled_vs_no_data/trial-1/summary.json` | [LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0e2e1cff-8cdb-448b-8ec4-3dffb3826de9/r/00000000-0000-0000-df13-810d091ec059?poll=true) |
-| 未通过：100a no_report | C5k 100a t1（`REPORT_INVALID`，具体校验原因只在 trace） | `opspilot/holmes-evals-rerun-o-c5k/100a_loki_historical_logs/trial-1/summary.json` | [LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d496eb34-efe2-4a66-b28d-cb9b0dade52e/r/00000000-0000-0000-a0b0-3b9d72303a25?poll=true) |
+| 未通过：100a no_report | C5k 100a t1（`REPORT_INVALID`：recommendation 引用了不可用查询的操作号，见上节；追加 3 遍 3/3） | `opspilot/holmes-evals-rerun-o-c5k/100a_loki_historical_logs/trial-1/summary.json` | [LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d496eb34-efe2-4a66-b28d-cb9b0dade52e/r/00000000-0000-0000-a0b0-3b9d72303a25?poll=true) |
 
 ## 费用
 
-- DeepSeek（token × 单价，91 个 Run 的 summary `run.tokens`）：缓存命中 45 721 856、未命中 3 753 481、输出 1 331 208 token；Run 开始时刻 2026-11-22 08:45–10:33 UTC 为周日，全部闲时；单价取自 https://api-docs.deepseek.com/quick_start/pricing（2026-11-22 读取，deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60，高峰为周一至周五 01–04、06–10 UTC，价格翻倍）：约 **$1.50**（若全按高峰价 $3.00）。不含 Z.ai judge。
+- DeepSeek（token × 单价，94 个 Run 的 summary `run.tokens`，含 100a 追加 3 遍）：缓存命中 48 055 552、未命中 4 017 467、输出 1 407 677 token；Run 开始时刻 2026-11-22 08:45–10:58 UTC 为周日，全部闲时；单价取自 https://api-docs.deepseek.com/quick_start/pricing（2026-11-22 读取，deepseek-flash 每百万 token 命中 $0.003、未命中 $0.15、输出 $0.60，高峰为周一至周五 01–04、06–10 UTC，价格翻倍）：约 **$1.59**（若全按高峰价 $3.18）。不含 Z.ai judge。
 
 ## 披露
 
-- 凭据扫描：100 个文件、15 个凭据值（DeepSeek、LangSmith、ZAI、两组 ES 工程师 key 与 elastic 口令、K8s token、Prometheus 口令与账号名、两个 lab token），0 命中；正对照命中。
+- 凭据扫描：104 个文件、15 个凭据值（DeepSeek、LangSmith、ZAI、两组 ES 工程师 key 与 elastic 口令、K8s token、Prometheus 口令与账号名、两个 lab token），0 命中；正对照命中。
 - p13 报告引用了题目 ConfigMap `init.sql` 中的 lab 数据库口令原文（SREGym 注入的故障数据，非本项目凭据）；全量已入库的 p13 summary 同样含该值，非本次新增。
 - 未跑：Holmes 侧、280（已归类为时间盒受限）、C1-U2 todo-hard 对照、摇摆题补跑。
