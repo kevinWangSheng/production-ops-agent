@@ -53,6 +53,7 @@ from opspilot.tools.executor import (
     TransportTimeout,
     TransportUnavailable,
 )
+from opspilot.tools.http_deadline import resolve
 from opspilot.tools.registry import (
     MAX_RESULT_BYTES,
     MAX_VIEW_TOKENS,
@@ -121,6 +122,9 @@ REQUEST_TIMEOUT_SECONDS = 30.0
 _CONNECT_MARGIN = 2.0
 _MAX_CONNECT_SECONDS = 10.0
 _MIN_CONNECT_SECONDS = 1.0
+# Hostname lookups get their own slots so a stuck Redis resolver cannot
+# queue other data sources' lookups (the #444 pattern).
+_RESOLVER_SLOTS = threading.BoundedSemaphore(2)
 READ_LIMIT_BYTES = MAX_RESULT_BYTES
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
@@ -478,13 +482,17 @@ class _SocketConnection:
     Reads stop at the 2 MiB per-call ceiling."""
 
     def __init__(self, config: RedisConfig, timeout: float) -> None:
-        family, kind, proto, _, address = socket.getaddrinfo(
-            config.host, config.port, type=socket.SOCK_STREAM
+        # #783: the lookup shares the connect timeout (getaddrinfo cannot be
+        # interrupted, so it runs on a slot-limited thread); a stuck resolver
+        # ends as a connect failure, before the call's deadline.
+        deadline = time.monotonic() + timeout
+        family, kind, proto, _, address = resolve(
+            config.host, config.port, deadline, _RESOLVER_SLOTS
         )[0]
         raw = socket.socket(family, kind, proto)
         sock: socket.socket = raw
         try:
-            raw.settimeout(timeout)
+            raw.settimeout(max(0.001, deadline - time.monotonic()))
             raw.connect(address)
             if config.tls != "disable":
                 context = ssl.create_default_context(cafile=config.ca_file)
@@ -601,6 +609,20 @@ def _value(value: object) -> Any:
     return str(value)
 
 
+def _prefix_value(data: bytes) -> Any:
+    """A value read only up to the cap: a trailing UTF-8 character cut by the
+    cap (at most 3 bytes) is dropped so text stays text (#783)."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        if error.reason == "unexpected end of data" and len(data) - error.start <= 3:
+            try:
+                return data[: error.start].decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+        return "0x" + data.hex()
+
+
 def _text(value: object) -> str:
     shown = _value(value)
     return shown if isinstance(shown, str) else str(shown)
@@ -645,7 +667,7 @@ def _config_secret(name: str) -> bool:
     """The tool-side ``CONFIG GET`` denylist: shown redacted even when empty."""
     lowered = name.lower()
     return (
-        lowered in {"requirepass", "masterauth", "masteruser"}
+        lowered in {"requirepass", "masterauth", "masteruser", "primaryuser"}
         or fnmatch.fnmatchcase(lowered, "tls-*-pass")
         or any(word in lowered for word in ("pass", "auth", "secret"))
         or _credential_name(name)
@@ -1191,10 +1213,15 @@ class RedisTransport:
             data = send(["GETRANGE", key, "0", str(STRING_READ_BYTES - 1)])
             if data is None:
                 return self._not_found(request, key, "elements")
-            value: Any = _value(data)
+            full = isinstance(data, (bytes, str)) and len(data) >= STRING_READ_BYTES
+            value: Any = (
+                _prefix_value(bytes(data))
+                if full and isinstance(data, bytes)
+                else _value(data)
+            )
             if _credential_name(key):
                 value = REDACTED_CREDENTIAL
-            elif isinstance(data, (bytes, str)) and len(data) >= STRING_READ_BYTES:
+            elif full:
                 # only the first 8 KiB were read: the value may go on
                 marked[0] = ["value"]
             raw = [{"value": value}]

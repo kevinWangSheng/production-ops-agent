@@ -249,8 +249,11 @@ class EvidenceReadTransport:
 
     ``run_id`` and ``target_ids`` are the scope's (the Controller's), never
     the model's; ``result_paths`` maps each readable parent tool to its
-    registration's ``result_path``. ``store`` may be ``None`` (a sink that
-    cannot read back): every read is then not readable.
+    registration's ``result_path``, and ``citable`` maps it to that
+    registration's ``citable_as_fact`` (#742: a slice is citable only when
+    its parent tool is; a tool missing from ``citable`` counts as not
+    citable). ``store`` may be ``None`` (a sink that cannot read back):
+    every read is then not readable.
     """
 
     def __init__(
@@ -260,11 +263,13 @@ class EvidenceReadTransport:
         run_id: str,
         target_ids: frozenset[str],
         result_paths: Mapping[str, tuple[str, ...]],
+        citable: Mapping[str, bool],
     ) -> None:
         self._store = store
         self._run_id = run_id
         self._target_ids = frozenset(target_ids)
         self._result_paths = dict(result_paths)
+        self._citable = dict(citable)
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         params = request.params
@@ -350,6 +355,10 @@ class EvidenceReadTransport:
                 "observed_at": observed,
                 "dispatch_started_at": _moment(view.get("dispatch_started_at")),
                 "incomplete": view.get("incomplete") is True,
+                # #742: the parent tool's registered value, not the stored
+                # view's flag (that also folds in status and adoption, which
+                # the executor decides for this read itself).
+                "citable_as_fact": self._citable.get(tool) is True,
                 "omitted_rows": len(omitted),
                 "omitted_bytes": sum(
                     len(canonical(row).encode("utf-8")) for row in omitted
