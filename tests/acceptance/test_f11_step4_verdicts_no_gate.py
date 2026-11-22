@@ -34,7 +34,8 @@ excepted, by module and constant name and for the one matched word each:
 changes made with kubectl outside Helm are not in the records).  They are
 identifiers and explanatory text for reading release metadata, not a call to
 a deployment or release tool.  The step's wording and the intent of every
-assertion are unchanged.
+assertion are unchanged.  Accepted by the user 2026-11-22 (R-2 in
+``docs/tasks/2026-11-12-tool-expansion.md``).
 
 Extended 2026-11-20 for C4 (#568, lead ruling, on the B4 precedent): the ArgoCD
 tools read ArgoCD's Application objects (``applications.argoproj.io``) through
@@ -48,7 +49,8 @@ exactly four names containing ``ARGO``, by full match: the switch
 constants ``ARGOCD_TOOL_NAMES`` and ``ARGOCD_TOOL_SCHEMA_REVISION``.  They are
 identifiers and explanatory text for reading Application objects, not a call
 to a deployment tool or an ArgoCD credential.  The step's wording and the
-intent of every assertion are unchanged.
+intent of every assertion are unchanged.  Accepted by the user 2026-11-22 (R-2
+in ``docs/tasks/2026-11-12-tool-expansion.md``).
 
 PostgreSQL tests use ``tests/acceptance/f11_steps_support.py``; the code
 surface tests need no database.

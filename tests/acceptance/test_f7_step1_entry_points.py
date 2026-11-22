@@ -33,7 +33,8 @@ modules that define or list them (``argocd_apps``, ``otel_demo_ext``,
 Every other ``ARGOCD_*`` text -- ``ARGOCD_TOKEN``, ``ARGOCD_AUTH_TOKEN``,
 ``ARGOCD_SERVER``, ``ARGOCD_PASSWORD``, or a longer name built on an excepted
 one -- is still refused everywhere.  The step's wording and the intent of
-every assertion are unchanged.
+every assertion are unchanged.  Accepted by the user 2026-11-22 (R-2 in
+``docs/tasks/2026-11-12-tool-expansion.md``).
 """
 
 from __future__ import annotations
