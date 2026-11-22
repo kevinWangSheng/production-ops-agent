@@ -1,0 +1,2189 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "lane-d-mongodb-noload",
+  "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+  "frozen_at": "2026-11-20T21:58:29.910665+00:00",
+  "run": {
+    "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+    "incident_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 5,
+      "deadline": "2026-11-20T23:56:31.457161+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "MongoDB 上现在有哪些正在运行的操作，哪些跑得最久？另外 shopdb 的 orders 集合里每种 status 的订单各有多少？请用 MongoDB 只读工具核实后回答。",
+      "authorized_window": {
+        "end": "2026-11-20T21:56:31+00:00",
+        "start": "2026-11-19T21:56:31+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+      "target_id": "1029248f-cd55-4e6d-811e-86a4db4acc7c",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "27e61c81-3308-5841-888e-9515eca17851",
+      "created_at": "2026-11-20T21:56:31.468794+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-f3c82122dcd8",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "Snapshot of MongoDB at 2026-11-20T21:56:33–21:56:40Z: only 5 operations were active and all of them were internal server threads or this tool's own monitoring connections — Checkpointer, JournalFlusher, one opspilot aggregate command (108 µs) and two driver hello heartbeats (8,204 µs and 13,719 µs). No application/user query was running; every reported operation had secs_running 0, so the longest-running item observed is a 13.7 ms heartbeat, not a slow query. Including idle entries, 33 operations were returned, and the only active ones were the same internal threads plus a 15,899 µs hello. In shopdb.orders the aggregation returned exactly three status values: paid 144, failed 72, refunded 24, summing to 240, which matches the collection's estimated document count of 240. This is a read-only snapshot at query time, not a history of long-running operations during the authorized window, and no fault conclusion is drawn.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "mongodb_current_op with active_only=true at 2026-11-20T21:56:33Z returned 5 active operations and 0 omitted: Checkpointer (opid 28316, op none), JournalFlusher (opid 28652, op none), an opspilot-mongodb-tool aggregate command on admin.$cmd.aggregate (opid 28663, microsecs_running 108), and two opspilot-mongodb-tool hello heartbeat commands (opid 28658, microsecs_running 8204; opid 28654, microsecs_running 13719). All five have secs_running 0 and waitingForLock false.",
+          "evidence_ids": [
+            "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Among the 5 active operations, the one with the highest microsecs_running was the opspilot-mongodb-tool hello command on connection conn276 (client 127.0.0.1:44648, opid 28654) at 13719 microseconds (about 13.7 ms), followed by the hello on conn276's peer conn277 (opid 28658) at 8204 microseconds and the aggregate command on conn278 (opid 28663) at 108 microseconds; no operation named a user query such as find, insert, update or delete.",
+          "evidence_ids": [
+            "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "mongodb_current_op with active_only=false at 2026-11-20T21:56:38Z returned 33 operations, most with desc \"js\" and active=false (idle background threads); the active entries shown were Checkpointer (opid 28316), JournalFlusher (opid 28750), an opspilot hello on conn288 (opid 28752, microsecs_running 15899) and the tool's own aggregate on conn289 (opid 28757, microsecs_running 213). One idle entry was the opspilot connection conn290 (client 127.0.0.1:38146).",
+          "evidence_ids": [
+            "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "An aggregation on shopdb.orders grouping by status and sorted by count returned exactly three groups: status \"paid\" with 144 orders, status \"failed\" with 72 orders and status \"refunded\" with 24 orders (3 documents returned, none omitted).",
+          "evidence_ids": [
+            "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "mongodb_collection_schema for shopdb.orders reported estimated_document_count 240, which equals 144 + 72 + 24 from the status aggregation, with fields _id (int), amount (double), customer (string), status (string) and indexes _id_ ({_id:1}) and status_1 ({status:1}).",
+          "evidence_ids": [
+            "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "mongodb_server_status (sections connections,opcounters) at 2026-11-20T21:56:40Z reported host mongodb-55854c5466-7hfcr, version 7.0.17, uptime_seconds 2253, connections current 3, active 2, awaitingTopologyChanges 1, rejected 0, totalCreated 293, and cumulative opcounters command 793, query 283, update 307, insert 281, delete 11, getmore 3.",
+          "evidence_ids": [
+            "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "mongodb_list_collections on shopdb returned exactly two collections: \"orders\" (type collection) and \"slow\" (type collection), with none omitted.",
+          "evidence_ids": [
+            "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "Against the idea that a slow database operation is currently running: in both the active-only view (5 operations) and the view including idle entries (33 operations) the maximum microsecs_running observed was 15899 µs (a driver hello heartbeat) and every entry had secs_running 0, and connections showed active 2 out of current 3 with rejected 0.",
+          "evidence_ids": [
+            "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+            "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+            "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "shopdb contains a collection named \"slow\" alongside \"orders\", which would be a plausible place for a slow-query log; whether it holds slow-operation records relevant to \"longest running\" cannot be asserted because its contents were not read in this Run.",
+          "evidence_ids": [
+            "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "mongodb_current_op is a point-in-time snapshot at 2026-11-20T21:56:33Z and 21:56:38Z; it cannot show which operations were long-running earlier in the authorized window (2026-11-19T21:56:31Z to 2026-11-20T21:56:31Z), and no historical currentOp/slow-log history is available in this Run.",
+        "The status aggregation covers only documents visible to the read-only account and uses $group, so a status value present in documents the account cannot see would not appear; the sum (240) matched the estimated count (240), but that estimate is itself approximate.",
+        "The shopdb collection \"slow\" was not read, so whether it records slow queries relevant to \"跑得最久\" is unknown.",
+        "One mongodb_server_status call with section \"uptime\" was rejected as INVALID_PARAMS and returned no data; uptime was obtained only from the later successful connections/opcounters call, whose value is the moment of that query, not the incident window.",
+        "No evidence in this Run ties the MongoDB state to any incident or alert; the question is a state query only, so no root cause is named."
+      ],
+      "next_steps": [
+        "If historical slow-operation data is needed, read the shopdb \"slow\" collection (e.g. count and recent documents) with the read-only tools.",
+        "If long-running operations at an earlier time matter, enable/collect MongoDB slow-query or profiler data going forward, since currentOp cannot be replayed for the past."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 5,
+      "logical_key": "conclusion:g0:ctx0:round-5",
+      "status": "response_committed",
+      "observed_at": "2026-11-20T21:56:54.451185+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:56:33.557256+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:56:35.866539+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:56:38.739645+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:56:40.375439+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "ctx0:round-5",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:56:54.443826+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 5,
+        "logical_key": "conclusion:g0:ctx0:round-5",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:56:54.451185+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 5,
+      "prompt_tokens": 87702,
+      "completion_tokens": 3847,
+      "total_tokens": 91549,
+      "prompt_cache_hit_tokens": 81792,
+      "prompt_cache_miss_tokens": 5910
+    },
+    "tool_requests": [
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0",
+        "epoch": 1,
+        "tool": "mongodb_current_op",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1",
+        "epoch": 1,
+        "tool": "mongodb_list_collections",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0",
+        "epoch": 1,
+        "tool": "mongodb_aggregate",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1",
+        "epoch": 1,
+        "tool": "mongodb_collection_schema",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t1",
+        "epoch": 1,
+        "tool": "mongodb_server_status",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "INVALID_PARAMS",
+        "outbound": false,
+        "source_contact": "none",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0",
+        "epoch": 1,
+        "tool": "mongodb_current_op",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "operation_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0",
+        "epoch": 1,
+        "tool": "mongodb_server_status",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_current_op",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "active_only": true
+        },
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:33.613565+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_list_collections",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {},
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:33.616656+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_aggregate",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "pipeline": "[{\"$group\":{\"_id\":\"$status\",\"n\":{\"$sum\":1}}},{\"$sort\":{\"n\":-1}}]",
+          "collection": "orders"
+        },
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:35.921073+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_collection_schema",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "collection": "orders"
+        },
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:35.942635+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_current_op",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "active_only": false
+        },
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:38.796645+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+        "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+        "status": "ok",
+        "adopted": true,
+        "tool": "mongodb_server_status",
+        "tool_version": "v1",
+        "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+        "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "sections": "connections,opcounters"
+        },
+        "window": {
+          "end": "2026-11-20T21:56:31+00:00",
+          "start": "2026-11-19T21:56:31+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:56:40.423297+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+      "observations": [
+        {
+          "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_current_op",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "active_only": true
+          },
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:33.613565+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_list_collections",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {},
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:33.616656+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_aggregate",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "pipeline": "[{\"$group\":{\"_id\":\"$status\",\"n\":{\"$sum\":1}}},{\"$sort\":{\"n\":-1}}]",
+            "collection": "orders"
+          },
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:35.921073+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_collection_schema",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "collection": "orders"
+          },
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:35.942635+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_current_op",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "active_only": false
+          },
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:38.796645+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "status": "ok",
+          "adopted": true,
+          "tool": "mongodb_server_status",
+          "tool_version": "v1",
+          "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+          "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "sections": "connections,opcounters"
+          },
+          "window": {
+            "end": "2026-11-20T21:56:31+00:00",
+            "start": "2026-11-19T21:56:31+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:56:40.423297+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [
+        {
+          "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t1",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "tool": "mongodb_server_status",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "INVALID_PARAMS",
+          "source_contact": "none"
+        }
+      ],
+      "reports": [
+        {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "claims": {
+            "fact": [
+              {
+                "text": "mongodb_current_op with active_only=true at 2026-11-20T21:56:33Z returned 5 active operations and 0 omitted: Checkpointer (opid 28316, op none), JournalFlusher (opid 28652, op none), an opspilot-mongodb-tool aggregate command on admin.$cmd.aggregate (opid 28663, microsecs_running 108), and two opspilot-mongodb-tool hello heartbeat commands (opid 28658, microsecs_running 8204; opid 28654, microsecs_running 13719). All five have secs_running 0 and waitingForLock false.",
+                "evidence": [
+                  {
+                    "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Among the 5 active operations, the one with the highest microsecs_running was the opspilot-mongodb-tool hello command on connection conn276 (client 127.0.0.1:44648, opid 28654) at 13719 microseconds (about 13.7 ms), followed by the hello on conn276's peer conn277 (opid 28658) at 8204 microseconds and the aggregate command on conn278 (opid 28663) at 108 microseconds; no operation named a user query such as find, insert, update or delete.",
+                "evidence": [
+                  {
+                    "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "mongodb_current_op with active_only=false at 2026-11-20T21:56:38Z returned 33 operations, most with desc \"js\" and active=false (idle background threads); the active entries shown were Checkpointer (opid 28316), JournalFlusher (opid 28750), an opspilot hello on conn288 (opid 28752, microsecs_running 15899) and the tool's own aggregate on conn289 (opid 28757, microsecs_running 213). One idle entry was the opspilot connection conn290 (client 127.0.0.1:38146).",
+                "evidence": [
+                  {
+                    "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "An aggregation on shopdb.orders grouping by status and sorted by count returned exactly three groups: status \"paid\" with 144 orders, status \"failed\" with 72 orders and status \"refunded\" with 24 orders (3 documents returned, none omitted).",
+                "evidence": [
+                  {
+                    "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "mongodb_collection_schema for shopdb.orders reported estimated_document_count 240, which equals 144 + 72 + 24 from the status aggregation, with fields _id (int), amount (double), customer (string), status (string) and indexes _id_ ({_id:1}) and status_1 ({status:1}).",
+                "evidence": [
+                  {
+                    "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "mongodb_server_status (sections connections,opcounters) at 2026-11-20T21:56:40Z reported host mongodb-55854c5466-7hfcr, version 7.0.17, uptime_seconds 2253, connections current 3, active 2, awaitingTopologyChanges 1, rejected 0, totalCreated 293, and cumulative opcounters command 793, query 283, update 307, insert 281, delete 11, getmore 3.",
+                "evidence": [
+                  {
+                    "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "mongodb_list_collections on shopdb returned exactly two collections: \"orders\" (type collection) and \"slow\" (type collection), with none omitted.",
+                "evidence": [
+                  {
+                    "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "shopdb contains a collection named \"slow\" alongside \"orders\", which would be a plausible place for a slow-query log; whether it holds slow-operation records relevant to \"longest running\" cannot be asserted because its contents were not read in this Run.",
+                "evidence": [
+                  {
+                    "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [],
+            "counter_evidence": [
+              {
+                "text": "Against the idea that a slow database operation is currently running: in both the active-only view (5 operations) and the view including idle entries (33 operations) the maximum microsecs_running observed was 15899 µs (a driver hello heartbeat) and every entry had secs_running 0, and connections showed active 2 out of current 3 with rejected 0.",
+                "evidence": [
+                  {
+                    "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "mongodb",
+              "ok": 6,
+              "no_data": 0,
+              "non_ok": 1,
+              "reasons": {
+                "INVALID_PARAMS": 1
+              },
+              "state": "partial_failure",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+        "resolvable": true,
+        "tool": "mongodb_aggregate",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_aggregate",
+            "limit": 100,
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {
+              "pipeline": "[{\"$group\":{\"_id\":\"$status\",\"n\":{\"$sum\":1}}},{\"$sort\":{\"n\":-1}}]",
+              "collection": "orders"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "n": 144,
+                "_id": "paid"
+              },
+              {
+                "n": 72,
+                "_id": "failed"
+              },
+              {
+                "n": 24,
+                "_id": "refunded"
+              }
+            ],
+            "database": "shopdb",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "collection": "orders",
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+            "observed_at": "2026-11-20T21:56:35.921073+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "omitted_rows": 0,
+            "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0",
+            "result_count": 3,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 3,
+            "citable_as_fact": true,
+            "documents_shown": 3,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "documents_omitted": 0,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "dispatch_started_at": "2026-11-20T21:56:35.876199+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_documents_returned": 3
+          }
+        }
+      },
+      {
+        "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+        "resolvable": true,
+        "tool": "mongodb_collection_schema",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_collection_schema",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {
+              "collection": "orders"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "field": "_id",
+                "types": [
+                  "int"
+                ]
+              },
+              {
+                "field": "amount",
+                "types": [
+                  "double"
+                ]
+              },
+              {
+                "field": "customer",
+                "types": [
+                  "string"
+                ]
+              },
+              {
+                "field": "status",
+                "types": [
+                  "string"
+                ]
+              }
+            ],
+            "indexes": [
+              {
+                "keys": {
+                  "_id": 1
+                },
+                "name": "_id_",
+                "unique": false
+              },
+              {
+                "keys": {
+                  "status": 1
+                },
+                "name": "status_1",
+                "unique": false
+              }
+            ],
+            "database": "shopdb",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "collection": "orders",
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+            "observed_at": "2026-11-20T21:56:35.942635+00:00",
+            "sample_size": 10,
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "fields_shown": 4,
+            "omitted_rows": 0,
+            "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1",
+            "result_count": 4,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "fields_omitted": 0,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "dispatch_started_at": "2026-11-20T21:56:35.885132+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_fields_returned": 4,
+            "estimated_document_count": 240
+          }
+        }
+      },
+      {
+        "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+        "resolvable": true,
+        "tool": "mongodb_server_status",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_server_status",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {
+              "sections": "connections,opcounters"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "host": "mongodb-55854c5466-7hfcr",
+                "version": "7.0.17",
+                "opcounters": {
+                  "query": 283,
+                  "delete": 11,
+                  "insert": 281,
+                  "update": 307,
+                  "command": 793,
+                  "getmore": 3
+                },
+                "connections": {
+                  "active": 2,
+                  "current": 3,
+                  "rejected": 0,
+                  "threaded": 3,
+                  "available": 999997,
+                  "exhaustHello": 0,
+                  "totalCreated": 293,
+                  "exhaustIsMaster": 0,
+                  "awaitingTopologyChanges": 1
+                },
+                "uptime_seconds": 2253
+              }
+            ],
+            "database": "shopdb",
+            "sections": [
+              "connections",
+              "opcounters"
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+            "observed_at": "2026-11-20T21:56:40.423297+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "omitted_rows": 0,
+            "operation_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "sections_shown": 1,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "sections_omitted": 0,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "dispatch_started_at": "2026-11-20T21:56:40.385474+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_sections_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+        "resolvable": true,
+        "tool": "mongodb_current_op",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_current_op",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {
+              "active_only": true
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "ns": "",
+                "op": "none",
+                "desc": "Checkpointer",
+                "opid": 28316,
+                "active": true,
+                "command": {},
+                "waitingForLock": false
+              },
+              {
+                "ns": "",
+                "op": "none",
+                "desc": "JournalFlusher",
+                "opid": 28652,
+                "active": true,
+                "command": {},
+                "waitingForLock": false
+              },
+              {
+                "ns": "admin.$cmd.aggregate",
+                "op": "command",
+                "desc": "conn278",
+                "opid": 28663,
+                "active": true,
+                "client": "127.0.0.1:44670",
+                "appName": "opspilot-mongodb-tool",
+                "command": {
+                  "$db": "admin",
+                  "lsid": {
+                    "id": "0x74fba5b6ad454897aed5def4f50bb8c7"
+                  },
+                  "cursor": {
+                    "batchSize": 201
+                  },
+                  "comment": "opspilot-b5498704-0fcc-4415-a19e-533b3a1fb7ee",
+                  "pipeline": [
+                    {
+                      "$currentOp": {
+                        "allUsers": true,
+                        "idleConnections": false
+                      }
+                    },
+                    {
+                      "$match": {
+                        "active": true
+                      }
+                    },
+                    {
+                      "$limit": 201
+                    }
+                  ],
+                  "aggregate": 1,
+                  "maxTimeMS": 27975
+                },
+                "secs_running": 0,
+                "waitingForLock": false,
+                "microsecs_running": 108
+              },
+              {
+                "ns": "admin.$cmd",
+                "op": "command",
+                "desc": "conn277",
+                "opid": 28658,
+                "active": true,
+                "client": "127.0.0.1:44662",
+                "appName": "opspilot-mongodb-tool",
+                "command": {
+                  "$db": "admin",
+                  "hello": 1,
+                  "backpressure": "2",
+                  "maxAwaitTimeMS": 10000,
+                  "topologyVersion": {
+                    "counter": 0,
+                    "processId": "6b00b94a519a85e17508d65f"
+                  }
+                },
+                "secs_running": 0,
+                "waitingForLock": false,
+                "microsecs_running": 8204
+              },
+              {
+                "ns": "admin.$cmd",
+                "op": "command",
+                "desc": "conn276",
+                "opid": 28654,
+                "active": true,
+                "client": "127.0.0.1:44648",
+                "appName": "opspilot-mongodb-tool",
+                "command": {
+                  "$db": "admin",
+                  "hello": 1,
+                  "backpressure": "2",
+                  "maxAwaitTimeMS": 10000,
+                  "topologyVersion": {
+                    "counter": 0,
+                    "processId": "6b00b94a519a85e17508d65f"
+                  }
+                },
+                "secs_running": 0,
+                "waitingForLock": false,
+                "microsecs_running": 13719
+              }
+            ],
+            "database": "shopdb",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+            "observed_at": "2026-11-20T21:56:33.613565+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "omitted_rows": 0,
+            "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0",
+            "result_count": 5,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 5,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "operations_shown": 5,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "operations_omitted": 0,
+            "dispatch_started_at": "2026-11-20T21:56:33.567093+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_operations_returned": 5
+          }
+        }
+      },
+      {
+        "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+        "resolvable": true,
+        "tool": "mongodb_list_collections",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_list_collections",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {},
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "orders",
+                "type": "collection"
+              },
+              {
+                "name": "slow",
+                "type": "collection"
+              }
+            ],
+            "database": "shopdb",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+            "observed_at": "2026-11-20T21:56:33.616656+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "omitted_rows": 0,
+            "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1",
+            "result_count": 2,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 2,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "collections_shown": 2,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "collections_omitted": 0,
+            "dispatch_started_at": "2026-11-20T21:56:33.574376+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_collections_returned": 2
+          }
+        }
+      },
+      {
+        "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+        "resolvable": true,
+        "tool": "mongodb_current_op",
+        "status": "ok",
+        "stored": {
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "subject_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+          "status": "ok",
+          "view": {
+            "tool": "mongodb_current_op",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:56:31Z."
+            ],
+            "query": {
+              "active_only": false
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:56:31+00:00",
+              "start": "2026-11-19T21:56:31+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "FlowControlRefresher",
+                "active": false
+              },
+              {
+                "desc": "WTIdleSessionSweeper",
+                "active": false
+              },
+              {
+                "desc": "WaitForMajorityServiceWaiterWrite",
+                "active": false
+              },
+              {
+                "desc": "initandlisten",
+                "active": false
+              },
+              {
+                "desc": "TicketHolderMonitor",
+                "active": false
+              },
+              {
+                "desc": "clientcursormon",
+                "active": false
+              },
+              {
+                "desc": "WaitForMajorityServiceCancelerWrite",
+                "active": false
+              },
+              {
+                "desc": "abortExpiredTransactions",
+                "active": false
+              },
+              {
+                "desc": "CertificateExpirationMonitor",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "TTLMonitor",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "LogicalSessionCacheReap",
+                "active": false
+              },
+              {
+                "ns": "",
+                "op": "none",
+                "desc": "Checkpointer",
+                "opid": 28316,
+                "active": true,
+                "command": {},
+                "waitingForLock": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "ns": "",
+                "op": "none",
+                "desc": "JournalFlusher",
+                "opid": 28750,
+                "active": true,
+                "command": {},
+                "waitingForLock": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "ns": "admin.$cmd",
+                "op": "command",
+                "desc": "conn288",
+                "opid": 28752,
+                "active": true,
+                "client": "127.0.0.1:38138",
+                "appName": "opspilot-mongodb-tool",
+                "command": {
+                  "$db": "admin",
+                  "hello": 1,
+                  "backpressure": "2",
+                  "maxAwaitTimeMS": 10000,
+                  "topologyVersion": {
+                    "counter": 0,
+                    "processId": "6b00b94a519a85e17508d65f"
+                  }
+                },
+                "secs_running": 0,
+                "waitingForLock": false,
+                "microsecs_running": 15899
+              },
+              {
+                "desc": "WaitForMajorityServiceWaiterRead",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "SessionKiller",
+                "active": false
+              },
+              {
+                "desc": "conn290",
+                "active": false,
+                "client": "127.0.0.1:38146",
+                "appName": "opspilot-mongodb-tool"
+              },
+              {
+                "desc": "TimestampMonitor",
+                "active": false
+              },
+              {
+                "desc": "ftdc",
+                "active": false
+              },
+              {
+                "desc": "js",
+                "active": false
+              },
+              {
+                "desc": "LogicalSessionCacheRefresh",
+                "active": false
+              },
+              {
+                "ns": "admin.$cmd.aggregate",
+                "op": "command",
+                "desc": "conn289",
+                "opid": 28757,
+                "active": true,
+                "client": "127.0.0.1:38142",
+                "appName": "opspilot-mongodb-tool",
+                "command": {
+                  "$db": "admin",
+                  "lsid": {
+                    "id": "0x4b9eda7a253e425d92511c7f295dfc7a"
+                  },
+                  "cursor": {
+                    "batchSize": 201
+                  },
+                  "comment": "opspilot-d0f51538-685b-425e-8943-0cb3a193e013",
+                  "pipeline": [
+                    {
+                      "$currentOp": {
+                        "allUsers": true,
+                        "idleConnections": true
+                      }
+                    },
+                    {
+                      "$limit": 201
+                    }
+                  ],
+                  "aggregate": 1,
+                  "maxTimeMS": 27976
+                },
+                "secs_running": 0,
+                "waitingForLock": false,
+                "microsecs_running": 213
+              },
+              {
+                "desc": "OCSPManagerHTTP-0",
+                "active": false
+              },
+              {
+                "desc": "WaitForMajorityServiceCancelerRead",
+                "active": false
+              }
+            ],
+            "database": "shopdb",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+            "observed_at": "2026-11-20T21:56:38.796645+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window. A document that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by field name only; a secret under another name or a bare secret value is not recognised. Current operations may show other clients' query text.",
+            "omitted_rows": 0,
+            "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0",
+            "result_count": 33,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 33,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "operations_shown": 33,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "4679ecf77ec6957a8ec34196458a6fdc9b3e67f703c4dd775ca7a3952841fb44",
+            "operations_omitted": 0,
+            "dispatch_started_at": "2026-11-20T21:56:38.750836+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "46d72e819b716e8e95497f05e8bbd91f283166cdbfc50a8c6f809897e502213f",
+            "backend_operations_returned": 33
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "535fb069-6c22-5844-98b3-4730c115a2f6",
+      "entries": [
+        {
+          "recorded_at": "2026-11-20T21:56:31.475536+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:31.475536+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:1",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:32.557155+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.557256+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:bac507de-16ec-4425-9165-c0c6863b2f46",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.560229+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.644408+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "74e049ed-fc71-48fc-9053-333b8c1c6391",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0",
+            "epoch": 1,
+            "tool": "mongodb_current_op",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.644408+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.644408+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.652937+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "a405114f-eefb-45de-ac74-884badc43865",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1",
+            "epoch": 1,
+            "tool": "mongodb_list_collections",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.652937+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:33.652937+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.866539+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:4052f995-77a6-46fc-adef-2d3da7b71df8",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.869882+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.949507+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0",
+            "epoch": 1,
+            "tool": "mongodb_aggregate",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.949507+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.949507+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.969591+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "bde50a98-22c9-415a-b2c5-20ab6a77508d",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1",
+            "epoch": 1,
+            "tool": "mongodb_collection_schema",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.969591+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:35.969591+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.739645+00:00",
+          "sequence": 19,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:f488eb9a-7562-4a01-bcd5-ea32266ccdaf",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.743752+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.800146+00:00",
+          "sequence": 21,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "4cf5c742-0bcf-41a5-821f-e297abb68ad8",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t1",
+            "epoch": 1,
+            "tool": "mongodb_server_status",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "INVALID_PARAMS",
+            "outbound": false,
+            "source_contact": "none",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.800146+00:00",
+          "sequence": 22,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.827011+00:00",
+          "sequence": 23,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "1edf7265-5847-4333-89f8-d292c0ec3766",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0",
+            "epoch": 1,
+            "tool": "mongodb_current_op",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.827011+00:00",
+          "sequence": 24,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:38.827011+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:40.375439+00:00",
+          "sequence": 26,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:b96946c6-33da-49cd-a80f-e220b760c501",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:40.378794+00:00",
+          "sequence": 27,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:40.458300+00:00",
+          "sequence": 28,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "7f0f42f4-b965-431a-ad9f-1d65147175a4",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "operation_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0",
+            "epoch": 1,
+            "tool": "mongodb_server_status",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:40.458300+00:00",
+          "sequence": 29,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:40.458300+00:00",
+          "sequence": 30,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "13",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 13
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:54.443826+00:00",
+          "sequence": 31,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:b4d58ce8-c53a-41f1-8fcb-29a9098cac5b",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:54.447300+00:00",
+          "sequence": 32,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "14",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 14
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:54.462865+00:00",
+          "sequence": 33,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "15",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 15
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:56:54.462865+00:00",
+          "sequence": 34,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "27e61c81-3308-5841-888e-9515eca17851:15",
+          "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 15
+          }
+        }
+      ],
+      "counts": {
+        "input": 5,
+        "query": 7,
+        "evidence": 6,
+        "state_change": 17,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "27e61c81-3308-5841-888e-9515eca17851",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "bac507de-16ec-4425-9165-c0c6863b2f46-t0:74e049ed-fc71-48fc-9053-333b8c1c6391",
+        "bac507de-16ec-4425-9165-c0c6863b2f46-t1:a405114f-eefb-45de-ac74-884badc43865",
+        "4052f995-77a6-46fc-adef-2d3da7b71df8-t0:6b2c4ce3-e848-47c6-a018-91f38ca3cf6e",
+        "4052f995-77a6-46fc-adef-2d3da7b71df8-t1:bde50a98-22c9-415a-b2c5-20ab6a77508d",
+        "f488eb9a-7562-4a01-bcd5-ea32266ccdaf-t0:1edf7265-5847-4333-89f8-d292c0ec3766",
+        "b96946c6-33da-49cd-a80f-e220b760c501-t0:7f0f42f4-b965-431a-ad9f-1d65147175a4"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-20T21:58:28.303559+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-rental-d-20261120",
+    "project_id": "2b708f6c-a76b-4e3d-ba2a-95526eab6790",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-f4ad-cd9a88cc31c5",
+        "start_time": "2026-11-20T21:56:32.557985+00:00",
+        "end_time": "2026-11-20T21:56:54.463666+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/2b708f6c-a76b-4e3d-ba2a-95526eab6790/r/00000000-0000-0000-f4ad-cd9a88cc31c5?poll=true"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "525a4b86e4d95fac39fb15fd6901acb6ab03e622ab2564fd90e227084bd514e7",
+    "bytes": 137597,
+    "path": "tmp/lab-ledgers/lane-d-mongodb-noload/27e61c81-3308-5841-888e-9515eca17851/ledger.json",
+    "in_repository": false
+  }
+}

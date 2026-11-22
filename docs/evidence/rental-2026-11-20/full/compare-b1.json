@@ -1,0 +1,1203 @@
+{
+ "schema": "holmes-compare-table-1",
+ "questions": 30,
+ "trials_per_question": 3,
+ "rows": [
+  {
+   "qid": "183b_elasticsearch_index_discovery",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "183c_elasticsearch_log_search",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "183d_elasticsearch_aggregation",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "183e_elasticsearch_field_mappings",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "184_elasticsearch_index_explosion",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "185_elasticsearch_cross_region_search",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 2,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "187_elasticsearch_disk_space",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "188_elasticsearch_mapping_explosion",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "189_elasticsearch_timeseries_gap",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "190_elasticsearch_cross_service_correlation",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "191_elasticsearch_query_profile",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "193_elasticsearch_large_mapping_search",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "235_elasticsearch_cluster_mismatch",
+   "opspilot": {
+    "passes": 2,
+    "of": 3,
+    "rate": 0.6666666666666666,
+    "swing": true,
+    "trials": [
+     true,
+     false,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 1,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 1,
+    "of": 3,
+    "rate": 0.3333333333333333,
+    "swing": true,
+    "trials": [
+     false,
+     false,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "245_elasticsearch_trace_large_fields",
+   "opspilot": {
+    "passes": 2,
+    "of": 3,
+    "rate": 0.6666666666666666,
+    "swing": true,
+    "trials": [
+     false,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 1,
+    "of": 3,
+    "rate": 0.3333333333333333,
+    "swing": true,
+    "trials": [
+     false,
+     true,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": true
+  },
+  {
+   "qid": "254_elasticsearch_dr_test_log_check",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "259_wrong_cluster_logs_confusion",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 3,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "260_global_es_remote_cluster_logs",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "261_time_window_gap_external_data",
+   "opspilot": {
+    "passes": 2,
+    "of": 3,
+    "rate": 0.6666666666666666,
+    "swing": true,
+    "trials": [
+     true,
+     true,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 1,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "262_ambiguous_cluster_reference",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "263_region_suffixed_service_siblings",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "264_wrong_env_same_region",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 3,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "265_multicluster_labeling_discipline",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "266_toolset_disabled_vs_no_data",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 3,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "267_cluster_name_alias",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "269_mixed_sources_route_to_external",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": false,
+   "fixed_time": false
+  },
+  {
+   "qid": "275_es_field_name_correction",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": true,
+   "fixed_time": true
+  },
+  {
+   "qid": "276_es_numeric_severity_field",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": true,
+   "fixed_time": true
+  },
+  {
+   "qid": "277_es_timestamp_keyword_field",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": false,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": true,
+   "fixed_time": true
+  },
+  {
+   "qid": "278_es_schema_discovery",
+   "opspilot": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": true,
+   "fixed_time": true
+  },
+  {
+   "qid": "280_es_multi_quirk",
+   "opspilot": {
+    "passes": 0,
+    "of": 3,
+    "rate": 0.0,
+    "swing": false,
+    "trials": [
+     false,
+     false,
+     false
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "holmes": {
+    "passes": 3,
+    "of": 3,
+    "rate": 1.0,
+    "swing": false,
+    "trials": [
+     true,
+     true,
+     true
+    ],
+    "missing": 0,
+    "no_answer": 0,
+    "judge_failed": 0,
+    "shift_applied": true,
+    "rerun_passes": 0,
+    "rerun_trials": 0
+   },
+   "skill_assertion_dropped": true,
+   "fixed_time": true
+  }
+ ],
+ "totals": {
+  "opspilot": {
+   "passes": 72,
+   "denominator": 90,
+   "rate": 0.8,
+   "swing_questions": 3,
+   "missing_trials": 0
+  },
+  "holmes": {
+   "passes": 86,
+   "denominator": 90,
+   "rate": 0.9555555555555556,
+   "swing_questions": 2,
+   "missing_trials": 0
+  }
+ },
+ "totals_merged": false,
+ "holmes_judge_path": "opspilot",
+ "notes": [
+  "Holmes 判分口径：默认 opspilot（上游 harness 建的 judge 文本，用 OpsPilot #666 同一 judge 判分，两家同一 judge 口径）",
+  "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具",
+  "两家总分分列，不合并、不相减；同一计分规则：每题 3 遍，只有 judge 判 A 算通过，缺遍、无回答、judge 无结论均记 0 并留在分母。",
+  "同模型（DeepSeek deepseek-flash，thinking 开、effort high）、同题、同 judge 接收方与模型（Z.ai glm-5.3-flashx）。",
+  "R8-13：标「去 skill 断言」的题两家都不判 SuggestSkills 建议条数，也不跑 replay。",
+  "R10-1：固定时间题两家都按同一平移规则改写数据与题面，送 judge 前反平移；平移量随各自运行时刻不同。"
+ ]
+}

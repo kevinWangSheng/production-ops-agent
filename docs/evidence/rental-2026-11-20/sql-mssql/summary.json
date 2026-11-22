@@ -1,0 +1,1309 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "lane-d-sql-mssql",
+  "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+  "frozen_at": "2026-11-20T21:30:45.522937+00:00",
+  "run": {
+    "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+    "incident_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-20T23:29:43.673249+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "配置的业务数据库里有哪些表？orders 表里每种 status 的订单各有多少条、failed 占比多少？请用数据库只读查询工具核实后回答。",
+      "authorized_window": {
+        "end": "2026-11-20T21:29:43+00:00",
+        "start": "2026-11-19T21:29:43+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+      "target_id": "1029248f-cd55-4e6d-811e-86a4db4acc7c",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+      "created_at": "2026-11-20T21:29:43.690240+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-a50c45b8f95e",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "The configured SQL Server database (target m0-otel-20260909, source otel-demo) contains exactly one table, dbo.orders, with columns id (int, PK), customer (varchar), status (varchar), amount (decimal). A GROUP BY query on status returned three groups: paid 144, failed 72, refunded 24; a separate whole-table aggregate confirmed total_rows 240, failed_rows 72, null_status_rows 0, so failed is 30.00% of all orders. All readings are the database as it is at query time (2026-11-20T21:29:4xZ), not a historical incident-window state. No incident, fault or health conclusion is drawn here: this was a data-inventory question only, so no Kubernetes, trace or metric evidence was consulted and no root cause is named.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "The configured database (dialect mssql, source otel-demo) lists exactly one user table: dbo.orders (table, schema dbo).",
+          "evidence_ids": [
+            "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "dbo.orders has four columns: id (int, not nullable, ordinal 1), customer (varchar, nullable, ordinal 2), status (varchar, nullable, ordinal 3), amount (decimal, nullable, ordinal 4); its only index is the unique primary-key index PK__orders__3213E83FAAE90874 on id, with no foreign keys.",
+          "evidence_ids": [
+            "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Grouping dbo.orders by status returned exactly three rows: status 'paid' = 144, status 'failed' = 72, status 'refunded' = 24.",
+          "evidence_ids": [
+            "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "A whole-table aggregate on dbo.orders returned total_rows = 240, failed_rows = 72, null_status_rows = 0 and failed_pct = 30, so the 'failed' share of orders is 30.00% (72 of 240) and no order has a NULL status.",
+          "evidence_ids": [
+            "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+            "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "All results are the database state at query time (observed 2026-11-20T21:29:45Z to 2026-11-20T21:29:48Z), not the state during the authorized window ending 2026-11-20T21:29:43Z; historical row values are unknown.",
+        "Only tables visible to the read-only account are listed; a table invisible to that account, or beyond the listing limit, would not appear, so 'only one table' is a statement about what this query returned.",
+        "The database exposes no timestamps on orders, so whether the failed orders accumulated in any particular period cannot be determined from these queries."
+      ],
+      "next_steps": [
+        "If the failed-order rate needs an operational interpretation, correlate dbo.orders rows with payment service error signals and logs over a matching window, since this run only verified the database counts."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-20T21:29:53.581597+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:29:45.164199+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:29:46.432257+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:29:48.144360+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:29:53.573675+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:29:53.581597+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 61194,
+      "completion_tokens": 1480,
+      "total_tokens": 62674,
+      "prompt_cache_hit_tokens": 56704,
+      "prompt_cache_miss_tokens": 4490
+    },
+    "tool_requests": [
+      {
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "operation_id": "e32552c9-611e-4952-884c-2372323b00e5-t0",
+        "epoch": 1,
+        "tool": "database_sql_list_tables",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1",
+        "epoch": 1,
+        "tool": "database_sql_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0",
+        "epoch": 1,
+        "tool": "database_sql_describe_table",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "operation_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0",
+        "epoch": 1,
+        "tool": "database_sql_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_list_tables",
+        "tool_version": "v1",
+        "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+        "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {},
+        "window": {
+          "end": "2026-11-20T21:29:43+00:00",
+          "start": "2026-11-19T21:29:43+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:29:45.242773+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_query",
+        "tool_version": "v1",
+        "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+        "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "sql": "SELECT status, COUNT(*) AS cnt FROM dbo.orders GROUP BY status ORDER BY cnt DESC"
+        },
+        "window": {
+          "end": "2026-11-20T21:29:43+00:00",
+          "start": "2026-11-19T21:29:43+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:29:46.506255+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_describe_table",
+        "tool_version": "v1",
+        "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+        "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "table_name": "dbo.orders"
+        },
+        "window": {
+          "end": "2026-11-20T21:29:43+00:00",
+          "start": "2026-11-19T21:29:43+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:29:46.569487+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+        "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_query",
+        "tool_version": "v1",
+        "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+        "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_rows, SUM(CASE WHEN status IS NULL THEN 1 ELSE 0 END) AS null_status_rows, CAST(100.0 * SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) / COUNT(*) AS decimal(10,2)) AS failed_pct FROM dbo.orders"
+        },
+        "window": {
+          "end": "2026-11-20T21:29:43+00:00",
+          "start": "2026-11-19T21:29:43+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:29:48.195602+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+      "observations": [
+        {
+          "evidence_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_list_tables",
+          "tool_version": "v1",
+          "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+          "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {},
+          "window": {
+            "end": "2026-11-20T21:29:43+00:00",
+            "start": "2026-11-19T21:29:43+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:29:45.242773+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_query",
+          "tool_version": "v1",
+          "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+          "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "sql": "SELECT status, COUNT(*) AS cnt FROM dbo.orders GROUP BY status ORDER BY cnt DESC"
+          },
+          "window": {
+            "end": "2026-11-20T21:29:43+00:00",
+            "start": "2026-11-19T21:29:43+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:29:46.506255+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_describe_table",
+          "tool_version": "v1",
+          "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+          "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "table_name": "dbo.orders"
+          },
+          "window": {
+            "end": "2026-11-20T21:29:43+00:00",
+            "start": "2026-11-19T21:29:43+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:29:46.569487+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_query",
+          "tool_version": "v1",
+          "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+          "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_rows, SUM(CASE WHEN status IS NULL THEN 1 ELSE 0 END) AS null_status_rows, CAST(100.0 * SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) / COUNT(*) AS decimal(10,2)) AS failed_pct FROM dbo.orders"
+          },
+          "window": {
+            "end": "2026-11-20T21:29:43+00:00",
+            "start": "2026-11-19T21:29:43+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:29:48.195602+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "claims": {
+            "fact": [
+              {
+                "text": "The configured database (dialect mssql, source otel-demo) lists exactly one user table: dbo.orders (table, schema dbo).",
+                "evidence": [
+                  {
+                    "evidence_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "dbo.orders has four columns: id (int, not nullable, ordinal 1), customer (varchar, nullable, ordinal 2), status (varchar, nullable, ordinal 3), amount (decimal, nullable, ordinal 4); its only index is the unique primary-key index PK__orders__3213E83FAAE90874 on id, with no foreign keys.",
+                "evidence": [
+                  {
+                    "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Grouping dbo.orders by status returned exactly three rows: status 'paid' = 144, status 'failed' = 72, status 'refunded' = 24.",
+                "evidence": [
+                  {
+                    "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "A whole-table aggregate on dbo.orders returned total_rows = 240, failed_rows = 72, null_status_rows = 0 and failed_pct = 30, so the 'failed' share of orders is 30.00% (72 of 240) and no order has a NULL status.",
+                "evidence": [
+                  {
+                    "evidence_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [],
+            "recommendation": [],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "sql",
+              "ok": 4,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+        "resolvable": true,
+        "tool": "database_sql_describe_table",
+        "status": "ok",
+        "stored": {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "subject_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_describe_table",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:29:43Z."
+            ],
+            "query": {
+              "table_name": "dbo.orders"
+            },
+            "table": "orders",
+            "trust": "untrusted-evidence",
+            "schema": "dbo",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:29:43+00:00",
+              "start": "2026-11-19T21:29:43+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "id",
+                "type": "int",
+                "default": null,
+                "ordinal": 1,
+                "nullable": false
+              },
+              {
+                "name": "customer",
+                "type": "varchar",
+                "default": null,
+                "ordinal": 2,
+                "nullable": true
+              },
+              {
+                "name": "status",
+                "type": "varchar",
+                "default": null,
+                "ordinal": 3,
+                "nullable": true
+              },
+              {
+                "name": "amount",
+                "type": "decimal",
+                "default": null,
+                "ordinal": 4,
+                "nullable": true
+              }
+            ],
+            "dialect": "mssql",
+            "indexes": [
+              {
+                "name": "PK__orders__3213E83FAAE90874",
+                "unique": true,
+                "columns": [
+                  "id"
+                ],
+                "primary": true,
+                "definition": null
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+            "observed_at": "2026-11-20T21:29:46.569487+00:00",
+            "primary_key": [
+              "id"
+            ],
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "foreign_keys": [],
+            "omitted_rows": 0,
+            "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0",
+            "result_count": 4,
+            "tool_version": "v1",
+            "columns_shown": 4,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "columns_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+            "dispatch_started_at": "2026-11-20T21:29:46.446723+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+            "backend_columns_returned": 4
+          }
+        }
+      },
+      {
+        "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+        "resolvable": true,
+        "tool": "database_sql_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "subject_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_query",
+            "limit": 100,
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:29:43Z."
+            ],
+            "query": {
+              "sql": "SELECT status, COUNT(*) AS cnt FROM dbo.orders GROUP BY status ORDER BY cnt DESC"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:29:43+00:00",
+              "start": "2026-11-19T21:29:43+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "status",
+              "cnt"
+            ],
+            "content": [
+              {
+                "cnt": 144,
+                "status": "paid"
+              },
+              {
+                "cnt": 72,
+                "status": "failed"
+              },
+              {
+                "cnt": 24,
+                "status": "refunded"
+              }
+            ],
+            "dialect": "mssql",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "rows_shown": 3,
+            "evidence_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+            "observed_at": "2026-11-20T21:29:46.506255+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "omitted_rows": 0,
+            "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1",
+            "result_count": 3,
+            "rows_omitted": 0,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 3,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+            "dispatch_started_at": "2026-11-20T21:29:46.454948+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "backend_rows_returned": 3,
+            "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042"
+          }
+        }
+      },
+      {
+        "evidence_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+        "resolvable": true,
+        "tool": "database_sql_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "subject_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_query",
+            "limit": 100,
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:29:43Z."
+            ],
+            "query": {
+              "sql": "SELECT COUNT(*) AS total_rows, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_rows, SUM(CASE WHEN status IS NULL THEN 1 ELSE 0 END) AS null_status_rows, CAST(100.0 * SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) / COUNT(*) AS decimal(10,2)) AS failed_pct FROM dbo.orders"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:29:43+00:00",
+              "start": "2026-11-19T21:29:43+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "total_rows",
+              "failed_rows",
+              "null_status_rows",
+              "failed_pct"
+            ],
+            "content": [
+              {
+                "failed_pct": "30",
+                "total_rows": 240,
+                "failed_rows": 72,
+                "null_status_rows": 0
+              }
+            ],
+            "dialect": "mssql",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "rows_shown": 1,
+            "evidence_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+            "observed_at": "2026-11-20T21:29:48.195602+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "omitted_rows": 0,
+            "operation_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0",
+            "result_count": 1,
+            "rows_omitted": 0,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+            "dispatch_started_at": "2026-11-20T21:29:48.157141+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "backend_rows_returned": 1,
+            "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042"
+          }
+        }
+      },
+      {
+        "evidence_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+        "resolvable": true,
+        "tool": "database_sql_list_tables",
+        "status": "ok",
+        "stored": {
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "subject_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_list_tables",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-20T21:29:43Z."
+            ],
+            "query": {},
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:29:43+00:00",
+              "start": "2026-11-19T21:29:43+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "orders",
+                "type": "table",
+                "schema": "dbo"
+              }
+            ],
+            "dialect": "mssql",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+            "observed_at": "2026-11-20T21:29:45.242773+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "omitted_rows": 0,
+            "operation_id": "e32552c9-611e-4952-884c-2372323b00e5-t0",
+            "result_count": 1,
+            "tables_shown": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "tables_omitted": 0,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "87e6813a17c70ce2b7312d9f011cc0041a7b49752d4c06858b364feb9f0964c9",
+            "dispatch_started_at": "2026-11-20T21:29:45.176910+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "3a94781588189e3c423563117c83a13f702c3b02a1b8b91f312baf45acb41042",
+            "backend_tables_returned": 1
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "6ef0caf5-934e-5409-87e3-36594c3f0187",
+      "entries": [
+        {
+          "recorded_at": "2026-11-20T21:29:43.698490+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:43.698490+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:1",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:44.309860+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:45.164199+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:e32552c9-611e-4952-884c-2372323b00e5",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:45.168188+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:45.285985+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "operation_id": "e32552c9-611e-4952-884c-2372323b00e5-t0",
+            "epoch": 1,
+            "tool": "database_sql_list_tables",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:45.285985+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:45.285985+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.432257+00:00",
+          "sequence": 8,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:06f12f01-6b47-4090-a3b1-1a7d7292baee",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.436735+00:00",
+          "sequence": 9,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.532963+00:00",
+          "sequence": 10,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "37f25462-24d1-44d7-a0bc-eb29172909d7",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1",
+            "epoch": 1,
+            "tool": "database_sql_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.532963+00:00",
+          "sequence": 11,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.532963+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.597667+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "ee123107-3a56-4aba-bc41-c7663e7cefe0",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "operation_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0",
+            "epoch": 1,
+            "tool": "database_sql_describe_table",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.597667+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:46.597667+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:48.144360+00:00",
+          "sequence": 16,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:48.149277+00:00",
+          "sequence": 17,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:48.221453+00:00",
+          "sequence": 18,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "571e79c8-1170-47c8-8180-f8e8853a27cb",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "operation_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0",
+            "epoch": 1,
+            "tool": "database_sql_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:48.221453+00:00",
+          "sequence": 19,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:48.221453+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:53.573675+00:00",
+          "sequence": 21,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:b4e074e7-7947-48e5-97f7-713950612803",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:53.577310+00:00",
+          "sequence": 22,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:53.591047+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:29:53.591047+00:00",
+          "sequence": 24,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a:11",
+          "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 11
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 4,
+        "evidence": 4,
+        "state_change": 13,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "fd52586d-4a28-5cea-889f-d7fbb2296a3a",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "e32552c9-611e-4952-884c-2372323b00e5-t0:b53a2725-d3f8-4a68-8dd4-c231ef77dd6e",
+        "06f12f01-6b47-4090-a3b1-1a7d7292baee-t0:ee123107-3a56-4aba-bc41-c7663e7cefe0",
+        "06f12f01-6b47-4090-a3b1-1a7d7292baee-t1:37f25462-24d1-44d7-a0bc-eb29172909d7",
+        "d48fa55c-eabc-4ab0-b0fb-d2cbc9972a2f-t0:571e79c8-1170-47c8-8180-f8e8853a27cb"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-20T21:30:42.162581+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-rental-d-20261120",
+    "project_id": "2b708f6c-a76b-4e3d-ba2a-95526eab6790",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-4214-feb94a9ce645",
+        "start_time": "2026-11-20T21:29:44.310820+00:00",
+        "end_time": "2026-11-20T21:29:53.591893+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/2b708f6c-a76b-4e3d-ba2a-95526eab6790/r/00000000-0000-0000-4214-feb94a9ce645?poll=true"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "c990e7822e0da4167c760623525b22e5bffdd186bda5f0cce37f10cbe459aee2",
+    "bytes": 100196,
+    "path": "tmp/lab-ledgers/lane-d-sql-mssql/fd52586d-4a28-5cea-889f-d7fbb2296a3a/ledger.json",
+    "in_repository": false
+  }
+}

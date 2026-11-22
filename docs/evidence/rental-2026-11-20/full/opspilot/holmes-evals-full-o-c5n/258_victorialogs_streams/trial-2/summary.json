@@ -1,0 +1,770 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-c5n",
+  "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+  "frozen_at": "2026-11-21T06:46:11.719232+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+    "incident_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 2,
+      "deadline": "2026-11-21T08:45:59.701426+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "Which services have logs in the 'app-258' namespace in VictoriaLogs in the last 5 minutes? List them by name.",
+      "authorized_window": {
+        "end": "2026-11-21T06:45:59+00:00",
+        "start": "2026-11-20T06:45:59+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+      "target_id": "d9073bcf-f696-48ff-bfdf-9fbaed12cf79",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+      "created_at": "2026-11-21T06:45:59.723373+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-840df01f3bce",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "VictoriaLogs returned three log streams in the 'app-258' namespace for the window 2026-11-21T06:40:59Z to 2026-11-21T06:45:59Z (the last 5 minutes before the authorized window end). The services with logs are checkout-258, inventory-258 and shipping-258. Each stream had 2 matching log entries. This only establishes which streams have entries in that window; log content and service health were not assessed.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "In the window 2026-11-21T06:40:59Z to 2026-11-21T06:45:59Z, VictoriaLogs listed exactly three log streams in namespace app-258, each with 2 hits: {namespace=\"app-258\",service=\"checkout-258\"}, {namespace=\"app-258\",service=\"inventory-258\"} and {namespace=\"app-258\",service=\"shipping-258\"}.",
+          "evidence_ids": [
+            "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The streams query was not truncated: limit was 100, 3 streams were returned, streams_omitted was 0 and incomplete was false for that query.",
+          "evidence_ids": [
+            "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "The stream listing shows only which streams have entries in the window; the content of those log entries, their severity, and the health of checkout-258, inventory-258 and shipping-258 were not examined, so nothing about their correctness or availability is established.",
+        "Log retention and ingest delay could leave gaps in the window; entries outside the queried 5-minute window (2026-11-21T06:40:59Z to 06:45:59Z) were not checked."
+      ],
+      "next_steps": [
+        "If log content or error information is needed, query VictoriaLogs with queries scoped to {namespace=\"app-258\",service=\"checkout-258\"}, {namespace=\"app-258\",service=\"inventory-258\"} and {namespace=\"app-258\",service=\"shipping-258\"} over the same window."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 2,
+      "logical_key": "conclusion:g0:ctx0:round-2",
+      "status": "response_committed",
+      "observed_at": "2026-11-21T06:46:05.754429+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-21T06:46:02.179621+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "response_committed",
+        "observed_at": "2026-11-21T06:46:05.744990+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "conclusion:g0:ctx0:round-2",
+        "status": "response_committed",
+        "observed_at": "2026-11-21T06:46:05.754429+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 2,
+      "prompt_tokens": 33944,
+      "completion_tokens": 827,
+      "total_tokens": 34771,
+      "prompt_cache_hit_tokens": 32896,
+      "prompt_cache_miss_tokens": 1048
+    },
+    "tool_requests": [
+      {
+        "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+        "operation_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0",
+        "epoch": 1,
+        "tool": "victorialogs_streams",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+        "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+        "status": "ok",
+        "adopted": true,
+        "tool": "victorialogs_streams",
+        "tool_version": "v1",
+        "registry_revision": "2a383b119f2d0059f1b36cb074d346c3aa6c98493c5607cb577dcb9b58bca68b",
+        "tool_registry_revision": "216d9e5c96914a4be8c1a04c3c7c04738418b460858caa88af68ba957447eef9",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "end": "2026-11-21T06:45:59Z",
+          "limit": 100,
+          "query": "{namespace=\"app-258\"}",
+          "start": "2026-11-21T06:40:59Z"
+        },
+        "window": {
+          "end": "2026-11-21T06:45:59+00:00",
+          "start": "2026-11-21T06:40:59+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-21T06:46:02.212979+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+      "observations": [
+        {
+          "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "status": "ok",
+          "adopted": true,
+          "tool": "victorialogs_streams",
+          "tool_version": "v1",
+          "registry_revision": "2a383b119f2d0059f1b36cb074d346c3aa6c98493c5607cb577dcb9b58bca68b",
+          "tool_registry_revision": "216d9e5c96914a4be8c1a04c3c7c04738418b460858caa88af68ba957447eef9",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "end": "2026-11-21T06:45:59Z",
+            "limit": 100,
+            "query": "{namespace=\"app-258\"}",
+            "start": "2026-11-21T06:40:59Z"
+          },
+          "window": {
+            "end": "2026-11-21T06:45:59+00:00",
+            "start": "2026-11-21T06:40:59+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-21T06:46:02.212979+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "claims": {
+            "fact": [
+              {
+                "text": "In the window 2026-11-21T06:40:59Z to 2026-11-21T06:45:59Z, VictoriaLogs listed exactly three log streams in namespace app-258, each with 2 hits: {namespace=\"app-258\",service=\"checkout-258\"}, {namespace=\"app-258\",service=\"inventory-258\"} and {namespace=\"app-258\",service=\"shipping-258\"}.",
+                "evidence": [
+                  {
+                    "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The streams query was not truncated: limit was 100, 3 streams were returned, streams_omitted was 0 and incomplete was false for that query.",
+                "evidence": [
+                  {
+                    "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [],
+            "recommendation": [],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "victorialogs",
+              "ok": 1,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+        "resolvable": true,
+        "tool": "victorialogs_streams",
+        "status": "ok",
+        "stored": {
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "subject_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+          "status": "ok",
+          "view": {
+            "tool": "victorialogs_streams",
+            "limit": 100,
+            "notes": [
+              "The tool limited the query to the window 2026-11-21T06:40:59Z to 2026-11-21T06:45:59Z; this filter cannot be turned off."
+            ],
+            "query": {
+              "end": "2026-11-21T06:45:59Z",
+              "limit": 100,
+              "query": "{namespace=\"app-258\"}",
+              "start": "2026-11-21T06:40:59Z"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-21T06:45:59+00:00",
+              "start": "2026-11-21T06:40:59+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "hits": 2,
+                "stream": "{namespace=\"app-258\",service=\"checkout-258\"}"
+              },
+              {
+                "hits": 2,
+                "stream": "{namespace=\"app-258\",service=\"inventory-258\"}"
+              },
+              {
+                "hits": 2,
+                "stream": "{namespace=\"app-258\",service=\"shipping-258\"}"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+            "observed_at": "2026-11-21T06:46:02.212979+00:00",
+            "cannot_prove": "This only says which streams, fields, values or counts exist in this window; it does not show the content of any log entry. Retention and ingest delay can leave gaps.",
+            "omitted_rows": 0,
+            "operation_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0",
+            "result_count": 3,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": "2026-11-21T06:45:59+00:00",
+            "streams_shown": 3,
+            "returned_count": 3,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": "2026-11-21T06:40:59+00:00",
+            "streams_omitted": 0,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "2a383b119f2d0059f1b36cb074d346c3aa6c98493c5607cb577dcb9b58bca68b",
+            "dispatch_started_at": "2026-11-21T06:46:02.192828+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "216d9e5c96914a4be8c1a04c3c7c04738418b460858caa88af68ba957447eef9",
+            "backend_streams_returned": 3
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+      "entries": [
+        {
+          "recorded_at": "2026-11-21T06:45:59.733680+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:45:59.733680+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2:1",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:00.554876+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:02.179621+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2:ddbfe1b6-7a06-4656-aaf1-8af054859f3d",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:02.185263+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:02.244627+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "818e6b54-e82d-4155-aa39-8e3e92598776",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "operation_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0",
+            "epoch": 1,
+            "tool": "victorialogs_streams",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:02.244627+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:02.244627+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:05.744990+00:00",
+          "sequence": 8,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2:287e2e57-ff1b-4bc2-868e-d5c2ca3f0b5c",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:05.749279+00:00",
+          "sequence": 9,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:05.766507+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T06:46:05.766507+00:00",
+          "sequence": 11,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2:6",
+          "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 6
+          }
+        }
+      ],
+      "counts": {
+        "input": 2,
+        "query": 1,
+        "evidence": 1,
+        "state_change": 8,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "ddbfe1b6-7a06-4656-aaf1-8af054859f3d-t0:818e6b54-e82d-4155-aa39-8e3e92598776"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-21T06:46:10.145577+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-c5n",
+    "project_id": "fffa42c2-c0ea-46a0-aa6f-7cbe3959aa82",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-4a63-0d28149af214",
+        "start_time": "2026-11-21T06:46:00.555842+00:00",
+        "end_time": "2026-11-21T06:46:05.767524+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/fffa42c2-c0ea-46a0-aa6f-7cbe3959aa82/r/00000000-0000-0000-4a63-0d28149af214?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-c5n",
+    "qid": "258_victorialogs_streams",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 2,
+    "chance": 1,
+    "git": {
+      "commit": "8b912caa834e8819a550d30b4c3d36330a5a0a92",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 35010,
+      "web": 35080,
+      "es": 35092,
+      "prometheus": 35090,
+      "jaeger_query": 35086,
+      "k8s": 35043,
+      "loki_gateway": 35031,
+      "loki_fake": 35032,
+      "victorialogs_gateway": 35033,
+      "victorialogs": 35028
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T06:45:48.592946+00:00",
+        "ended_at": "2026-11-21T06:45:48.596013+00:00",
+        "seconds": 0.003,
+        "log_sha256": "76de0875b23a971a937d018db4eb24e57b24aa69daead07205465dd1eb7460e9",
+        "skipped": false
+      },
+      "released": {
+        "before": {
+          "namespace": null,
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        },
+        "after": {
+          "namespace": null,
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        }
+      },
+      "purged": {
+        "before": [],
+        "after": []
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T06:45:48.596292+00:00",
+        "ended_at": "2026-11-21T06:45:51.719237+00:00",
+        "seconds": 3.123,
+        "log_sha256": "b8c5ebf08071feba5c7495122a88a53939016be166f72447903e785f80734055",
+        "skipped": false
+      },
+      "ended_at": "2026-11-21T06:45:51.719552+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T06:46:10.212033+00:00",
+        "ended_at": "2026-11-21T06:46:10.216314+00:00",
+        "seconds": 0.004,
+        "log_sha256": "76de0875b23a971a937d018db4eb24e57b24aa69daead07205465dd1eb7460e9",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": false,
+      "reason": "RELATIVE_TIME",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "question_rewrites": [],
+      "time_only_phrases": 0,
+      "backend": "victorialogs",
+      "anchor_source": null,
+      "fixed_entries": 0,
+      "pushed": 0,
+      "dropped_future": 0,
+      "line_stamps_rewritten": 0,
+      "streams": []
+    },
+    "shift_timing": {
+      "started_at": "2026-11-21T06:45:51.719552+00:00",
+      "ended_at": "2026-11-21T06:45:51.719608+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "cbd13b3bb3716f43c50fea5d704a2564817d79eb75510998f050f867e8010fc7",
+      "sha256_delivered": "cbd13b3bb3716f43c50fea5d704a2564817d79eb75510998f050f867e8010fc7",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "K8S_TOOLS_UPSTREAM_DISABLED"
+    ],
+    "data_plane": {
+      "backend": "victorialogs",
+      "mode": "docker",
+      "product_url": "http://127.0.0.1:35033",
+      "gateway_upstream": "127.0.0.1:35028",
+      "port_forwards": [],
+      "victorialogs_image": "victoriametrics/victoria-logs@sha256:ee4e820cac3721f5f5d91641b950c22439593adc4224f9655e5333d5a84c1dfe"
+    },
+    "delivery": {
+      "at": "2026-11-21T06:45:59.627006+00:00",
+      "setup_to_delivery_seconds": 7.907,
+      "data_written_to_delivery_seconds": 11.031,
+      "status": 201,
+      "code": null,
+      "incident_id": "8a5e81ea-5159-59e4-ad5f-e4b1c1ea792b",
+      "run_id": "f6d242f0-50c9-5994-a74d-4cb54880d0b2",
+      "idempotency_label": "holmes-full-o-c5n-258_victorialogs_streams-t2-c1",
+      "responded_at": "2026-11-21T06:45:59.737784+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 10.034
+    },
+    "conversion": {
+      "with_tool_calls": true,
+      "tool_calls": 1,
+      "tool_calls_sha256": "af07eadd7f0eff281debcebda78c1d4edfe4a6afdd2316dbc6d370be561333a9",
+      "deshift_count": 0,
+      "reason": null,
+      "text_sha256": "d7872371418b2313b53357445bf7cb9c63415c8aab697bb278413a06c1318b8f"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "A",
+      "passed": true,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 5845
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "a79ce0bc2d4595e533c8d22b7fc8e5370a190666a5ddfb6bc63b3d2ff4b05322",
+    "bytes": 88895,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-c5n/f6d242f0-50c9-5994-a74d-4cb54880d0b2/ledger.json",
+    "in_repository": false
+  }
+}

@@ -1,0 +1,3 @@
+loki_readonly_gateway: gateway opspilot-loki-gateway on 127.0.0.1:29532 -> 127.0.0.1:29531; account opspilot-investigator; settings written to /home/opspilot/production-ops-agent/tmp/sregym-lite/full/loki-readonly.env (mode 600)
+{"seq": 6, "trial": 1, "status": "completed", "category": "ok"}
+loki_readonly_gateway: removed opspilot-loki-gateway

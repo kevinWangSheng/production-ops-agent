@@ -118,6 +118,18 @@ condition = "AND"
 paths = ['(^|/)tests/test_311_source_errors_impl\\.py$']
 regexTarget = "secret"
 regexes = ['^tok-311-abcdefghijkl$']
+[[rules.allowlists]]
+description = "valkey image tag in the 2026-11-20 rental SREGym evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-20/full/sregym/sregym-lite-full/p[0-9]+/trial-[0-9]+/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^9\\.0\\.1-alpine3\\.23$']
+[[rules.allowlists]]
+description = "idempotency label in the 2026-11-20 rental SREGym smoke evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-20/cp2/sregym/sregym-lite-cp2-smoke/p10/trial-1/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^sregym-cp2-smoke-p10-t1$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"

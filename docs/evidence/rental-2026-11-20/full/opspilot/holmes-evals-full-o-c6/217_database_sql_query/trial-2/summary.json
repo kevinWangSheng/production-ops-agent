@@ -1,0 +1,1267 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-c6",
+  "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+  "frozen_at": "2026-11-21T08:30:11.004016+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+    "incident_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-21T10:29:41.344331+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "List the tables in the database, then look at the holmes_eval_217 table and tell me the verification code stored in it.",
+      "authorized_window": {
+        "end": "2026-11-21T08:29:41+00:00",
+        "start": "2026-11-20T08:29:41+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+      "target_id": "c5b2438c-72ac-4a6e-82f1-155e8e85aeb2",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+      "created_at": "2026-11-21T08:29:41.367032+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-be3a9913af82",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "The configured PostgreSQL database (target m0-otel-20260909, source otel-demo) contains a single user table, public.holmes_eval_217, with columns id, category, verification_code and created_at. One row was returned by the query: id=1, category='eval_test', verification_code='HOLMES-DB-EVAL-217-q8x3m7', created_at 2026-11-21T08:29:32.172483, so the verification code stored in the table is HOLMES-DB-EVAL-217-q8x3m7. Values are reported as the database returned them at query time (about 2026-11-21T08:29:44Z-08:29:47Z), not as they stood during the earlier incident window.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "The only table listed in the configured PostgreSQL database is public.holmes_eval_217 (type table); no other tables or views were returned.",
+          "evidence_ids": [
+            "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Table public.holmes_eval_217 has four columns: id (integer, primary key, not null, default nextval('holmes_eval_217_id_seq')), category (text, not null), verification_code (text, not null), created_at (timestamp without time zone, nullable, default now()); it has the unique btree index holmes_eval_217_pkey on id and no foreign keys.",
+          "evidence_ids": [
+            "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "SELECT id, category, verification_code, created_at FROM holmes_eval_217 ORDER BY id LIMIT 100 returned exactly one row: id=1, category='eval_test', verification_code='HOLMES-DB-EVAL-217-q8x3m7', created_at 2026-11-21T08:29:32.172483. The verification code stored in the table is therefore HOLMES-DB-EVAL-217-q8x3m7.",
+          "evidence_ids": [
+            "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "The table contents are the database state at query time (observed approximately 2026-11-21T08:29:46Z); the tools cannot show what the table held earlier, so the value is not verified for the earlier portion of the authorized window.",
+        "The read-only account may not see rows it lacks privileges on beyond the one row returned, so the presence of additional rows is unknown rather than proven absent."
+      ],
+      "next_steps": [
+        "If historical values are required, capture verification_code values on a schedule or from an archival/backup source, since this tool only reads current state.",
+        "If row-level completeness matters, confirm the read-only account's grants on public.holmes_eval_217."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-21T08:29:52.110555+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-21T08:29:44.001669+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-21T08:29:45.313602+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-21T08:29:46.891842+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-21T08:29:52.102370+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-21T08:29:52.110555+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 59388,
+      "completion_tokens": 1054,
+      "total_tokens": 60442,
+      "prompt_cache_hit_tokens": 56960,
+      "prompt_cache_miss_tokens": 2428
+    },
+    "tool_requests": [
+      {
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "operation_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0",
+        "epoch": 1,
+        "tool": "database_sql_list_tables",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "operation_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0",
+        "epoch": 1,
+        "tool": "database_sql_describe_table",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "operation_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0",
+        "epoch": 1,
+        "tool": "database_sql_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_list_tables",
+        "tool_version": "v1",
+        "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+        "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {},
+        "window": {
+          "end": "2026-11-21T08:29:41+00:00",
+          "start": "2026-11-20T08:29:41+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-21T08:29:44.057598+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_describe_table",
+        "tool_version": "v1",
+        "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+        "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "table_name": "holmes_eval_217"
+        },
+        "window": {
+          "end": "2026-11-21T08:29:41+00:00",
+          "start": "2026-11-20T08:29:41+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-21T08:29:45.453855+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+        "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+        "status": "ok",
+        "adopted": true,
+        "tool": "database_sql_query",
+        "tool_version": "v1",
+        "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+        "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "sql": "SELECT id, category, verification_code, created_at FROM holmes_eval_217 ORDER BY id LIMIT 100"
+        },
+        "window": {
+          "end": "2026-11-21T08:29:41+00:00",
+          "start": "2026-11-20T08:29:41+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-21T08:29:46.945976+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+      "observations": [
+        {
+          "evidence_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_list_tables",
+          "tool_version": "v1",
+          "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+          "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {},
+          "window": {
+            "end": "2026-11-21T08:29:41+00:00",
+            "start": "2026-11-20T08:29:41+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-21T08:29:44.057598+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_describe_table",
+          "tool_version": "v1",
+          "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+          "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "table_name": "holmes_eval_217"
+          },
+          "window": {
+            "end": "2026-11-21T08:29:41+00:00",
+            "start": "2026-11-20T08:29:41+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-21T08:29:45.453855+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "status": "ok",
+          "adopted": true,
+          "tool": "database_sql_query",
+          "tool_version": "v1",
+          "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+          "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "sql": "SELECT id, category, verification_code, created_at FROM holmes_eval_217 ORDER BY id LIMIT 100"
+          },
+          "window": {
+            "end": "2026-11-21T08:29:41+00:00",
+            "start": "2026-11-20T08:29:41+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-21T08:29:46.945976+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "claims": {
+            "fact": [
+              {
+                "text": "The only table listed in the configured PostgreSQL database is public.holmes_eval_217 (type table); no other tables or views were returned.",
+                "evidence": [
+                  {
+                    "evidence_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Table public.holmes_eval_217 has four columns: id (integer, primary key, not null, default nextval('holmes_eval_217_id_seq')), category (text, not null), verification_code (text, not null), created_at (timestamp without time zone, nullable, default now()); it has the unique btree index holmes_eval_217_pkey on id and no foreign keys.",
+                "evidence": [
+                  {
+                    "evidence_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "SELECT id, category, verification_code, created_at FROM holmes_eval_217 ORDER BY id LIMIT 100 returned exactly one row: id=1, category='eval_test', verification_code='HOLMES-DB-EVAL-217-q8x3m7', created_at 2026-11-21T08:29:32.172483. The verification code stored in the table is therefore HOLMES-DB-EVAL-217-q8x3m7.",
+                "evidence": [
+                  {
+                    "evidence_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [],
+            "recommendation": [],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "sql",
+              "ok": 3,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+        "resolvable": true,
+        "tool": "database_sql_list_tables",
+        "status": "ok",
+        "stored": {
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "subject_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_list_tables",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-21T08:29:41Z."
+            ],
+            "query": {},
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-21T08:29:41+00:00",
+              "start": "2026-11-20T08:29:41+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "holmes_eval_217",
+                "type": "table",
+                "schema": "public"
+              }
+            ],
+            "dialect": "postgresql",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+            "observed_at": "2026-11-21T08:29:44.057598+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "omitted_rows": 0,
+            "operation_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0",
+            "result_count": 1,
+            "tables_shown": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "tables_omitted": 0,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+            "dispatch_started_at": "2026-11-21T08:29:44.013864+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+            "backend_tables_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+        "resolvable": true,
+        "tool": "database_sql_describe_table",
+        "status": "ok",
+        "stored": {
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "subject_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_describe_table",
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-21T08:29:41Z."
+            ],
+            "query": {
+              "table_name": "holmes_eval_217"
+            },
+            "table": "holmes_eval_217",
+            "trust": "untrusted-evidence",
+            "schema": "public",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-21T08:29:41+00:00",
+              "start": "2026-11-20T08:29:41+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "id",
+                "type": "integer",
+                "default": "nextval('holmes_eval_217_id_seq'::regclass)",
+                "ordinal": 1,
+                "nullable": false
+              },
+              {
+                "name": "category",
+                "type": "text",
+                "default": null,
+                "ordinal": 2,
+                "nullable": false
+              },
+              {
+                "name": "verification_code",
+                "type": "text",
+                "default": null,
+                "ordinal": 3,
+                "nullable": false
+              },
+              {
+                "name": "created_at",
+                "type": "timestamp without time zone",
+                "default": "now()",
+                "ordinal": 4,
+                "nullable": true
+              }
+            ],
+            "dialect": "postgresql",
+            "indexes": [
+              {
+                "name": "holmes_eval_217_pkey",
+                "unique": true,
+                "columns": [
+                  "id"
+                ],
+                "primary": true,
+                "definition": "CREATE UNIQUE INDEX holmes_eval_217_pkey ON public.holmes_eval_217 USING btree (id)"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+            "observed_at": "2026-11-21T08:29:45.453855+00:00",
+            "primary_key": [
+              "id"
+            ],
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "foreign_keys": [],
+            "omitted_rows": 0,
+            "operation_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0",
+            "result_count": 4,
+            "tool_version": "v1",
+            "columns_shown": 4,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "columns_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+            "dispatch_started_at": "2026-11-21T08:29:45.324984+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce",
+            "backend_columns_returned": 4
+          }
+        }
+      },
+      {
+        "evidence_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+        "resolvable": true,
+        "tool": "database_sql_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "subject_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+          "status": "ok",
+          "view": {
+            "tool": "database_sql_query",
+            "limit": 100,
+            "notes": [
+              "Read at query time (this call's observed time): the database as it is now, not as it was in the authorized window ending 2026-11-21T08:29:41Z."
+            ],
+            "query": {
+              "sql": "SELECT id, category, verification_code, created_at FROM holmes_eval_217 ORDER BY id LIMIT 100"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-21T08:29:41+00:00",
+              "start": "2026-11-20T08:29:41+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "id",
+              "category",
+              "verification_code",
+              "created_at"
+            ],
+            "content": [
+              {
+                "id": 1,
+                "category": "eval_test",
+                "created_at": "2026-11-21T08:29:32.172483",
+                "verification_code": "HOLMES-DB-EVAL-217-q8x3m7"
+              }
+            ],
+            "dialect": "postgresql",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "rows_shown": 1,
+            "evidence_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+            "observed_at": "2026-11-21T08:29:46.945976+00:00",
+            "cannot_prove": "This is the database as it is at query time, not its state during the incident window: rows may have changed since. A row that is not returned may lie past limit, or be invisible to the read-only account. Values are redacted by column name only; a secret under an alias or a bare secret value is not recognised.",
+            "omitted_rows": 0,
+            "operation_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0",
+            "result_count": 1,
+            "rows_omitted": 0,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "long_values_cut": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "0feedfdc29c9430feb77f355b2f27585f4bdd398fc8a862ae31157ad9d5eb228",
+            "dispatch_started_at": "2026-11-21T08:29:46.902189+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "backend_rows_returned": 1,
+            "tool_registry_revision": "a0670305a864a0e72e9fae68d14ec7bd370541294119f64225a9aaa5c90e8dce"
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+      "entries": [
+        {
+          "recorded_at": "2026-11-21T08:29:41.378474+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:41.378474+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:1",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:42.190354+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:44.001669+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:6ce7c825-7923-47a2-bb5d-adf246ed064e",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:44.006997+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:44.084296+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "600b146f-48cf-4d4b-9856-490d66faf72a",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "operation_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0",
+            "epoch": 1,
+            "tool": "database_sql_list_tables",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:44.084296+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:44.084296+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:45.313602+00:00",
+          "sequence": 8,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:73a7f7ab-572f-480a-9624-cb72296bc056",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:45.318195+00:00",
+          "sequence": 9,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:45.485221+00:00",
+          "sequence": 10,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "3377275c-a761-4374-88f9-958dec75574c",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "operation_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0",
+            "epoch": 1,
+            "tool": "database_sql_describe_table",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:45.485221+00:00",
+          "sequence": 11,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:45.485221+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:46.891842+00:00",
+          "sequence": 13,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:a6d97a6c-ba94-4b94-895b-b97f11a0350a",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:46.895494+00:00",
+          "sequence": 14,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:46.971102+00:00",
+          "sequence": 15,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "operation_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0",
+            "epoch": 1,
+            "tool": "database_sql_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:46.971102+00:00",
+          "sequence": 16,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:46.971102+00:00",
+          "sequence": 17,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:52.102370+00:00",
+          "sequence": 18,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:89e2bc65-058e-48ae-a2ee-4a3e0e461558",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:52.106063+00:00",
+          "sequence": 19,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:52.122569+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-21T08:29:52.122569+00:00",
+          "sequence": 21,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4:10",
+          "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 10
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 3,
+        "evidence": 3,
+        "state_change": 12,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "6ce7c825-7923-47a2-bb5d-adf246ed064e-t0:600b146f-48cf-4d4b-9856-490d66faf72a",
+        "73a7f7ab-572f-480a-9624-cb72296bc056-t0:3377275c-a761-4374-88f9-958dec75574c",
+        "a6d97a6c-ba94-4b94-895b-b97f11a0350a-t0:28dfcd09-cc3d-40e4-9784-f72c133ae5d2"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-21T08:29:56.804158+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-c6",
+    "project_id": "6d407a03-a43e-4b71-87b6-c31a1078b5bd",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-04d7-1498c9096759",
+        "start_time": "2026-11-21T08:29:42.191203+00:00",
+        "end_time": "2026-11-21T08:29:52.123475+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/6d407a03-a43e-4b71-87b6-c31a1078b5bd/r/00000000-0000-0000-04d7-1498c9096759?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-c6",
+    "qid": "217_database_sql_query",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 2,
+    "chance": 1,
+    "git": {
+      "commit": "8b912caa834e8819a550d30b4c3d36330a5a0a92",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 35010,
+      "web": 35080,
+      "es": 35092,
+      "prometheus": 35090,
+      "jaeger_query": 35086,
+      "k8s": 35043,
+      "loki_gateway": 35031,
+      "loki_fake": 35032,
+      "victorialogs_gateway": 35033,
+      "victorialogs": 35028
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T08:29:18.820414+00:00",
+        "ended_at": "2026-11-21T08:29:18.935064+00:00",
+        "seconds": 0.115,
+        "log_sha256": "093787afc623aae52d7c5fc04b60bbef194c618739dfb209a330f4d3d42b142f",
+        "skipped": false
+      },
+      "released": {
+        "before": {
+          "namespace": "app-217",
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        },
+        "after": {
+          "namespace": "app-217",
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        }
+      },
+      "purged": {
+        "before": [],
+        "after": []
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T08:29:19.010265+00:00",
+        "ended_at": "2026-11-21T08:29:32.514109+00:00",
+        "seconds": 13.504,
+        "log_sha256": "093ffa14af863375cb6e0f1fdf86a42620045f885716cfb46cbd0923db5281c1",
+        "skipped": false
+      },
+      "ended_at": "2026-11-21T08:29:33.273348+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-21T08:29:56.881258+00:00",
+        "ended_at": "2026-11-21T08:29:56.996205+00:00",
+        "seconds": 0.115,
+        "log_sha256": "f8f1530109fb226248826c79653ae5c0264ec0106c07b9be4aaba92befcc89e6",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "db_account": {
+      "user": "opspilot_ro",
+      "grants": "C6-21:postgresql",
+      "precheck": "pass",
+      "provision_seconds": 0.257
+    },
+    "shift": {
+      "applied": false,
+      "reason": "NO_TIME_REFERENCE",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "question_rewrites": [],
+      "time_only_phrases": 0,
+      "backend": "sql",
+      "anchor_source": null,
+      "fixed_entries": 0,
+      "pushed": 0,
+      "dropped_future": 0,
+      "line_stamps_rewritten": 0,
+      "streams": []
+    },
+    "shift_timing": {
+      "started_at": "2026-11-21T08:29:33.273348+00:00",
+      "ended_at": "2026-11-21T08:29:33.273436+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "8074d9bd2dc55e6be6267a11b10dc3a7970105fc8e91effb8acf1e67d1870bc4",
+      "sha256_delivered": "8074d9bd2dc55e6be6267a11b10dc3a7970105fc8e91effb8acf1e67d1870bc4",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "K8S_SCOPE_DIFFERS",
+      "DB_READ_ONLY_ACCOUNT",
+      "DB_TOOL_SURFACE_DIFFERS"
+    ],
+    "data_plane": {
+      "backend": "sql",
+      "dialect": "postgresql",
+      "mode": "port-forward",
+      "product_url": "postgresql://127.0.0.1:10217/holmesdb",
+      "gateway_upstream": null,
+      "port_forwards": [
+        {
+          "namespace": "app-217",
+          "service": "postgres",
+          "local_port": 10217,
+          "remote_port": 5432
+        }
+      ],
+      "tls": "disable",
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-21T08:29:41.260038+00:00",
+      "setup_to_delivery_seconds": 7.987,
+      "data_written_to_delivery_seconds": 22.25,
+      "status": 201,
+      "code": null,
+      "incident_id": "24d023df-42ea-510d-a0b7-df9f5f44b3e6",
+      "run_id": "66afea5d-683e-5e63-82ee-48fcffcc64d4",
+      "idempotency_label": "holmes-full-o-c6-217_database_sql_query-t2-c1",
+      "responded_at": "2026-11-21T08:29:41.382602+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 15.048
+    },
+    "conversion": {
+      "with_tool_calls": true,
+      "tool_calls": 3,
+      "tool_calls_sha256": "d999d1dc7ca470df5ccfd7f1eab44267f7ac46e56877eb324e959d140f3f123b",
+      "deshift_count": 0,
+      "reason": null,
+      "text_sha256": "e56d24f9869dcbf9e78d275c3bfb6f277d1f884cec04aacadb02d510692ebaa5"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "A",
+      "passed": true,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 11850
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "5c8feef79d5758627cd4684540ecf82539b8842def21daa3938ab05a94810953",
+    "bytes": 93224,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-c6/66afea5d-683e-5e63-82ee-48fcffcc64d4/ledger.json",
+    "in_repository": false
+  }
+}

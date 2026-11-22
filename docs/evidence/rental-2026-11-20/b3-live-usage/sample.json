@@ -1,0 +1,969 @@
+{
+  "agree": true,
+  "b3": "live usage direct sampling (R8-21); no fault is asserted",
+  "comparison": {
+    "nodes": {
+      "mismatches": [],
+      "only_in_raw": [],
+      "only_in_tool": [],
+      "row_set_equal": true,
+      "rows_with_same_timestamp": 1
+    },
+    "pods": {
+      "mismatches": [],
+      "only_in_raw": [],
+      "only_in_tool": [],
+      "row_set_equal": true,
+      "rows_with_same_timestamp": 22
+    }
+  },
+  "kubectl_top": {
+    "nodes": "NAME                        CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   \nopspilot-m1-control-plane   393m         4%       5382Mi          16%         \n",
+    "pods": "NAME                                        CPU(cores)   MEMORY(bytes)   \nad-757d59f5dd-d4427                         3m           217Mi           \nalertmanager-0                              2m           16Mi            \ncart-549b8757d-zjgcd                        5m           71Mi            \ncheckout-6578865d87-5zx6n                   1m           10Mi            \ncurrency-6db8974b78-8g7s7                   2m           2Mi             \nemail-6cd97b67f9-nhnxc                      1m           48Mi            \nflagd-d6485586b-9t42n                       1m           26Mi            \nfrontend-6c9bc688bf-58jmw                   5m           100Mi           \nfrontend-proxy-844799bcdb-pv5mn             9m           15Mi            \nimage-provider-575d7b4846-9lxjv             1m           3Mi             \njaeger-698d849b7b-sjz9c                     4m           243Mi           \nkube-state-metrics-7cbf5b996-df4sz          1m           18Mi            \nload-generator-5ff476786d-xg5nz             4m           60Mi            \notel-collector-789c64b9bf-tl55c             11m          75Mi            \npayment-6f7bc865d6-9z92d                    1m           70Mi            \nproduct-catalog-777f5468d4-hc8rj            2m           10Mi            \nprometheus-9bc78b5f7-c9wx8                  5m           213Mi           \nprometheus-readonly-proxy-f4866f767-62bgn   1m           2Mi             \nquote-75774ddb4c-kpbqh                      1m           16Mi            \nrecommendation-9d497476-bxbjw               13m          40Mi            \nshipping-6fc5f694db-9sq2c                   1m           2Mi             \nvalkey-cart-d6456b5b6-5dlsx                 3m           3Mi             \n"
+  },
+  "metrics_server_image": "registry.k8s.io/metrics-server/metrics-server:v0.8.1@sha256:b2d2efaf5ac3b366ed0f839d2412a2c4279d4fc2a2a733f12c52133faed36c41",
+  "namespace": "otel-demo",
+  "raw": {
+    "/apis/metrics.k8s.io/v1beta1/namespaces/otel-demo/pods": {
+      "apiVersion": "metrics.k8s.io/v1beta1",
+      "items": [
+        {
+          "containers": [
+            {
+              "name": "ad",
+              "usage": {
+                "cpu": "2002541n",
+                "memory": "223044Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "ad",
+              "app.kubernetes.io/name": "ad",
+              "opentelemetry.io/name": "ad",
+              "pod-template-hash": "757d59f5dd"
+            },
+            "name": "ad-757d59f5dd-d4427",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:27Z",
+          "window": "26.755s"
+        },
+        {
+          "containers": [
+            {
+              "name": "alertmanager",
+              "usage": {
+                "cpu": "1703911n",
+                "memory": "16420Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/instance": "alertmanager",
+              "app.kubernetes.io/name": "alertmanager",
+              "apps.kubernetes.io/pod-index": "0",
+              "controller-revision-hash": "alertmanager-5d5d8bc5d6",
+              "statefulset.kubernetes.io/pod-name": "alertmanager-0"
+            },
+            "name": "alertmanager-0",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:42Z",
+          "window": "14.624s"
+        },
+        {
+          "containers": [
+            {
+              "name": "cart",
+              "usage": {
+                "cpu": "4599632n",
+                "memory": "72820Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "cart",
+              "app.kubernetes.io/name": "cart",
+              "opentelemetry.io/name": "cart",
+              "pod-template-hash": "549b8757d"
+            },
+            "name": "cart-549b8757d-zjgcd",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "10.87s"
+        },
+        {
+          "containers": [
+            {
+              "name": "checkout",
+              "usage": {
+                "cpu": "800679n",
+                "memory": "10688Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "checkout",
+              "app.kubernetes.io/name": "checkout",
+              "opentelemetry.io/name": "checkout",
+              "pod-template-hash": "6578865d87"
+            },
+            "name": "checkout-6578865d87-5zx6n",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:32Z",
+          "window": "14.123s"
+        },
+        {
+          "containers": [
+            {
+              "name": "currency",
+              "usage": {
+                "cpu": "1159239n",
+                "memory": "2916Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "currency",
+              "app.kubernetes.io/name": "currency",
+              "opentelemetry.io/name": "currency",
+              "pod-template-hash": "6db8974b78"
+            },
+            "name": "currency-6db8974b78-8g7s7",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:28Z",
+          "window": "14.789s"
+        },
+        {
+          "containers": [
+            {
+              "name": "email",
+              "usage": {
+                "cpu": "218528n",
+                "memory": "49548Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "email",
+              "app.kubernetes.io/name": "email",
+              "opentelemetry.io/name": "email",
+              "pod-template-hash": "6cd97b67f9"
+            },
+            "name": "email-6cd97b67f9-nhnxc",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:27Z",
+          "window": "32.522s"
+        },
+        {
+          "containers": [
+            {
+              "name": "flagd",
+              "usage": {
+                "cpu": "797476n",
+                "memory": "26652Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "flagd",
+              "app.kubernetes.io/name": "flagd",
+              "opentelemetry.io/name": "flagd",
+              "pod-template-hash": "d6485586b"
+            },
+            "name": "flagd-d6485586b-9t42n",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "18.067s"
+        },
+        {
+          "containers": [
+            {
+              "name": "frontend",
+              "usage": {
+                "cpu": "4908954n",
+                "memory": "102832Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "frontend",
+              "app.kubernetes.io/name": "frontend",
+              "opentelemetry.io/name": "frontend",
+              "pod-template-hash": "6c9bc688bf"
+            },
+            "name": "frontend-6c9bc688bf-58jmw",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:38Z",
+          "window": "12.686s"
+        },
+        {
+          "containers": [
+            {
+              "name": "frontend-proxy",
+              "usage": {
+                "cpu": "8231645n",
+                "memory": "15888Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "frontend-proxy",
+              "app.kubernetes.io/name": "frontend-proxy",
+              "opentelemetry.io/name": "frontend-proxy",
+              "pod-template-hash": "844799bcdb"
+            },
+            "name": "frontend-proxy-844799bcdb-pv5mn",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:41Z",
+          "window": "16.849s"
+        },
+        {
+          "containers": [
+            {
+              "name": "image-provider",
+              "usage": {
+                "cpu": "282201n",
+                "memory": "3308Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "image-provider",
+              "app.kubernetes.io/name": "image-provider",
+              "opentelemetry.io/name": "image-provider",
+              "pod-template-hash": "575d7b4846"
+            },
+            "name": "image-provider-575d7b4846-9lxjv",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "17.934s"
+        },
+        {
+          "containers": [
+            {
+              "name": "jaeger",
+              "usage": {
+                "cpu": "3028071n",
+                "memory": "249384Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "all-in-one",
+              "app.kubernetes.io/instance": "otel-demo",
+              "app.kubernetes.io/name": "jaeger",
+              "pod-template-hash": "698d849b7b"
+            },
+            "name": "jaeger-698d849b7b-sjz9c",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "16.921s"
+        },
+        {
+          "containers": [
+            {
+              "name": "kube-state-metrics",
+              "usage": {
+                "cpu": "491760n",
+                "memory": "19148Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "metrics",
+              "app.kubernetes.io/instance": "kube-state-metrics",
+              "app.kubernetes.io/managed-by": "Helm",
+              "app.kubernetes.io/name": "kube-state-metrics",
+              "app.kubernetes.io/part-of": "kube-state-metrics",
+              "app.kubernetes.io/version": "2.20.0",
+              "pod-template-hash": "7cbf5b996"
+            },
+            "name": "kube-state-metrics-7cbf5b996-df4sz",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:31Z",
+          "window": "14.2s"
+        },
+        {
+          "containers": [
+            {
+              "name": "load-generator",
+              "usage": {
+                "cpu": "3564542n",
+                "memory": "61812Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "load-generator",
+              "app.kubernetes.io/name": "load-generator",
+              "opentelemetry.io/name": "load-generator",
+              "pod-template-hash": "5ff476786d"
+            },
+            "name": "load-generator-5ff476786d-xg5nz",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "15.579s"
+        },
+        {
+          "containers": [
+            {
+              "name": "opentelemetry-collector",
+              "usage": {
+                "cpu": "10483630n",
+                "memory": "76932Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/instance": "otel-demo",
+              "app.kubernetes.io/name": "opentelemetry-collector",
+              "component": "standalone-collector",
+              "pod-template-hash": "789c64b9bf"
+            },
+            "name": "otel-collector-789c64b9bf-tl55c",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:33Z",
+          "window": "11.943s"
+        },
+        {
+          "containers": [
+            {
+              "name": "payment",
+              "usage": {
+                "cpu": "393489n",
+                "memory": "72700Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "payment",
+              "app.kubernetes.io/name": "payment",
+              "opentelemetry.io/name": "payment",
+              "pod-template-hash": "6f7bc865d6"
+            },
+            "name": "payment-6f7bc865d6-9z92d",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:34Z",
+          "window": "19.383s"
+        },
+        {
+          "containers": [
+            {
+              "name": "product-catalog",
+              "usage": {
+                "cpu": "1610506n",
+                "memory": "10344Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "product-catalog",
+              "app.kubernetes.io/name": "product-catalog",
+              "opentelemetry.io/name": "product-catalog",
+              "pod-template-hash": "777f5468d4"
+            },
+            "name": "product-catalog-777f5468d4-hc8rj",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:34Z",
+          "window": "11.764s"
+        },
+        {
+          "containers": [
+            {
+              "name": "prometheus-server",
+              "usage": {
+                "cpu": "4635473n",
+                "memory": "218888Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "server",
+              "app.kubernetes.io/instance": "otel-demo",
+              "app.kubernetes.io/name": "prometheus",
+              "app.kubernetes.io/part-of": "prometheus",
+              "app.kubernetes.io/version": "v3.5.0",
+              "helm.sh/chart": "prometheus-27.30.0",
+              "pod-template-hash": "9bc78b5f7"
+            },
+            "name": "prometheus-9bc78b5f7-c9wx8",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:41Z",
+          "window": "18.893s"
+        },
+        {
+          "containers": [
+            {
+              "name": "nginx",
+              "usage": {
+                "cpu": "56809n",
+                "memory": "2112Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app": "prometheus-readonly-proxy",
+              "pod-template-hash": "f4866f767"
+            },
+            "name": "prometheus-readonly-proxy-f4866f767-62bgn",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "21.757s"
+        },
+        {
+          "containers": [
+            {
+              "name": "quote",
+              "usage": {
+                "cpu": "302025n",
+                "memory": "16424Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "quote",
+              "app.kubernetes.io/name": "quote",
+              "opentelemetry.io/name": "quote",
+              "pod-template-hash": "75774ddb4c"
+            },
+            "name": "quote-75774ddb4c-kpbqh",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "30.802s"
+        },
+        {
+          "containers": [
+            {
+              "name": "recommendation",
+              "usage": {
+                "cpu": "12076594n",
+                "memory": "41772Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "recommendation",
+              "app.kubernetes.io/name": "recommendation",
+              "opentelemetry.io/name": "recommendation",
+              "pod-template-hash": "9d497476"
+            },
+            "name": "recommendation-9d497476-bxbjw",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "12.625s"
+        },
+        {
+          "containers": [
+            {
+              "name": "shipping",
+              "usage": {
+                "cpu": "282553n",
+                "memory": "2212Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "shipping",
+              "app.kubernetes.io/name": "shipping",
+              "opentelemetry.io/name": "shipping",
+              "pod-template-hash": "6fc5f694db"
+            },
+            "name": "shipping-6fc5f694db-9sq2c",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:30Z",
+          "window": "13.785s"
+        },
+        {
+          "containers": [
+            {
+              "name": "valkey-cart",
+              "usage": {
+                "cpu": "2323766n",
+                "memory": "3716Ki"
+              }
+            }
+          ],
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "app.kubernetes.io/component": "valkey-cart",
+              "app.kubernetes.io/name": "valkey-cart",
+              "opentelemetry.io/name": "valkey-cart",
+              "pod-template-hash": "d6456b5b6"
+            },
+            "name": "valkey-cart-d6456b5b6-5dlsx",
+            "namespace": "otel-demo"
+          },
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "12.299s"
+        }
+      ],
+      "kind": "PodMetricsList",
+      "metadata": {}
+    },
+    "/apis/metrics.k8s.io/v1beta1/nodes": {
+      "apiVersion": "metrics.k8s.io/v1beta1",
+      "items": [
+        {
+          "metadata": {
+            "creationTimestamp": "2026-11-20T21:22:48Z",
+            "labels": {
+              "beta.kubernetes.io/arch": "amd64",
+              "beta.kubernetes.io/os": "linux",
+              "kubernetes.io/arch": "amd64",
+              "kubernetes.io/hostname": "opspilot-m1-control-plane",
+              "kubernetes.io/os": "linux",
+              "node-role.kubernetes.io/control-plane": ""
+            },
+            "name": "opspilot-m1-control-plane"
+          },
+          "timestamp": "2026-11-20T21:22:40Z",
+          "usage": {
+            "cpu": "392987775n",
+            "memory": "5511940Ki"
+          },
+          "window": "20.123s"
+        }
+      ],
+      "kind": "NodeMetricsList",
+      "metadata": {}
+    }
+  },
+  "taken_at": "2026-11-20T21:22:48Z",
+  "tool": {
+    "kubectl_top_nodes": {
+      "rows": [
+        {
+          "cpu_millicores": 393,
+          "cpu_percent": 4,
+          "memory_bytes": 5644226560,
+          "memory_percent": 16,
+          "node": "opspilot-m1-control-plane",
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "20.123s"
+        }
+      ],
+      "view_fields": {
+        "cannot_prove": "This is usage at this moment, not usage during the incident window, and not a history (use Prometheus for change over time). A Pod missing from the result may have just started, ended or not been scraped yet; it is not proof the Pod is not running. High usage is not proof of throttling or OOM; requests and limits are in kubernetes_tabular_query.",
+        "notes": [
+          "Sampled at 2026-11-20T21:22:40Z\u20132026-11-20T21:22:40Z: current usage, 8 s before the end of the authorized window (2026-11-20T21:22:48Z)."
+        ],
+        "sampled_at": {
+          "earliest": "2026-11-20T21:22:40Z",
+          "latest": "2026-11-20T21:22:40Z"
+        }
+      }
+    },
+    "kubectl_top_pods": {
+      "rows": [
+        {
+          "containers": [
+            {
+              "cpu_millicores": 3,
+              "memory_bytes": 228397056,
+              "name": "ad"
+            }
+          ],
+          "cpu_millicores": 3,
+          "memory_bytes": 228397056,
+          "namespace": "otel-demo",
+          "pod": "ad-757d59f5dd-d4427",
+          "timestamp": "2026-11-20T21:22:27Z",
+          "window": "26.755s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 2,
+              "memory_bytes": 16814080,
+              "name": "alertmanager"
+            }
+          ],
+          "cpu_millicores": 2,
+          "memory_bytes": 16814080,
+          "namespace": "otel-demo",
+          "pod": "alertmanager-0",
+          "timestamp": "2026-11-20T21:22:42Z",
+          "window": "14.624s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 5,
+              "memory_bytes": 74567680,
+              "name": "cart"
+            }
+          ],
+          "cpu_millicores": 5,
+          "memory_bytes": 74567680,
+          "namespace": "otel-demo",
+          "pod": "cart-549b8757d-zjgcd",
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "10.87s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 10944512,
+              "name": "checkout"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 10944512,
+          "namespace": "otel-demo",
+          "pod": "checkout-6578865d87-5zx6n",
+          "timestamp": "2026-11-20T21:22:32Z",
+          "window": "14.123s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 2,
+              "memory_bytes": 2985984,
+              "name": "currency"
+            }
+          ],
+          "cpu_millicores": 2,
+          "memory_bytes": 2985984,
+          "namespace": "otel-demo",
+          "pod": "currency-6db8974b78-8g7s7",
+          "timestamp": "2026-11-20T21:22:28Z",
+          "window": "14.789s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 50737152,
+              "name": "email"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 50737152,
+          "namespace": "otel-demo",
+          "pod": "email-6cd97b67f9-nhnxc",
+          "timestamp": "2026-11-20T21:22:27Z",
+          "window": "32.522s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 27291648,
+              "name": "flagd"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 27291648,
+          "namespace": "otel-demo",
+          "pod": "flagd-d6485586b-9t42n",
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "18.067s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 5,
+              "memory_bytes": 105299968,
+              "name": "frontend"
+            }
+          ],
+          "cpu_millicores": 5,
+          "memory_bytes": 105299968,
+          "namespace": "otel-demo",
+          "pod": "frontend-6c9bc688bf-58jmw",
+          "timestamp": "2026-11-20T21:22:38Z",
+          "window": "12.686s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 9,
+              "memory_bytes": 16269312,
+              "name": "frontend-proxy"
+            }
+          ],
+          "cpu_millicores": 9,
+          "memory_bytes": 16269312,
+          "namespace": "otel-demo",
+          "pod": "frontend-proxy-844799bcdb-pv5mn",
+          "timestamp": "2026-11-20T21:22:41Z",
+          "window": "16.849s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 3387392,
+              "name": "image-provider"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 3387392,
+          "namespace": "otel-demo",
+          "pod": "image-provider-575d7b4846-9lxjv",
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "17.934s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 4,
+              "memory_bytes": 255369216,
+              "name": "jaeger"
+            }
+          ],
+          "cpu_millicores": 4,
+          "memory_bytes": 255369216,
+          "namespace": "otel-demo",
+          "pod": "jaeger-698d849b7b-sjz9c",
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "16.921s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 19607552,
+              "name": "kube-state-metrics"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 19607552,
+          "namespace": "otel-demo",
+          "pod": "kube-state-metrics-7cbf5b996-df4sz",
+          "timestamp": "2026-11-20T21:22:31Z",
+          "window": "14.2s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 4,
+              "memory_bytes": 63295488,
+              "name": "load-generator"
+            }
+          ],
+          "cpu_millicores": 4,
+          "memory_bytes": 63295488,
+          "namespace": "otel-demo",
+          "pod": "load-generator-5ff476786d-xg5nz",
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "15.579s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 11,
+              "memory_bytes": 78778368,
+              "name": "opentelemetry-collector"
+            }
+          ],
+          "cpu_millicores": 11,
+          "memory_bytes": 78778368,
+          "namespace": "otel-demo",
+          "pod": "otel-collector-789c64b9bf-tl55c",
+          "timestamp": "2026-11-20T21:22:33Z",
+          "window": "11.943s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 74444800,
+              "name": "payment"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 74444800,
+          "namespace": "otel-demo",
+          "pod": "payment-6f7bc865d6-9z92d",
+          "timestamp": "2026-11-20T21:22:34Z",
+          "window": "19.383s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 2,
+              "memory_bytes": 10592256,
+              "name": "product-catalog"
+            }
+          ],
+          "cpu_millicores": 2,
+          "memory_bytes": 10592256,
+          "namespace": "otel-demo",
+          "pod": "product-catalog-777f5468d4-hc8rj",
+          "timestamp": "2026-11-20T21:22:34Z",
+          "window": "11.764s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 5,
+              "memory_bytes": 224141312,
+              "name": "prometheus-server"
+            }
+          ],
+          "cpu_millicores": 5,
+          "memory_bytes": 224141312,
+          "namespace": "otel-demo",
+          "pod": "prometheus-9bc78b5f7-c9wx8",
+          "timestamp": "2026-11-20T21:22:41Z",
+          "window": "18.893s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 2162688,
+              "name": "nginx"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 2162688,
+          "namespace": "otel-demo",
+          "pod": "prometheus-readonly-proxy-f4866f767-62bgn",
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "21.757s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 16818176,
+              "name": "quote"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 16818176,
+          "namespace": "otel-demo",
+          "pod": "quote-75774ddb4c-kpbqh",
+          "timestamp": "2026-11-20T21:22:40Z",
+          "window": "30.802s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 13,
+              "memory_bytes": 42774528,
+              "name": "recommendation"
+            }
+          ],
+          "cpu_millicores": 13,
+          "memory_bytes": 42774528,
+          "namespace": "otel-demo",
+          "pod": "recommendation-9d497476-bxbjw",
+          "timestamp": "2026-11-20T21:22:37Z",
+          "window": "12.625s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 1,
+              "memory_bytes": 2265088,
+              "name": "shipping"
+            }
+          ],
+          "cpu_millicores": 1,
+          "memory_bytes": 2265088,
+          "namespace": "otel-demo",
+          "pod": "shipping-6fc5f694db-9sq2c",
+          "timestamp": "2026-11-20T21:22:30Z",
+          "window": "13.785s"
+        },
+        {
+          "containers": [
+            {
+              "cpu_millicores": 3,
+              "memory_bytes": 3805184,
+              "name": "valkey-cart"
+            }
+          ],
+          "cpu_millicores": 3,
+          "memory_bytes": 3805184,
+          "namespace": "otel-demo",
+          "pod": "valkey-cart-d6456b5b6-5dlsx",
+          "timestamp": "2026-11-20T21:22:35Z",
+          "window": "12.299s"
+        }
+      ],
+      "view_fields": {
+        "cannot_prove": "This is usage at this moment, not usage during the incident window, and not a history (use Prometheus for change over time). A Pod missing from the result may have just started, ended or not been scraped yet; it is not proof the Pod is not running. High usage is not proof of throttling or OOM; requests and limits are in kubernetes_tabular_query.",
+        "notes": [
+          "Sampled at 2026-11-20T21:22:27Z\u20132026-11-20T21:22:42Z: current usage, 21 s before the end of the authorized window (2026-11-20T21:22:48Z)."
+        ],
+        "sampled_at": {
+          "earliest": "2026-11-20T21:22:27Z",
+          "latest": "2026-11-20T21:22:42Z"
+        },
+        "scope": {
+          "all_namespaces": false,
+          "namespace": "otel-demo"
+        }
+      }
+    }
+  }
+}
