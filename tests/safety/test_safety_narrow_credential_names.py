@@ -6,8 +6,8 @@ annotations carry token counts, session settings, session credentials and
 ``imagePullSecrets``: counts (a bare number under a name ending in
 ``tokens``), session settings and the pull-Secret *name* reach the model;
 a non-numeric ``access_tokens`` value, session identifiers and every other
-field of an ``imagePullSecrets`` entry never do. Guarded by mutations M47
-and M48.
+field of an ``imagePullSecrets`` entry never do. Guarded by mutations
+M47-M50.
 """
 
 from __future__ import annotations
@@ -116,3 +116,30 @@ def test_a_count_name_whose_prefix_is_a_credential_name_stays_redacted():
             assert "5" not in redact_credentials(text), text
         assert redact_payload({name: 123456}) == {name: REDACTED_CREDENTIAL}, name
     assert redact_credentials("prompt_tokens: 5") == "prompt_tokens: 5"  # control
+
+
+def test_session_credential_words_and_code_tokens_stay_redacted():
+    """M49/M50: ``session`` before a word naming the session itself
+    (``session_jwt``, ``sessionStore``) is a credential, and a one-time or
+    refresh code count (``otp_tokens``, ``refreshTokens``) is not a count;
+    session status and ordinary counts stay visible."""
+    hidden = (
+        *("session_jwt", "session_ticket", "session_sid", "session_uuid"),
+        *("session_nonce", "session_hash", "session_value", "session_data"),
+        *("session_payload", "session_blob", "session_string", "session_bytes"),
+        *("sessionHandle", "sessionStore", "session_values"),
+        *("otp_tokens", "pin_tokens", "mfa_tokens", "passcode_tokens"),
+        *("refresh_tokens", "refreshTokens"),
+    )
+    for name in hidden:
+        for text in (f"{name}: 5", f'"{name}": 5'):
+            assert "5" not in redact_credentials(text), text
+        assert redact_payload({name: 5}) == {name: REDACTED_CREDENTIAL}, name
+    visible = (
+        *("stored_session_state", "replayed_session_state", "session_consistent"),
+        *("session_sustained", "session.max_samples", "session_purpose"),
+        *("prompt_tokens", "max_tokens", "view_tokens", "total_tokens"),
+        *("access_tokens", "api_tokens", "reasoning_tokens"),
+    )
+    for name in visible:
+        assert redact_credentials(f"{name}: 5") == f"{name}: 5", name

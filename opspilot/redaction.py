@@ -65,13 +65,21 @@ _AUTHENTICATION_SUBSTRINGS = (
 _AUTHENTICATION_TOKENS = frozenset(
     {"auth", "cert", "cookie", "p12", "pem", "pfx", "sessionid", "sessionids", "sig"}
 )
-# ``session`` names a credential only as a name's last word or before
-# ``id``/``key``/``cookie`` (#366, B1-U3 a; plurals too, so ``session_ids``
-# stays hidden): ``session``, ``session_id``, ``sessionKey`` are session
-# credentials; ``sessionAffinity``, ``SESSION_TIMEOUT``,
-# ``session_timeout_ms`` and ``ssoSessionIdleTimeout`` are configuration
-# about sessions.
-_SESSION_CREDENTIAL_NEXT = frozenset({"id", "ids", "key", "keys", "cookie", "cookies"})
+# ``session`` names a credential only as a name's last word or before a word
+# that names the session itself (#366, B1-U3 a, narrowed by the lead's
+# safe-direction additions): ``session``, ``session_id``, ``sessionKey``,
+# ``session_jwt``, ``sessionStore`` stay credentials; ``sessionAffinity``,
+# ``SESSION_TIMEOUT``, ``session_timeout_ms``, ``ssoSessionIdleTimeout`` and
+# ``stored_session_state`` are configuration or status about sessions.
+_SESSION_CREDENTIAL_NEXT = frozenset(
+    {
+        *("id", "key", "cookie", "jwt", "ticket", "sid", "uuid", "nonce"),
+        *("hash", "value", "blob", "string", "handle", "store", "payload"),
+        *("ids", "keys", "cookies", "jwts", "tickets", "sids", "uuids"),
+        *("nonces", "hashes", "values", "blobs", "strings", "handles"),
+        *("stores", "payloads", "data", "bytes"),
+    }
+)
 _WORDS = re.compile(r"[A-Za-z][a-z0-9]*|[0-9]+")
 
 
@@ -236,6 +244,7 @@ def _session_word(name: str) -> bool:
 # keeps its value. Only a bare number counts -- a quoted ``"12"``, a list or
 # any other text is still redacted (``access_tokens=abc``) -- and not when the
 # rest of the name is itself a credential word (``secret_tokens: 5``).
+_CODE_WORDS = frozenset({"otp", "pin", "mfa", "passcode", "refresh"})
 _COUNT_NUMBER = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
 
 
@@ -246,8 +255,12 @@ def _count_name(name: str) -> bool:
     if not name[:end].lower().endswith("tokens"):
         return False
     # The rest of the name, as spelled, by the same credential-name rule:
-    # ``auth_tokens``, ``session_tokens``, ``cookieTokens`` stay credentials.
-    return not _credential_name(name[: end - len("tokens")])
+    # ``auth_tokens``, ``session_tokens``, ``cookieTokens`` stay credentials;
+    # so do one-time and refresh codes (``otp_tokens``, ``refreshTokens``).
+    rest = name[: end - len("tokens")]
+    words = {word.lower() for word in _WORDS.findall(rest)}
+    words.update(part for part in re.split(r"[^a-z0-9]+", rest.lower()) if part)
+    return not (_credential_name(rest) or words & _CODE_WORDS)
 
 
 def _token_count(name: str, value: str) -> bool:

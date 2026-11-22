@@ -429,10 +429,27 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         "M48",
         "credentials: a *tokens name whose prefix is a credential name is not a count (#366)",
-        # Target: the prefix check in ``_count_name``. Mutated: every name
-        # ending in ``tokens`` is a count, so ``auth_tokens: 5`` is shown.
+        # Target: the prefix check in ``_count_name``. Mutated: the
+        # credential-name half is dropped, so ``auth_tokens: 5`` is shown.
         "opspilot/redaction.py",
-        '    return not _credential_name(name[: end - len("tokens")])\n',
-        "    return True\n",
+        "    return not (_credential_name(rest) or words & _CODE_WORDS)\n",
+        "    return not (words & _CODE_WORDS)\n",
+    ),
+    Mutation(
+        "M49",
+        "credentials: session before a word naming the session (jwt, store, ...) is a credential (#366)",
+        # Target: the words after ``session`` that keep a name a credential.
+        # Mutated: only the ruling's original id/key/cookie remain.
+        "opspilot/redaction.py",
+        '        *("id", "key", "cookie", "jwt", "ticket", "sid", "uuid", "nonce"),\n',
+        '        *("id", "key", "cookie"),\n',
+    ),
+    Mutation(
+        "M50",
+        "credentials: otp/pin/mfa/passcode/refresh *tokens values are not counts (#366)",
+        # Target: the code-word guard in ``_count_name``. Mutated: none.
+        "opspilot/redaction.py",
+        '_CODE_WORDS = frozenset({"otp", "pin", "mfa", "passcode", "refresh"})\n',
+        "_CODE_WORDS: frozenset[str] = frozenset()\n",
     ),
 )
