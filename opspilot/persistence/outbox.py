@@ -24,7 +24,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
-import os
 import re
 import threading
 import time
@@ -36,7 +35,7 @@ from uuid import UUID
 
 from psycopg.types.json import Jsonb
 
-from opspilot import __version__
+from opspilot import __version__, health
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 if TYPE_CHECKING:
@@ -266,10 +265,12 @@ def build_payload(fields: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def image_fields() -> dict[str, str]:
-    """This process's image version and revision (``opspilot_build_info``)."""
+    """This process's image version and revision (``opspilot_build_info``);
+    the revision goes through ``health._revision`` so an ill-formed value is
+    ``unknown`` here as on /metrics and in the logs (#443)."""
     return {
         "image_version": __version__,
-        "image_revision": os.environ.get("OPSPILOT_REVISION") or "unknown",
+        "image_revision": health._revision(),
     }
 
 
