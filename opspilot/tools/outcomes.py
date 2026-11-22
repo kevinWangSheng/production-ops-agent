@@ -67,7 +67,12 @@ __all__ = [
 # redacted, bounded errorType/error text), marked untrusted (#311).
 # v11: credential redaction also covers a URL authority still spelled with
 # JSON-escaped slashes, in prose and in JSON nested in a string (#319).
-PROJECTION_REVISION = "m1-01-tool-view-v11"
+# v12: catches up two changes that altered model-visible bytes without a
+# bump -- #710 (09bd4daf, credentials in JSON encoded inside a JSON string)
+# and #775 (a17887e0, secret reference names shown in pod specs). Shipped
+# with #365 (linear-time quoted-scalar redaction), which by itself changes
+# no output.
+PROJECTION_REVISION = "m1-01-tool-view-v12"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

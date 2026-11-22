@@ -168,7 +168,7 @@ _ESCAPED_AUTHORITY_USERINFO = re.compile(
 _QUOTED_ASSIGNMENT = re.compile(
     r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
     r"(?:(?P<sep>\s*[:=]\s*)(?P<quote>[\"'{\[])"
-    r"|(?P<scalar_sep>\s*:\s*)(?P<scalar>[^\s\"'{\[\],}]++))"
+    r"|(?P<scalar_sep>\s*:\s*)(?P<scalar>[^\s\"'{\[\],}]))"
 )
 # A quoted key spelled with escapes (``"PASS\u0057ORD":``) is the same key to
 # any JSON reader, so its value gets the same redaction once the escapes are
@@ -439,9 +439,14 @@ def _redact_quoted(text: str) -> str:
             else None
         )
         if redaction is None:
-            # Ordinary name, or nothing to hide: keep it and examine the
-            # value from its first character on.
-            end = match.end() if scalar else start + 1
+            # Ordinary name, or nothing to hide: keep it. A bare scalar is
+            # skipped whole, read once here so the scan stays linear (#365);
+            # any other value is examined from its first character on.
+            end = start + 1
+            if scalar:
+                # Never None: the scalar group matched one char of this class.
+                value = _SCALAR_VALUE.match(text, start)
+                end = value.end() if value is not None else match.end()
             parts.append(text[pos:end])
             pos = end
             continue

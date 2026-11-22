@@ -555,7 +555,7 @@ def test_profile_and_lab_gate(fake_db) -> None:
     assert (
         ext.tool_schema_revision()
         == ext.TOOL_SCHEMA_REVISION
-        == "otel-demo-ext-c63f058afb18"
+        == "otel-demo-ext-9b1547d77ecd"
     )
     assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION != ext.SQL_MYSQL_TOOL_SCHEMA_REVISION
     assert sq.sql_dialect({}) is None

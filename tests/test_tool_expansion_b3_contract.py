@@ -87,41 +87,41 @@ MIB = 1024 * 1024
 # code), computed with ``_surface_sha256`` below (RUN_ID ``b3-run``): with
 # the switch off, otel-demo and all eight extension backend sets must stay
 # byte-identical when B3 lands (B3-1).
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
-BASE_SURFACE_SHA256 = "794938f78272568f334310a58a073244995de93e6849c1243c7fc508b4dfcc63"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-8c7b8e310cdc"
+BASE_SURFACE_SHA256 = "ddf29ffb92c95e9ead8178ab89ba7179de0f1db3b7ff30e5b8daa5e32fdd275b"
 PINNED = {
     # (elasticsearch, loki, victorialogs): (revision, surface sha256)
     (False, False, False): (
-        "otel-demo-ext-c63f058afb18",
-        "55f2095636f23eb91f3a829f1f5aa322b844d2322ce00dec7c593341c711927e",
+        "otel-demo-ext-9b1547d77ecd",
+        "305607090d950bbb18766e1f715502b267923891272d1a891fba12dbd8b34dcc",
     ),
     (False, False, True): (
-        "otel-demo-ext-840df01f3bce",
-        "b44d293e3bc47acaee62b1c271ab357a6267757ae6585c9c1636f7a72f41aaa0",
+        "otel-demo-ext-1021ae4ff05b",
+        "4bff6255c0f1db2e9c8a6d1d291b743ecd427da63354bf440e32aa82a07428fe",
     ),
     (False, True, False): (
-        "otel-demo-ext-dd942a2f1292",
-        "3f378ccc6075b8dd9ded8ea9485f6a2f2041965f81cc99a9728e54eaa5056de6",
+        "otel-demo-ext-ab1feb76ec12",
+        "04f50a84eab94d3ebe16ba38a6e71631ddfe48df9776ec9534e423602e870c77",
     ),
     (False, True, True): (
-        "otel-demo-ext-cbd3b6aaa6b8",
-        "dc587b2568b03d885d66299234d4f018a072e3c235931c2159f889a737429b95",
+        "otel-demo-ext-3bcc4c4444e7",
+        "4d0bab969a7224d4e4936f53f4c1a31a0bee58e0f63f2506ceff66468611bc11",
     ),
     (True, False, False): (
-        "otel-demo-ext-4f7faf728706",
-        "69e1c6d11c0789925c767b3317a6d7b386eba19bee967976ff5b48d6353381a8",
+        "otel-demo-ext-1fce458c3579",
+        "7a732807acb587d6a57407199c4eea7e58b4f85a214f324d6d5f9b3b199e45e9",
     ),
     (True, False, True): (
-        "otel-demo-ext-381e74cfe8d0",
-        "4cd801ed5c7c7cbb5db48c5039f55d13cf22f8de41e09fd7c29b0d9abe502570",
+        "otel-demo-ext-0d4e29be0c4c",
+        "1fa5ae7c29dda4e438203e652f26c0ed970df84d38b10ca3ebe392fe0f5c1a5a",
     ),
     (True, True, False): (
-        "otel-demo-ext-f11fc2ce4d18",
-        "5808dee0b6f6025fac98422b19a828ccc4e5b004cacc4be993d7e3cb1d2abd86",
+        "otel-demo-ext-ce9b52089d38",
+        "ce5d806e779d3c367ae01937f86345b7c82ca2f7cd8274fc21e30c58f3063312",
     ),
     (True, True, True): (
-        "otel-demo-ext-da924862e562",
-        "630fce417bf18e6aa63f80ce18d33c844742ec0ca7405681a2e4f2a488b345fa",
+        "otel-demo-ext-8233fd90ff6e",
+        "9053d5b1639e022bf1a640600dfadd65bb80eaf140c7830613c6b57ce84b30cc",
     ),
 }
 BACKEND_URLS = {

@@ -1,0 +1,93 @@
+"""Independent tests for issue #365: credential redaction stays linear.
+
+``redact_credentials`` promises a single linear pass over pathological input
+(512 KiB). Whitespace-free ``name:value`` runs such as ``a:b`` repeated
+(``a:ba:ba:b...``) used to take time quadratic in their length. These tests
+drive only the public entry points and check output bytes plus a generous
+wall-clock bound; they do not inspect which internal rule does the work.
+"""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from opspilot.redaction import (
+    REDACTED_CREDENTIAL,
+    redact_credentials,
+    redact_payload,
+)
+
+SIZE = 512 * 1024
+# A correct linear pass takes well under a second here; the quadratic one
+# took about 150 s. The bound leaves room for a slow, busy CI runner.
+BOUND_SECONDS = 5.0
+
+# Issue #365 shapes (``a:b``, ``/a:b``, ``ua:b``, ``fa:b`` were quadratic on
+# main); the quoted ``"a:b"`` form is kept as a guard against regressing it.
+SHAPES = ["a:b", "/a:b", "ua:b", "fa:b", '"a:b"']
+
+SECRET = '"password":"hunter2"'
+REDACTED_SECRET = f'"password":"{REDACTED_CREDENTIAL}"'
+
+
+def _run(unit: str) -> str:
+    return unit * (SIZE // len(unit))
+
+
+def _short_id(value: str) -> str:
+    return value if len(value) <= 32 else f"{value[:8]}...len{len(value)}"
+
+
+def _timed(fn, arg):
+    started = time.perf_counter()
+    result = fn(arg)
+    return result, time.perf_counter() - started
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize("unit", SHAPES)
+def test_whitespace_free_name_value_run_is_linear(unit: str) -> None:
+    # The credential sits right after the run, so the pass must still reach
+    # the end of the input and redact it.
+    text = _run(unit) + SECRET
+    redacted, elapsed = _timed(redact_credentials, text)
+    assert elapsed < BOUND_SECONDS, f"{unit!r} x {SIZE} bytes took {elapsed:.1f}s"
+    assert redacted == _run(unit) + REDACTED_SECRET
+
+
+@pytest.mark.serial
+def test_payload_string_with_name_value_run_is_linear() -> None:
+    payload = {"log": _run("a:b") + " " + SECRET}
+    redacted, elapsed = _timed(redact_payload, payload)
+    assert elapsed < BOUND_SECONDS, f"payload took {elapsed:.1f}s"
+    assert redacted == {"log": _run("a:b") + " " + REDACTED_SECRET}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ('"password":"hunter2"', f'"password":"{REDACTED_CREDENTIAL}"'),
+        ('{"token": "abc123"}', f'{{"token": "{REDACTED_CREDENTIAL}"}}'),
+        ('"api_key":12345', f'"api_key":{REDACTED_CREDENTIAL}'),
+        (
+            'x "password": "s3cr3t", y',
+            f'x "password": "{REDACTED_CREDENTIAL}", y',
+        ),
+        ("password=hunter2", f"password={REDACTED_CREDENTIAL}"),
+        ("key: value", "key: value"),
+        ("author: bob", "author: bob"),
+        ("image: ghcr.io/x:1.11.1", "image: ghcr.io/x:1.11.1"),
+        ('"a:b"', '"a:b"'),
+        ("a:b" * 200, "a:b" * 200),
+        ('"a:b"' * 200, '"a:b"' * 200),
+        ("/a:b" * 200, "/a:b" * 200),
+        ("ua:b" * 200, "ua:b" * 200),
+    ],
+    ids=_short_id,
+)
+def test_ordinary_outputs_unchanged_and_idempotent(text: str, expected: str) -> None:
+    once = redact_credentials(text)
+    assert once == expected
+    assert redact_credentials(once) == once
