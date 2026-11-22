@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
 import time
 from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
@@ -34,6 +35,7 @@ from opspilot.investigation.loop import (
     ModelReply,
     serialized_request,
 )
+from opspilot.tools.http_deadline import resolve
 from opspilot.tracing import tracer
 
 _ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
@@ -59,6 +61,15 @@ class _Opener(Protocol):
     def open(self, request: Request, timeout: float) -> Any: ...
 
 
+# #444: the model client's own resolver slots, separate from the pool shared
+# by query transports (``http_deadline._resolver_slots``) so a stuck
+# data-source hostname never makes model calls queue behind it. A hung
+# getaddrinfo holds a slot until it really returns, so at most this many
+# resolver threads outlive their requests.
+MODEL_RESOLVER_SLOTS = 2
+_model_resolver_slots = threading.BoundedSemaphore(MODEL_RESOLVER_SLOTS)
+
+
 class _RecordingHTTPSHandler(HTTPSHandler):
     """``HTTPSHandler`` that keeps a handle on the connection it opens.
 
@@ -76,6 +87,9 @@ class _RecordingHTTPSHandler(HTTPSHandler):
     def __init__(self) -> None:
         super().__init__()
         self.current: HTTPSConnection | None = None
+        # Set by ``_post``'s transport thread before ``open()``: the request's
+        # monotonic deadline, which bounds the hostname lookup (#444).
+        self.local = threading.local()
 
     def https_open(self, req: Request) -> Any:
         # Same call the stdlib handler makes, with our recording factory in
@@ -89,6 +103,9 @@ class _RecordingHTTPSHandler(HTTPSHandler):
 
     def _connect(self, host: str, **kwargs: Any) -> HTTPSConnection:
         connection = HTTPSConnection(host, **kwargs)
+        deadline = getattr(self.local, "deadline", None)
+        if deadline is not None:
+            connection._create_connection = _bounded_connector(deadline)  # type: ignore[attr-defined]
         self.current = connection
         return connection
 
@@ -107,6 +124,46 @@ class _RecordingHTTPSHandler(HTTPSHandler):
             connection.close()
         except Exception:
             pass
+
+
+def _bounded_connector(deadline: float) -> Callable[..., socket.socket]:
+    """``socket.create_connection`` with the lookup bounded by ``deadline``.
+
+    getaddrinfo cannot be interrupted; ``resolve`` runs it on a slot-limited
+    thread and raises ``TimeoutError`` (an ``OSError``) once the request's
+    deadline passes, which ``_post`` already maps to ``MODEL_UNAVAILABLE``.
+    """
+
+    def connect(
+        address: tuple[str, int],
+        timeout: Any = socket._GLOBAL_DEFAULT_TIMEOUT,  # type: ignore[attr-defined]
+        source_address: Any = None,
+    ) -> socket.socket:
+        host, port = address
+        last: OSError | None = None
+        for family, kind, proto, _, peer in resolve(
+            host, port, deadline, slots=_model_resolver_slots
+        ):
+            sock = socket.socket(family, kind, proto)
+            try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:  # type: ignore[attr-defined]
+                    remaining = min(remaining, timeout)
+                sock.settimeout(remaining)
+                if source_address:
+                    sock.bind(source_address)
+                sock.connect(peer)
+                return sock
+            except OSError as error:
+                last = error
+                sock.close()
+        if last is not None:
+            raise last
+        raise OSError("No addresses")
+
+    return connect
 
 
 class MonotonicClock(Protocol):
@@ -259,8 +316,13 @@ class DeepSeekClient:
         # timeout <= 0, so this is always a well-defined positive value.
         budget = timeout
         deadline = self._clock.monotonic() + budget
+        # DNS is bounded on the real monotonic clock, not ``self._clock``:
+        # getaddrinfo blocks in real time whatever clock the loop injects.
+        lookup_deadline = time.monotonic() + budget
 
         def _fetch() -> tuple[bytes, int]:
+            if self._https is not None:
+                self._https.local.deadline = lookup_deadline
             with self._opener.open(request, timeout=budget) as response:
                 raw = _read_capped(response, self._clock, deadline)
                 return raw, int(response.status)
