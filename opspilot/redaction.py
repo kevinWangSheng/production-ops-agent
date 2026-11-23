@@ -713,12 +713,37 @@ def _in_list(text: str, start: int) -> tuple[bool, bool]:
 
 
 def _flag_separator(
-    text: str, index: int, comma: bool, newline: _NextNewline
+    text: str,
+    index: int,
+    comma: bool,
+    newline: _NextNewline,
+    after_comment: dict[tuple[int, bool], int | None],
 ) -> int | None:
     """Where the value after a flag starts: past whitespace (newlines and
     blank lines too), a ``\\`` continuation, one ``,`` when the flag is a
     list element, a ``# comment`` and a YAML bullet. ``None`` when nothing
-    separates the flag from what follows, or the text ends."""
+    separates the flag from what follows, or the text ends.
+
+    Every flag inside one comment line resumes at that line's end in the
+    same state, so the walk from there is done once and remembered in
+    ``after_comment`` (keyed by the newline and whether a ``,`` may still be
+    taken); without it many flags in a comment re-walk a long run of blank
+    lines after it (quadratic, review of #817)."""
+    resumed: list[tuple[int, bool]] = []
+    result = _walk_separator(text, index, comma, newline, after_comment, resumed)
+    for key in resumed:
+        after_comment[key] = result
+    return result
+
+
+def _walk_separator(
+    text: str,
+    index: int,
+    comma: bool,
+    newline: _NextNewline,
+    after_comment: dict[tuple[int, bool], int | None],
+    resumed: list[tuple[int, bool]],
+) -> int | None:
     crossed = False
     line_start = False
     seen_comma = False
@@ -740,6 +765,10 @@ def _flag_separator(
             index += 1
         elif char == "#" and crossed:
             index = newline.at_or_after(index)
+            key = (index, comma and not seen_comma)
+            if key in after_comment:
+                return after_comment[key]
+            resumed.append(key)
         elif char == "-" and line_start and text[index + 1 : index + 2] in (" ", "\t"):
             line_start = False
             index += 1
@@ -836,6 +865,7 @@ def _redact_flag_values(text: str) -> str:
     spans: dict[int, tuple[str, int]] = {}
     starts: list[int] = []
     newline = _NextNewline(text)
+    after_comment: dict[tuple[int, bool], int | None] = {}
     for match in _FLAG_START.finditer(text):
         if not _credential_name(match.group("name")):
             continue
@@ -851,7 +881,9 @@ def _redact_flag_values(text: str) -> str:
             start: int | None = join.end()
         else:
             index = close.end() if close is not None else index
-            start = _flag_separator(text, index, close is not None or in_list, newline)
+            start = _flag_separator(
+                text, index, close is not None or in_list, newline, after_comment
+            )
         if start is None or start in spans:
             continue
         redaction = _flag_value(
