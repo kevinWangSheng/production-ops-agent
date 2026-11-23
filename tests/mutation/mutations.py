@@ -530,7 +530,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         # Mutated: ``"password":x&"secret": "v"`` and ``password=x|token :v``
         # keep the second value.
         "opspilot/redaction.py",
-        "    while (value := _glued_value(text, start, end)) is not None:\n",
-        "    while (value := None) is not None:\n",
+        "        glued = _redact_glued(redacted, mark)\n",
+        '        glued = redacted.replace(mark, "")\n',
     ),
 )

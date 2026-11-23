@@ -110,6 +110,27 @@ def test_glued_credential_pairs_are_linear(
     assert redacted.endswith(REDACTED_SECRET)
 
 
+# Review of #821: long glued runs that end in a credential flag or an auth
+# scheme word were re-walked once per pair (quadratic, ~20 s at 4k pairs).
+GLUED_FALLBACK_RUNS = [
+    ("password=x|token :", "--password=hunter2"),
+    ("password=x|token :", "x|bearer hunter2"),
+    ('"password":x&"secret":', "--password=hunter2"),
+    ('token: "password": ', "--password=hunter2"),
+    ("token=a|token= ", "--password=hunter2"),
+    ("token=a|token= ", "x|Bearer hunter2"),
+]
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize(("unit", "tail"), GLUED_FALLBACK_RUNS, ids=repr)
+def test_glued_runs_ending_in_a_flag_or_scheme_are_linear(unit: str, tail: str) -> None:
+    text = _run(unit) + tail
+    redacted, elapsed = _timed(redact_credentials, text)
+    assert elapsed < BOUND_SECONDS, f"{unit!r} took {elapsed:.1f}s"
+    assert "hunter2" not in redacted
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
