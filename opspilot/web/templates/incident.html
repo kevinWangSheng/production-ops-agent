@@ -101,9 +101,19 @@
         {%- if r.samples %}
         <div class="tblwrap"><table class="res recovery-basis"><thead><tr><th>#</th><th>Window (UTC)</th><th>Stored → replayed</th><th>Decision</th><th>Readings</th></tr></thead><tbody>
         {%- for s in r.samples %}
-        <tr><td>{{ s.sequence }}</td><td>{{ view.clock(s.window_start) }} – {{ view.clock(s.window_end) }}</td><td>{{ s.stored_outcome }} → {{ s.replayed_outcome or ("not recomputed (" ~ s.recompute_skipped ~ ")") }}{% if not s.consistent and not s.raw_cleaned_only %} · <b>mismatch</b>{% endif %}</td><td>{{ s.disposition }} · {{ s.reason }}{% if s.transition %} · {{ s.transition }}{% endif %}</td><td class="wrapcell">{% for rd in s.readings %}<span class="mono">{{ rd.signal_name }}</span> {{ rd.stored[0] }}{% if rd.stored[1] is not none %} {{ rd.stored[1] }}{% endif %} <span class="muted">({{ rd.query }})</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+        <tr><td>{{ s.sequence }}</td><td>{{ view.clock(s.window_start) }} – {{ view.clock(s.window_end) }}</td><td>{{ s.stored_outcome }} → {{ s.replayed_outcome or ("not recomputed (" ~ s.recompute_skipped ~ ")") }}{% if not s.consistent and not s.raw_cleaned_only %} · <b>mismatch</b>{% endif %}</td><td>{{ s.disposition }} · {{ s.reason }}{% if s.transition %} · {{ s.transition }}{% endif %}</td><td>{{ s.readings | length }}</td></tr>
         {%- endfor %}
         </tbody></table></div>
+        {%- set readings_n = r.samples | map(attribute="readings") | map("length") | sum %}
+        {%- if readings_n %}
+        <div class="tblwrap"><table class="res recovery-readings"><thead><tr><th>#</th><th>Signal</th><th>Check</th><th>Status / value / count stored → replayed</th><th>Verdict</th><th>Query</th><th>Window (UTC)</th><th>Source</th><th>Raw sha256</th></tr></thead><tbody>
+        {%- for s in r.samples %}{% for rd in s.readings %}
+        {%- set differs = rd.replayed is not none and (rd.replayed | list) != (rd.stored | list) %}
+        {%- set cleaned = ("RAW_CLEANED:" ~ rd.signal_name) in (s.integrity or []) %}
+        <tr><td>{{ s.sequence }}</td><td>{{ rd.signal_name }}</td><td>{% if rd.raw_verified is sameas true %}<span class="muted">verified</span>{% elif rd.raw_verified is sameas false %}<b class="rd-bad">✗ hash mismatch</b>{% else %}<span class="muted">no bundle{% if cleaned %} · raw data cleaned{% endif %}</span>{% endif %}{% if differs %} <b class="rd-bad">✗ replay differs</b>{% endif %}</td><td>{{ rd.stored[0] }} / {{ rd.stored[1] if rd.stored[1] is not none else "–" }} / {{ rd.stored[2] if rd.stored[2] is not none else "–" }} → {% if rd.replayed is not none %}{{ rd.replayed[0] }} / {{ rd.replayed[1] if rd.replayed[1] is not none else "–" }} / {{ rd.replayed[2] if rd.replayed[2] is not none else "–" }}{% else %}<span class="muted">not recomputed</span>{% endif %}</td><td>{% if rd.verdict %}{{ rd.verdict }}{% if rd.reason %} <span class="muted">{{ rd.reason }}</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td><td class="wrapcell">{{ rd.query }}</td><td>{{ view.clock(rd.window_start) }} – {{ view.clock(rd.window_end) }}</td><td>{{ rd.source }}</td><td class="shacell">{{ rd.raw_sha256 or "none" }}</td></tr>
+        {%- endfor %}{% endfor %}
+        </tbody></table></div>
+        {%- endif %}
         {%- endif %}
         {%- endfor %}
       </div></div></details>
