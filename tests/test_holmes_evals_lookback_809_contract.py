@@ -15,7 +15,10 @@ Rules under test:
 * web and worker both run with ``OPSPILOT_MAX_LOOKBACK=30d``, for every log
   backend;
 * ``TIME_BOX_LIMITED`` is derived from a per-question data span and the
-  30-day cap: limited only when the span exceeds the cap. Spans checked by
+  30-day cap, measured from delivery (lead ruling after the PR #824 review):
+  a fixed-time item's oldest data lies ``span + LEAD`` before delivery, a
+  relative-time item's ``span``; limited when that exceeds the cap, so 184
+  (exactly 30 d before its anchor) is limited. Spans checked by
   hand against the setup scripts at the pinned upstream commit:
   184 2024-01-01..31 at 12:00 (30 d; days 32-36 are not dates and stay text),
   185 2024-01-01..10 at 12:00 (9 d), 189 2024-01-14T00..15T23 (47 h),
@@ -133,27 +136,36 @@ def test_tool_env_sets_the_cap_for_every_backend(world, backend: str) -> None:  
 
 def test_data_spans_match_the_setup_scripts() -> None:
     # ASSUMPTION: shift.DATA_SPANS (module docstring). A day's slack for how
-    # the anchor is read; 184 sits on the cap and must not exceed it.
+    # the anchor is read; 184's oldest data lies past the cap from delivery.
     spans = mod("shift").DATA_SPANS
     assert set(SPANS) <= set(spans)
     for qid, want in SPANS.items():
         got = spans[qid]
         assert isinstance(got, timedelta), qid
         assert abs(got - want) <= timedelta(days=1), (qid, got)
-    assert spans[Q184] <= CAP
+    assert spans[Q184] + mod("shift").LEAD > CAP
 
 
 def test_time_box_limited_is_computed_from_span_and_cap() -> None:
     shift = mod("shift")
-    derived = frozenset(q for q, span in shift.DATA_SPANS.items() if span > CAP)
+    fixed = frozenset(shift.FIXED_TIME)
+
+    def reach(qid: str, span: timedelta) -> timedelta:
+        # From delivery: a shifted item's anchor lands LEAD before it.
+        return span + shift.LEAD if qid in fixed else span
+
+    derived = frozenset(
+        q for q, span in shift.DATA_SPANS.items() if reach(q, span) > CAP
+    )
     assert frozenset(shift.TIME_BOX_LIMITED) == derived
-    # B4-12 / U2: 184, 185, 189 and 280 move out; 235 (45 days) stays.
-    assert frozenset(shift.TIME_BOX_LIMITED) == {Q235}
+    # B4-12 / U2 and the PR #824 ruling: 185, 189 and 280 move out; 184
+    # (30 d + LEAD) and 235 (45 days) stay.
+    assert frozenset(shift.TIME_BOX_LIMITED) == {Q184, Q235}
 
 
 @pytest.mark.parametrize(
     ("qid", "limited"),
-    [(Q184, False), (Q185, False), (Q189, False), (Q280, False), (Q235, True)],
+    [(Q184, True), (Q185, False), (Q189, False), (Q280, False), (Q235, True)],
 )
 def test_trial_records_carry_the_derived_flag(qid: str, limited: bool) -> None:
     driver = mod("driver")

@@ -217,7 +217,7 @@ def test_trial_record_categories(kind: str, passed: bool, category: str) -> None
 
 
 def test_trial_record_missing_is_env_broken_and_time_box_flag() -> None:
-    # #809 (B4-12): 235 is the one time-box-limited question; 185 left the set.
+    # #809 (B4-12): 235 stays time-box-limited; 185 left the set.
     trial = mod("driver").trial_record(_missing(Q235, 3))
     assert (trial.qid, trial.index, trial.passed, trial.category) == (
         Q235,
