@@ -58,7 +58,10 @@ def _with_replica(backend: Backend) -> None:
 
 @pytest.fixture(params=["elasticsearch", "opensearch"])
 def cluster(request) -> Iterator[Any]:
-    backend: Backend = request.getfixturevalue(request.param)
+    # B1 names the Elasticsearch fixture ``elastic``.
+    backend: Backend = request.getfixturevalue(
+        "elastic" if request.param == "elasticsearch" else "opensearch"
+    )
     _with_replica(backend)
     tools = request.getfixturevalue(
         "es_tools" if request.param == "elasticsearch" else "os_tools"
