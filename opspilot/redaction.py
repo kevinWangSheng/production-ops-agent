@@ -153,8 +153,13 @@ REDACTED_CREDENTIAL = "[REDACTED_CREDENTIAL]"
 # never closes, so no part of the value is left behind the marker. A
 # non-credential name's value is examined again from its start, so an
 # assignment nested in it (``x=api_key=…``) is still found.
+#
+# A name may carry one or two leading dashes, so a command-line flag
+# (``--db-password=v``, ``-token=v``) is the same assignment (#802, R2-1);
+# the dashes stay outside ``name`` and in the output. The space-separated
+# form (``--password v``) is ``_redact_flag_values``'s.
 _CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<sep>\s*[:=]\s*)"
+    r"(?<![A-Za-z0-9_.\-])-{0,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<sep>\s*[:=]\s*)"
     r"(?P<value>(?P<scheme>(?:bearer|basic|digest|token)\s+)?[^\s&;,?#\"'])",
     re.IGNORECASE,
 )
@@ -226,7 +231,7 @@ _ENTITY_AUTHORITY_USERINFO = re.compile(
 # nested inside an ordinary value is still examined. Each scan is a single
 # forward pass (linear time).
 _QUOTED_ASSIGNMENT = re.compile(
-    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
+    r"(?<![A-Za-z0-9_.\-])-{0,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
     r"(?:(?P<sep>\s*[:=]\s*)(?P<quote>[\"'{\[])"
     r"|(?P<scalar_sep>\s*:\s*)(?P<scalar>[^\s\"'{\[\],}]))"
 )
@@ -370,16 +375,19 @@ def _decoded_name(quoted: str) -> str:
     )
 
 
-def _value_end(text: str, start: int, stops: frozenset[str]) -> int:
+def _value_end(
+    text: str, start: int, stops: frozenset[str], limit: int | None = None
+) -> int:
     """Where a credential value starting at ``start`` ends: at whitespace or
     one of ``stops`` outside any quote or bracket. A quote runs to its
     closing quote (backslash escapes honoured), a bracket to its balancing
     one; either runs to the end of the text when it never closes (fail
-    closed). One forward pass."""
+    closed). Nothing at or after ``limit`` is read. One forward pass."""
+    end = len(text) if limit is None else limit
     stack: list[str] = []
     quote: str | None = None
     index = start
-    while index < len(text):
+    while index < end:
         char = text[index]
         if quote is not None:
             if char == "\\":
@@ -396,7 +404,7 @@ def _value_end(text: str, start: int, stops: frozenset[str]) -> int:
         elif char.isspace() or char in stops:
             return index
         index += 1
-    return len(text)
+    return end
 
 
 def _tail_end(text: str, end: int) -> int:
@@ -603,7 +611,16 @@ def _redact_assignments(text: str) -> str:
             pos = match.start("value")
             continue
         body = match.start("value") + len(match.group("scheme") or "")
-        end = _value_end(text, body, _UNQUOTED_STOPS)
+        limit = len(text)
+        opening = text[match.start() - 1 : match.start()]
+        if text[match.start()] == "-" and opening in _QUOTED_VALUE:
+            # A whole flag in a quoted string (``"--cert-dir=/tmp",`` in a
+            # JSON args list): the value ends with that string (#802); one
+            # never closed on its line still runs on (fail closed).
+            closing = _QUOTED_VALUE[opening].match(text, body)
+            if closing is not None:
+                limit = closing.end() - 1
+        end = _value_end(text, body, _UNQUOTED_STOPS, limit)
         if match.group("scheme") is None and _token_count(name, text[body:end]):
             # ``total_tokens=5``: a count, kept (#366).
             parts.append(text[pos:end])
@@ -614,6 +631,122 @@ def _redact_assignments(text: str) -> str:
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
+
+
+# A credential-named command-line flag whose value is the next token, not
+# joined by ``=`` (#802, R2-1): ``--password v``, ``-token v``, and the same
+# flag as an element of a list written as text -- JSON or Python
+# (``"--password","v"``, a ``last-applied-configuration`` annotation) or a
+# YAML block sequence (``- --password`` / ``- v``, a Helm manifest). The
+# flag's name is judged by the shared credential-name rule. The next token is
+# hidden unless it starts with ``-`` (another flag); otherwise fail closed,
+# so an ordinary word after such a flag is occasionally hidden too. A bare
+# number under a ``*tokens`` name stays (``--max-tokens 4000``, #366). A
+# quoted value is hidden whole; an unquoted one ends at whitespace or a quote
+# (the end of the JSON string it sits in), and an auth scheme word
+# (``--token Bearer x``) takes the token after it along. Only the flag, its
+# closing quote and the separator are matched; the value is read once after
+# it, so each scan is a single forward pass. The value is on the flag's
+# line, or the next after a ``\\`` continuation: a bare newline ends the
+# command (a log's next line is not the flag's value). A flag starts the text or
+# follows whitespace, a quote or one of ``[(,=;|&`` (not ``}}-credentials``
+# glued to a template). Not recognised: the flag inside JSON escaped one
+# level deeper (``\\"--password\\",\\"v\\"``).
+_FLAG_VALUE = re.compile(
+    r"(?<![^\s\"'`\[(,=;|&])-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)"
+    r"(?P<close>[\"']?+)(?:(?P<comma>\s*+,\s*+)"
+    r"|(?P<sep>[ \t]*+\r?\n[ \t]*+-[ \t]++|(?:[ \t]|\\\r?\n)++))"
+)
+_FLAG_TOKEN = re.compile(r"(?:[^\s\"'`\\]|\\(?![\"']))*+")
+_FLAG_BLANKS = re.compile(r"[ \t]++")
+_FLAG_SCHEMES = frozenset({"bearer", "basic", "digest", "token"})
+_FLAG_NAME = re.compile(r"-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)")
+
+
+def _flag_value_redaction(text: str, name: str, start: int) -> tuple[str, int] | None:
+    """The marker for the value of credential flag ``name`` starting at
+    ``start`` and where that value ends; ``None`` when it is another flag, an
+    ``=``/``:`` assignment (the rules above), a count, or nothing to hide."""
+    if start >= len(text) or text.startswith(REDACTED_CREDENTIAL, start):
+        return None
+    char = text[start]
+    if char in "\"'":
+        if text[start + 1 : start + 2] == "-":
+            return None  # a quoted flag, as the next list element
+        return _value_redaction(text, start)
+    if char in _CLOSERS:
+        return _value_redaction(text, start)
+    if char in "-=:]})":
+        return None  # another flag, an assignment, or the list's end
+    token = _FLAG_TOKEN.match(text, start)
+    end = token.end() if token is not None else start
+    if end == start or _token_count(name, text[start:end]):
+        return None
+    if text[start:end].lower() in _FLAG_SCHEMES:
+        blanks = _FLAG_BLANKS.match(text, end)
+        if blanks is not None:
+            scheme_value = _FLAG_TOKEN.match(text, blanks.end())
+            if scheme_value is not None and scheme_value.end() > blanks.end():
+                end = scheme_value.end()
+    return REDACTED_CREDENTIAL, end
+
+
+def _redact_flag_values(text: str) -> str:
+    if "-" not in text:
+        return text
+    parts: list[str] = []
+    pos = 0
+    for match in _FLAG_VALUE.finditer(text):
+        if match.start() < pos or not _credential_name(match.group("name")):
+            continue
+        if match.group("comma") is not None and not match.group("close"):
+            continue  # ``--token, then`` in prose: a list item needs quotes
+        redaction = _flag_value_redaction(text, match.group("name"), match.end())
+        if redaction is None:
+            continue
+        marker, end = redaction
+        parts.append(text[pos : match.end()] + marker)
+        pos = end
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
+def _credential_flag(item: object) -> str | None:
+    """The name of ``item`` when it is a whole credential-named flag
+    (``--password``, ``-token``), one element of a command list."""
+    if not isinstance(item, str):
+        return None
+    flag = _FLAG_NAME.fullmatch(item)
+    if flag is None or not _credential_name(flag.group("name")):
+        return None
+    return flag.group("name")
+
+
+def _flag_value_indices(items: list[object] | tuple[object, ...]) -> set[int]:
+    """Indices of the list elements that are a credential flag's value (#802,
+    R2-1): the element right after a whole credential flag
+    (``["--password", "v"]``), unless it is another flag (a string starting
+    with ``-``), ``None``, empty, or a number under a ``*tokens`` name."""
+    hidden: set[int] = set()
+    for index in range(len(items) - 1):
+        name = _credential_flag(items[index])
+        if name is None:
+            continue
+        value = items[index + 1]
+        if value is None or value == "" or value == REDACTED_CREDENTIAL:
+            continue
+        if isinstance(value, str) and (
+            value.startswith("-") or _token_count(name, value)
+        ):
+            continue
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and _count_name(name)
+        ):
+            continue
+        hidden.add(index + 1)
+    return hidden
 
 
 _ENCODED_AUTHORITY_USERINFO = (
@@ -676,6 +809,13 @@ def _redact_prose(text: str) -> str:
 
 
 def _redact_name_rules(text: str) -> str:
+    # Flag values run last (#802): they only hide more of what the rules
+    # below left in view, so no match of theirs is lost (a scheme's
+    # ``Bearer x`` hidden as part of a flag's token would be).
+    return _redact_flag_values(_redact_named_values(text))
+
+
+def _redact_named_values(text: str) -> str:
     redacted = _redact_userinfo(text, _AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO)
     redacted = _redact_assignments(redacted)
     redacted = _redact_escaped_keys(redacted)
@@ -761,6 +901,11 @@ def redact_payload(value: object) -> object:
     while stack:
         source, destination, parent, readable = stack.pop()
         items = source.items() if isinstance(source, dict) else enumerate(source)
+        # A command list's element after a credential flag is its value
+        # (``args: ["--password", "v"]``, #802).
+        flag_values = (
+            _flag_value_indices(source) if isinstance(source, (list, tuple)) else ()
+        )
         for raw_key, item in items:
             # A non-string key is serialized by JSON as its scalar text
             # (``1`` -> ``"1"``), so it is examined and stored as that text.
@@ -772,7 +917,10 @@ def redact_payload(value: object) -> object:
                 else None
             )
             redacted: object
-            if (
+            if flag_values and raw_key in flag_values:
+                redacted = REDACTED_CREDENTIAL
+                changed |= redacted != item
+            elif (
                 readable is None
                 and parent == "env"
                 and key == "value"

@@ -83,7 +83,10 @@ __all__ = [
 # and ``"name":"X","value":...`` in JSON text; env names also count
 # ``PASS``/``PWD``), and ``kubernetes_jq_query``/``kubernetes_tabular_query``
 # run on the redacted objects (#574).
-PROJECTION_REVISION = "m1-01-tool-view-v15"
+# v16: a credential-named command-line flag's value is redacted
+# (``--password=v``, ``--password v``, ``-token v``, and the element after
+# such a flag in a list, #802).
+PROJECTION_REVISION = "m1-01-tool-view-v16"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

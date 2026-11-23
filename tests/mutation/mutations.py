@@ -506,4 +506,12 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    paired = _redact_env_pairs(redacted)\n",
         "    paired = redacted\n",
     ),
+    Mutation(
+        "M58",
+        "credentials: a credential-named command-line flag's value is redacted (#802)",
+        # Mutated: ``--password v`` and ``"--password","v"`` in text keep the value.
+        "opspilot/redaction.py",
+        "    return _redact_flag_values(_redact_named_values(text))\n",
+        "    return _redact_named_values(text)\n",
+    ),
 )
