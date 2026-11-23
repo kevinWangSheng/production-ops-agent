@@ -165,24 +165,20 @@ def test_image_pull_secret_names_visible_other_fields_redacted():
     assert pulls[1]["note"] == REDACTED_CREDENTIAL
     # Credential-valued fields elsewhere stay redacted.
     assert out["metadata"]["annotations"]["token"] == REDACTED_CREDENTIAL
-    # The ``--password=`` container arg is a separate, pre-existing gap (#802),
-    # pinned by the strict xfail below; everything else must hide the value.
-    without_args = json.loads(json.dumps(out))
-    del without_args["spec"]["containers"][0]["args"]
-    assert FAKE not in json.dumps(without_args)
+    # Including the ``--password=`` container arg (#802).
+    assert FAKE not in json.dumps(out)
     # Existing #775 reference names and the session setting stay visible.
     ref = out["spec"]["containers"][0]["env"][0]["valueFrom"]["secretKeyRef"]
     assert ref == {"name": "orders-db", "key": "pw"}
     assert out["spec"]["sessionAffinity"] == "None"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#802: a credential in a command-line flag (--password=...) is not redacted",
-)
 def test_command_line_flag_credential_is_redacted():
+    # #802; the full flag matrix is in test_safety_flag_credentials.py.
     out = redact_payload(_pod())
-    assert FAKE not in json.dumps(out["spec"]["containers"][0]["args"])
+    args = out["spec"]["containers"][0]["args"]
+    assert FAKE not in json.dumps(args)
+    assert args[0].startswith("--password")
 
 
 # -- same definition: tool-parameter refusal and alert labels ----------------
