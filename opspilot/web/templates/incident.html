@@ -628,7 +628,9 @@
           if (prev.open) node.open = true;
           reopen(node, openIds(prev));
           prev.remove();
-        } else if (k !== "live") {
+        } else if (k !== "live" && k.indexOf("plan-") !== 0) {
+          /* #744: the plan card sits at its Run's start and updates in
+             place; it is never "new" nor the chip's scroll target */
           added.push(node);
         }
         if (expanded()) { if (node.tagName === "DETAILS") node.open = true; $$("details", node).forEach(function (d) { d.open = true; }); }
