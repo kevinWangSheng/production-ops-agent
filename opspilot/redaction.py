@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import json
 import re
 
@@ -153,13 +154,8 @@ REDACTED_CREDENTIAL = "[REDACTED_CREDENTIAL]"
 # never closes, so no part of the value is left behind the marker. A
 # non-credential name's value is examined again from its start, so an
 # assignment nested in it (``x=api_key=…``) is still found.
-#
-# A name may carry one or two leading dashes, so a command-line flag
-# (``--db-password=v``, ``-token=v``) is the same assignment (#802, R2-1);
-# the dashes stay outside ``name`` and in the output. The space-separated
-# form (``--password v``) is ``_redact_flag_values``'s.
 _CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?<![A-Za-z0-9_.\-])-{0,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<sep>\s*[:=]\s*)"
+    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<sep>\s*[:=]\s*)"
     r"(?P<value>(?P<scheme>(?:bearer|basic|digest|token)\s+)?[^\s&;,?#\"'])",
     re.IGNORECASE,
 )
@@ -231,7 +227,7 @@ _ENTITY_AUTHORITY_USERINFO = re.compile(
 # nested inside an ordinary value is still examined. Each scan is a single
 # forward pass (linear time).
 _QUOTED_ASSIGNMENT = re.compile(
-    r"(?<![A-Za-z0-9_.\-])-{0,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
+    r"(?<![A-Za-z0-9_.\-])(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)(?P<close>[\"']?)"
     r"(?:(?P<sep>\s*[:=]\s*)(?P<quote>[\"'{\[])"
     r"|(?P<scalar_sep>\s*:\s*)(?P<scalar>[^\s\"'{\[\],}]))"
 )
@@ -375,19 +371,16 @@ def _decoded_name(quoted: str) -> str:
     )
 
 
-def _value_end(
-    text: str, start: int, stops: frozenset[str], limit: int | None = None
-) -> int:
+def _value_end(text: str, start: int, stops: frozenset[str]) -> int:
     """Where a credential value starting at ``start`` ends: at whitespace or
     one of ``stops`` outside any quote or bracket. A quote runs to its
     closing quote (backslash escapes honoured), a bracket to its balancing
     one; either runs to the end of the text when it never closes (fail
-    closed). Nothing at or after ``limit`` is read. One forward pass."""
-    end = len(text) if limit is None else limit
+    closed). One forward pass."""
     stack: list[str] = []
     quote: str | None = None
     index = start
-    while index < end:
+    while index < len(text):
         char = text[index]
         if quote is not None:
             if char == "\\":
@@ -404,7 +397,7 @@ def _value_end(
         elif char.isspace() or char in stops:
             return index
         index += 1
-    return end
+    return len(text)
 
 
 def _tail_end(text: str, end: int) -> int:
@@ -611,16 +604,7 @@ def _redact_assignments(text: str) -> str:
             pos = match.start("value")
             continue
         body = match.start("value") + len(match.group("scheme") or "")
-        limit = len(text)
-        opening = text[match.start() - 1 : match.start()]
-        if text[match.start()] == "-" and opening in _QUOTED_VALUE:
-            # A whole flag in a quoted string (``"--cert-dir=/tmp",`` in a
-            # JSON args list): the value ends with that string (#802); one
-            # never closed on its line still runs on (fail closed).
-            closing = _QUOTED_VALUE[opening].match(text, body)
-            if closing is not None:
-                limit = closing.end() - 1
-        end = _value_end(text, body, _UNQUOTED_STOPS, limit)
+        end = _value_end(text, body, _UNQUOTED_STOPS)
         if match.group("scheme") is None and _token_count(name, text[body:end]):
             # ``total_tokens=5``: a count, kept (#366).
             parts.append(text[pos:end])
@@ -633,90 +617,273 @@ def _redact_assignments(text: str) -> str:
     return "".join(parts)
 
 
-# A credential-named command-line flag whose value is the next token, not
-# joined by ``=`` (#802, R2-1): ``--password v``, ``-token v``, and the same
-# flag as an element of a list written as text -- JSON or Python
-# (``"--password","v"``, a ``last-applied-configuration`` annotation) or a
-# YAML block sequence (``- --password`` / ``- v``, a Helm manifest). The
-# flag's name is judged by the shared credential-name rule. The next token is
-# hidden unless it starts with ``-`` (another flag); otherwise fail closed,
-# so an ordinary word after such a flag is occasionally hidden too. A bare
-# number under a ``*tokens`` name stays (``--max-tokens 4000``, #366). A
-# quoted value is hidden whole; an unquoted one ends at whitespace or a quote
-# (the end of the JSON string it sits in), and an auth scheme word
-# (``--token Bearer x``) takes the token after it along. Only the flag, its
-# closing quote and the separator are matched; the value is read once after
-# it, so each scan is a single forward pass. The value is on the flag's
-# line, or the next after a ``\\`` continuation: a bare newline ends the
-# command (a log's next line is not the flag's value). A flag starts the text or
-# follows whitespace, a quote or one of ``[(,=;|&`` (not ``}}-credentials``
-# glued to a template). Not recognised: the flag inside JSON escaped one
-# level deeper (``\\"--password\\",\\"v\\"``).
-_FLAG_VALUE = re.compile(
-    r"(?<![^\s\"'`\[(,=;|&])-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)"
-    r"(?P<close>[\"']?+)(?:(?P<comma>\s*+,\s*+)"
-    r"|(?P<sep>[ \t]*+\r?\n[ \t]*+-[ \t]++|(?:[ \t]|\\\r?\n)++))"
+# A credential-named command-line flag's value (#802, R2-1). The flag's name
+# is judged by the shared credential-name rule; one or two leading dashes.
+# Its value is hidden in each form it takes:
+#
+# * joined: ``--password=v``, ``-token=v``, ``--password: v``;
+# * the next token: ``--password v``, across blanks, newlines, blank lines,
+#   a ``\`` continuation, a ``# comment`` and a YAML bullet (``- --password``
+#   / ``- v``, kubectl ``describe`` text with the value on the next line);
+# * the next element of a list written as text: JSON or Python
+#   (``"--password","v"``, also escaped once or more inside a JSON string,
+#   as in a ``last-applied-configuration`` annotation) or a YAML flow list
+#   (``[--password, v]``).
+#
+# The next token is hidden unless it starts with ``-`` (another flag); fail
+# closed otherwise, so an ordinary word after such a flag -- even the next
+# log line -- is occasionally hidden too. A bare number under a ``*tokens``
+# name stays (``--max-tokens 4000``, #366). A quoted value is hidden whole.
+# An unquoted one is a shell word: it ends at whitespace, inside a list also
+# at ``,``/``]``/``}``, and at a quote that closes the string the flag sits
+# in (one followed by the end, whitespace or ``,]}:);``; a backtick by any
+# character but a letter, digit or ``_``); any other quote runs to its
+# match, or to the end of the text (fail closed). In a list, a
+# value starting with ``]``/``}``/``)`` is the list's end. An auth scheme
+# word (``--token Bearer x``) takes the token after it along.
+#
+# This rule runs after every other rule (``redact_credentials``) and only
+# replaces more of their output, so it never shows what they hid. A flag
+# inside a ``# comment`` that another flag's separator skipped is still
+# examined. Whether a flag is a list element is read from the text before
+# it, which a marker may have replaced; a marker there counts as a possible
+# list for the value (so a second call reads the value as the first did). Only the
+# flag is matched by a pattern; the separator and value are each read once
+# after it, so a scan is a single forward pass. Not recognised: a flag glued
+# to a preceding letter, digit, ``_``/``.``/``-`` or ``}``/``)``/``]``
+# (``{{ x }}-credentials``), a ``/password`` or Unicode-dash flag, and a
+# credential-flag value that itself starts with ``-``.
+_FLAG_START = re.compile(
+    r"(?<![A-Za-z0-9_.\-})\]])-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)"
 )
-_FLAG_TOKEN = re.compile(r"(?:[^\s\"'`\\]|\\(?![\"']))*+")
+#: A quote as spelled at some JSON escaping depth (``"``, ``\"``, ``\\\"``),
+#: or a backtick.
+_FLAG_QUOTE = re.compile(r"\\*+[\"'`]")
+_FLAG_JOIN = re.compile(r"[ \t]*+[=:][ \t]*+")
 _FLAG_BLANKS = re.compile(r"[ \t]++")
 _FLAG_SCHEMES = frozenset({"bearer", "basic", "digest", "token"})
-_FLAG_NAME = re.compile(r"-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)")
+#: Where a quote met in an unquoted value closes the enclosing string.
+_ENCLOSING_END = frozenset(",]}:);")
+_LIST_STOPS = frozenset(",]}")
+#: One element of a command list that is a whole flag (``--password``,
+#: ``-token``, ``--password=`` with nothing after it).
+_FLAG_ELEMENT = re.compile(r"\s*+-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)=?\s*+")
 
 
-def _flag_value_redaction(text: str, name: str, start: int) -> tuple[str, int] | None:
-    """The marker for the value of credential flag ``name`` starting at
-    ``start`` and where that value ends; ``None`` when it is another flag, an
-    ``=``/``:`` assignment (the rules above), a count, or nothing to hide."""
+class _NextNewline:
+    """The next ``\\n`` at or after an index, remembered so that many flags
+    on one long line find its end once (linear time)."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self._from = 0
+        self._found = -1
+
+    def at_or_after(self, index: int) -> int:
+        if not self._from <= index <= self._found:
+            found = self._text.find("\n", index)
+            self._from = index
+            self._found = len(self._text) if found == -1 else found
+        return self._found
+
+
+def _in_list(text: str, start: int) -> tuple[bool, bool]:
+    """Whether the flag starting at ``start`` is a list element -- before it
+    (and its opening quote), past whitespace, comes ``[``, ``,`` or a YAML
+    bullet -- and whether it may be one: it also follows a marker, which may
+    have replaced the ``,`` or ``[`` (a second call then reads the value as
+    the first did, so the result is stable)."""
+    index = start - 1
+    if index >= 0 and text[index] in "\"'`":
+        index -= 1
+        while index >= 0 and text[index] == "\\":
+            index -= 1
+    while index >= 0 and text[index].isspace():
+        index -= 1
+    if index < 0:
+        return False, False
+    if text[index] in "[," or (
+        text[index] == "-" and (index == 0 or text[index - 1].isspace())
+    ):
+        return True, True
+    marker_end = index + 1
+    while marker_end > 0 and text[marker_end - 1] in "\"'`\\":
+        marker_end -= 1
+    return False, text.endswith(REDACTED_CREDENTIAL, 0, marker_end)
+
+
+def _flag_separator(
+    text: str, index: int, comma: bool, newline: _NextNewline
+) -> int | None:
+    """Where the value after a flag starts: past whitespace (newlines and
+    blank lines too), a ``\\`` continuation, one ``,`` when the flag is a
+    list element, a ``# comment`` and a YAML bullet. ``None`` when nothing
+    separates the flag from what follows, or the text ends."""
+    crossed = False
+    line_start = False
+    seen_comma = False
+    end = len(text)
+    while index < end:
+        char = text[index]
+        if char.isspace():
+            line_start = line_start or char == "\n"
+            crossed = True
+            index += 1
+        elif char == "\\" and text.startswith("\n", index + 1):
+            crossed = True
+            index += 2
+        elif char == "\\" and text.startswith("\r\n", index + 1):
+            crossed = True
+            index += 3
+        elif char == "," and comma and not seen_comma:
+            seen_comma = crossed = True
+            index += 1
+        elif char == "#" and crossed:
+            index = newline.at_or_after(index)
+        elif char == "-" and line_start and text[index + 1 : index + 2] in (" ", "\t"):
+            line_start = False
+            index += 1
+        else:
+            break
+    return index if crossed and index < end else None
+
+
+def _encloses(text: str, index: int, quote: str) -> bool:
+    """Whether ``quote`` just before ``index`` closes the enclosing string:
+    the end, whitespace or ``,]}:);`` follow it -- for a backtick (a Markdown
+    code span) any character but a letter, digit or ``_``."""
+    if index >= len(text) or text[index].isspace() or text[index] in _ENCLOSING_END:
+        return True
+    return quote == "`" and not (text[index].isalnum() or text[index] == "_")
+
+
+def _flag_word_end(text: str, start: int, in_list: bool) -> int:
+    """Where an unquoted flag value starting at ``start`` ends (see above)."""
+    index = start
+    end = len(text)
+    while index < end:
+        char = text[index]
+        if char.isspace() or (in_list and char in _LIST_STOPS):
+            return index
+        if char == "\\" and text[index + 1 : index + 2] in ('"', "'", "`"):
+            if _encloses(text, index + 2, text[index + 1]):
+                return index
+            index += 2
+            continue
+        if char in "\"'`":
+            if _encloses(text, index + 1, char):
+                return index
+            closing = text.find(char, index + 1)
+            if closing == -1:
+                return end
+            index = closing + 1
+            continue
+        index += 1
+    return end
+
+
+def _flag_value(
+    text: str, name: str, start: int, in_list: bool, joined: bool
+) -> tuple[str, int] | None:
+    """The marker for credential flag ``name``'s value starting at
+    ``start`` and where the value ends; ``None`` for another flag, the end
+    of a list, a count, or nothing to hide. A ``joined`` value (after ``=``
+    or ``:``) is the value even when it starts with ``-``."""
     if start >= len(text) or text.startswith(REDACTED_CREDENTIAL, start):
         return None
     char = text[start]
-    if char in "\"'":
-        if text[start + 1 : start + 2] == "-":
-            return None  # a quoted flag, as the next list element
-        return _value_redaction(text, start)
+    if not joined and (char == "-" or (in_list and char in "]})")):
+        return None
+    quote = _FLAG_QUOTE.match(text, start)
+    if quote is not None:
+        spelled = quote.group()
+        after = quote.end()
+        if text.startswith(("-", spelled), after) or text.startswith(
+            REDACTED_CREDENTIAL + spelled, after
+        ):
+            return None  # a quoted flag, an empty string, or already hidden
+        if spelled in ('"', "'"):
+            return _value_redaction(text, start)
+        if spelled == "`":
+            closing = text.find("`", after)
+            end = len(text) if closing == -1 else closing + 1
+            return f"`{REDACTED_CREDENTIAL}`", end
+        if spelled.endswith('"'):
+            return (
+                spelled + REDACTED_CREDENTIAL + spelled,
+                _escaped_value_end(text, start, spelled),
+            )
     if char in _CLOSERS:
         return _value_redaction(text, start)
-    if char in "-=:]})":
-        return None  # another flag, an assignment, or the list's end
-    token = _FLAG_TOKEN.match(text, start)
-    end = token.end() if token is not None else start
+    end = _flag_word_end(text, start, in_list)
     if end == start or _token_count(name, text[start:end]):
         return None
     if text[start:end].lower() in _FLAG_SCHEMES:
         blanks = _FLAG_BLANKS.match(text, end)
         if blanks is not None:
-            scheme_value = _FLAG_TOKEN.match(text, blanks.end())
-            if scheme_value is not None and scheme_value.end() > blanks.end():
-                end = scheme_value.end()
+            scheme_end = _flag_word_end(text, blanks.end(), in_list)
+            if scheme_end > blanks.end():
+                end = scheme_end
     return REDACTED_CREDENTIAL, end
 
 
 def _redact_flag_values(text: str) -> str:
     if "-" not in text:
         return text
-    parts: list[str] = []
-    pos = 0
-    for match in _FLAG_VALUE.finditer(text):
-        if match.start() < pos or not _credential_name(match.group("name")):
+    # Value spans by start. A flag inside a ``# comment`` that an earlier
+    # flag's separator skipped is still examined, so its span may start
+    # before one already found.
+    spans: dict[int, tuple[str, int]] = {}
+    starts: list[int] = []
+    newline = _NextNewline(text)
+    for match in _FLAG_START.finditer(text):
+        if not _credential_name(match.group("name")):
             continue
-        if match.group("comma") is not None and not match.group("close"):
-            continue  # ``--token, then`` in prose: a list item needs quotes
-        redaction = _flag_value_redaction(text, match.group("name"), match.end())
+        covered = bisect.bisect_right(starts, match.start()) - 1
+        if covered >= 0 and match.start() < spans[starts[covered]][1]:
+            continue  # inside a value already hidden
+        name = match.group("name")
+        in_list, list_value = _in_list(text, match.start())
+        index = match.end()
+        close = _FLAG_QUOTE.match(text, index)
+        join = None if close is not None else _FLAG_JOIN.match(text, index)
+        if join is not None:
+            start: int | None = join.end()
+        else:
+            index = close.end() if close is not None else index
+            start = _flag_separator(text, index, close is not None or in_list, newline)
+        if start is None or start in spans:
+            continue
+        redaction = _flag_value(
+            text, name, start, list_value or close is not None, join is not None
+        )
         if redaction is None:
             continue
-        marker, end = redaction
-        parts.append(text[pos : match.end()] + marker)
+        spans[start] = redaction
+        bisect.insort(starts, start)
+    if not spans:
+        return text
+    parts: list[str] = []
+    pos = 0
+    for start in starts:
+        marker, end = spans[start]
+        if start < pos:
+            if end > pos:  # overlaps the span before: hide the rest too
+                parts.append(REDACTED_CREDENTIAL)
+                pos = end
+            continue
+        parts.append(text[pos:start] + marker)
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
 
 
 def _credential_flag(item: object) -> str | None:
-    """The name of ``item`` when it is a whole credential-named flag
-    (``--password``, ``-token``), one element of a command list."""
+    """The name of ``item`` when it is a whole credential-named flag, one
+    element of a command list."""
     if not isinstance(item, str):
         return None
-    flag = _FLAG_NAME.fullmatch(item)
+    flag = _FLAG_ELEMENT.fullmatch(item)
     if flag is None or not _credential_name(flag.group("name")):
         return None
     return flag.group("name")
@@ -809,13 +976,6 @@ def _redact_prose(text: str) -> str:
 
 
 def _redact_name_rules(text: str) -> str:
-    # Flag values run last (#802): they only hide more of what the rules
-    # below left in view, so no match of theirs is lost (a scheme's
-    # ``Bearer x`` hidden as part of a flag's token would be).
-    return _redact_flag_values(_redact_named_values(text))
-
-
-def _redact_named_values(text: str) -> str:
     redacted = _redact_userinfo(text, _AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO)
     redacted = _redact_assignments(redacted)
     redacted = _redact_escaped_keys(redacted)
@@ -833,7 +993,15 @@ def redact_credentials(text: str) -> str:
     # hid stays hidden and these only replace userinfo still in view. Their
     # output keeps ``@`` as it was spelled (``%40``, ``&#64;``, ...), so it
     # never completes a literal authority to its left or exposes a name.
-    return _redact_userinfo(_redact_prose(text), *_ENCODED_AUTHORITY_USERINFO)
+    redacted = _redact_userinfo(_redact_prose(text), *_ENCODED_AUTHORITY_USERINFO)
+    # Flag values last (#802): they only hide more of the result. A hidden
+    # value changes what the rules read around it (a key's quotes, a list's
+    # commas), so when it hid anything all rules run once more on the result.
+    flagged = _redact_flag_values(redacted)
+    if flagged == redacted:
+        return redacted
+    again = _redact_userinfo(_redact_prose(flagged), *_ENCODED_AUTHORITY_USERINFO)
+    return _redact_flag_values(again)
 
 
 # Kubernetes reference names that point at a Secret without holding any of
