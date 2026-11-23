@@ -267,6 +267,24 @@ def _credential_name(name: str) -> bool:
     return name.lower() in _AUTHENTICATION_KEYS or _authentication_name(name)
 
 
+# An environment variable is a credential by the same name rule, and on env
+# names only also by the words ``pass``/``pwd`` (#574, B1-U1 a, B1-D4):
+# ``DB_PASS``, ``RABBITMQ_DEFAULT_PASS``, ``SMTP_PWD``. Not in the general
+# rule, where ``golden_pass: 3/3`` would be hidden. ``DB_HOST``, ``LOG_LEVEL``
+# and ``SESSION_TIMEOUT`` stay visible. An env value is a string, so the
+# ``*_tokens`` count exemption does not apply (``MAX_TOKENS="4096"`` is
+# hidden, B1-D6).
+_ENV_CREDENTIAL_WORDS = frozenset({"pass", "pwd"})
+
+
+def _env_credential_name(name: str) -> bool:
+    if _credential_name(name):
+        return True
+    words = {word.lower() for word in _WORDS.findall(name)}
+    words.update(part for part in re.split(r"[^a-z0-9]+", name.lower()) if part)
+    return bool(words & _ENV_CREDENTIAL_WORDS)
+
+
 def _session_word(name: str) -> bool:
     """Whether ``session`` is any word of ``name`` -- the rule before #366.
     A Redis key such as ``session:4f1c`` or ``spring:session:sessions:…``
@@ -617,7 +635,47 @@ def _redact_userinfo(text: str, *rules: re.Pattern[str]) -> str:
     return text
 
 
+# A Kubernetes env entry written as JSON text (#574, B1-D5): the
+# ``last-applied-configuration`` annotation, a tabular cell, a log line --
+# ``"name":"DB_PASSWORD","value":"..."``, name first as canonical JSON (keys
+# sorted) and kubectl write it. The value is read by ``_value_redaction``.
+# Not recognised: ``value`` before ``name``, other keys between them, and
+# JSON escaped one level deeper (``\"name\":...``).
+_ENV_PAIR = re.compile(
+    r'"name"\s*+:\s*+"(?P<env>[A-Za-z_][A-Za-z0-9_.\-]{0,255}+)"'
+    r'\s*+,\s*+"value"\s*+:\s*+'
+)
+
+
+def _redact_env_pairs(text: str) -> str:
+    if '"value"' not in text:
+        return text
+    parts: list[str] = []
+    pos = 0
+    for match in _ENV_PAIR.finditer(text):
+        if match.start() < pos or not _env_credential_name(match.group("env")):
+            continue
+        redaction = _value_redaction(text, match.end())
+        if redaction is None:
+            continue
+        marker, end = redaction
+        parts.append(text[pos : match.end()] + marker)
+        pos = end
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
 def _redact_prose(text: str) -> str:
+    redacted = _redact_name_rules(text)
+    # The env pairs run after the rules above, so whatever those hid stays
+    # hidden (a value span read here can be shorter than theirs); when they
+    # changed anything, the rules above run once more on the result, so a
+    # second call finds nothing new.
+    paired = _redact_env_pairs(redacted)
+    return redacted if paired == redacted else _redact_name_rules(paired)
+
+
+def _redact_name_rules(text: str) -> str:
     redacted = _redact_userinfo(text, _AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO)
     redacted = _redact_assignments(redacted)
     redacted = _redact_escaped_keys(redacted)
@@ -714,7 +772,19 @@ def redact_payload(value: object) -> object:
                 else None
             )
             redacted: object
-            if readable is not None:
+            if (
+                readable is None
+                and parent == "env"
+                and key == "value"
+                and isinstance(source, dict)
+                and isinstance(env_name := source.get("name"), str)
+                and _env_credential_name(env_name)
+                and item is not None
+            ):
+                # ``env[].value`` of a credential-named variable (#574).
+                redacted = REDACTED_CREDENTIAL
+                changed |= redacted != item
+            elif readable is not None:
                 # Inside a Secret reference: only the named sub-fields, and
                 # only as a string (still prose-redacted) or a bool.
                 if key in readable and isinstance(item, (str, bool)):

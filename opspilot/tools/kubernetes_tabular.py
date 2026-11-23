@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from opspilot.redaction import redact_payload
 from opspilot.tools import otel_demo
 from opspilot.tools.executor import (
     TransportError,
@@ -327,7 +328,11 @@ class TabularQueryTransport:
         if isinstance(listed, TransportResponse):
             return listed
         notes = list(listed.notes)
-        items = listed.items
+        # Redacted before the columns are read (#574, B1-U2 a): a column such
+        # as ``.data.DB_PASSWORD`` would otherwise hold a bare value with no
+        # name beside it for the output redaction to recognise.
+        items = redact_payload(listed.items)
+        assert isinstance(items, list)
         rows = [[cell(item, column) for column in columns] for item in items]
         filter_mode: str | None = None
         if pattern is not None and rows:

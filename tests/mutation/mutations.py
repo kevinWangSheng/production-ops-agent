@@ -476,4 +476,34 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    _ENTITY_AUTHORITY_USERINFO,\n",
         "",
     ),
+    # #574 (B1-U1 a, B1-U2 a): killed by tests/safety/test_safety_env_values.py.
+    Mutation(
+        "M54",
+        "credentials: kubernetes_jq_query runs on redacted objects (#574)",
+        # Mutated: the model's jq expression sees the raw objects again.
+        "opspilot/tools/kubernetes_core.py",
+        '            redact_payload(listed.document()), separators=(",", ":")\n',
+        '            listed.document(), separators=(",", ":")\n',
+    ),
+    Mutation(
+        "M55",
+        "credentials: kubernetes_tabular_query reads columns from redacted objects (#574)",
+        "opspilot/tools/kubernetes_tabular.py",
+        "        items = redact_payload(listed.items)\n",
+        "        items = listed.items\n",
+    ),
+    Mutation(
+        "M56",
+        "credentials: env[].value of a credential-named variable is redacted (#574)",
+        "opspilot/redaction.py",
+        '                and parent == "env"\n',
+        '                and parent == "<never>"\n',
+    ),
+    Mutation(
+        "M57",
+        'credentials: a "name":"X","value":... env pair in JSON text is redacted (#574)',
+        "opspilot/redaction.py",
+        "    paired = _redact_env_pairs(redacted)\n",
+        "    paired = redacted\n",
+    ),
 )

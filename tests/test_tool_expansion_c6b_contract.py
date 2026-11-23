@@ -239,17 +239,17 @@ def test_existing_revision_constants_keep_their_values():
     from opspilot.tools import otel_demo_ext
 
     assert otel_demo_ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == (
-        "otel-demo-ext-e234c8313538"
+        "otel-demo-ext-01d9ced4706c"
     )
-    assert otel_demo_ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-764db0f5049f"
+    assert otel_demo_ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-b8a4a763a94f"
     assert otel_demo_ext.tool_schema_revision(sql="postgresql") == (
-        "otel-demo-ext-e234c8313538"
+        "otel-demo-ext-01d9ced4706c"
     )
     assert otel_demo_ext.tool_schema_revision(sql="mysql") == (
-        "otel-demo-ext-764db0f5049f"
+        "otel-demo-ext-b8a4a763a94f"
     )
-    assert otel_demo_ext.tool_schema_revision() == "otel-demo-ext-bdb3eda167eb"
-    assert otel_demo_ext.tool_schema_revision(sql=None) == "otel-demo-ext-bdb3eda167eb"
+    assert otel_demo_ext.tool_schema_revision() == "otel-demo-ext-d44b47f8618a"
+    assert otel_demo_ext.tool_schema_revision(sql=None) == "otel-demo-ext-d44b47f8618a"
 
 
 @pytest.mark.parametrize(
@@ -282,7 +282,7 @@ def test_new_dialects_append_three_tools_and_have_their_own_revision(url, dialec
     }[dialect]
     assert revision == constant
     known = {pin[0] for key, pin in PINS.items() if "|desc|" not in key}
-    known.add("otel-demo-ext-bdb3eda167eb")
+    known.add("otel-demo-ext-d44b47f8618a")
     assert revision not in known
     # The web (address only) and the worker (address and credential) agree.
     worker_env = env_for(dialect, url)
