@@ -506,4 +506,13 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    paired = _redact_env_pairs(redacted)\n",
         "    paired = redacted\n",
     ),
+    # #807 (B1-U5): killed by tests/safety/test_safety_postmortem_report_input.py.
+    Mutation(
+        "M58",
+        "data flow: postmortem drafting sees only the report's summary, claims and gaps (#807)",
+        # Mutated: the model reads the incident's whole terminal step again.
+        "opspilot/knowledge/generation.py",
+        '        "investigation_report": report,\n',
+        '        "investigation_report": incident["conclusion"],\n',
+    ),
 )
