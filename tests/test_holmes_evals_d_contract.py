@@ -134,7 +134,7 @@ def test_c2_questions_and_groups() -> None:
     assert set(q.QUESTION_GROUPS) >= {"b1", "c5", "c2", "c1", "todo-hard"}
     assert len(set(q.ALL_QUESTIONS)) == len(q.ALL_QUESTIONS)
     # B1 / C5 unchanged.
-    assert len(q.B1_QUESTIONS) == 30 and tuple(q.C5_QUESTIONS) == C5_ALL
+    assert len(q.B1_QUESTIONS) == 34 and tuple(q.C5_QUESTIONS) == C5_ALL
     assert tuple(q.QUESTION_GROUPS["c5"]) == C5_ALL
 
 

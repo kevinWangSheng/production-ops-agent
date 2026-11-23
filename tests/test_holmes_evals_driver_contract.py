@@ -50,6 +50,7 @@ MODEL = "model-fake-value-4"
 Q275 = "275_es_field_name_correction"
 Q185 = "185_elasticsearch_cross_region_search"
 Q280 = "280_es_multi_quirk"
+Q235 = "235_elasticsearch_cluster_mismatch"
 
 
 def _cfg(tmp_path: Path, **overrides: Any) -> Any:
@@ -216,16 +217,22 @@ def test_trial_record_categories(kind: str, passed: bool, category: str) -> None
 
 
 def test_trial_record_missing_is_env_broken_and_time_box_flag() -> None:
-    trial = mod("driver").trial_record(_missing(Q185, 3))
+    # #809 (B4-12): 235 stays time-box-limited; 185 left the set.
+    trial = mod("driver").trial_record(_missing(Q235, 3))
     assert (trial.qid, trial.index, trial.passed, trial.category) == (
-        Q185,
+        Q235,
         3,
         False,
         "env_broken",
     )
     assert trial.time_box_limited is True
-    ok = mod("driver").trial_record(_completed(Q185, 1, "pass"))
+    ok = mod("driver").trial_record(_completed(Q235, 1, "pass"))
     assert ok.time_box_limited is True
+    assert mod("driver").trial_record(_missing(Q185, 3)).time_box_limited is False
+    assert (
+        mod("driver").trial_record(_completed(Q185, 1, "pass")).time_box_limited
+        is False
+    )
 
 
 # -- resume ----------------------------------------------------------------------

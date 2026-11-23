@@ -180,7 +180,7 @@ def test_c5_question_lists() -> None:
         tuple(q.B1_QUESTIONS) + C5_ALL + tuple(q.C2_QUESTIONS)
         + tuple(q.C1_QUESTIONS)
     )  # fmt: skip
-    assert len(q.B1_QUESTIONS) == 30
+    assert len(q.B1_QUESTIONS) == 34  # #809 (#808): B1-1 four are back
     assert not set(q.B1_QUESTIONS) & set(q.C5_QUESTIONS)
 
 

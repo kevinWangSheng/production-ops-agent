@@ -119,6 +119,7 @@ from scripts.holmes_evals.setup import (
 from scripts.holmes_evals.shift import (
     LEAD,
     LOKI_FIXED_TIME,
+    MAX_LOOKBACK_NAME,
     TIME_BOX_LIMITED,
     UTC_DATE_SENSITIVE,
     EsAdmin,
@@ -418,6 +419,9 @@ def tool_env(
         "OPSPILOT_OTEL_JAEGER_URL": f"http://127.0.0.1:{cfg.ports.jaeger_query}",
         "OPSPILOT_ES_URL": cfg.es_url,
         "OPSPILOT_HEALTH_BIND": "",
+        # #809 (B4-U1/U2): the deployment cap, the same in web and worker;
+        # every item is submitted with it (``MAX_LOOKBACK_NAME``).
+        "OPSPILOT_MAX_LOOKBACK": MAX_LOOKBACK_NAME,
     }
     if backend == "loki":
         del env["OPSPILOT_ES_URL"]
@@ -1540,6 +1544,7 @@ class Attempt:
                 question=delivered,
                 key=key,
                 target_id=TARGET_ID,
+                lookback=MAX_LOOKBACK_NAME,
             )
         except OSError as error:
             raise InfraFailure("INTAKE_UNREACHABLE", type(error).__name__) from None

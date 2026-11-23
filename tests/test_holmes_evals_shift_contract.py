@@ -55,7 +55,9 @@ FIXED_PREFIXES = (
     "183b", "183c", "183d", "183e", "184", "185", "187", "188", "189", "190",
     "191", "193", "245", "275", "276", "277", "278", "280",
 )  # fmt: skip
-TIME_BOX_PREFIXES = ("184", "185", "189", "235", "280")
+# #809 (B4-12, PR #824 ruling): 184 (30 d + LEAD from delivery) and 235 (a
+# 45-day-old batch) exceed the 30-day lookback.
+TIME_BOX_PREFIXES = ("184", "235")
 NOW = datetime(2026, 11, 18, 10, 0, 30, tzinfo=UTC)
 
 
