@@ -7,7 +7,7 @@ command-line client's custom-columns printer. Decision table r3 A6-1 to A6-6:
 
 * Reading is A2's, unchanged (A6-1): the static resource table, Secret
   refused first, ``namespace`` omitted is the whole cluster, pages of 500
-  under one 4 MiB budget, ``managedFields`` dropped, API errors mapped the
+  under one 4 MiB budget, ``managedFields`` replaced by its summary (#696), API errors mapped the
   same way, and events kept only inside the authorized window by the same
   ``list_objects`` filter. One call is one operation.
 * ``columns`` is ``HEADER:PATH,...`` in a small subset (A6-2): field names
@@ -51,6 +51,7 @@ from opspilot.tools.executor import (
 )
 from opspilot.tools.kubernetes_core import (
     _KINDS_TEXT,
+    _MANAGED_FIELDS_CANNOT_PROVE,
     DEFAULT_NAMESPACE,
     ENDPOINT_SELECTOR,
     ERROR_CLASSES,
@@ -545,7 +546,12 @@ _RETURNS = (
     "namespace or all_namespaces, cluster_scoped, label_selector, "
     "field_selector, application_namespace), notes, total_items_processed "
     "(objects read), rows_removed_by_filter, filter_mode (regex, substring "
-    "or null) and pages_read."
+    "or null) and pages_read. Paths read each object as the API server "
+    "returns it, except that metadata.managedFields is replaced by "
+    "metadata.managedFieldsSummary (one entry per manager, operation and "
+    "subresource: manager, operation, time, subresource when set; sorted "
+    "oldest first (newest last); the newest 20, "
+    "with metadata.managedFieldsSummaryDropped counting the rest)."
 )
 _WINDOW_FORMAT = (
     "The authorized absolute window is appended as {window}. Objects are "
@@ -583,7 +589,7 @@ _CANNOT_PROVE = (
     "not proof nothing happened (events expire and timestamps are often "
     "null). <none> means the path reached no value in that object, not that "
     "the field is absent from the kind; a filtered table is not a full "
-    "picture of the kind."
+    "picture of the kind. " + _MANAGED_FIELDS_CANNOT_PROVE
 )
 
 #: A2's codes without the jq ones, plus this tool's.
