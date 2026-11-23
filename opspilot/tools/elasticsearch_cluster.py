@@ -203,6 +203,7 @@ def _node_id_ok(value: object) -> bool:
         and set(value) <= _NODE_ID_CHARS
         and not value.startswith("_")
         and ".." not in value
+        and set(value) != {"."}  # "." alone is a path segment, not a node
     )
 
 
