@@ -52,10 +52,12 @@ CONTRACT_REVISION = "r12"
 # r12 (D21): recovery readings use columns and recovery catalog entries are
 # compact in the model input only -- prompt v5, input v4; full stored
 # evidence and output/content schemas stay unchanged.
+# #807 (B1-U5): the investigation report in the model input is the published
+# report's summary, claims and gaps, not the whole terminal step -- input v5.
 POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v5"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
-POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v4"
+POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v5"
 # The request profile: JSON mode, thinking enabled, reasoning effort high,
 # no tools (``opspilot.investigation.loop.serialized_request``).
 POSTMORTEM_MODEL_PROFILE = "deepseek-flash/json/thinking-high/no-tools"

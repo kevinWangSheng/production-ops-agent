@@ -12,8 +12,8 @@ call (plus at most one repair call).
 * **What the model sees (D21).** Only a structured projection inside the
   watermark: the incident facts above, adopted and committed evidence views
   reduced to an allowlist of fields, human action text, the recovery ending
-  with its sample readings (no raw bytes), the investigation report's text
-  fields, the reviewer's return reason and this postmortem's active
+  with its sample readings (no raw bytes), the published investigation
+  report's summary, claims and gaps (#807), the reviewer's return reason and this postmortem's active
   knowledge entries (key, name, revision; r8). Every string is scrubbed for
   credential-shaped text. Independent byte and item limits; over any of
   them nothing is generated (``InputTooLarge`` with the limit's name).
@@ -157,7 +157,11 @@ _METADATA_FIELDS = (
 )
 SPAN_GROUPS_ONLY = "span_groups_only"
 METADATA_ONLY = "metadata_only"
-_REPORT_FIELDS = ("assessment_status", "conclusion", "summary", "gaps", "next_steps")
+# #807 (B1-U5, B2-U2): the published report's summary, claims and gaps only;
+# never the root cause, next steps or the terminal step's bookkeeping.
+_REPORT_FIELDS = ("summary", "gaps")
+# A claim keeps its statement and the evidence it cites (catalog ids the
+# drafting model may cite again, rule 1); reference keys are left out.
 _CLAIM_FIELDS = ("kind", "text", "evidence_ids")
 
 # Credential-shaped text (same shapes ``opspilot.tracing`` scrubs from span
@@ -684,11 +688,24 @@ def build_input(
 
 
 def _report(conclusion: Any, secrets: Sequence[str]) -> dict[str, Any] | None:
-    """The investigation report's text fields (allowlist), or None."""
+    """The published report's summary, claims and gaps (#807), or None.
+
+    ``conclusion`` is the incident's column: the loop's terminal step, whose
+    report is the raw JSON text under ``conclusion.report_content``. A step
+    without that text, or text that is not a JSON object, gives no report.
+    """
     if not isinstance(conclusion, Mapping):
         return None
-    nested = conclusion.get("report")
-    report: Mapping[str, Any] = nested if isinstance(nested, Mapping) else conclusion
+    body = conclusion.get("conclusion")
+    content = body.get("report_content") if isinstance(body, Mapping) else None
+    if not isinstance(content, str):
+        return None
+    try:
+        report = json.loads(content)
+    except ValueError:
+        return None
+    if not isinstance(report, Mapping):
+        return None
     out: dict[str, Any] = {k: report[k] for k in _REPORT_FIELDS if k in report}
     claims = report.get("claims")
     if isinstance(claims, list):

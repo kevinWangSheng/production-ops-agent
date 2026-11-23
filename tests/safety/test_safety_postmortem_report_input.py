@@ -3,7 +3,7 @@ summary, claims and gaps (#807, B1-U5; PRODUCT-CONSTRAINTS "Data flow
 contract"). The incident's ``conclusion`` column holds the whole terminal
 step -- operator replies, prompt revision, calibration, the raw report JSON
 with its root cause -- and none of it may reach the model. The report's own
-markers must arrive, so the check is not vacuous. Guarded by mutation M58.
+markers must arrive, so the check is not vacuous. Guarded by mutation M59.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from tests.postmortem_input_support import (
 
 
 def test_terminal_step_bookkeeping_never_reaches_the_drafting_model():
-    """M58: the payload's report is the allowlisted projection, never the
+    """M59: the payload's report is the allowlisted projection, never the
     raw ``conclusion`` column."""
     _, sent = model_visible(terminal_step(report_content()))
 
