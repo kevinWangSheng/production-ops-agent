@@ -124,6 +124,12 @@
           {%- endif %}</label>
         <label>Question
           <textarea name="question" required rows="4" maxlength="16384"></textarea></label>
+        {%- if lookbacks and lookbacks | length > 1 %}
+        <label>Look back<span class="hint">How far back the Agent may query. It starts from the last hour and reaches further back only when it needs to.</span>
+          <select name="lookback">
+            {%- for value in lookbacks %}<option value="{{ value }}"{% if loop.first %} selected{% endif %}>{{ {"24h": "24 hours", "7d": "7 days", "30d": "30 days"}[value] }}</option>{% endfor %}
+          </select></label>
+        {%- endif %}
         <label id="intake-key-field">Idempotency key<span class="hint">Reuse the same key to retry the same submission; a different question under the same key is refused.</span>
           <input name="idempotency_key" id="intake-key" required maxlength="256" autocomplete="off"></label>
         <div class="row"><button class="primary btn" type="submit">Submit (read-only investigation)</button></div>
