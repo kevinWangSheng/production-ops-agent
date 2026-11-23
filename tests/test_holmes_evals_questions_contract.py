@@ -328,16 +328,26 @@ EXPECTED_SKILL_DROPPED = frozenset(
         "280_es_multi_quirk",
     }
 )
-EXCLUDED_PREFIXES = ("183a", "183f", "183g", "186", "271", "274", "279")
+#: #809 (depends on #808, B4-U7): the four questions B1-1 left out for lack
+#: of upstream's elasticsearch/cluster tools are back in B1.
+REINCLUDED_808 = frozenset(
+    {
+        "183a_elasticsearch_cluster_health",
+        "183f_elasticsearch_shard_filtering",
+        "183g_elasticsearch_index_stats",
+        "186_elasticsearch_shard_explosion",
+    }
+)
+EXCLUDED_PREFIXES = ("271", "274", "279")
 
 
-def test_b1_questions_are_the_thirty_upstream_directories():
+def test_b1_questions_are_the_upstream_directories():
     q_mod = mod("questions")
     b1 = q_mod.B1_QUESTIONS
     assert isinstance(b1, tuple)
-    assert len(b1) == 30
-    assert len(set(b1)) == 30
-    assert set(b1) == EXPECTED_B1
+    assert len(b1) == 34
+    assert len(set(b1)) == 34
+    assert set(b1) == EXPECTED_B1 | REINCLUDED_808
 
 
 def test_excluded_questions_absent():

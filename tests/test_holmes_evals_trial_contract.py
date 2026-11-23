@@ -278,7 +278,8 @@ class Harness:
         return False
 
     # -- the Run
-    def submit(self, web_url, account, *, question, key, target_id):
+    def submit(self, web_url, account, *, question, key, target_id, **extra):
+        # #809: the driver also names the submit form's ``lookback``.
         self.events.append("submit")
         self.passwords.append(account.password)
         self.submits.append(
@@ -287,6 +288,7 @@ class Harness:
                 "question": question,
                 "key": key,
                 "target_id": target_id,
+                **extra,
             }
         )
         return mod("intake").SubmitResult(
@@ -854,7 +856,8 @@ def test_deterministic_shift_error_marks_remaining_trials_missing(world) -> None
         _no_secrets(h, raw)
     trials = [driver.trial_record(_summary(cfg, Q185, n)[0]) for n in (1, 2, 3)]
     assert {t.category for t in trials} == {"env_broken"}
-    assert all(t.time_box_limited for t in trials)
+    # #809 (B4-12): 185's data now fits the 30-day lookback.
+    assert not any(t.time_box_limited for t in trials)
     # Only the first trial tried; the rest were not attempted again.
     assert len([s for s in h.scripts if s["operation"] == "before_test"]) == 1
 
