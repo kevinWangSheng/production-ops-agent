@@ -575,3 +575,51 @@ def test_a_reply_citing_evidence_links_to_it(workbench):
     )
     (row,) = re.findall(r'<span class="n">A1</span>.*?</div>', page.text, re.S)
     assert f'href="/incidents/{advised_id}/evidence/{cites["evidence_ids"][0]}"' in row
+
+
+def test_merge_log_lists_merges_beyond_the_linked_incidents_cap():
+    """#715 (B2-R11): with 21 incidents merged into one survivor, the log has a
+    "merged into this" event for every one of them; the Linked incidents block
+    keeps its cap of 20 and says more exist."""
+    app, workbench, store = _build()
+    target = f"tgt-{uuid4()}"
+    survivor = _submit(app, target)
+    sources = [_submit(app, target) for _ in range(21)]
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open',state='running'"
+            " WHERE incident_id = ANY(%s)",
+            ([UUID(i) for i in [survivor, *sources]],),
+        )
+    for source in sources:
+        generation = _rows(store, UUID(source))[0]["control_generation"]
+        response = post_form(
+            app,
+            f"/incidents/{source}/control",
+            {
+                "action": "merge_into",
+                "into_incident_id": survivor,
+                "text": "same incident",
+                "expected_generation": str(generation),
+                "idempotency_key": f"merge-{uuid4()}",
+            },
+            headers={**basic(), **same_origin()},
+        )
+        assert response.status == 200, response.text
+
+    snapshot = workbench.snapshot(UUID(survivor))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    log = [
+        json.dumps(entry, sort_keys=True, default=str)
+        for entry in view["log"]["entries"]
+        if entry.get("kind") == "event"
+    ]
+    missing = [s for s in sources if not any(s in entry for entry in log)]
+    assert missing == []
+
+    linked = [str(row["incident_id"]) for row in view["linked_incidents"]]
+    assert len(linked) == 20 and set(linked) <= set(sources)
+    assert view["links"]["linked_cut"] is True
+    assert "20+, the first 20 shown" in _detail(app, survivor)

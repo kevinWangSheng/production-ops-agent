@@ -3536,12 +3536,14 @@ class Workbench:
 
     def _linked(self, incident_id: UUID) -> dict[str, Any]:
         """Workbench P6 L1/L2: each incident merged into this one, in merge
-        order, at most ``LINKED_SHOWN``: title, lifecycle at the merge,
-        opening time, who merged it, when and the redacted reason."""
+        order: title, lifecycle at the merge, opening time, who merged it,
+        when and the redacted reason. ``rows`` keeps the first
+        ``LINKED_SHOWN`` for the Linked incidents block; ``merges`` holds
+        every one for the log's "merged into this" events (#715)."""
         reader = getattr(self.incidents, "linked_incidents", None)
-        rows = () if reader is None else reader(incident_id)
+        rows = () if reader is None else reader(incident_id, limit=None)
         items = []
-        for item, merge in rows[:LINKED_SHOWN]:
+        for item, merge in rows:
             reason = merge.get("reason")
             items.append(
                 {
@@ -3556,7 +3558,11 @@ class Workbench:
                     else None,
                 }
             )
-        return {"rows": items, "truncated": len(rows) > LINKED_SHOWN}
+        return {
+            "rows": items[:LINKED_SHOWN],
+            "truncated": len(items) > LINKED_SHOWN,
+            "merges": items,
+        }
 
     def _followed_by(self, incident_id: UUID) -> dict[str, Any]:
         """Workbench P6 L6: incidents opened after this closed one."""
