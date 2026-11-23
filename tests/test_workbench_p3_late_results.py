@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -29,7 +30,6 @@ from opspilot.web import (
     create_app,
     hash_password,
 )
-from opspilot.web.app import _TEMPLATES
 from opspilot.web.incident_view import LIVE_KINDS, page_view
 from opspilot.web.review import EVENT_KINDS
 from opspilot.web.service import categorize_report
@@ -127,6 +127,95 @@ def test_late_result_is_not_an_answer_a_read_step_or_a_numbered_step():
     assert [e["number"] for e in steps] == [1, None, 2]
     assert steps[1]["history_only"] is True
     assert view["log"]["steps"] == 2
+
+
+# -- #744 items 1-3 (B2-R14/R15/R16): the plan card and plan-update steps --
+
+_TEMPLATES = Path(__file__).resolve().parents[1] / "opspilot" / "web" / "templates"
+_DOT = r"(?:·|&middot;|&#183;|&#xb7;)"
+
+
+def _plan_step(n, at, tools):
+    step = _step(n, watermark=1)
+    step["observed_at"] = at
+    step["tools"] = tools
+    return step
+
+
+def _todo(*statuses, prefix):
+    return {
+        "tool": "TodoWrite",
+        "status": "ok",
+        "reason": None,
+        "task_list": True,
+        "todos": [
+            {"id": f"{prefix}{i}", "content": f"task {prefix}{i}", "status": s}
+            for i, s in enumerate(statuses)
+        ],
+    }
+
+
+_QUERY = {"tool": "prometheus_query", "status": "ok", "evidence_id": "ev-1"}
+
+
+def _log_html():
+    # Earlier Run r1 holds step 1 (its handoff row takes no number); this
+    # Run's steps are 2, 3 and 4. The plan is written at step 2 (with a
+    # query) and last changed at step 3; step 4 only queries.
+    current = [
+        _plan_step(
+            3, "2026-11-18T10:03:30+00:00", [_QUERY, _todo("pending", prefix="a")]
+        ),
+        _plan_step(
+            4, "2026-11-18T10:14:30+00:00", [_todo("completed", "pending", prefix="b")]
+        ),
+        _plan_step(5, "2026-11-18T10:25:30+00:00", [_QUERY]),
+    ]
+    snapshot = _snapshot(current)
+    view = page_view(snapshot, None, ["message"], message_available=True)
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES)),
+        autoescape=select_autoescape(default=True, default_for_string=True),
+    )
+    page = env.from_string(
+        '{% import "_incident_regions.html" as r with context %}{{ r.log_entries() }}'
+    )
+    return page.render(snapshot=snapshot, view=view)
+
+
+def test_plan_card_names_the_step_and_time_of_its_latest_update():
+    html = _log_html()
+    # C1-10 keeps the title; the qualifier says which list this is (B2-R14).
+    start = html.index('data-key="plan-r2"')
+    end = html.find("data-key=", start + 1)
+    card = re.sub(r"<[^>]+>", " ", html[start : end if end > 0 else None])
+    assert re.search(
+        rf"Investigation plan\s.*?latest\s*{_DOT}\s*updated at step 3, 10:14 UTC",
+        card,
+        re.S,
+    ), card
+
+
+def test_a_collapsed_step_with_a_query_and_a_plan_update_says_both():
+    html = _log_html()
+    summaries = re.findall(
+        r'<details class="step"[^>]*>\s*<summary>(.*?)</summary>', html, re.S
+    )
+    assert len(summaries) >= 3, summaries
+    text = [re.sub(r"<[^>]+>", " ", s) for s in summaries]
+    [both] = [t for t in text if re.search(r"\bStep 2\b", t)]
+    assert re.search(rf"\b1 query\s*{_DOT}\s*plan updated\b", both), both
+    [query_only] = [t for t in text if re.search(r"\bStep 4\b", t)]
+    assert "plan updated" not in query_only, query_only
+
+
+def test_live_merge_keeps_plan_entries_out_of_the_new_count():
+    # Weaker than a browser check (B2-R16): the page's live-merge script must
+    # single out ``plan-`` keys so they update in place without counting as
+    # new or becoming the chip's scroll target.
+    source = (_TEMPLATES / "incident.html").read_text(encoding="utf-8")
+    script = source[source.index("<script>") : source.index("</script>")]
+    assert re.search(r"""["']plan-["']|/\^plan-/""", script), "no plan- key rule"
 
 
 # --- #704: Recovery watch records list every reading's provenance ---------
