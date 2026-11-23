@@ -1062,7 +1062,7 @@ def _log(
         )
     # Workbench P6 L3: system events, drawn from system-written fields only;
     # never messages, never queued.
-    for linked in (snapshot.get("linked") or {}).get("rows") or []:
+    for linked in (snapshot.get("linked") or {}).get("merges") or []:
         detail = f"“{linked['title']}”"
         if linked.get("actor"):
             detail += f" · by {linked['actor']}"
