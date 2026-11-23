@@ -176,7 +176,7 @@ Service 的表达式：`COALESCE(a.namespace||'/'||a.workload, t.resource_uid)`�
 
 筛选条件：
 - `service = %s`
-- `q`：先转义 `\`、`%`、`_`，然后用 `ILIKE '%'||%s||'%' ESCAPE '\'` 匹配问题原文、`ld.alert_json`（含 alertname 和 summary；这段文字已脱敏、有长度上限，且只来自最新一次投递）、service；另外用 `i.incident_id::text LIKE %s||'%'` 匹配短 id 前缀。
+- `q`：先转义 `\`、`%`、`_`，然后用 `ILIKE '%'||%s||'%' ESCAPE '\'` 匹配问题原文、最新一次投递记录解码后的 `labels.alertname` 和 `annotations.summary`（只取字符串值）、service；另外用 `i.incident_id::text LIKE %s||'%'` 匹配短 id 前缀。不再匹配整段 `alert_json` 文本，JSON 键名和其他 label 不会命中；页面上显示的标题（含引号、反斜杠）复制过来能搜到。和内存实现 `incident_list._matches` 一致（#689）。投递记录先用 `pg_input_is_valid(alert_json,'jsonb')` 判断，通过才转成 `jsonb`：被截断的记录、含 `\u0000` 或孤立代理项转义的记录，告警字段视为匹配不上，搜索不会报错。内存实现用 `json.loads` 能解开后两种，所以在这两种极端输入上 SQL 比内存实现少命中，这是有意保留的差异。
 
 **分页**：用 OFFSET，不用 keyset。按每页 25 行和数千事故的规模，OFFSET 足够；而且 `?page=N` 可读、可分享。只有事故达到十万级才需要改成 keyset。
 
@@ -450,6 +450,6 @@ POST 结果：仍然 303 到 `/incidents/{id}`，`Location` 不加锚点（测�
 - 「参照」列的产品细节，比如 PagerDuty 页签的名称和默认每页行数，没有对照当前官方文档。
 - 查询在 PG 上的实际耗时没有实测，是推断。
 - `opspilot_incidents.updated_at`（`0001_baseline.py:56`）是否会随状态变化而更新，没有核实，所以 Age 用的是 `created_at`。
-- `ld.alert_json` 只是最新一次投递的记录，搜索范围因此不包括更早的投递。
+- 搜索的告警字段只取最新一次投递的记录，不包括更早的投递；记录被截断、或含 `jsonb` 不接受的转义（`\u0000`、孤立代理项）时，这条事故只能靠问题原文、service 和短 id 搜到（#689，见 §3.7 筛选条件）。
 - 证据的 `view` 里是否都有 `query` 字段：`otel_demo` 的部分工具有（`otel_demo.py:1606,2045`），其余工具没有逐个核对；没有时展开区只显示状态和 view。
 - 被 follow_up 打断的那一轮里，已经提交的工具结果是否作为证据保留（`loop.py` 的 `_RoundAborted` 路径），没有逐行核对；§4.4 只写了「这一轮不再提交」。
