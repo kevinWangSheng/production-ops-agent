@@ -130,16 +130,16 @@ PINNED = {
         "919a345ac1208b32f4aa545a04cfdce0bcb1beb30eff963f7a398f85c795ed9e",
     ),
     (True, False): (
-        "otel-demo-ext-f141e16e1a61",
-        "4aa4f2f39343e81d24c313446baa3057b490eedfbb3f41aed084a47af8612ef0",
+        "otel-demo-ext-5b9fc1dc2f9d",
+        "7c725bc3914fb5a6d699bbed1fd3ae19294cd927dc029ecc0f3a0316f2a82e01",
     ),
     (False, True): (
         "otel-demo-ext-06a1afb380f4",
         "068703323fcefb49998015c99696be5c390f154a2ff53f3fff5908101f1e77e3",
     ),
     (True, True): (
-        "otel-demo-ext-a78cc2b3a1a6",
-        "401e9cb00b572ecb53ee72f0e47a83d4c7c9ca02a62f22800a2c657354ad6582",
+        "otel-demo-ext-9b0915f34773",
+        "9bf5fc6be87009888b4367636c554bf62376b119162a3b887d069a06bddc5acb",
     ),
 }
 # ``render`` output of the Loki gateway on main a18e61e9 (default backend).

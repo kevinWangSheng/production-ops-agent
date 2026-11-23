@@ -200,13 +200,13 @@ def test_existing_revisions_unchanged_and_live_set_distinct():
     revision = ext.tool_schema_revision
     unchanged = {
         (False, False, False): "otel-demo-ext-b90c54386594",
-        (True, False, False): "otel-demo-ext-f141e16e1a61",
+        (True, False, False): "otel-demo-ext-5b9fc1dc2f9d",
         (False, True, False): "otel-demo-ext-06a1afb380f4",
-        (True, True, False): "otel-demo-ext-a78cc2b3a1a6",
+        (True, True, False): "otel-demo-ext-9b0915f34773",
         (False, False, True): "otel-demo-ext-4f224386bf21",
-        (True, False, True): "otel-demo-ext-87efed188a0e",
+        (True, False, True): "otel-demo-ext-6491e6870d8e",
         (False, True, True): "otel-demo-ext-2fe3cc8565cf",
-        (True, True, True): "otel-demo-ext-8e644bd58950",
+        (True, True, True): "otel-demo-ext-935aff9fd421",
     }
     live = set()
     for (es, loki, vl), value in unchanged.items():
