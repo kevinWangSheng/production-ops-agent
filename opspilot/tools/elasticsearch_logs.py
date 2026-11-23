@@ -401,10 +401,10 @@ class ElasticsearchClient:
         url = endpoint + path
         if query:
             url += "?" + urllib.parse.urlencode(list(query))
-        data = None
+        data: bytes | None = None
         if body is not None:
-            data = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
-            data = data.encode("utf-8")
+            text = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+            data = text.encode("utf-8")
         return self._send("GET", url, data, deadline=deadline, max_bytes=max_bytes)
 
     def search(
