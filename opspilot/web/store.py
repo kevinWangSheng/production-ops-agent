@@ -1364,11 +1364,31 @@ _TAB_PREDICATES = {
 }
 
 
+#: The latest delivery's record decoded, or NULL when it is not valid
+#: ``jsonb`` input: cut at its byte bound, or holding an escape ``jsonb``
+#: refuses (``\u0000``, a lone surrogate) that ``json.loads`` accepts --
+#: those rows' alert fields never match (web UX spec 3.7). The ``CASE``
+#: keeps the cast from running on input that would raise.
+_ALERT_DOC = (
+    "(CASE WHEN pg_input_is_valid(alert_json,'jsonb') THEN alert_json::jsonb END)"
+)
+
+
+def _alert_text(path: str) -> str:
+    """A string member of the decoded alert record (``_alert_fields``), else
+    NULL: a number or object there is not the alert's name or summary."""
+    return (
+        f"(CASE WHEN jsonb_typeof({_ALERT_DOC} #> '{path}')='string'"
+        f" THEN {_ALERT_DOC} #>> '{path}' END)"
+    )
+
+
 def _page_filters(service: str | None, q: str | None) -> tuple[str, tuple[Any, ...]]:
     """The list filters as a ``WHERE`` fragment over ``base`` and its
     parameters: the Service value, and ``q`` as a case-insensitive
-    substring of the question, the latest delivery's stored alert text or
-    the service, or a prefix of the incident id."""
+    substring of the question, the latest delivery's decoded
+    ``labels.alertname`` or ``annotations.summary`` or the service, or a
+    prefix of the incident id -- ``incident_list._matches`` in SQL."""
     clauses = ["TRUE"]
     params: list[Any] = []
     if service is not None:
@@ -1378,11 +1398,12 @@ def _page_filters(service: str | None, q: str | None) -> tuple[str, tuple[Any, .
         text = _like_escape(q)
         clauses.append(
             "(question ILIKE '%%'||%s||'%%' ESCAPE '\\'"
-            " OR alert_json ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            f" OR {_alert_text('{labels,alertname}')} ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            f" OR {_alert_text('{annotations,summary}')} ILIKE '%%'||%s||'%%' ESCAPE '\\'"
             " OR service ILIKE '%%'||%s||'%%' ESCAPE '\\'"
             " OR incident_id::text LIKE %s||'%%' ESCAPE '\\')"
         )
-        params.extend([text, text, text, text.lower()])
+        params.extend([text, text, text, text, text.lower()])
     return " AND ".join(clauses), tuple(params)
 
 
