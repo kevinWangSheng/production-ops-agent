@@ -1823,7 +1823,7 @@ def todo_view(
     operation id and parsed arguments the gateway request would carry, one
     tool span naming the tool (parameter names only, never their values)."""
     request = tool_request_for(step_id, index, call, target_ref=None, window={})
-    with tracer().tool_call(request, tool_name=TODO_TOOL_NAME):
+    with tracer().tool_call(request, tool_name=TODO_TOOL_NAME, counted=False):
         return todo_write_view(request.operation_id, request.params)
 
 
