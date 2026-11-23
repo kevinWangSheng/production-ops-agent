@@ -91,6 +91,12 @@
   table.res { border-collapse: collapse; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 100%; }
   table.res th, table.res td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
   table.res td.wrapcell { white-space: normal; min-width: 16ch; }
+  table.res.recovery-readings { min-width: max(100%, 760px); }
+  table.res.recovery-readings th, table.res.recovery-readings td { white-space: normal; overflow-wrap: break-word; }
+  table.res.recovery-readings td.sig { white-space: nowrap; }
+  table.res.recovery-readings td.brk, table.res.recovery-readings .brk { overflow-wrap: anywhere; }
+  table.res td.shacell { word-break: break-all; width: 22ch; min-width: 16ch; }
+  table.res b.rd-bad { color: var(--err); font-weight: 600; white-space: nowrap; }
   table.res th { color: var(--muted); font-weight: 500; }
   pre.raw-pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.5; background: none; padding: 0; overflow-x: auto; white-space: pre; max-height: 420px; }
   pre.raw-pre.wrap { white-space: pre-wrap; word-break: break-word; }
