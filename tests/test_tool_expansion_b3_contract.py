@@ -108,20 +108,20 @@ PINNED = {
         "0febde06fb1c24617e46ecb6a418e48d6c7c8716ccf9d4938dfe1221b917314b",
     ),
     (True, False, False): (
-        "otel-demo-ext-f141e16e1a61",
-        "f33c753c347548593e40aafc23dd3e0ebff5a87025939d3a478aebdebf81f2d4",
+        "otel-demo-ext-5b9fc1dc2f9d",
+        "fd4e7df600a8d76837bfc8e202da38d3aa38ade919e36bfd044896c1d8312813",
     ),
     (True, False, True): (
-        "otel-demo-ext-87efed188a0e",
-        "53e1de4a78a1a9cda8567ac01ea7abb8182ef1be6c6f28f3fd0a35f28af6895a",
+        "otel-demo-ext-6491e6870d8e",
+        "78f9d3b9c7fc0ef6ac627fcb28ab307578aef1f3b17f97c16c3ac15d83148bce",
     ),
     (True, True, False): (
-        "otel-demo-ext-a78cc2b3a1a6",
-        "b7fabe2fdc7e213c779205b1aee0eb4c09da366144158c0c8f29edfda5b7b3e0",
+        "otel-demo-ext-9b0915f34773",
+        "549ed610c9f6ee00cb1962044a88daf3075493824384487f3cd736a84c7d8bce",
     ),
     (True, True, True): (
-        "otel-demo-ext-8e644bd58950",
-        "b77dc8167f6eca9d33c642a3d3003aad12799bc9f1fb65d8aefb31e45d104c49",
+        "otel-demo-ext-935aff9fd421",
+        "59142321bc96426de8c188db9f6404ac61733019e57599c191aca4dec57fbea1",
     ),
 }
 BACKEND_URLS = {

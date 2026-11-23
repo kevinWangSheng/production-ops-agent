@@ -523,7 +523,7 @@ jobs:
           jq --version
           curl -fsS -u "elastic:${B1_ELASTIC_PASSWORD}" "${B1_ES_URL}" | jq -r '"elasticsearch " + .version.number'
           curl -fsS "${B1_OPENSEARCH_URL}" | jq -r '"opensearch " + .version.number'
-          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b1_search_backends.py -q -rs
+          .venv/bin/python -m pytest tests/integration/test_tool_expansion_b1_search_backends.py tests/integration/test_es_cluster_tools_808_search_backends.py -q -rs
 
   # C5a (#569, r10 C5-16 ... C5-20): grafana_loki_query against real Loki
   # 2.9.0 and Loki 3.x (auth enabled, two tenants) behind the nginx read-only

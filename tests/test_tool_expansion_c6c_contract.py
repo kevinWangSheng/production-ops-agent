@@ -318,7 +318,7 @@ def test_existing_revision_constants_keep_their_values():
     from opspilot.tools import otel_demo_ext as ext
 
     assert ext.TOOL_SCHEMA_REVISION == "otel-demo-ext-b90c54386594"
-    assert ext.ES_TOOL_SCHEMA_REVISION == "otel-demo-ext-f141e16e1a61"
+    assert ext.ES_TOOL_SCHEMA_REVISION == "otel-demo-ext-5b9fc1dc2f9d"
     assert ext.LOKI_TOOL_SCHEMA_REVISION == "otel-demo-ext-06a1afb380f4"
     assert ext.VICTORIALOGS_TOOL_SCHEMA_REVISION == "otel-demo-ext-4f224386bf21"
     assert ext.LIVE_METRICS_TOOL_SCHEMA_REVISION == "otel-demo-ext-0d20c18e8654"
