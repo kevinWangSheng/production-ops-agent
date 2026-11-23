@@ -65,6 +65,24 @@ def test_payload_string_with_name_value_run_is_linear() -> None:
     assert redacted == {"log": _run("a:b") + " " + REDACTED_SECRET}
 
 
+# #802 review of #817: many credential flags inside one ``# comment`` line,
+# then a long run of YAML bullets or blank lines before the value. Each flag
+# resumes after the same comment; re-walking the run per flag was quadratic
+# (about 5 s at 64 KiB).
+COMMENT_FLAG_TAILS = ["- \n", " \n"]
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize("tail", COMMENT_FLAG_TAILS, ids=repr)
+def test_flags_in_a_comment_before_a_long_separator_are_linear(tail: str) -> None:
+    head = "--password # " * (SIZE // 2 // len("--password # "))
+    run = tail * (SIZE // 2 // len(tail))
+    text = head + "\n" + run + "hunter2"
+    redacted, elapsed = _timed(redact_payload, {"log": text})
+    assert elapsed < BOUND_SECONDS, f"{tail!r} took {elapsed:.1f}s"
+    assert redacted == {"log": head + "\n" + run + REDACTED_CREDENTIAL}
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
