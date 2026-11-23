@@ -523,4 +523,14 @@ MUTATIONS: tuple[Mutation, ...] = (
         '        "investigation_report": report,\n',
         '        "investigation_report": incident["conclusion"],\n',
     ),
+    # #803: killed by tests/safety/test_safety_glued_credentials.py.
+    Mutation(
+        "M60",
+        "credentials: a credential pair glued to a short credential value is redacted (#803)",
+        # Mutated: ``"password":x&"secret": "v"`` and ``password=x|token :v``
+        # keep the second value.
+        "opspilot/redaction.py",
+        "    while (value := _glued_value(text, start, end)) is not None:\n",
+        "    while (value := None) is not None:\n",
+    ),
 )

@@ -83,6 +83,33 @@ def test_flags_in_a_comment_before_a_long_separator_are_linear(tail: str) -> Non
     assert redacted == {"log": head + "\n" + run + REDACTED_CREDENTIAL}
 
 
+# #803: a credential pair glued to a credential value is read by walking
+# back from its separator to the name; that walk stays inside the span just
+# read, so a long chain of glued pairs, a long glued name, and a long run
+# that ends in a separator but no credential name are each read once.
+# Each run ends in a glued pair whose value is ``hunter2``; in the last two
+# the glued name is not a credential, so that value stays visible.
+GLUED_RUNS = [
+    ("password=x|", "token :x|", "token :hunter2", True),
+    ('"password":x&', '"secret":x&', '"secret": "hunter2"', True),
+    ("password=", "db-token-", " :hunter2", True),
+    ("password=", "ab-", " :hunter2", False),
+    ("password=", "a:", " :hunter2", False),
+]
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize(("head", "unit", "tail", "hidden"), GLUED_RUNS, ids=repr)
+def test_glued_credential_pairs_are_linear(
+    head: str, unit: str, tail: str, hidden: bool
+) -> None:
+    text = head + _run(unit) + tail + " " + SECRET
+    redacted, elapsed = _timed(redact_credentials, text)
+    assert elapsed < BOUND_SECONDS, f"{unit!r} took {elapsed:.1f}s"
+    assert ("hunter2" not in redacted) is hidden
+    assert redacted.endswith(REDACTED_SECRET)
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [

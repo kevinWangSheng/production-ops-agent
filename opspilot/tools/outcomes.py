@@ -86,7 +86,7 @@ __all__ = [
 # v16: a credential-named command-line flag's value is redacted
 # (``--password=v``, ``--password v``, ``-token v``, and the element after
 # such a flag in a list, #802).
-PROJECTION_REVISION = "m1-01-tool-view-v16"
+PROJECTION_REVISION = "m1-01-tool-view-v17"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

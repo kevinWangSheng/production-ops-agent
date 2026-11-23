@@ -182,8 +182,8 @@ def test_default_ports_and_revisions() -> None:
         for d in ("postgresql", "mysql", "clickhouse", "mssql")
     }
     assert len(revisions) == 4
-    assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-335e66048f3b"
-    assert ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-9801f28dc2a7"
+    assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-d059d88748d5"
+    assert ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-b317e86a0b52"
     assert sq.sql_dialect({sq.URL_ENV: CH_URL}) == "clickhouse"
     assert sq.sql_dialect({sq.URL_ENV: MS_URL}) == "mssql"
 

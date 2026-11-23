@@ -417,10 +417,125 @@ def _escaped(text: str, index: int) -> bool:
     return run % 2 == 1
 
 
+#: Characters of a name read backwards from a separator (``_glued_value``);
+#: the quotes and backslashes a quoted or escaped key may end with.
+_NAME_CHARS = frozenset("_.-")
+_KEY_QUOTES = frozenset("\"'`\\")
+
+
+def _glued_value(text: str, start: int, end: int) -> int | None:
+    """Where the value of a credential pair glued to the value span
+    ``[start, end)`` starts, or ``None`` (#803). A value read up to ``end``
+    can end early -- at whitespace, or after running through the next key's
+    quotes -- with that key's name as its own last word: ``"password":x&
+    "secret": "v"`` reads ``x&"secret":``, ``password=x|token :v`` reads
+    ``x|token``. Such a span ends with a separator (``:``/``=``), or one
+    follows it past blanks; the name before that separator, read backwards
+    within the span (closing quotes and backslashes skipped), is judged by
+    the credential-name rule. When it names a credential, its value starts
+    past the separator and whitespace. The backward read never leaves the
+    span, so every character is read a bounded number of times."""
+    size = len(text)
+    index = end
+    while index < size and text[index] in " \t":
+        index += 1
+    if index < size and text[index] in ":=":
+        separator, name_end = index, end
+    elif end > start and text[end - 1] in ":=":
+        separator, name_end = end - 1, end - 1
+    else:
+        return None
+    while name_end > start and text[name_end - 1] in _KEY_QUOTES:
+        name_end -= 1
+    name_start = name_end
+    while name_start > start and (
+        text[name_start - 1].isalnum() or text[name_start - 1] in _NAME_CHARS
+    ):
+        name_start -= 1
+    if name_start == name_end or not _credential_name(text[name_start:name_end]):
+        return None
+    index = separator + 1
+    while index < size and text[index].isspace():
+        index += 1
+    return index if index < size else None
+
+
+#: Where a glued value ends (with whitespace): a stop of every rule, so the
+#: read is at least as long as any rule's own read of that pair, and a
+#: second call, reading the marker by any rule, ends it at the same place.
+_GLUED_STOPS = frozenset(",")
+
+
+def _glued_end(text: str, start: int, end: int) -> int:
+    """``end`` of the credential value span ``[start, end)``, extended over
+    every credential pair glued to it (``_glued_value``), so the whole run
+    is hidden behind one marker (fail closed, #803). A glued value starting
+    with a quote or bracket is read by ``_value_redaction``'s rules, and
+    then, like any other, up to whitespace or ``,``. One forward pass: each
+    extension starts where the last one ended."""
+    first_end = end
+    while (value := _glued_value(text, start, end)) is not None:
+        if text.startswith(REDACTED_CREDENTIAL, value):
+            return end  # already hidden
+        value_end = value
+        if text[value] in "\"'" or text[value] in _CLOSERS:
+            redaction = _bare_value_redaction(text, value)
+            if redaction is None:
+                return end
+            value_end = redaction[1]
+        value_end = _value_end(text, value_end, _GLUED_STOPS)
+        if value_end == value:
+            return end
+        if _has_credential_flag(text, value, value_end) or _ends_in_scheme(
+            text, value, value_end
+        ):
+            # None of the run is taken in: the rules that run later -- the
+            # ``Bearer``/``Basic`` rule and the flag rule (#802) -- must
+            # still see that word or flag to hide the token after it, and
+            # every earlier glued value holds the name of the one after it,
+            # so stopping part-way would hide a name and show its value.
+            return first_end
+        start, end = value, value_end
+    return end
+
+
+def _ends_in_scheme(text: str, start: int, end: int) -> bool:
+    """Whether ``[start, end)`` ends in a whole ``bearer``/``basic`` word
+    that whitespace follows -- where ``_CREDENTIAL_SCHEME`` would start."""
+    if end >= len(text) or not text[end].isspace():
+        return False
+    tail = text[max(start, end - 6) : end].lower()
+    for word in ("bearer", "basic"):
+        begin = end - len(word)
+        if tail.endswith(word) and (
+            begin == 0 or not (text[begin - 1].isalnum() or text[begin - 1] == "_")
+        ):
+            return True
+    return False
+
+
+def _has_credential_flag(text: str, start: int, end: int) -> bool:
+    """Whether a credential-named flag starts in ``[start, end)``."""
+    return any(
+        _credential_name(match.group("name"))
+        for match in _FLAG_START.finditer(text, start, end)
+    )
+
+
 def _value_redaction(text: str, start: int) -> tuple[str, int] | None:
     """The marker for a credential value starting at ``start`` and where the
     value ends, by the rules of ``_redact_quoted``; ``None`` when there is
-    nothing to hide (empty, or already the marker)."""
+    nothing to hide (empty, or already the marker). A credential pair glued
+    to the value is hidden with it (``_glued_end``)."""
+    redaction = _bare_value_redaction(text, start)
+    if redaction is None:
+        return None
+    marker, end = redaction
+    return marker, _glued_end(text, start, end)
+
+
+def _bare_value_redaction(text: str, start: int) -> tuple[str, int] | None:
+    """``_value_redaction`` without the glued pairs."""
     if start >= len(text) or text.startswith(REDACTED_CREDENTIAL, start):
         return None
     char = text[start]
@@ -550,6 +665,7 @@ def _redact_escaped_quotes(text: str) -> str:
                 continue
         else:
             continue
+        end = _glued_end(text, start, end)
         parts.append(text[pos:start] + marker)
         pos = end
     parts.append(text[pos:])
@@ -610,6 +726,7 @@ def _redact_assignments(text: str) -> str:
             parts.append(text[pos:end])
             pos = end
             continue
+        end = _glued_end(text, body, end)
         parts.append(text[pos : match.start("sep")] + match.group("sep"))
         parts.append(REDACTED_CREDENTIAL)
         pos = end
@@ -853,7 +970,7 @@ def _flag_value(
             scheme_end = _flag_word_end(text, blanks.end(), in_list)
             if scheme_end > blanks.end():
                 end = scheme_end
-    return REDACTED_CREDENTIAL, end
+    return REDACTED_CREDENTIAL, _glued_end(text, start, end)
 
 
 def _redact_flag_values(text: str) -> str:
@@ -1004,7 +1121,12 @@ def _redact_prose(text: str) -> str:
     # changed anything, the rules above run once more on the result, so a
     # second call finds nothing new.
     paired = _redact_env_pairs(redacted)
-    return redacted if paired == redacted else _redact_name_rules(paired)
+    result = redacted if paired == redacted else _redact_name_rules(paired)
+    # A hidden value can close up the blanks that kept ``//...@host`` from
+    # reading as an authority (a glued credential run, #803), so the literal
+    # userinfo rules, which ran first, run once more on the result; on text
+    # where they would find nothing new this changes nothing.
+    return _redact_userinfo(result, _AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO)
 
 
 def _redact_name_rules(text: str) -> str:

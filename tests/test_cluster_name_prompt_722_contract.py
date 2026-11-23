@@ -74,7 +74,7 @@ BASE_SYSTEM_SHA256 = "23a7e4335cf5ffd60fa21cee4afdf8cbc8f56ca61c2dae9cf22ffbdf04
 EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-068c56342888"
 EXT_SYSTEM_CHARS = 12757
 EXT_SYSTEM_SHA256 = "b031c1ed2e749413c97ee73b0f55e2bcfa3def7e258233dc16e79e28fd4188d9"
-EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-dd66f68d7e78"
+EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-a44404dc7e6b"
 INPUT_SHA256_PIN = {
     "fixture": "feb355dc6906cb8085766da0b6c6056041f723b0cd34bebb5e8c2bf4f75299ed",
     "otel-demo": "bbf82d6dc0f1f76af517b598a3d3381ef3ec27ea272a71f6f65b2ffefe1df559",
