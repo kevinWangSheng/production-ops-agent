@@ -91,16 +91,20 @@ def submit_question(
     question: str,
     key: str,
     target_id: str = TARGET_ID,
+    lookback: str | None = None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> SubmitResult:
-    """One manual question; ``code`` is the web's refusal code, if any."""
+    """One manual question; ``code`` is the web's refusal code, if any.
+    ``lookback`` (#809) is the submit form's field (``24h``/``7d``/``30d``);
+    left out when not given, so the product's 24 h default applies."""
     base = web_url.rstrip("/")
     require_loopback(base + INTAKE_PATH)
     parts = urllib.parse.urlsplit(base)
     origin = f"{parts.scheme}://{parts.netloc}"
-    body = urllib.parse.urlencode(
-        {"target_id": target_id, "question": question, "idempotency_key": key}
-    ).encode("utf-8")
+    form = {"target_id": target_id, "question": question, "idempotency_key": key}
+    if lookback is not None:
+        form["lookback"] = lookback
+    body = urllib.parse.urlencode(form).encode("utf-8")
     request = urllib.request.Request(
         base + INTAKE_PATH,
         data=body,

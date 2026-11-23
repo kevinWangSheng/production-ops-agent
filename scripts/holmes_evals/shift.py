@@ -57,6 +57,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
+from opspilot.intake import LOOKBACK_SECONDS
 from scripts.holmes_evals.text import (
     _MONTH_DATE,
     _STAMP,
@@ -89,16 +90,28 @@ FIXED_TIME: frozenset[str] = frozenset(
         "280_es_multi_quirk",
     }
 )
-#: H-19: decided before the run from data span and anchor only.
+#: #809 (B4-U1/U2): every item is submitted with the product's longest
+#: lookback; the cap is the same value (``OPSPILOT_MAX_LOOKBACK``).
+MAX_LOOKBACK_NAME = "30d"
+MAX_LOOKBACK = timedelta(seconds=LOOKBACK_SECONDS[MAX_LOOKBACK_NAME])
+#: H-19 / B4-12: how far before its anchor (its delivery, for relative-time
+#: data) each question's oldest data lies, read off the pinned upstream
+#: setup scripts. 184: 2024-01-01..31 (days 32-36 are not dates); 185:
+#: 2024-01-01..10; 189: 2024-01-14T00..15T23; 235: oldest batch
+#: ``days=45`` before now; 280: 2026-05-14T12:00:01..06-03T08:02:05 (index
+#: C is keyword, not date).
+DATA_SPANS: dict[str, timedelta] = {
+    "184_elasticsearch_index_explosion": timedelta(days=30),
+    "185_elasticsearch_cross_region_search": timedelta(days=9),
+    "189_elasticsearch_timeseries_gap": timedelta(hours=47),
+    "235_elasticsearch_cluster_mismatch": timedelta(days=45),
+    "280_es_multi_quirk": datetime(2026, 6, 3, 8, 2, 5, tzinfo=UTC)
+    - datetime(2026, 5, 14, 12, 0, 1, tzinfo=UTC),
+}
+#: Decided before the run, mechanically: the data reaches further back than
+#: the lookback the item is submitted with (span > cap; 184 sits on it).
 TIME_BOX_LIMITED: frozenset[str] = frozenset(
-    {
-        "184_elasticsearch_index_explosion",
-        "185_elasticsearch_cross_region_search",
-        "189_elasticsearch_timeseries_gap",
-        "235_elasticsearch_cluster_mismatch",
-        # 2026-11-20 rental: data lies outside the fixed 24 h ES window (A3-1).
-        "280_es_multi_quirk",
-    }
+    qid for qid, span in DATA_SPANS.items() if span > MAX_LOOKBACK
 )
 #: H-24: index C is written with the current UTC date.
 UTC_DATE_SENSITIVE: frozenset[str] = frozenset({"280_es_multi_quirk"})

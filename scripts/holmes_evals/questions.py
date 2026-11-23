@@ -24,15 +24,20 @@ CLASSIFIERS_PATH = Path("tests/llm/utils/classifiers.py")
 QUESTIONS_DIR = Path("tests/llm/fixtures/test_ask_holmes")
 TEST_CASE_FILE = "test_case.yaml"
 
-#: B1: the 30 Elasticsearch questions (decision table r8/r9; prereview §1).
-#: Not included: 183a, 183f, 183g, 186, 271, 274, 279.
+#: B1: the 34 Elasticsearch questions (decision table r8/r9; prereview §1).
+#: #809 (#808, B4-U7): 183a, 183f, 183g and 186 are back now that the product
+#: has upstream's Elasticsearch cluster tools. Not included: 271, 274, 279.
 B1_QUESTIONS: tuple[str, ...] = (
+    "183a_elasticsearch_cluster_health",
     "183b_elasticsearch_index_discovery",
     "183c_elasticsearch_log_search",
     "183d_elasticsearch_aggregation",
     "183e_elasticsearch_field_mappings",
+    "183f_elasticsearch_shard_filtering",
+    "183g_elasticsearch_index_stats",
     "184_elasticsearch_index_explosion",
     "185_elasticsearch_cross_region_search",
+    "186_elasticsearch_shard_explosion",
     "187_elasticsearch_disk_space",
     "188_elasticsearch_mapping_explosion",
     "189_elasticsearch_timeseries_gap",

@@ -64,11 +64,11 @@ class FakeClient:
 
 
 def test_question_lists() -> None:
-    assert len(questions.B1_QUESTIONS) == len(set(questions.B1_QUESTIONS)) == 30
+    assert len(questions.B1_QUESTIONS) == len(set(questions.B1_QUESTIONS)) == 34
     assert len(questions.MULTI_CLUSTER) == 10
     assert questions.MULTI_CLUSTER <= set(questions.B1_QUESTIONS)
     assert questions.SKILL_ASSERTION_DROPPED <= set(questions.B1_QUESTIONS)
-    for excluded in ("183a", "183f", "183g", "186", "271", "274", "279"):
+    for excluded in ("271", "274", "279"):
         assert not any(q.startswith(excluded + "_") for q in questions.B1_QUESTIONS)
 
 
