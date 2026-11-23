@@ -26,6 +26,11 @@
   .pfb p { margin: 4px 0; }
   .pfbt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
   .crumb code { font-size: 12px; }
+  .irc { margin: 10px 0 4px; padding: 8px 12px; border-left: 3px solid var(--line2); background: var(--tint); border-radius: 0 6px 6px 0; max-width: 75ch; overflow-wrap: anywhere; line-height: 1.6; }
+  .irc-k { font-weight: 600; }
+  .irc-src, .irc-refs, .irc-changed { color: var(--ink2); font-size: 12.5px; }
+  .irc-label { font-weight: 500; }
+  .irc-obj { font-size: 13px; }
   .ptitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
   .ptitle h1 { margin: 0; }
   .ctx { font-size: 13.5px; color: var(--ink2); margin: 6px 0 0; }
@@ -228,6 +233,16 @@
 {% else %}
 <p class="task">Version {{ v.version }} was {{ "returned for revision" if v.state == "returned" else v.state }}; nothing here waits for a decision.</p>
 <p class="lede">Nothing from this version was published as knowledge.</p>
+{% endif %}
+
+{#- #652 B2-U2 (user, option a): read from the incident's current report at
+    render time; not stored in this version, not exported, never sent to the
+    drafting model (like the feedback beside the decision). -#}
+{% if root_cause %}
+<p class="irc" id="investigation-root-cause"><span class="irc-k">Investigation root cause</span> <span class="irc-src">from the investigation report · not part of this draft</span><br>
+  <span class="irc-label">{{ root_cause.label }}</span> <code class="irc-obj">{{ root_cause.kind }} {{ root_cause.object }}</code>
+  {%- if root_cause.refs %} <span class="small irc-refs">{% for r in root_cause.refs %}<a href="/incidents/{{ page.incident_id }}/evidence/{{ r.eid }}" title="{{ r.eid }}">{% if r.call %}{{ r.call.tool }} · {% if r.call.step %}step {{ r.call.step }}{% else %}earlier Run{% endif %}{% else %}evidence {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+  {%- if root_cause.changed %}<br><span class="small irc-changed" id="investigation-root-cause-changed">The incident has a newer Run: the report has changed since this draft.</span>{% endif %}</p>
 {% endif %}
 
 <div class="band">
