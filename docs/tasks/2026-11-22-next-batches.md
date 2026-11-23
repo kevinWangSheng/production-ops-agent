@@ -107,7 +107,8 @@ Agent 自定、比裁决更严的可逆细节（都是多隐藏）：`session` �
 
 #803 修法（执行者定，R2-1；审查后改）：现有规则读法不变；某条规则遮住的值若以分隔符结尾或后面紧跟分隔符（或以分隔符加认证方案词结尾），且分隔符前的名字是凭据名，就在标记后放一个文本里没有的私用字符作记号。所有规则跑完后，最后一遍把每个记号后面的值遮住（可连续，读到空白或逗号为止），去掉记号；遮了东西就把全部规则再跑一遍。理由：最后一遍只在现有规则的输出上多遮，所以 main 遮住的不会露出；每个记号只处理一次，线性。第一版把接上的值并进原来的范围，审查发现两类问题：吞掉后面规则要读的键或参数会露出 main 遮住的值，回退重读会平方级变慢，所以改成这样。升 v17。
 
-#679 实现细节（执行者定）：选择器 `label_selector`/`field_selector` 放进三个工具视图的 `scope`（按列查询原本就有）；空列表的 `ok` 视图 `content` 为 `[]`。`PROJECTION_REVISION` 不升：执行器只在传输层置 `empty_answer` 时改判 `ok`，只有 K8s 列表传输会置，其他工具与基础档位的视图字节不变；K8s 三个工具的变化由描述改动带动扩展档位 `tool_schema_revision` 移动（C3 §5 要求的在途 Run 阻断照常生效），而升 projection 会无谓移动基础档位版本和 F3 存档证据，与 U5 a「基础档位不动」相违。移动 680 个 `otel-demo-ext-*` 与 960 个表面 sha256 钉值，基础档位钉值不动。
+#679 实现细节（执行者定）：选择器 `label_selector`/`field_selector` 放进三个工具视图的 `scope`（按列查询原本就有）；空列表的 `ok` 视图 `content` 为 `[]`。`PROJECTION_REVISION` 不升：执行器只在传输层置 `empty_answer` 时改判 `ok`，只有 K8s 列表传输会置，其他工具与基础档位的视图字节不变；K8s 三个工具的变化由描述改动带动扩展档位 `tool_schema_revision` 移动（C3 §5 要求的在途 Run 阻断照常生效），而升 projection 会无谓移动基础档位版本和 F3 存档证据，与 U5 a「基础档位不动」相违。审查后加固：只有每一页都是真正的 List 响应（`kind` 以 `List` 结尾、`items` 是 JSON 列表）才置 `empty_answer`，200 的 `{}`、`items: null`、`Status` 仍为 `no_data`；三个工具注册 `version` 升到 v2。移动 680 个 `otel-demo-ext-*` 与 943 个表面 sha256 钉值，基础档位钉值不动。
+`PROJECTION_REVISION` 不升的理由：只限一个档位传输层的视图投影变化，由该档位的 `tool_schema_revision` 加相关工具的 `version` 升级覆盖，在途 Run 照样被阻断，视图也带上新的 `tool_version`。
 
 三条线可同时跑，本机 swap 紧，同时最多 3 个执行 Agent，全量探针交给 Draft PR 的 CI：
 

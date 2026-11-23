@@ -195,10 +195,10 @@ def test_refused_logsql(query, code):
 
 def test_revisions_without_victorialogs_are_unchanged():
     revision = ext.tool_schema_revision
-    assert revision() == "otel-demo-ext-743e0a7a01f0"
-    assert revision(elasticsearch=True) == "otel-demo-ext-546a670f3486"
-    assert revision(loki=True) == "otel-demo-ext-e903661eda1e"
-    assert revision(elasticsearch=True, loki=True) == "otel-demo-ext-24903a469f6e"
+    assert revision() == "otel-demo-ext-f94273f95547"
+    assert revision(elasticsearch=True) == "otel-demo-ext-328399ccd3ae"
+    assert revision(loki=True) == "otel-demo-ext-8e517e935ae7"
+    assert revision(elasticsearch=True, loki=True) == "otel-demo-ext-f6cde82c67c8"
     assert ext.VICTORIALOGS_TOOL_SCHEMA_REVISION == revision(victorialogs=True)
     with_vl = {
         revision(elasticsearch=e, loki=lk, victorialogs=True)

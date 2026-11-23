@@ -616,7 +616,7 @@ def tabular_registrations(*, max_window_seconds: int) -> tuple[ToolRegistration,
     return (
         ToolRegistration(
             name=TABULAR_TOOL,
-            version="v1",
+            version="v2",
             source=otel_demo.SOURCE,
             verb="list",
             may_contain_secrets=True,
