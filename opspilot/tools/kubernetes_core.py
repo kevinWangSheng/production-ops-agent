@@ -671,6 +671,9 @@ class ListResult:
     notes: list[str]
     source_start_at: datetime | None = None
     source_end_at: datetime | None = None
+    #: #679: every page was a genuine List response (``kind`` ending in
+    #: ``List``, ``items`` a JSON list); only then is zero objects an answer.
+    list_pages: bool = False
 
     def document(self) -> dict[str, Any]:
         return {"apiVersion": "v1", "kind": "List", "items": self.items}
@@ -823,6 +826,7 @@ class KubernetesClient:
         used = 0
         pages = 0
         token: str | None = None
+        all_genuine = True
         while True:
             query: list[tuple[str, str]] = [("limit", str(PAGE_LIMIT))]
             if label_selector is not None:
@@ -847,10 +851,11 @@ class KubernetesClient:
                     http_status=fetched.status,
                 )
             used += len(fetched.body)
-            page = _page(fetched.body)
-            if page is None:
+            parsed = _parse_page(fetched.body)
+            if parsed is None:
                 return TransportResponse(body=b"")
-            page_items, token, list_kind, api_version = page
+            (page_items, token, list_kind, api_version), genuine = parsed
+            all_genuine = all_genuine and genuine
             for item in page_items:
                 metadata = item.get("metadata")
                 if isinstance(metadata, dict):
@@ -882,6 +887,7 @@ class KubernetesClient:
             notes=notes,
             source_start_at=start_at,
             source_end_at=end_at,
+            list_pages=all_genuine,
         )
 
 
@@ -929,6 +935,17 @@ def _summarise_managed_fields(metadata: dict[str, Any]) -> None:
 
 def _page(body: bytes) -> tuple[list[dict[str, Any]], str | None, str, str] | None:
     """``(items, continue, item kind, apiVersion)`` of one list page."""
+    parsed = _parse_page(body)
+    return None if parsed is None else parsed[0]
+
+
+def _parse_page(
+    body: bytes,
+) -> tuple[tuple[list[dict[str, Any]], str | None, str, str], bool] | None:
+    """``_page``'s tuple plus whether the page is a genuine List response:
+    a ``kind`` ending in ``List`` and ``items`` a JSON list (#679). A 200 body
+    of ``{}``, ``{"items": null}`` or a ``Status`` is still read as an empty
+    page, as before, but is not proof that no objects exist."""
     try:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, ValueError, RecursionError):
@@ -950,12 +967,17 @@ def _page(body: bytes) -> tuple[list[dict[str, Any]], str | None, str, str] | No
     item_kind = (
         kind[: -len("List")] if isinstance(kind, str) and kind.endswith("List") else ""
     )
+    is_list_kind = bool(item_kind) or kind == "List"
     api_version = payload.get("apiVersion")
+    genuine = is_list_kind and isinstance(payload.get("items"), list)
     return (
-        raw_items,
-        token or None,
-        item_kind,
-        api_version if isinstance(api_version, str) else "",
+        (
+            raw_items,
+            token or None,
+            item_kind,
+            api_version if isinstance(api_version, str) else "",
+        ),
+        genuine,
     )
 
 
@@ -1447,8 +1469,11 @@ class KubernetesTransport:
             "cluster_scoped": not resource.namespaced,
             "namespace": namespace if resource.namespaced else None,
             "all_namespaces": resource.namespaced and namespace is None,
+            "label_selector": label_selector,
+            "field_selector": field_selector,
             "application_namespace": self._application_namespace,
         }
+        empty_answer = listed_is_empty_answer(resource, listed)
         view_fields: dict[str, object] = {
             "total_items_processed": len(listed.items),
             "pages_read": listed.pages,
@@ -1468,6 +1493,7 @@ class KubernetesTransport:
                 row_unit="matches",
                 backend_rows_returned=len(lines),
                 view_fields={**view_fields, "matches_found": len(lines)},
+                empty_answer=empty_answer,
             )
         body = canonical({"results": [value for _, value in lines]}).encode("utf-8")
         if len(body) > request.max_result_bytes:
@@ -1477,7 +1503,20 @@ class KubernetesTransport:
             source_start_at=listed.source_start_at,
             source_end_at=listed.source_end_at,
             view_fields=view_fields,
+            empty_answer=empty_answer,
         )
+
+
+def listed_is_empty_answer(resource: Resource, listed: ListResult) -> bool:
+    """#679 (B4-13): zero objects of a kind other than events is a complete
+    answer -- "no objects matching this kind, namespace and selectors at query
+    time" -- so the view is ``ok``. A ``ListResult`` exists only when every
+    page answered 200 and the pagination was read to the end; every page must
+    also have been a genuine List response (``listed.list_pages``). Events stay
+    ``no_data``: they expire, so none returned is not proof none happened. A
+    jq expression or filter that reduces a non-empty list to nothing is not
+    this case (``listed.items`` is not empty)."""
+    return not listed.items and listed.list_pages and resource.plural != "events"
 
 
 def _output_lines(output: bytes) -> list[tuple[str, object]] | None:
@@ -1505,6 +1544,15 @@ def _output_lines(output: bytes) -> list[tuple[str, object]] | None:
 
 _KINDS_TEXT = ", ".join(sorted(RESOURCES))
 
+#: #679: what an ok empty list proves, for all three list tools.
+EMPTY_LIST_TEXT = (
+    "When the API server returns zero objects of a kind other than events "
+    "(every page read), the result is ok with total_items_processed 0: it "
+    "proves only that there were no objects matching this kind, namespace "
+    "and selectors at query time, not that none existed during the incident. "
+    "Zero events, or a list your filter reduced to nothing, stays no_data."
+)
+
 _COMMON_DESCRIPTION = (
     "kind is a plural resource name from this list, exactly as written: "
     f"{_KINDS_TEXT}. Events are kind=events. secrets cannot be read: asking "
@@ -1523,7 +1571,8 @@ _COMMON_DESCRIPTION = (
     "2000 characters are accepted. "
     "Objects are their state at the moment of the query, not at the time of "
     "the incident: they cannot prove what the cluster looked like earlier. "
-    "Events are only those whose own timestamp lies inside the authorized "
+    + EMPTY_LIST_TEXT
+    + " Events are only those whose own timestamp lies inside the authorized "
     "window; the others are dropped before jq runs and counted in notes. "
     "More than 4 MiB of objects, or more than 2 MiB of jq output, refuses the "
     "whole call with RESULT_TOO_LARGE and no partial result; narrow it with "
@@ -1610,7 +1659,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
 _RETURNS_TAIL = (
     " The view adds total_items_processed (objects jq ran over), pages_read, "
     "scope (kind, namespace or all_namespaces, cluster_scoped, "
-    "application_namespace) and notes."
+    "label_selector, field_selector, application_namespace) and notes."
 )
 _WINDOW_FORMAT = (
     "The authorized absolute window is appended as {window}. Objects are "
@@ -1648,7 +1697,7 @@ _CANNOT_PROVE = (
     "timestamps inside the window; an event that is not returned is unknown, "
     "not proof nothing happened (events expire and timestamps are often "
     "null). A jq result is what the expression selected, not a full picture "
-    "of the kind. " + _MANAGED_FIELDS_CANNOT_PROVE
+    "of the kind. " + EMPTY_LIST_TEXT + " " + _MANAGED_FIELDS_CANNOT_PROVE
 )
 
 
@@ -1678,7 +1727,7 @@ def kubernetes_registrations(
     """The two registrations (A2-1: ``source`` is the target's, the
     ``otel-demo`` source; ``may_contain_secrets=True``, Q3/A2-14)."""
     common: dict[str, Any] = {
-        "version": "v1",
+        "version": "v2",
         "source": SOURCE,
         "verb": "list",
         "may_contain_secrets": True,

@@ -451,6 +451,15 @@ class TransportResponse:
     the fixed limit), for a signal the exact source bytes cannot carry in the
     registration's ``incomplete_marker``. It is OR-ed with that marker; it
     never clears it. Anything but a ``bool`` is MALFORMED_RESULT.
+
+    ``empty_answer`` is the adapter's finding that a result with no rows is
+    still a complete answer (#679, B4-13): only the Kubernetes list transport
+    sets it, when the API server answered 200, every page was read to the end,
+    zero objects came back and the kind is not ``events``. The view is then
+    ``ok`` instead of ``no_data``. Every other adapter leaves it ``False``, so
+    their empty results stay ``no_data``. Ignored on a response with
+    ``source_status`` (a refusal); anything but a ``bool``, or ``True`` beside
+    ``carried``, is MALFORMED_RESULT.
     """
 
     body: bytes
@@ -469,6 +478,7 @@ class TransportResponse:
     source_error_type: str | None = None
     source_error_text: str | None = None
     incomplete: bool = False
+    empty_answer: bool = False
 
 
 @runtime_checkable
@@ -1178,8 +1188,12 @@ class ReadOnlyToolExecutor:
         # Narrowing for the type checker: _inspect() returns no problem only
         # after it has established this.
         assert isinstance(response, TransportResponse)
-        status: ToolStatus = "ok" if rows else "no_data"
-        reason: str | None = None if rows else "NO_DATA"
+        # #679: an adapter-verified complete empty answer (only the K8s list
+        # transport sets ``empty_answer``) is ``ok``; any other empty result
+        # stays ``no_data``.
+        answered = bool(rows) or response.empty_answer
+        status: ToolStatus = "ok" if answered else "no_data"
+        reason: str | None = None if answered else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
         # suspension or an expiry that took effect while the request was in
         # flight invalidates the result, which then survives as history only
@@ -1461,6 +1475,10 @@ class ReadOnlyToolExecutor:
             return _problem("error", "MALFORMED_RESULT")
         if type(response.incomplete) is not bool or (
             response.incomplete and response.carried is not None
+        ):
+            return _problem("error", "MALFORMED_RESULT")
+        if type(response.empty_answer) is not bool or (
+            response.empty_answer and response.carried is not None
         ):
             return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None

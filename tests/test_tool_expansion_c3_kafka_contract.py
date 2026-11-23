@@ -229,14 +229,14 @@ SWITCHES = {
 }
 ALL = tuple(SWITCHES)
 PINNED = {
-    (): "otel-demo-ext-b90c54386594",
-    ("elasticsearch",): "otel-demo-ext-5b9fc1dc2f9d",
-    ("loki",): "otel-demo-ext-06a1afb380f4",
-    ("victorialogs",): "otel-demo-ext-4f224386bf21",
-    ("live_metrics",): "otel-demo-ext-0d20c18e8654",
-    ("knowledge",): "otel-demo-ext-81a37085b36a",
-    ("todo",): "otel-demo-ext-82ae2712ee17",
-    ALL: "otel-demo-ext-c9610510edeb",
+    (): "otel-demo-ext-f94273f95547",
+    ("elasticsearch",): "otel-demo-ext-328399ccd3ae",
+    ("loki",): "otel-demo-ext-8e517e935ae7",
+    ("victorialogs",): "otel-demo-ext-778042c7b8bd",
+    ("live_metrics",): "otel-demo-ext-d63dc71f41c2",
+    ("knowledge",): "otel-demo-ext-a32741d1cbda",
+    ("todo",): "otel-demo-ext-32377aee10c3",
+    ALL: "otel-demo-ext-17161933d365",
 }
 BACKENDS_ONLY = ("elasticsearch", "loki", "victorialogs", "live_metrics")
 

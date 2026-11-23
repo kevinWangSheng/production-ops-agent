@@ -74,11 +74,11 @@ BASE_SYSTEM_SHA256 = "23a7e4335cf5ffd60fa21cee4afdf8cbc8f56ca61c2dae9cf22ffbdf04
 EXT_PROMPT_REVISION = "prompt-replay-candidate-k8s-068c56342888"
 EXT_SYSTEM_CHARS = 12757
 EXT_SYSTEM_SHA256 = "b031c1ed2e749413c97ee73b0f55e2bcfa3def7e258233dc16e79e28fd4188d9"
-EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-b90c54386594"
+EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-f94273f95547"
 INPUT_SHA256_PIN = {
     "fixture": "feb355dc6906cb8085766da0b6c6056041f723b0cd34bebb5e8c2bf4f75299ed",
     "otel-demo": "bbf82d6dc0f1f76af517b598a3d3381ef3ec27ea272a71f6f65b2ffefe1df559",
-    EXT: "a201b31f2bddb433e80918ca7edeeceb2a25320554ccac43f17ad566d586f27e",
+    EXT: "a8d7c06a90ee4cbc7462be6cfc68a360ad0b19482ee7c970e91f5560a85731f6",
 }
 
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=timezone.utc)
