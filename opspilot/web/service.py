@@ -525,14 +525,16 @@ class Workbench:
 
     # -- intake ---------------------------------------------------------
 
+    def _max_lookback(self) -> int:
+        """#779: the deployment cap the tool face carries, in seconds."""
+        if self.tool_face is None:
+            return ALERT_FRAME_SECONDS
+        return self.tool_face.max_lookback_seconds
+
     def lookback_choices(self) -> tuple[str, ...]:
         """#779: the lookbacks the submit form offers, shortest first: every
-        one within the deployment cap the tool face carries."""
-        cap = (
-            ALERT_FRAME_SECONDS
-            if self.tool_face is None
-            else self.tool_face.max_lookback_seconds
-        )
+        one within the deployment cap."""
+        cap = self._max_lookback()
         return tuple(
             name for name, seconds in LOOKBACK_SECONDS.items() if seconds <= cap
         )
@@ -1956,6 +1958,11 @@ class Workbench:
         """
         if self.tool_face is None:
             return None
+        if LOOKBACK_SECONDS[request.lookback] > self._max_lookback():
+            # #779: an intake recorded under a longer cap than this
+            # deployment's (submit refuses it before this; a successor's
+            # fresh or rebound input fails closed like unreadable rows).
+            raise PersistenceError("INPUT_INVALID")
         fresh = self.tool_face.input_for(
             run_id=str(run_id),
             question=request.question,
@@ -2130,6 +2137,11 @@ class Workbench:
                 alert=self._attached_reframe(summary.incident_id, basis, created),
                 release=self._release_reframe(summary, basis, created),
             )
+            # #779: a frame carried from a Run recorded under a longer cap
+            # than this deployment's would have every call refused
+            # WINDOW_TOO_LARGE; refuse the successor instead.
+            if _frame_seconds(fresh.evidence_context) > self._max_lookback():
+                raise ContextError("INPUT_INVALID")
             facts = dict(fresh.scope_facts)
             self._check_release_fact(summary.incident_id, summary.intake_key, facts)
             facts.pop(KNOWLEDGE, None)
@@ -4497,6 +4509,23 @@ def _envelope_json(envelope: IntakeEnvelope) -> dict[str, Any]:
         "request": _request_json(envelope.request),
         "received_at": envelope.received_at.isoformat(),
     }
+
+
+def _frame_seconds(context: Mapping[str, Any] | None) -> int:
+    """#779: the length of a Run input's authorized frame (its first time
+    policy's window); 0 for an input without one, which nothing bounds."""
+    policies = context.get("time_policies") if isinstance(context, Mapping) else None
+    if not isinstance(policies, list) or not policies:
+        return 0
+    window = policies[0].get("window") if isinstance(policies[0], Mapping) else None
+    if not isinstance(window, Mapping):
+        return 0
+    try:
+        start = datetime.fromisoformat(window["start"])
+        end = datetime.fromisoformat(window["end"])
+    except (KeyError, TypeError, ValueError):
+        raise ContextError("INPUT_INVALID") from None
+    return int((end - start).total_seconds())
 
 
 def _request_json(request: IntakeRequest) -> dict[str, Any]:
