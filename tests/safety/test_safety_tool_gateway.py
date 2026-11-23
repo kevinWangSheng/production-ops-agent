@@ -23,6 +23,7 @@ from opspilot.tools import (
     MAX_RESULT_BYTES,
     READ_ONLY_VERBS,
     ToolContractError,
+    elasticsearch_cluster,
     elasticsearch_logs,
     fixture,
     otel_demo,
@@ -61,6 +62,12 @@ SOURCE_CALLS: dict[str, dict[str, object]] = {
     "elasticsearch_search": {"index": "logs-checkout"},
     "elasticsearch_mappings": {"index": "logs-checkout"},
     "elasticsearch_list_indices": {},
+    # #808: the upstream elasticsearch/cluster tools.
+    "elasticsearch_cat": {"api": "shards", "index": "logs-checkout"},
+    "elasticsearch_cluster_health": {},
+    "elasticsearch_index_stats": {"index": "logs-checkout"},
+    "elasticsearch_allocation_explain": {"index": "logs-checkout", "shard": 0},
+    "elasticsearch_nodes_stats": {},
 }
 #: Reads only OpsPilot's own stored evidence for the same Run.
 INTERNAL_TOOLS = {"read_evidence"}
@@ -106,8 +113,13 @@ SECRET_VALUES = (
 
 
 def _es_registrations():
-    return elasticsearch_logs.elasticsearch_registrations(
-        max_window_seconds=otel_demo.OBSERVATION_SECONDS
+    return (
+        *elasticsearch_logs.elasticsearch_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
+        *elasticsearch_cluster.cluster_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
     )
 
 

@@ -74,6 +74,14 @@ SEARCH = "elasticsearch_search"
 MAPPINGS = "elasticsearch_mappings"
 LIST = "elasticsearch_list_indices"
 ES_TOOLS = {SEARCH, MAPPINGS, LIST}
+#: #808: the upstream ``elasticsearch/cluster`` tools, on the same switch.
+ES_CLUSTER_TOOLS = {
+    "elasticsearch_cat",
+    "elasticsearch_cluster_health",
+    "elasticsearch_index_stats",
+    "elasticsearch_allocation_explain",
+    "elasticsearch_nodes_stats",
+}
 
 ES_API_KEY = "es-ro-aaaaaaaa560"
 ES_USERNAME = "es-reader"
@@ -628,13 +636,16 @@ def test_surface_is_byte_stable_without_es_url_and_adds_three_tools_with_it():
     new_names = [
         s["function"]["name"] for s in web.face(FakeClock(start=NOW)).tool_schemas
     ]
-    assert set(new_names) == set(old_names) | ES_TOOLS
-    assert [n for n in new_names if n not in ES_TOOLS] == old_names
+    # #808 (B4-U7) adds the five upstream elasticsearch/cluster tools on the
+    # same switch.
+    es_all = ES_TOOLS | ES_CLUSTER_TOOLS
+    assert set(new_names) == set(old_names) | es_all
+    assert [n for n in new_names if n not in es_all] == old_names
     sources = web.face(FakeClock(start=NOW)).evidence_context("b1-run")["data_sources"]
     old_sources = without.face(FakeClock(start=NOW)).evidence_context("b1-run")[
         "data_sources"
     ]
-    assert set(sources["available"]["elasticsearch"]) == ES_TOOLS
+    assert set(sources["available"]["elasticsearch"]) == es_all
     assert {
         k: v for k, v in sources["available"].items() if k != "elasticsearch"
     } == old_sources["available"]
