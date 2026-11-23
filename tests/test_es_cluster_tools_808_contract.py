@@ -21,7 +21,7 @@ Assumptions (each also marked ``# ASSUMPTION:`` where used):
   extended profile has ``OPSPILOT_ES_URL``, over the same ``es-ro``
   credential, under ``data_sources.available["elasticsearch"]``.
 * Index-valued parameters follow the B1-3 index rule (``check_index``);
-  ``endpoint``, ``level``, ``metrics`` and ``health`` accept only the values
+  ``api`` (upstream ``endpoint``), ``level``, ``metrics`` and ``health`` accept only the values
   upstream's descriptions list; ``node_id`` is ``_all``, ``_local`` or a
   node id/name of ``[A-Za-z0-9._-]``; anything else is ``INVALID_PARAMS``
   decided before any request.
@@ -47,6 +47,7 @@ from typing import Any
 import pytest
 
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
+from opspilot.tools.registry import RESERVED_PARAMETERS
 from tests.m1_tool_support import FakeClock
 from tests.test_m1_otel_demo_contract import NOW
 from tests.test_tool_expansion_b1_contract import (
@@ -245,13 +246,13 @@ def test_schemas_match_upstream_parameters():
     expected = {
         CAT: (
             {
-                "endpoint": "string",
+                "api": "string",
                 "index": "string",
                 "columns": "string",
                 "sort": "string",
                 "health": "string",
             },
-            ["endpoint"],
+            ["api"],
         ),
         HEALTH: ({"index": "string", "level": "string"}, []),
         INDEX_STATS: ({"index": "string", "metrics": "string"}, ["index"]),
@@ -267,6 +268,10 @@ def test_schemas_match_upstream_parameters():
             name: spec["type"] for name, spec in parameters["properties"].items()
         } == properties, tool
         assert sorted(parameters.get("required", [])) == required, tool
+    # C3 §8: no registered tool exposes a reserved parameter key (upstream's
+    # elasticsearch_cat ``endpoint`` is renamed ``api``).
+    for tool, schema in schemas.items():
+        assert not RESERVED_PARAMETERS & set(schema["parameters"]["properties"]), tool
 
 
 # -- read-only: one GET to a fixed path per call ------------------------------
@@ -294,11 +299,11 @@ FIXED_PATHS = [
         {},
     ),
     (EXPLAIN, {}, {"/_cluster/allocation/explain"}, {}),
-    (CAT, {"endpoint": "health"}, {"/_cat/health"}, {"format": ["json"]}),
+    (CAT, {"api": "health"}, {"/_cat/health"}, {"format": ["json"]}),
     (
         CAT,
         {
-            "endpoint": "shards",
+            "api": "shards",
             "index": "logs-app-a",
             "columns": "index,shard,prirep,state",
             "sort": "index",
@@ -308,7 +313,7 @@ FIXED_PATHS = [
     ),
     (
         CAT,
-        {"endpoint": "indices", "index": "logs-*", "health": "yellow"},
+        {"api": "indices", "index": "logs-*", "health": "yellow"},
         {"/_cat/indices/logs-*"},
         {"format": ["json"], "health": ["yellow"]},
     ),
@@ -331,7 +336,7 @@ def test_each_call_is_one_get_to_its_fixed_path(es, tool, params, paths, query):
 
 @pytest.mark.parametrize("endpoint", CAT_ENDPOINTS)
 def test_every_upstream_cat_endpoint_is_a_get_of_its_own_path(es, endpoint):
-    outcome = _run(es, CAT, {"endpoint": endpoint})
+    outcome = _run(es, CAT, {"api": endpoint})
     assert outcome.status == "ok", _view(outcome)
     assert [(r["method"], r["path"]) for r in es.requests] == [
         ("GET", f"/_cat/{endpoint}")
@@ -361,7 +366,7 @@ def test_cat_free_text_cannot_add_query_parameters(es):
         es,
         CAT,
         {
-            "endpoint": "shards",
+            "api": "shards",
             "index": "logs-app-a",
             "columns": "index&format=yaml&pretty=true",
             "sort": "index#x",
@@ -383,7 +388,7 @@ def test_cat_free_text_cannot_add_query_parameters(es):
 INDEX_PARAMS = [
     (HEALTH, {}, "index"),
     (INDEX_STATS, {}, "index"),
-    (CAT, {"endpoint": "shards"}, "index"),
+    (CAT, {"api": "shards"}, "index"),
     (EXPLAIN, {"shard": 0, "primary": True}, "index"),
 ]
 
@@ -400,14 +405,14 @@ def test_injected_index_names_never_reach_the_backend(es, tool, base, param, nam
 
 
 BAD_VALUES = [
-    (CAT, {"endpoint": "indices/../../_security"}),
-    (CAT, {"endpoint": "../_bulk"}),
-    (CAT, {"endpoint": "tasks?detailed=true"}),
-    (CAT, {"endpoint": "INDICES"}),
-    (CAT, {"endpoint": "master"}),  # a real _cat API, not in upstream's list
-    (CAT, {"endpoint": ""}),
+    (CAT, {"api": "indices/../../_security"}),
+    (CAT, {"api": "../_bulk"}),
+    (CAT, {"api": "tasks?detailed=true"}),
+    (CAT, {"api": "INDICES"}),
+    (CAT, {"api": "master"}),  # a real _cat API, not in upstream's list
+    (CAT, {"api": ""}),
     (CAT, {}),
-    (CAT, {"endpoint": "indices", "health": "purple"}),
+    (CAT, {"api": "indices", "health": "purple"}),
     (HEALTH, {"level": "everything"}),
     (HEALTH, {"level": "shards&wait_for_status=green"}),
     (INDEX_STATS, {}),
@@ -448,7 +453,7 @@ def test_values_outside_the_upstream_sets_are_refused_before_sending(es, tool, p
         (INDEX_STATS, {"index": "logs-app-*,-logs-app-b", "metrics": "_all"}),
         (HEALTH, {"level": "cluster"}),
         (HEALTH, {"level": "indices"}),
-        (CAT, {"endpoint": "indices", "health": "red"}),
+        (CAT, {"api": "indices", "health": "red"}),
     ],
 )
 def test_upstream_values_are_accepted(es, tool, params):
@@ -460,7 +465,7 @@ def test_upstream_values_are_accepted(es, tool, params):
 # -- view: redaction, current-state, errors, timeout --------------------------
 
 OK_CALLS = [
-    (CAT, {"endpoint": "health"}, "STARTED"),
+    (CAT, {"api": "health"}, "STARTED"),
     (HEALTH, {}, "yellow"),
     (INDEX_STATS, {"index": "logs-app-a"}, "logs-app-a"),
     (EXPLAIN, {}, "unassigned"),
@@ -526,7 +531,7 @@ def test_unconfigured_extension_worker_has_no_cluster_tools(es):
     executor, _ = _worker(_env(None))
     for index, tool in enumerate(sorted(CLUSTER_TOOLS)):
         outcome = executor.execute(
-            _call(tool, {"endpoint": "health", "index": "logs-app-a"}, index=index)
+            _call(tool, {"api": "health", "index": "logs-app-a"}, index=index)
         )
         assert outcome.status in ("error", "denied"), tool
     assert es.requests == []

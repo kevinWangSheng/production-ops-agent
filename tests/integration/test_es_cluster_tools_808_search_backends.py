@@ -143,7 +143,7 @@ def test_cat_shards_and_health(cluster):
         cluster,
         CAT,
         {
-            "endpoint": "shards",
+            "api": "shards",
             "index": REPLICA_INDEX,
             "columns": "index,shard,prirep,state",
         },
@@ -152,5 +152,5 @@ def test_cat_shards_and_health(cluster):
     assert "STARTED" in states and "UNASSIGNED" in states
     assert set(_values(shards, "prirep")) == {"p", "r"}
 
-    health = _ok(cluster, CAT, {"endpoint": "health"})
+    health = _ok(cluster, CAT, {"api": "health"})
     assert "yellow" in _values(health, "status")
