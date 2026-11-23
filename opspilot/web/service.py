@@ -5053,4 +5053,19 @@ def categorize_report(report: ReportV2) -> dict[str, Any]:
         "unknown": list(report.gaps),
         "next_steps": list(report.next_steps),
         "incomplete": report.assessment_status == "incomplete",
+        "root_cause": _root_cause(report),
+    }
+
+
+def _root_cause(report: ReportV2) -> dict[str, Any] | None:
+    """#652 B2-R1: the v3 root cause as the report wrote it (kind verbatim,
+    never normalised); an empty namespace means cluster-scoped (None)."""
+    rc = report.root_cause
+    if rc is None:
+        return None
+    return {
+        "kind": rc.kind,
+        "namespace": rc.namespace or None,
+        "name": rc.name,
+        "evidence_ids": list(rc.evidence_ids),
     }

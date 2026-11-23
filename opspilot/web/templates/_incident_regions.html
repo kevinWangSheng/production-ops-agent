@@ -64,6 +64,14 @@
 {%- if refs %}<span class="small ev-refs">Evidence:{% for r in refs %} {% if r.call %}<a href="/incidents/{{ snapshot.incident.incident_id }}/evidence/{{ r.eid }}" title="{{ r.eid }}">{{ r.call.tool }} · {% if r.call.step %}step {{ r.call.step }}{% else %}earlier Run{% endif %}</a>{% else %}<span class="mono">{{ r.eid }}</span>{% endif %}{% if not loop.last %},{% endif %}{% endfor %}</span>{% endif %}
 {%- endmacro %}
 
+{#- #652: the report's root cause, one line under the summary's first
+    sentence (inside .concl, so a span). Evidence resolves like Key
+    evidence ("tool · step N" when queried on this page); the long id is
+    only the link target and its title, never the visible text. -#}
+{% macro root_cause_line(rc) -%}
+<span class="rootc" id="root-cause"><span class="rc-label">{{ rc.label }}</span> <code class="rc-obj">{{ rc.kind }} {{ rc.object }}</code>{% if rc.refs %} <span class="small ev-refs">{% for r in rc.refs %}<a href="/incidents/{{ snapshot.incident.incident_id }}/evidence/{{ r.eid }}" title="{{ r.eid }}">{% if r.call %}{{ r.call.tool }} · {% if r.call.step %}step {{ r.call.step }}{% else %}earlier Run{% endif %}{% else %}evidence {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}</span>
+{%- endmacro %}
+
 {% macro call_row(c, cid) -%}
 <details class="call" id="{{ cid }}"><summary><span class="mono"><b>{{ c.tool }}</b></span><span class="q">{{ c.query }}</span><span class="{{ 'st-ok' if c.ok else 'st-err' }}">{% if c.ok %}<span aria-hidden="true">✓</span> {{ c.status }}{% else %}<span aria-hidden="true">✗</span> {{ c.reason or c.status }}{% endif %}{% if c.took %} · {{ c.took }}{% endif %}</span></summary>
 {{ detail(c, c.cited_by) }}
@@ -214,7 +222,7 @@
     {%- if rep %}
     <h2 id="h-concl">Conclusion {% if rep.kind == "incomplete" %}<span class="chip warnc">Incomplete · not published</span>{% else %}<span class="chip {{ 'okc' if rep.level == 'supported' else '' }}">{{ rep.level_words }}</span>{% endif %}</h2>
     {%- if view.revising %}<p class="note-run"><span class="dot pulse" aria-hidden="true"></span>Agent is responding — the report may be revised.</p>{% endif %}
-    <p class="concl"><span class="lede">{{ rep.lede }}</span>{% if rep.rest %} <span class="rest">{{ rep.rest }}</span>{% endif %}</p>
+    <p class="concl"><span class="lede">{{ rep.lede }}</span>{% if rep.root_cause %}{{ root_cause_line(rep.root_cause) }}{% endif %}{% if rep.rest %} <span class="rest">{{ rep.rest }}</span>{% endif %}</p>
     {%- if rep.kind == "incomplete" %}<p class="small" id="handoff-report">The Agent said its investigation is incomplete, so this report was not published as the incident's conclusion. Incomplete is not the same as uncertain.</p>{% endif %}
     {%- if snapshot.collection_truncated %}<p class="small" id="collection-truncated">Collection stopped at the model-request limit: the Agent had to report on its last request, so evidence it might still have gathered is missing.</p>{% endif %}
     <p class="small" id="report-status">{{ rep.facts | length }} fact{{ "" if rep.facts | length == 1 else "s" }} · the investigator's causal conclusion; it does not certify recovery</p>

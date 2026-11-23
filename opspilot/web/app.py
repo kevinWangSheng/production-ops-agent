@@ -19,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 import re
 from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
@@ -66,7 +67,12 @@ from opspilot.web.auth import (
 )
 from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_list import parse_query
-from opspilot.web.incident_view import LIVE_KINDS, handoff_view, page_view
+from opspilot.web.incident_view import (
+    LIVE_KINDS,
+    handoff_view,
+    page_view,
+    postmortem_root_cause,
+)
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.runbooks import MAX_FORM_BYTES as RUNBOOK_FORM_BYTES
 from opspilot.web.runbooks import RunbookReview, RunbookStoreSurface
@@ -81,6 +87,7 @@ MAX_BODY_BYTES = 64 * 1024
 #: One Alertmanager webhook carries a whole group of alerts (each recorded up
 #: to 16 KiB); a 4xx is never retried by Alertmanager, so the cap is wider.
 ALERTMANAGER_MAX_BODY_BYTES = 1024 * 1024
+_log = logging.getLogger(__name__)
 _TEMPLATES = Path(__file__).with_name("templates")
 _FORM = "application/x-www-form-urlencoded"
 #: Refuse to be framed, on every response. A framed page submits the control
@@ -713,12 +720,30 @@ def create_app(
         # Workbench P5 F11 (user, option A): the reviewer sees the
         # incident's feedback here; it is never sent to the drafting model.
         feedback = await in_thread(workbench.feedback_for, page["incident_id"])
+        # #652 B2-U2 (user, option a): the incident's current report's root
+        # cause, read at render time like the feedback above; never stored in
+        # the version, exported or sent to the drafting model.
+        # The block is optional: a failed read hides it rather than failing
+        # the review page (the feedback read's precedent).
+        try:
+            snapshot = await asyncio.to_thread(workbench.snapshot, page["incident_id"])
+        except (WorkbenchError, PersistenceError) as exc:
+            _log.warning(
+                "postmortem root cause read failed incident=%s code=%s",
+                page["incident_id"],
+                exc,
+            )
+            snapshot = None
+        root_cause = postmortem_root_cause(
+            snapshot, (page.get("version") or {}).get("last_run_id")
+        )
         response = render(
             "postmortem.html",
             principal=principal,
             page=page,
             incident=incident,
             feedback=feedback,
+            root_cause=root_cause,
             error=error,
             postmortem_kinds=EVENT_KINDS,
             form_nonce=uuid4().hex,

@@ -450,7 +450,81 @@ def _report_block(
         "next_steps": list(report.get("next_steps") or []),
         "sha256": report.get("content_sha256"),
         "cited": claims["cited"],
+        "root_cause": root_cause_line(report, calls, kind=kind),
     }
+
+
+def root_cause_line(
+    report: Mapping[str, Any] | None,
+    calls: Mapping[str, Any] | None = None,
+    *,
+    kind: str = "published",
+) -> dict[str, Any] | None:
+    """#652 B2-U1 a: the report's root cause as one line, or None.
+
+    Shown only for a published, completed report whose conclusion is
+    supported ("Root cause") or partial ("Likely root cause"); hidden for a
+    null root cause, an inconclusive conclusion and an incomplete report
+    (A8). Never "Confirmed": the investigator does not certify itself.
+    Evidence refs resolve like Key evidence (``with_calls``)."""
+    if not report or kind != "published" or report.get("incomplete"):
+        return None
+    rc = report.get("root_cause")
+    label = {"supported": "Root cause", "partial": "Likely root cause"}.get(
+        str(report.get("conclusion") or "")
+    )
+    if not isinstance(rc, Mapping) or label is None:
+        return None
+    namespace = rc.get("namespace") or None
+    name = str(rc.get("name") or "")
+    calls = calls or {}
+    return {
+        "label": label,
+        "kind": str(rc.get("kind") or ""),
+        "object": f"{namespace}/{name}" if namespace else name,
+        "refs": [
+            {"eid": str(e), "call": calls.get(str(e))}
+            for e in rc.get("evidence_ids") or []
+        ],
+    }
+
+
+def postmortem_root_cause(
+    snapshot: Mapping[str, Any] | None, draft_run_id: Any
+) -> dict[str, Any] | None:
+    """#652 B2-U2 a: the incident's current published report's root cause
+    for the postmortem version page, read at render time.
+
+    Never stored in a version, exported or sent to the drafting model.
+    ``changed`` says the Run that produced the published report is not the
+    one the draft's watermark recorded (``last_run_id``)."""
+    if not snapshot or snapshot.get("handoff_only"):
+        return None
+    report = snapshot.get("report")
+    if not report or not report.get("parsed", True):
+        return None
+    day = _day(snapshot)
+    calls = _calls_by_eid(_runs_of(snapshot), day)
+    earlier = [{"steps": snapshot.get("report_steps") or [], "inline": True}]
+    for eid, call in _calls_by_eid(earlier, day).items():
+        if eid not in calls:
+            call["step"] = None
+            calls[eid] = call
+    line = root_cause_line(report, calls)
+    if line is None:
+        return None
+    # The Run that produced the published report: an earlier Run's when a
+    # continuation Run is current (A9, ``report_run_id``), else the current
+    # Run's. A follow-up Run that has not replaced the report changes nothing.
+    report_run = snapshot.get("report_run_id") or (snapshot.get("run") or {}).get(
+        "run_id"
+    )
+    changed = (
+        report_run is not None
+        and draft_run_id is not None
+        and str(report_run) != str(draft_run_id)
+    )
+    return {**line, "changed": changed}
 
 
 def _lede(summary: Any) -> dict[str, str]:
