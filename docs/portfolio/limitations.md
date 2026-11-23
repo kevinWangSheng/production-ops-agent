@@ -57,7 +57,7 @@ Investigation quality is uneven. Published reports are often `partial` rather th
 - The worker holds both the model key and the target read credentials. The C3 Controller / Tool Gateway separation is not built ([#197](https://github.com/kevinWangSheng/production-ops-agent/issues/197)).
 - No TLS proxy and no outbound allow-list ship.
 - Read-only access to the data sources depends on the credentials the deployer supplies.
-- There are known gaps in credential redaction ([#359](https://github.com/kevinWangSheng/production-ops-agent/issues/359), [#365](https://github.com/kevinWangSheng/production-ops-agent/issues/365), [#366](https://github.com/kevinWangSheng/production-ops-agent/issues/366)).
+- Credential redaction works from names. Pod environment variables are judged by the variable name: a credential-like name (also `PASS`/`PWD` in env names) hides `env[].value`, and the same `"name":"X","value":…` pair inside JSON text; the Kubernetes jq and tabular tools redact the cluster objects before running the model's expression ([#574](https://github.com/kevinWangSheng/production-ops-agent/issues/574)). It still misses a secret with no naming context, a secret under an ordinary name (`STRIPE=sk_live…`), an env pair written `value` before `name` or escaped one level deeper, mixed or double URL encodings, and passwords in command-line flags ([#802](https://github.com/kevinWangSheng/production-ops-agent/issues/802)).
 - In one F1 attempt, an injected canary got into a report.
 
 See the [threat model](threat-model.md).

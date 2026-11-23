@@ -58,6 +58,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from opspilot.redaction import redact_payload
 from opspilot.tools.executor import (
     TransportError,
     TransportRequest,
@@ -1376,7 +1377,15 @@ class KubernetesTransport:
         )
         if isinstance(listed, TransportResponse):
             return listed
-        document = json.dumps(listed.document(), separators=(",", ":")).encode("utf-8")
+        # Redacted before the model's expression runs (#574, B1-U2 a): an
+        # expression such as ``[.items[].data.DB_PASSWORD]`` or
+        # ``.spec.containers[].env[].value`` would otherwise return bare values
+        # with no name beside them for the output redaction to recognise. A
+        # filter on a redacted field (``select(.data.API_TOKEN == "x")``)
+        # therefore matches the marker, not the value.
+        document = json.dumps(
+            redact_payload(listed.document()), separators=(",", ":")
+        ).encode("utf-8")
         # jq runs exactly once per call (A2-9), so a compile error is only
         # known after the read: still INVALID_PARAMS, with the source read.
         status, output = jq.evaluate(expr, document, deadline=deadline)

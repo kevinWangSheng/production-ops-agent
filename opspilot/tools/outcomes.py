@@ -79,7 +79,11 @@ __all__ = [
 # v14: URL userinfo is also redacted when the authority's ``//`` is
 # percent-encoded, escaped two or more levels deep, or written as HTML
 # entities (#359).
-PROJECTION_REVISION = "m1-01-tool-view-v14"
+# v15: env values of credential-named variables are redacted (``env[].value``,
+# and ``"name":"X","value":...`` in JSON text; env names also count
+# ``PASS``/``PWD``), and ``kubernetes_jq_query``/``kubernetes_tabular_query``
+# run on the redacted objects (#574).
+PROJECTION_REVISION = "m1-01-tool-view-v15"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
