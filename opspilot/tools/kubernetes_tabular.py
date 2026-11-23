@@ -53,6 +53,7 @@ from opspilot.tools.kubernetes_core import (
     _KINDS_TEXT,
     _MANAGED_FIELDS_CANNOT_PROVE,
     DEFAULT_NAMESPACE,
+    EMPTY_LIST_TEXT,
     ENDPOINT_SELECTOR,
     ERROR_CLASSES,
     MAX_PATTERN_CHARS,
@@ -61,6 +62,7 @@ from opspilot.tools.kubernetes_core import (
     check_selector,
     event_time,
     filter_lines,
+    listed_is_empty_answer,
     pattern_problem,
     refused,
     resolve_kind,
@@ -388,6 +390,7 @@ class TabularQueryTransport:
             body=body,
             source_start_at=start_at,
             source_end_at=end_at,
+            empty_answer=listed_is_empty_answer(resource, listed),
             view_fields={
                 "header": header,
                 "count": len(rows),
@@ -468,7 +471,9 @@ _DESCRIPTION = (
     "namespace to read the whole cluster; a cluster-scoped kind ignores "
     "namespace. Objects are their state at the moment of the query, not at "
     "the time of the incident: they cannot prove what the cluster looked "
-    "like earlier. Events are only those whose own timestamp lies inside the "
+    "like earlier. "
+    + EMPTY_LIST_TEXT
+    + " Events are only those whose own timestamp lies inside the "
     "authorized window. More than 4 MiB of objects refuses the whole call "
     "with RESULT_TOO_LARGE and no partial result. HTTP 401/403 from the "
     "cluster is denied with SOURCE_FORBIDDEN."
@@ -589,7 +594,7 @@ _CANNOT_PROVE = (
     "not proof nothing happened (events expire and timestamps are often "
     "null). <none> means the path reached no value in that object, not that "
     "the field is absent from the kind; a filtered table is not a full "
-    "picture of the kind. " + _MANAGED_FIELDS_CANNOT_PROVE
+    "picture of the kind. " + EMPTY_LIST_TEXT + " " + _MANAGED_FIELDS_CANNOT_PROVE
 )
 
 #: A2's codes without the jq ones, plus this tool's.

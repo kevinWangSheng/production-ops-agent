@@ -1447,8 +1447,11 @@ class KubernetesTransport:
             "cluster_scoped": not resource.namespaced,
             "namespace": namespace if resource.namespaced else None,
             "all_namespaces": resource.namespaced and namespace is None,
+            "label_selector": label_selector,
+            "field_selector": field_selector,
             "application_namespace": self._application_namespace,
         }
+        empty_answer = listed_is_empty_answer(resource, listed)
         view_fields: dict[str, object] = {
             "total_items_processed": len(listed.items),
             "pages_read": listed.pages,
@@ -1468,6 +1471,7 @@ class KubernetesTransport:
                 row_unit="matches",
                 backend_rows_returned=len(lines),
                 view_fields={**view_fields, "matches_found": len(lines)},
+                empty_answer=empty_answer,
             )
         body = canonical({"results": [value for _, value in lines]}).encode("utf-8")
         if len(body) > request.max_result_bytes:
@@ -1477,7 +1481,19 @@ class KubernetesTransport:
             source_start_at=listed.source_start_at,
             source_end_at=listed.source_end_at,
             view_fields=view_fields,
+            empty_answer=empty_answer,
         )
+
+
+def listed_is_empty_answer(resource: Resource, listed: ListResult) -> bool:
+    """#679 (B4-13): zero objects of a kind other than events is a complete
+    answer -- "no objects matching this kind, namespace and selectors at query
+    time" -- so the view is ``ok``. A ``ListResult`` exists only when every
+    page answered 200 and the pagination was read to the end. Events stay
+    ``no_data``: they expire, so none returned is not proof none happened. A
+    jq expression or filter that reduces a non-empty list to nothing is not
+    this case (``listed.items`` is not empty)."""
+    return not listed.items and resource.plural != "events"
 
 
 def _output_lines(output: bytes) -> list[tuple[str, object]] | None:
@@ -1505,6 +1521,15 @@ def _output_lines(output: bytes) -> list[tuple[str, object]] | None:
 
 _KINDS_TEXT = ", ".join(sorted(RESOURCES))
 
+#: #679: what an ok empty list proves, for all three list tools.
+EMPTY_LIST_TEXT = (
+    "When the API server returns zero objects of a kind other than events "
+    "(every page read), the result is ok with total_items_processed 0: it "
+    "proves only that there were no objects matching this kind, namespace "
+    "and selectors at query time, not that none existed during the incident. "
+    "Zero events, or a list your filter reduced to nothing, stays no_data."
+)
+
 _COMMON_DESCRIPTION = (
     "kind is a plural resource name from this list, exactly as written: "
     f"{_KINDS_TEXT}. Events are kind=events. secrets cannot be read: asking "
@@ -1523,7 +1548,8 @@ _COMMON_DESCRIPTION = (
     "2000 characters are accepted. "
     "Objects are their state at the moment of the query, not at the time of "
     "the incident: they cannot prove what the cluster looked like earlier. "
-    "Events are only those whose own timestamp lies inside the authorized "
+    + EMPTY_LIST_TEXT
+    + " Events are only those whose own timestamp lies inside the authorized "
     "window; the others are dropped before jq runs and counted in notes. "
     "More than 4 MiB of objects, or more than 2 MiB of jq output, refuses the "
     "whole call with RESULT_TOO_LARGE and no partial result; narrow it with "
@@ -1610,7 +1636,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
 _RETURNS_TAIL = (
     " The view adds total_items_processed (objects jq ran over), pages_read, "
     "scope (kind, namespace or all_namespaces, cluster_scoped, "
-    "application_namespace) and notes."
+    "label_selector, field_selector, application_namespace) and notes."
 )
 _WINDOW_FORMAT = (
     "The authorized absolute window is appended as {window}. Objects are "
@@ -1648,7 +1674,7 @@ _CANNOT_PROVE = (
     "timestamps inside the window; an event that is not returned is unknown, "
     "not proof nothing happened (events expire and timestamps are often "
     "null). A jq result is what the expression selected, not a full picture "
-    "of the kind. " + _MANAGED_FIELDS_CANNOT_PROVE
+    "of the kind. " + EMPTY_LIST_TEXT + " " + _MANAGED_FIELDS_CANNOT_PROVE
 )
 
 

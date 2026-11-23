@@ -126,20 +126,20 @@ BASE_SURFACE_SHA256 = "6343ab42a39e8cdbfad50e97045f99c53676d72b500eaea07edb99afb
 PINNED = {
     # (elasticsearch, loki): (revision, surface sha256)
     (False, False): (
-        "otel-demo-ext-b90c54386594",
-        "919a345ac1208b32f4aa545a04cfdce0bcb1beb30eff963f7a398f85c795ed9e",
+        "otel-demo-ext-743e0a7a01f0",
+        "f94eaa86c5d255e350ff80ea8b8ced15aa5be583a3c0cc7e512b38c0cba85ed8",
     ),
     (True, False): (
-        "otel-demo-ext-5b9fc1dc2f9d",
-        "7c725bc3914fb5a6d699bbed1fd3ae19294cd927dc029ecc0f3a0316f2a82e01",
+        "otel-demo-ext-546a670f3486",
+        "b461b8fb2acc889c041b7c947d50a0249efb5a9a109d767e61d6f9c1f0f4ed3c",
     ),
     (False, True): (
-        "otel-demo-ext-06a1afb380f4",
-        "068703323fcefb49998015c99696be5c390f154a2ff53f3fff5908101f1e77e3",
+        "otel-demo-ext-e903661eda1e",
+        "10bb257e163ca1bfd138c3b652ec6964f1612d51b16b26694da37adc076dd151",
     ),
     (True, True): (
-        "otel-demo-ext-9b0915f34773",
-        "9bf5fc6be87009888b4367636c554bf62376b119162a3b887d069a06bddc5acb",
+        "otel-demo-ext-24903a469f6e",
+        "929da6e6d33d6f16a507093c7ea1e9ad95877878a1006f2ad5ad92d87793d4d2",
     ),
 }
 # ``render`` output of the Loki gateway on main a18e61e9 (default backend).
