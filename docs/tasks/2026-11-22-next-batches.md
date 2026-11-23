@@ -1,6 +1,6 @@
 # 四批后续实施（部署健壮性 → 凭据脱敏 → 工作台 → 数据面与补分）
 
-- 状态：批 3 完成（2026-11-22）；下一步批 1
+- 状态：批 3、批 1 完成（2026-11-22）；下一步批 2
 - 更新日期：2026-11-22
 - 依据：2026-11-22 开放 issue 重新分诊（23 个关闭、0 个须立即修）；四份独立预审（见「合同」）；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)；[C3](../design/technical-proposal-2026-09-07.md)
 - 工作区：每个 PR 一个 worktree（`../poa-<issue>-<名>`），合并后已删除
@@ -72,6 +72,25 @@
 
 偏离：#527 真实 Run 用本机原生进程 + `kill -9` 代替 Compose + `docker kill`（swap 紧张）；#476 未做本地 install + `docker inspect`；#444 Run 的原始 ledger 在删 worktree 时丢失（冻结的 `summary.json` 与 trace 在）。费用：#444 约 0.03 CNY 上限，#527 约 0.003 USD（token×单价）。
 
+### 批 1 凭据脱敏加固（2026-11-22 完成）
+
+| issue | PR | 验证 |
+|---|---|---|
+| #783 Redis 跟进（第 1–3 项） | #798 | 独立测试（main 5/6 红）；审查无阻塞；第 4 项按 B1-D13 记为限制：非 UTF-8 键名不能回传给另两个工具 |
+| #742 切片可引用资格 | #799 | 独立合同测试（main 红）；审查实测不升版本成立（只有 `fetch_skill` 不可引用且单行） |
+| #365 线性时间 | #800 | 独立测试（main 5 红）；审查差分发现 1 处新漏（`"x":/token:"password": "v"`）已修；修后与 main 输出完全一致（约 125 万条随机输入）；升 v12（补记 #710、#775 漏升） |
+| #366 收窄凭据名 | #801 | 独立测试（main 20 红）；审查发现 `auth_tokens` 等数字值露出已修；升 v13 |
+| #359 编码 userinfo | #804 | 独立测试（main 23 红）；审查发现外层 URL 被吞且不幂等已修；升 v14 |
+| #574 Pod env 与 jq/列先脱敏 | #805 | 独立测试（main 12 红）；审查无阻塞；C3 §8、局限页、威胁模型改写；升 v15 |
+
+每个 PR：验收与安全测试由未参与实现的全新 Opus 编写（实现前写好、cherry-pick 进实现分支），独立审查由另一全新 Opus 做（含与 main 的差分模糊对照），CI 全绿 + `CLEAN` 后合并。变异新增 M47–M57。
+
+Agent 自定、比裁决更严的可逆细节（都是多隐藏）：`session` 后接复数 `ids/keys/cookies` 及 `jwt/ticket/sid/uuid/nonce/hash/value/data/payload/blob/string/bytes/handle/store` 仍算凭据；Redis 会话存储键沿用旧规则；前缀为凭据词或含 `otp/pin/mfa/passcode/refresh` 的 `*_tokens` 数字值仍遮。改了一条可逆默认：B1-D7 原定编码 userinfo 输出写字面 `@`，因造成外层 URL 被吞改为保留原写法（`%40`、`&#64;` 等）。B1-D4 落实为普通文本 `DB_PASS=` 仍可见（PASS/PWD 只认 env 名）。
+
+偏离与未做：#574 真实 Run（B1-D15）未跑（本机 swap 约 10.9/12 GB）；本地未跑全量与 PG，均由 CI 覆盖。
+
+新发现、未修（main 上已存在）：#802 命令行参数里的凭据（`--password=…`）从不脱敏，测试里以 strict xfail 跟踪；#803 短值或粘连值之后的下一个凭据不再检查。
+
 ## 待决
 
-无。
+- #802、#803 是否在批 2 之前补一个脱敏 PR（批 1 简报中请用户裁决）。
