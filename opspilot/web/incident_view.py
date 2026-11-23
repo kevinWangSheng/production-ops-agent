@@ -496,8 +496,8 @@ def postmortem_root_cause(
     for the postmortem version page, read at render time.
 
     Never stored in a version, exported or sent to the drafting model.
-    ``changed`` says the incident's current Run is no longer the one the
-    draft's watermark recorded (``last_run_id``)."""
+    ``changed`` says the Run that produced the published report is not the
+    one the draft's watermark recorded (``last_run_id``)."""
     if not snapshot or snapshot.get("handoff_only"):
         return None
     report = snapshot.get("report")
@@ -513,13 +513,16 @@ def postmortem_root_cause(
     line = root_cause_line(report, calls)
     if line is None:
         return None
-    current = (snapshot.get("run") or {}).get("run_id")
-    if current is None:
-        current = getattr(snapshot["incident"], "current_run_id", None)
+    # The Run that produced the published report: an earlier Run's when a
+    # continuation Run is current (A9, ``report_run_id``), else the current
+    # Run's. A follow-up Run that has not replaced the report changes nothing.
+    report_run = snapshot.get("report_run_id") or (snapshot.get("run") or {}).get(
+        "run_id"
+    )
     changed = (
-        current is not None
+        report_run is not None
         and draft_run_id is not None
-        and str(current) != str(draft_run_id)
+        and str(report_run) != str(draft_run_id)
     )
     return {**line, "changed": changed}
 

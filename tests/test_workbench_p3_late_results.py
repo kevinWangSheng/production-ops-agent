@@ -22,6 +22,7 @@ import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from opspilot.investigation.reports import ReportV2
+from opspilot.persistence import PersistenceError
 from opspilot.web import (
     AuthConfig,
     Authenticator,
@@ -32,7 +33,7 @@ from opspilot.web import (
 )
 from opspilot.web.incident_view import LIVE_KINDS, page_view
 from opspilot.web.review import EVENT_KINDS
-from opspilot.web.service import categorize_report
+from opspilot.web.service import WorkbenchError, categorize_report
 from tests.m1_web_support import ORIGIN, UI_PASSWORD, UI_USER, basic, call
 
 T = "2026-11-18T10:00:{:02d}+00:00"
@@ -791,3 +792,70 @@ def test_postmortem_page_without_a_root_cause_shows_no_block(report):
     html = _version_html(report)
     assert _element(html, "investigation-root-cause") is None
     assert "otel-demo/payment" not in html
+
+
+# -- #652 review fix (implementer's test): an optional block -----------------
+
+
+class _FailingSnapshot(_Workbench):
+    def __init__(self, error):
+        super().__init__(_report(), RUN)
+        self.error = error
+
+    def snapshot(self, incident_id):
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    "error",
+    [WorkbenchError("UNKNOWN_INCIDENT"), PersistenceError("STORE_UNAVAILABLE")],
+    ids=["workbench-error", "persistence-error"],
+)
+def test_postmortem_page_renders_without_the_block_when_the_snapshot_fails(error):
+    config = AuthConfig(
+        ui_users={UI_USER: hash_password(UI_PASSWORD, salt=b"fixed-salt-16byt")},
+        event_tokens={},
+        auth_revision="auth-rev-1",
+        allowed_origins=frozenset({ORIGIN}),
+    )
+    app = create_app(
+        _FailingSnapshot(error),
+        Authenticator(config),
+        SimpleNamespace(now=lambda: AT),
+        review=PostmortemReview(knowledge=_Knowledge(), events=MemoryEventLog()),
+    )
+    response = call(
+        app, "GET", f"/postmortems/{POSTMORTEM}/versions/1", headers=basic()
+    )
+    assert response.status == 200, response.text[:500]
+    assert _element(response.text, "investigation-root-cause") is None
+
+
+def test_postmortem_report_changed_follows_the_report_run_not_the_current_run():
+    """A continuation Run that is current while the published report is
+    still the draft's Run (A9 ``report_run_id``) changes nothing."""
+
+    class _Continued(_Workbench):
+        def snapshot(self, incident_id):
+            snapshot = super().snapshot(incident_id)
+            snapshot["report_run_id"] = str(RUN)
+            return snapshot
+
+    config = AuthConfig(
+        ui_users={UI_USER: hash_password(UI_PASSWORD, salt=b"fixed-salt-16byt")},
+        event_tokens={},
+        auth_revision="auth-rev-1",
+        allowed_origins=frozenset({ORIGIN}),
+    )
+    app = create_app(
+        _Continued(_report(), EARLIER_RUN),
+        Authenticator(config),
+        SimpleNamespace(now=lambda: AT),
+        review=PostmortemReview(knowledge=_Knowledge(), events=MemoryEventLog()),
+    )
+    html = call(
+        app, "GET", f"/postmortems/{POSTMORTEM}/versions/1", headers=basic()
+    ).text
+    block = _element(html, "investigation-root-cause")
+    assert block is not None
+    assert "the report has changed since this draft" not in html
