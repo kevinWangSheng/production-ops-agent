@@ -331,7 +331,10 @@ _MAX_FEEDBACK_ITEMS = 50
 
 @dataclass(frozen=True)
 class ClaimCitationFailure:
-    """One claim's first citation-check failure, in the C2 reason vocabulary.
+    """One failing citation check of one claim, in the C2 reason vocabulary.
+
+    #701: a claim yields one of these per independent failing check, in the
+    gate's check order.
 
     ``evidence_ids`` are the specific ids implicated -- empty when the
     failure is about a target/time reference rather than a citation, since
@@ -357,18 +360,26 @@ def _citation_failures(
     time_policy_ids: Sequence[str],
     target_catalog: Mapping[str, str | None] | None = None,
 ) -> list[ClaimCitationFailure]:
-    """Every claim's first citation-check failure, in claim order.
+    """Every claim's failing citation checks, in claim then check order.
 
     The single source both ``unsupported_citations`` (the pass/fail gate)
     and C2's retry-feedback itemization read, so the two can never disagree
-    about which claim failed or why -- this function's branches and order
-    are a line-for-line port of ``unsupported_citations``'s previous body
-    (a claim's checks still short-circuit at its first failure, unchanged),
-    with each ``return True`` turned into "record this claim's failure and
-    move to the next claim" instead of aborting the whole report at the
-    first offending claim. That rewrite cannot change which reports fail:
-    the caller only asks "is this list empty", exactly the same boolean the
-    old early-return computed, just no longer thrown away.
+    about which claim failed or why. Check order: unknown_evidence_id,
+    missing_target_refs, missing_time_scope_ref, then (fact-like claims
+    only) cites_non_ok_view, not_citable_as_fact,
+    time_scope_not_bound_to_view, target_not_observed_by_view.
+
+    #701: a claim no longer stops at its first failing check; every check
+    that fails on its own is recorded, so one retry can name them all. A
+    check that would fail only because an earlier one did is skipped: view
+    checks see only the delivered views the claim cites, not_citable_as_fact
+    skips views already non-ok, the view time binding is checked only for a
+    known time policy, and target observation is checked only when every
+    cited id was delivered and only for refs that passed missing_target_refs.
+    This cannot change which reports fail: the caller asks only "is this
+    list empty", and every skip is conditioned on an earlier check of the
+    same claim having failed, so the first failure the old short-circuit
+    found is always still recorded.
     """
     by_id = {view.evidence_id: view for view in views}
     policies = set(time_policy_ids)
@@ -379,7 +390,6 @@ def _citation_failures(
             failures.append(
                 ClaimCitationFailure(index, UNKNOWN_EVIDENCE_ID, unknown_ids)
             )
-            continue
         if target_catalog is not None:
             bad_refs = tuple(
                 ref
@@ -398,42 +408,45 @@ def _citation_failures(
             failures.append(
                 ClaimCitationFailure(index, MISSING_TARGET_REFS, target_refs=bad_refs)
             )
-            continue
-        if claim.time_scope_ref is not None and claim.time_scope_ref not in policies:
+        fact_like = claim.kind in _FACTLKE
+        scope_known = claim.time_scope_ref in policies
+        if not scope_known and (fact_like or claim.time_scope_ref is not None):
             failures.append(ClaimCitationFailure(index, MISSING_TIME_SCOPE_REF))
+        if not fact_like:
             continue
-        if claim.kind not in _FACTLKE:
-            continue
-        if claim.time_scope_ref not in policies:
-            failures.append(ClaimCitationFailure(index, MISSING_TIME_SCOPE_REF))
-            continue
-        cited = [by_id[eid] for eid in claim.evidence_ids]
+        # #701 rule (a): the view checks below run only over the delivered
+        # views the claim actually cites, and skip what an earlier failure
+        # already explains, so nothing is reported twice for one mistake.
+        cited = [by_id[eid] for eid in claim.evidence_ids if eid in by_id]
         non_ok = tuple(v.evidence_id for v in cited if v.status != "ok")
         if non_ok:
             failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))
-            continue
-        not_citable = tuple(v.evidence_id for v in cited if not v.citable_as_fact)
+        not_citable = tuple(
+            v.evidence_id for v in cited if v.status == "ok" and not v.citable_as_fact
+        )
         if not_citable:
             failures.append(
                 ClaimCitationFailure(index, NOT_CITABLE_AS_FACT, not_citable)
             )
-            continue
-        unbound = tuple(
-            v.evidence_id
-            for v in cited
-            if claim.time_scope_ref not in v.time_scope_refs
-        )
-        if unbound:
-            failures.append(
-                ClaimCitationFailure(index, TIME_SCOPE_NOT_BOUND_TO_VIEW, unbound)
+        if scope_known:
+            unbound = tuple(
+                v.evidence_id
+                for v in cited
+                if claim.time_scope_ref not in v.time_scope_refs
             )
+            if unbound:
+                failures.append(
+                    ClaimCitationFailure(index, TIME_SCOPE_NOT_BOUND_TO_VIEW, unbound)
+                )
+        if unknown_ids:
+            # An undelivered id may be the view that observed the target.
             continue
         observed: set[str] = set()
         for view in cited:
             observed.update(view.target_ids)
-        if any(ref not in observed for ref in claim.target_refs):
+        checked_refs = [ref for ref in claim.target_refs if ref not in bad_refs]
+        if any(ref not in observed for ref in checked_refs):
             failures.append(ClaimCitationFailure(index, TARGET_NOT_OBSERVED_BY_VIEW))
-            continue
     if report.root_cause is not None:
         # #646 R6: delivered ids only -- no status, citable_as_fact, target
         # or time checks; a root cause under ``partial`` is a hypothesis.
@@ -680,14 +693,33 @@ def _listed(values: Sequence[str]) -> str:
 
 
 def _citation_failure_line(
+    failures: Sequence[ClaimCitationFailure],
+    *,
+    delivered_ids: Sequence[str],
+    allowed_refs: Sequence[str],
+) -> str:
+    """One claim's (or the root cause's) item: its failing checks in order.
+
+    #701: a single failure keeps the exact pre-#701 bytes; each further
+    failure of the same claim follows as ``". Also: <reason>..."``.
+    """
+    first = failures[0]
+    prefix = "root_cause" if first.root_cause else f"claim {first.claim_index}"
+    return f"{prefix}: " + ". Also: ".join(
+        _citation_failure_fragment(
+            failure, delivered_ids=delivered_ids, allowed_refs=allowed_refs
+        )
+        for failure in failures
+    )
+
+
+def _citation_failure_fragment(
     failure: ClaimCitationFailure,
     *,
     delivered_ids: Sequence[str],
     allowed_refs: Sequence[str],
 ) -> str:
-    line = (
-        "root_cause" if failure.root_cause else f"claim {failure.claim_index}"
-    ) + f": {failure.reason}"
+    line = failure.reason
     # The C2 item itself keeps its bytes; a D6 hint follows it as its own
     # sentence (``_capped_items`` adds the closing period).
     if failure.evidence_ids:
@@ -711,8 +743,8 @@ def _citation_failure_line(
 def _citation_failure_detail(
     report: ReportV2, *, views: Sequence[DeliveredView], **citation_kwargs: object
 ) -> str:
-    """C2's itemized citation-failure detail: one line per failing claim,
-    sorted by claim index (the order ``_citation_failures`` already
+    """C2's itemized citation-failure detail: one line per failing claim
+    naming each of its failing checks (#701), sorted by claim index (the order ``_citation_failures`` already
     produces), capped at 50 with a truncation note, never a view's own
     content -- only the normalized reason and, when the failure is about
     one, the evidence_id(s) implicated.
@@ -733,11 +765,22 @@ def _citation_failure_detail(
         if any(f.reason == MISSING_TARGET_REFS for f in failures)
         else []
     )
+    # #701: one item per failing claim (the cap still counts claims), its
+    # failures already in check order and claims in index order.
+    grouped: list[list[ClaimCitationFailure]] = []
+    for failure in failures:
+        if grouped and (grouped[-1][0].claim_index, grouped[-1][0].root_cause) == (
+            failure.claim_index,
+            failure.root_cause,
+        ):
+            grouped[-1].append(failure)
+        else:
+            grouped.append([failure])
     lines = [
         _citation_failure_line(
-            f, delivered_ids=delivered_ids, allowed_refs=allowed_refs
+            group, delivered_ids=delivered_ids, allowed_refs=allowed_refs
         )
-        for f in failures
+        for group in grouped
     ]
     return _capped_items(lines, what="claim(s) failed citation checks")
 

@@ -196,7 +196,6 @@ MUTATIONS: tuple[Mutation, ...] = (
         "            failures.append(\n"
         "                ClaimCitationFailure(index, UNKNOWN_EVIDENCE_ID, unknown_ids)\n"
         "            )\n"
-        "            continue\n"
         "        if target_catalog is not None:\n",
         "        if target_catalog is not None:\n",
     ),
@@ -205,15 +204,14 @@ MUTATIONS: tuple[Mutation, ...] = (
         "report validation: a fact may not cite a failed or no-data view",
         "opspilot/investigation/reports.py",
         "        if non_ok:\n"
-        "            failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))\n"
-        "            continue\n",
+        "            failures.append(ClaimCitationFailure(index, CITES_NON_OK_VIEW, non_ok))\n",
         "",
     ),
     Mutation(
         "M22",
         "report validation: a claim's target must be one its views observed",
         "opspilot/investigation/reports.py",
-        "        if any(ref not in observed for ref in claim.target_refs):",
+        "        if any(ref not in observed for ref in checked_refs):",
         "        if False:",
     ),
     Mutation(
