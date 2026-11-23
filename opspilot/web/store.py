@@ -1070,10 +1070,11 @@ class DurableIncidentStore:
         return tuple(row["incident_id"] for row in rows)
 
     def linked_incidents(
-        self, incident_id: UUID, *, limit: int = LINKED_LIMIT
+        self, incident_id: UUID, *, limit: int | None = LINKED_LIMIT
     ) -> tuple[tuple[IncidentListItem, Mapping[str, Any]], ...]:
         """Incidents merged into ``incident_id`` (workbench P6 L1/L2), in
-        merge order, at most ``limit``: each source's list row (its title)
+        merge order, at most ``limit`` (``None``: all of them, #715): each
+        source's list row (its title)
         with the merge decision -- who, when, the optional reason the
         ``merge_into`` audit row keeps -- and the source's lifecycle at the
         merge, from the fixed-template event the survivor took."""
@@ -1092,8 +1093,9 @@ class DurableIncidentStore:
                 " AND n.content->>'source_incident_id'=i.incident_id::text"
                 " ORDER BY n.sequence LIMIT 1) me ON true"
                 " WHERE i.merged_into_incident_id=%s"
-                " ORDER BY mc.created_at NULLS LAST,i.created_at,i.incident_id LIMIT %s",
-                (incident_id, incident_id, limit),
+                " ORDER BY mc.created_at NULLS LAST,i.created_at,i.incident_id"
+                + (" LIMIT ALL" if limit is None else " LIMIT %s"),
+                (incident_id, incident_id) + (() if limit is None else (limit,)),
             ).fetchall()
         return tuple(
             (
