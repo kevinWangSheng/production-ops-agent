@@ -26,7 +26,8 @@ over the same ``traces_endpoint`` and credential slot as ``traces_search``;
 to the same ``KubernetesTransport`` (Kubernetes address, ``k8s-ro`` slot).
 
 Configured backends (B1-U2, #560): the three Elasticsearch/OpenSearch tools
-of :mod:`opspilot.tools.elasticsearch_logs` join this profile only when
+of :mod:`opspilot.tools.elasticsearch_logs`, then the five cluster tools of
+:mod:`opspilot.tools.elasticsearch_cluster` (#808), join this profile only when
 ``OPSPILOT_ES_URL`` is set -- then ``data_sources.available`` lists
 ``elasticsearch`` and ``tool_schema_revision`` is ``ES_TOOL_SCHEMA_REVISION``.
 Without it every name, face, version and registration here is byte for byte
@@ -121,6 +122,7 @@ from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools import (
     argocd_apps,
+    elasticsearch_cluster,
     elasticsearch_logs,
     helm_releases,
     jaeger_query,
@@ -228,10 +230,11 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *kubernetes_tabular.TOOL_SCHEMAS,
 )
 #: B1-U2: the tools array with ``OPSPILOT_ES_URL`` set -- the same array, then
-#: the three Elasticsearch tools.
+#: the three Elasticsearch tools and the five cluster tools (#808).
 ES_TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *TOOL_SCHEMAS,
     *elasticsearch_logs.TOOL_SCHEMAS,
+    *elasticsearch_cluster.TOOL_SCHEMAS,
 )
 
 
@@ -325,7 +328,9 @@ def _data_sources(
         ),
     }
     if elasticsearch:
-        available["elasticsearch"] = sorted(elasticsearch_logs.TOOL_NAMES)
+        available["elasticsearch"] = sorted(
+            (*elasticsearch_logs.TOOL_NAMES, *elasticsearch_cluster.TOOL_NAMES)
+        )
     if loki:
         available["loki"] = sorted(loki_logs.TOOL_NAMES)
     if victorialogs:
@@ -431,6 +436,9 @@ def _registered(
         base = (
             *base,
             *elasticsearch_logs.elasticsearch_registrations(
+                max_window_seconds=otel_demo.OBSERVATION_SECONDS
+            ),
+            *elasticsearch_cluster.cluster_registrations(
                 max_window_seconds=otel_demo.OBSERVATION_SECONDS
             ),
         )
@@ -877,6 +885,8 @@ def _overflow_summary(
         return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     if tool in elasticsearch_logs.TOOL_NAMES:
         return elasticsearch_logs.overflow_summary(tool, rows, query)
+    if tool in elasticsearch_cluster.TOOL_NAMES:
+        return elasticsearch_cluster.overflow_summary(tool, rows, query)
     if tool in loki_logs.TOOL_NAMES:
         return loki_logs.overflow_summary(tool, rows, query)
     if tool in victorialogs_logs.TOOL_NAMES:
@@ -1051,6 +1061,14 @@ def otel_demo_ext_executor_factory(
             ca_file=elasticsearch.ca_file,
         )
         routes.update(dict.fromkeys(elasticsearch_logs.TOOL_NAMES, search))
+        # #808: the cluster tools over the same address and ``es-ro`` slot.
+        cluster_state = elasticsearch_cluster.ElasticsearchClusterTransport(
+            credentials={
+                elasticsearch_logs.CREDENTIAL_REF: elasticsearch.authorization
+            },
+            ca_file=elasticsearch.ca_file,
+        )
+        routes.update(dict.fromkeys(elasticsearch_cluster.TOOL_NAMES, cluster_state))
     if loki is not None:
         # C5-4: its own slot and configured tenant, never another backend's.
         logs = loki_logs.LokiTransport(

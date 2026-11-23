@@ -194,6 +194,8 @@ BYTES_VALUES: tuple[str, ...] = ("b", "kb", "mb", "gb", "tb", "pb")
 EXPAND_WILDCARDS_VALUES: tuple[str, ...] = ("open", "closed", "hidden", "none", "all")
 
 _INDEX_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789._*-")
+#: The one path a GET may carry a body to (#808).
+_EXPLAIN_PATH = "/_cluster/allocation/explain"
 
 
 # -- configuration -------------------------------------------------------------
@@ -333,7 +335,8 @@ def index_path(index: str) -> str:
 
 class ElasticsearchClient:
     """The two requests this backend may receive: a GET of a fixed read path
-    and ``POST /{index}/_search``; nothing else can be built (B1-3).
+    (with a body only to ``/_cluster/allocation/explain``, #808) and
+    ``POST /{index}/_search``; nothing else can be built (B1-3).
 
     ``credentials`` maps ``CREDENTIAL_REF`` to the ``Authorization`` header
     value; a missing slot is ``CREDENTIAL_REF_UNKNOWN`` before anything is
@@ -383,6 +386,27 @@ class ElasticsearchClient:
         )
         return self._send("GET", url, None, deadline=deadline, max_bytes=max_bytes)
 
+    def get(
+        self,
+        endpoint: str,
+        path: str,
+        query: Sequence[tuple[str, str]],
+        body: Mapping[str, Any] | None,
+        *,
+        deadline: float,
+        max_bytes: int,
+    ) -> _Fetched:
+        """A GET of a fixed read path built from checked values (#808); a
+        body only for ``/_cluster/allocation/explain``, as upstream sends."""
+        url = endpoint + path
+        if query:
+            url += "?" + urllib.parse.urlencode(list(query))
+        data = None
+        if body is not None:
+            data = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+            data = data.encode("utf-8")
+        return self._send("GET", url, data, deadline=deadline, max_bytes=max_bytes)
+
     def search(
         self,
         endpoint: str,
@@ -421,8 +445,14 @@ class ElasticsearchClient:
             path = urllib.parse.urlsplit(url)
             if not path.path.endswith("/_search") or path.query or data is None:
                 raise TransportError("METHOD_NOT_ALLOWED")
-        elif method != "GET" or data is not None:
+        elif method != "GET":
             raise TransportError("METHOD_NOT_ALLOWED")
+        elif data is not None:
+            # #808: the one GET with a body is allocation explain naming its
+            # shard (upstream sends it so; ES 8 and OpenSearch 2 both read it).
+            path = urllib.parse.urlsplit(url)
+            if not path.path.endswith(_EXPLAIN_PATH) or path.query:
+                raise TransportError("METHOD_NOT_ALLOWED")
         headers = {
             "Accept": "application/json",
             "Authorization": self.authorization(),
