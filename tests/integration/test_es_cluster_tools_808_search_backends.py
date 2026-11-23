@@ -92,7 +92,7 @@ def _values(value: object, key: str) -> list[object]:
 
 def _ok(tools, tool: str, params: dict[str, object]):
     outcome = tools.execute(_call(tool, params))
-    assert outcome.status == "ok", _view(outcome)
+    assert outcome.status == "ok", (outcome.status, outcome.reason, _view(outcome))
     view = _view(outcome)
     assert view.get("source_start_at") is None
     return view
@@ -110,10 +110,24 @@ def test_cluster_health_reports_the_unassigned_replica(cluster):
 
 
 def test_node_stats_return_jvm_figures(cluster):
-    view = _ok(cluster, NODES, {"metrics": "jvm"})
+    view = _ok(cluster, NODES, {"node_id": "_local", "metrics": "jvm"})
     heap = _values(view, "heap_used_percent")
     assert heap and all(isinstance(n, int) and 0 <= n <= 100 for n in heap)
-    assert _ok(cluster, NODES, {"node_id": "_local"})
+
+    # All metrics of a real ES 8 node can exceed the 25k-token view cap: then
+    # the whole result is refused with a hint to narrow it (designed
+    # behaviour). Any other outcome than ok or that refusal fails.
+    everything = cluster.execute(_call(NODES, {"node_id": "_local"}))
+    detail = (everything.status, everything.reason, _view(everything))
+    if everything.status != "ok":
+        assert (everything.status, everything.reason) == (
+            "error",
+            "RESULT_TOO_LARGE",
+        ), detail
+        assert _view(everything).get("content") is None, detail
+        # ASSUMPTION: the hint names a way to narrow (metrics or node_id).
+        hint = json.dumps(_view(everything)).lower()
+        assert "metrics" in hint or "node_id" in hint or "narrow" in hint, detail
 
 
 def test_index_stats_count_the_seeded_documents(cluster):
