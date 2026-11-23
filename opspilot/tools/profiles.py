@@ -76,14 +76,22 @@ prompt variant and so ``prompt_revision``. An empty value is unset; any other
 value outside ``discipline.CLUSTER_NAME_PATTERN`` refuses to start
 (``CLUSTER_NAME_INVALID``). ``fixture`` and ``otel-demo`` never read it.
 
+``OPSPILOT_MAX_LOOKBACK`` (#779, B4-U1/U2) caps how far back a submitted
+Run's frame may reach: ``24h`` (unset or empty, today's behaviour), ``7d``
+or ``30d``. Both processes read it: the web offers and accepts lookbacks up
+to it, and in ``otel-demo-ext`` it is every tool's registered window ceiling
+(B4-2), so it enters ``tool_schema_revision`` once it is above ``24h``. Any
+other value, or a cap above ``24h`` for ``fixture`` or ``otel-demo`` (whose
+faces stay fixed, B4-1), refuses to start (``MAX_LOOKBACK_INVALID``).
+
 Both processes must be started with the same value (and, for
 ``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
 ``OPSPILOT_VICTORIALOGS_URL``, ``OPSPILOT_SQL_URL`` and
 ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` each set (to the same value) in both or
 in neither, and
 ``OPSPILOT_K8S_LIVE_METRICS``, ``OPSPILOT_KNOWLEDGE_TOOL``,
-``OPSPILOT_HELM_RELEASES`` and ``OPSPILOT_CLUSTER_NAME`` the same in
-both).
+``OPSPILOT_HELM_RELEASES``, ``OPSPILOT_CLUSTER_NAME`` and
+``OPSPILOT_MAX_LOOKBACK`` the same in both).
 """
 
 from __future__ import annotations
@@ -92,6 +100,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from opspilot.instructions.discipline import valid_cluster_name
+from opspilot.intake import DEFAULT_LOOKBACK, LOOKBACK_SECONDS
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.investigation.todo import todo_write_enabled
@@ -135,6 +144,7 @@ from opspilot.tools.victorialogs_logs import (
 
 __all__ = [
     "CLUSTER_NAME_ENV",
+    "MAX_LOOKBACK_ENV",
     "PROFILE_ENV",
     "PROFILE_NAMES",
     "ToolProfile",
@@ -143,6 +153,7 @@ __all__ = [
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
 CLUSTER_NAME_ENV = "OPSPILOT_CLUSTER_NAME"
+MAX_LOOKBACK_ENV = "OPSPILOT_MAX_LOOKBACK"
 PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-ext")
 
 
@@ -221,8 +232,24 @@ def _cluster_name(env: Mapping[str, str]) -> str | None:
     return value
 
 
+def _max_lookback(env: Mapping[str, str], *, extended: bool) -> int:
+    """#779: the deployment's lookback cap in seconds; unset or empty is
+    ``24h``. Anything outside the enum, or a longer cap for a profile whose
+    face is fixed at 24 h, does not start."""
+    value = env.get(MAX_LOOKBACK_ENV) or DEFAULT_LOOKBACK
+    seconds = LOOKBACK_SECONDS.get(value)
+    if seconds is None or (
+        not extended and seconds > LOOKBACK_SECONDS[DEFAULT_LOOKBACK]
+    ):
+        raise SystemExit("MAX_LOOKBACK_INVALID")
+    return seconds
+
+
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     config = OtelDemoConfig.from_env(env)
+    # #779: both processes read the cap; it is the face's longest frame and
+    # every registered window ceiling (B4-2).
+    window_seconds = _max_lookback(env, extended=True)
     # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
     # selects this profile too. Only the worker, when it builds the executor
     # factory, reads them from the same mapping (the process environment).
@@ -291,6 +318,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 redis=RedisConfig.from_env(env),
                 helm=helm,
                 argocd=argocd,
+                window_seconds=window_seconds,
             )
         except ToolContractError as error:
             code = str(error)
@@ -315,6 +343,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             helm=helm,
             argocd=argocd,
             cluster_name=cluster_name,
+            window_seconds=window_seconds,
         ),
         versions=lambda: otel_demo_ext_versions(
             elasticsearch=elasticsearch,
@@ -330,6 +359,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             helm=helm,
             argocd=argocd,
             cluster_name=cluster_name,
+            window_seconds=window_seconds,
         ),
         runbook_catalog=knowledge,
         executor_factory=executor_factory,
@@ -340,8 +370,10 @@ def select_profile(env: Mapping[str, str]) -> ToolProfile:
     """The profile ``env`` names; an unknown name is a startup error."""
     name = env.get(PROFILE_ENV) or "fixture"
     if name == "fixture":
+        _max_lookback(env, extended=False)
         return _fixture()
     if name == "otel-demo":
+        _max_lookback(env, extended=False)
         return _otel_demo(env)
     if name == "otel-demo-ext":
         return _otel_demo_ext(env)

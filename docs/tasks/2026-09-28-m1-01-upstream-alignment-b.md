@@ -18,6 +18,8 @@ B6. **上下文取保守值**（lead 2026-09-28 补充）：`MAX_CONTEXT_TOKENS`
 
 实现决定（lead 2026-09-28）：B2 的模型自选时间窗采用"工具参数"方式——start/end 作为可选参数进入 `request.params`，由 `_metrics`/`_traces` 在 runner 授权外框内校验与使用（与上游工具参数语义一致）；otel_demo 各注册的 `max_window_seconds` 相应提高以容纳 24 小时外框。
 
+B2 修订（2026-11-22 用户裁决 B4-U1、B4-U2，#779）：人工提交的调查，授权外框长度由提交者选 24 小时（默认）、7 天或 30 天，不超过部署上限 `OPSPILOT_MAX_LOOKBACK`（默认 24 小时）；外框终点、默认 1 小时查询段与「超出外框即拒绝」不变，后续 Run 沿用外框。扩展档位各注册的 `max_window_seconds` 取部署上限；告警、发布触发的调查与 `otel-demo` 档位仍为 24 小时。见 C3 §8「授权时间框的长度」。
+
 ### 审查后处置（lead 2026-09-28）
 
 - P1（视图记录外框而非实际查询窗）：修复。transport 把实际查询窗回传执行器，视图 `window` 与 `lookback_start_at` 按实际查询窗记录；补执行器层合同测试（不传 start/end、传子窗两种）。

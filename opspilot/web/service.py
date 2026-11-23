@@ -46,6 +46,8 @@ from opspilot.alertmanager import (
 )
 from opspilot.domain.base import sanitized_errors
 from opspilot.intake import (
+    DEFAULT_LOOKBACK,
+    LOOKBACK_SECONDS,
     IntakeEnvelope,
     IntakeRequest,
     Principal,
@@ -74,6 +76,7 @@ from opspilot.investigation.coverage import (
     run_coverage,
 )
 from opspilot.investigation.inputs import (
+    ALERT_FRAME_SECONDS,
     AlertAnchor,
     ReleaseAnchor,
     ToolFace,
@@ -522,8 +525,24 @@ class Workbench:
 
     # -- intake ---------------------------------------------------------
 
+    def lookback_choices(self) -> tuple[str, ...]:
+        """#779: the lookbacks the submit form offers, shortest first: every
+        one within the deployment cap the tool face carries."""
+        cap = (
+            ALERT_FRAME_SECONDS
+            if self.tool_face is None
+            else self.tool_face.max_lookback_seconds
+        )
+        return tuple(
+            name for name, seconds in LOOKBACK_SECONDS.items() if seconds <= cap
+        )
+
     def submit(self, envelope: IntakeEnvelope) -> IntakeResult:
         envelope = IntakeEnvelope.model_validate(envelope)
+        if envelope.request.lookback not in self.lookback_choices():
+            # #779 B4-3: above the deployment cap; checked before the ledger,
+            # so nothing is recorded under the key.
+            raise WorkbenchError("LOOKBACK_NOT_ALLOWED")
         key = f"intake:{envelope.request.idempotency_key}"
         incident_id = uuid5(_INTAKE_NAMESPACE, key)
         run_id = uuid5(_INTAKE_NAMESPACE, f"{key}:run:0")
@@ -1945,6 +1964,9 @@ class Workbench:
             model_requests=self.budget_limit,
             alert=alert,
             release=release,
+            # #779: a submitted Run's chosen frame; alert and release Runs
+            # keep their anchored 24 h frame (B4-4).
+            lookback_seconds=LOOKBACK_SECONDS[request.lookback],
         )
         if affected_service is not None:
             fresh = replace(
@@ -4472,13 +4494,23 @@ def _envelope_json(envelope: IntakeEnvelope) -> dict[str, Any]:
             "channel": envelope.principal.channel,
             "auth_revision": envelope.principal.auth_revision,
         },
-        "request": {
-            "target_id": envelope.request.target_id,
-            "question": envelope.request.question,
-            "idempotency_key": envelope.request.idempotency_key,
-        },
+        "request": _request_json(envelope.request),
         "received_at": envelope.received_at.isoformat(),
     }
+
+
+def _request_json(request: IntakeRequest) -> dict[str, Any]:
+    """The stored request; ``lookback`` only when it is not the default, so
+    a default submission's ledger row stays as before #779 and a row written
+    before it rebuilds with the default."""
+    stored: dict[str, Any] = {
+        "target_id": request.target_id,
+        "question": request.question,
+        "idempotency_key": request.idempotency_key,
+    }
+    if request.lookback != DEFAULT_LOOKBACK:
+        stored["lookback"] = request.lookback
+    return stored
 
 
 def _same_text(peers: Iterable[Mapping[str, Any]], intent: Mapping[str, Any]) -> int:
