@@ -58,6 +58,8 @@ from scripts.sregym_eval.agent_entry import (
     QUESTION_FILE,
     RECORD,
     RUN_FILE,
+    VALKEY_ACCOUNT_DISCLOSURE,
+    VALKEY_PROBLEM,
 )
 from scripts.sregym_eval.agent_registry import AGENT_NAME, write_registry
 from scripts.sregym_eval.boundary import (
@@ -663,6 +665,9 @@ def _freeze(
                 *block["disclosures"],
                 *record.get("disclosures", []),
                 KAFKA_NO_AUTH_DISCLOSURE,
+                # #809 (B4-U6 = a): from the problem run, so a lost entry
+                # record still carries it.
+                *([VALKEY_ACCOUNT_DISCLOSURE] if problem_id == VALKEY_PROBLEM else []),
             ]
         )
     )

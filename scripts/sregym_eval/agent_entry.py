@@ -27,17 +27,23 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets as _secrets
 import signal
 import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from opspilot.tools.redis_inspect import (
+    RedisConfig,
+    _SocketConnection,
+    account_problem,
+)
 from scripts import run_freeze
 from scripts.holmes_evals.driver import load_env_file, report_object
 from scripts.holmes_evals.intake import (
@@ -62,6 +68,7 @@ from scripts.sregym_eval.boundary import (
     BoundaryError,
     check_no_problem_id_digest,
     check_product_env,
+    problem_id_digest,
 )
 from scripts.sregym_eval.conductor import AppInfo, ConductorClient, ConductorError
 from scripts.sregym_eval.identity import K8sTarget, read_target
@@ -99,6 +106,28 @@ FORWARDS: tuple[tuple[str, str, int, str], ...] = (
 KAFKA_FORWARD: tuple[str, str, int, str] = ("kafka", "kafka", 9092, "kafka")
 #: C3-U1 = a: the benchmark's broker has no authentication.
 KAFKA_SECURITY_PROTOCOL = "PLAINTEXT"
+#: #809 (B4-U6 = a): SREGym p12's Valkey, forwarded for that problem only.
+#: Every pass gets the same Redis tool surface (the Kafka precedent): the
+#: address is ``VALKEY_PORT`` everywhere, and only in p12 does anything
+#: listen there or does the account exist. (Not a ``Ports`` field: the
+#: track's port set is a fixed contract.)
+VALKEY_PORT = 29563
+VALKEY_PROBLEM = "valkey_auth_disruption"
+VALKEY_SEQ = 12
+#: (name, service, remote port, local port).
+VALKEY_FORWARD: tuple[str, str, int, int] = ("valkey", "valkey-cart", 6379, VALKEY_PORT)
+VALKEY_USER = "opspilot_ro"
+#: The documented lab grant of #773 (``.github/workflows/ci.yml``); it passes
+#: ``redis_inspect.account_problem``. ``>`` + the pass's fresh password is
+#: inserted after ``on``.
+VALKEY_GRANT: tuple[str, ...] = (
+    "~*", "resetchannels", "-@all", "+@read", "+info", "+ping", "+hello",
+    "+auth", "+select", "+client|setname", "+config|get", "+slowlog|get",
+    "+slowlog|len", "+acl|whoami", "+acl|getuser",
+)  # fmt: skip
+VALKEY_ACCOUNT_DISCLOSURE = "VALKEY_READONLY_ACCOUNT_BY_HARNESS"
+VALKEY_ACCOUNT_FAILED = "VALKEY_READONLY_ACCOUNT_FAILED"
+VALKEY_ADMIN_TIMEOUT_S = 10.0
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 LOKI_ACCOUNT_KEYS = (
@@ -115,6 +144,26 @@ class EntryFailure(RuntimeError):
         self.code = code
         self.exit_code = exit_code
         super().__init__(code)
+
+
+def valkey_admin(
+    argv: Sequence[str], *, port: int, timeout: float = VALKEY_ADMIN_TIMEOUT_S
+) -> Any:
+    """One command over the p12 port-forward as Valkey's ``default`` user
+    (no AUTH is sent; the config's account fields are only there because the
+    type requires them). Returns the decoded RESP reply; an error reply
+    raises ``RedisReplyError``."""
+    config = RedisConfig(
+        url=f"redis://127.0.0.1:{port}",
+        username="harness-admin",
+        password="not-sent",
+        tls="disable",
+    )
+    connection = _SocketConnection(config, timeout)
+    try:
+        return connection.command(list(argv))
+    finally:
+        connection.close()
 
 
 @dataclass
@@ -136,6 +185,8 @@ class EntryHost:
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
     kill: Callable[[int, int], None] = os.kill
+    #: #809: one Valkey command as the system-under-test's admin.
+    valkey_admin: Callable[..., Any] = valkey_admin
 
 
 # -- SIGTERM path ----------------------------------------------------------------------------------
@@ -261,6 +312,8 @@ def tool_env(job: Job) -> dict[str, str]:
         "OPSPILOT_LOKI_URL": f"http://127.0.0.1:{p.loki_gateway}",
         "OPSPILOT_KAFKA_BOOTSTRAP_SERVERS": f"127.0.0.1:{p.kafka}",
         "OPSPILOT_KAFKA_SECURITY_PROTOCOL": KAFKA_SECURITY_PROTOCOL,
+        # #809: the address only, the same in web and worker and every pass.
+        "OPSPILOT_REDIS_URL": f"redis://127.0.0.1:{VALKEY_PORT}",
         "OPSPILOT_HEALTH_BIND": "",
     }
 
@@ -308,6 +361,7 @@ def worker_env(
     secrets: Mapping[str, str],
     loki_account: Mapping[str, str],
     missing: set[str],
+    valkey_account: tuple[str, str],
 ) -> dict[str, str]:
     env = (
         services.base_env()
@@ -320,6 +374,10 @@ def worker_env(
             "OPSPILOT_K8S_NAMESPACE": namespace,
             "OPSPILOT_TRACE": job.trace,
             "OPSPILOT_WORKER_CAPACITY": "1",
+            # #809: the worker's account (real only in p12); plain TCP.
+            "OPSPILOT_REDIS_USERNAME": valkey_account[0],
+            "OPSPILOT_REDIS_PASSWORD": valkey_account[1],
+            "OPSPILOT_REDIS_TLS": "disable",
         }
     )
     env.update({k: loki_account[k] for k in LOKI_ACCOUNT_KEYS if loki_account.get(k)})
@@ -570,17 +628,31 @@ class Entry:
         text = self._product(app, question, key, deadline)
         self.submit(text)
 
+    def _is_valkey_problem(self) -> bool:
+        """p12, known from the job: its seq and its problem-id digest."""
+        return self.job.seq == VALKEY_SEQ and self.job.problem_digest == (
+            problem_id_digest(VALKEY_PROBLEM)
+        )
+
     def _forwards(self, namespace: str) -> set[str]:
-        """The three ``observe`` services, then the app namespace's Kafka."""
+        """The three ``observe`` services, then the app namespace's Kafka
+        (and, in p12 only, its Valkey)."""
         env = services.base_env() | {"KUBECONFIG": self.job.engineer_kubeconfig}
         missing: set[str] = set()
-        plan = [(OBSERVE_NAMESPACE, *item) for item in FORWARDS]
-        plan.append((namespace, *KAFKA_FORWARD))
-        for forward_namespace, name, service, remote, port_field in plan:
+        plan: list[tuple[str, str, str, int, int]] = [
+            (ns, name, service, remote, getattr(self.job.ports, port_field))
+            for ns, (name, service, remote, port_field) in [
+                *((OBSERVE_NAMESPACE, item) for item in FORWARDS),
+                (namespace, KAFKA_FORWARD),
+            ]
+        ]
+        if self._is_valkey_problem():
+            plan.append((namespace, *VALKEY_FORWARD))
+        for forward_namespace, name, service, remote, local_port in plan:
             forward = {
                 "namespace": forward_namespace,
                 "service": service,
-                "local_port": getattr(self.job.ports, port_field),
+                "local_port": local_port,
                 "remote_port": remote,
             }
             try:
@@ -595,12 +667,53 @@ class Entry:
             self.record["observability"][name] = "forwarded"
         return missing
 
+    def _valkey_account(self, missing: set[str]) -> tuple[str, str]:
+        """#809 (B4-U6 = a): the worker's Redis account. A fresh password per
+        pass, held in memory only. In p12 the harness creates the read-only
+        user on the system-under-test's Valkey (after ``/get_app``, before
+        the product starts) and checks it with the tool's own account check;
+        a failure is recorded and the pass goes on. Elsewhere no account
+        exists and nothing is sent to any Valkey."""
+        password = _secrets.token_hex(24)
+        if not self._is_valkey_problem():
+            return VALKEY_USER, password
+        port = VALKEY_PORT
+        code: str | None = None
+        if "valkey" in missing:
+            code = "FORWARD_MISSING"
+        else:
+            try:
+                reply = self.host.valkey_admin(
+                    argv=["ACL", "SETUSER", VALKEY_USER, "reset", "on",
+                          f">{password}", *VALKEY_GRANT],
+                    port=port,
+                )  # fmt: skip
+                if reply not in ("OK", b"OK"):
+                    code = "SETUSER_NOT_OK"
+                else:
+                    got = self.host.valkey_admin(
+                        argv=["ACL", "GETUSER", VALKEY_USER], port=port
+                    )
+                    if account_problem(got) is not None:
+                        code = "ACCOUNT_NOT_READ_ONLY"
+            except Exception as error:  # noqa: BLE001 - recorded, pass goes on
+                code = "ADMIN_FAILED:" + type(error).__name__
+        self.record["valkey_account"] = {
+            "user": VALKEY_USER,
+            "status": "created" if code is None else "failed",
+            "code": code,
+        }
+        if code is not None:
+            self.record["disclosures"].append(VALKEY_ACCOUNT_FAILED)
+        return VALKEY_USER, password
+
     def _product(self, app: AppInfo, question: str, key: str, deadline: float) -> str:
         job, host = self.job, self.host
         namespace = app.namespaces[0] if app.namespaces else app.namespace
         if len(app.namespaces) > 1:
             self.record["disclosures"].append("K8S_NAMESPACE_FIRST_OF_MANY")
         missing = self._forwards(namespace)
+        valkey_account = self._valkey_account(missing)
         try:
             target = read_target(Path(job.k8s_target_file))
         except Exception:  # noqa: BLE001 - IdentityError and file errors
@@ -635,7 +748,10 @@ class Entry:
         write_identities(identities, namespace)
         account = new_account()
         wenv = web_env(job, pg, identities, account, missing)
-        kenv = worker_env(job, pg, target, namespace, secrets, loki_account, missing)
+        kenv = worker_env(
+            job, pg, target, namespace, secrets, loki_account, missing,
+            valkey_account,
+        )  # fmt: skip
         forbidden = forbidden_values(job, self.environ)
         backend = [f"127.0.0.1:{job.ports.loki}"]
         try:

@@ -94,7 +94,7 @@ def test_c1_lists_and_groups() -> None:
     assert tuple(q.QUESTION_GROUPS["c5"]) == C5_ALL
     assert tuple(q.QUESTION_GROUPS["c2"]) == C2_ALL
     assert tuple(q.QUESTION_GROUPS["b1"]) == tuple(q.B1_QUESTIONS)
-    assert len(q.B1_QUESTIONS) == 30
+    assert len(q.B1_QUESTIONS) == 34  # #809 (#808): B1-1 four are back
     # 283 names one question only.
     assert [x for x in q.ALL_QUESTIONS if x.split("_", 1)[0] == "283"] == [Q283]
 

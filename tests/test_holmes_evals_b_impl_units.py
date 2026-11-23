@@ -291,7 +291,7 @@ def test_small_rules() -> None:
     assert driver.seconds_to_wait_for_utc_midnight(QID, t0) == 0
     assert driver.resolve_questions("254,275") == (REL_QID, QID)
     with pytest.raises(driver.RoundAbort):
-        driver.resolve_questions("186")
+        driver.resolve_questions("271")  # #809: 186 is back in B1
 
 
 def test_tool_calls_from_rows_order_and_refusals() -> None:

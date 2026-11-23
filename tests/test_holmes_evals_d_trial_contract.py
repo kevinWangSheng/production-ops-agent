@@ -220,12 +220,17 @@ class C2Harness(Harness):
         self.ns_checks.append(namespace)
         return not self.ns_present.get(namespace, False)
 
-    def submit(self, web_url, account, *, question, key, target_id):
+    def submit(self, web_url, account, *, question, key, target_id, **extra):
         self.at_submit = sorted(self.wb.active)
         self._fact = self.catalog()  # one fact per Run, fixed at creation
         self.submit_accounts.append(account)
         return super().submit(
-            web_url, account, question=question, key=key, target_id=target_id
+            web_url,
+            account,
+            question=question,
+            key=key,
+            target_id=target_id,
+            **extra,
         )
 
     def catalog(self) -> dict[str, Any]:
