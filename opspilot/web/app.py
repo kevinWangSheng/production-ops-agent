@@ -180,6 +180,8 @@ _WORKBENCH_STATUS = {
     "TARGET_IDENTITY_MISSING": 409,
     "HEALTH_PROFILE_TARGET_MISMATCH": 409,
     "INTAKE_KEY_CONFLICT": 409,
+    # #779: a lookback above the deployment's OPSPILOT_MAX_LOOKBACK
+    "LOOKBACK_NOT_ALLOWED": 400,
     "HANDOFF_ONLY": 409,
     # Workbench contract D6/D7b/D10: a message the investigation cannot take.
     "INVESTIGATION_NOT_AVAILABLE": 409,
@@ -484,10 +486,14 @@ def create_app(
         principal: Principal, fields: Mapping[str, Any]
     ) -> IntakeEnvelope:
         try:
+            # #779: only the submit form names a lookback; a channel that
+            # does not pass one gets the default 24 h frame.
+            lookback = fields.get("lookback")
             request = IntakeRequest(
                 target_id=_text(fields, "target_id"),
                 question=_text(fields, "question"),
                 idempotency_key=_text(fields, "idempotency_key"),
+                **({} if lookback is None else {"lookback": lookback}),
             )
             received = await asyncio.to_thread(clock.now)
             return IntakeEnvelope(
@@ -606,7 +612,12 @@ def create_app(
         principal = await ui(request)
         query = parse_query(request.query_params)
         listing = await in_thread(workbench.incident_list, **query)
-        return render("index.html", principal=principal, listing=listing)
+        return render(
+            "index.html",
+            principal=principal,
+            listing=listing,
+            lookbacks=workbench.lookback_choices(),
+        )
 
     @app.get("/controls")
     async def controls_page(request: Request) -> Response:

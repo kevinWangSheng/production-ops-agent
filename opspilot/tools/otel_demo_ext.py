@@ -107,7 +107,7 @@ with the Helm switch so the Secret gateway passes Helm release pages.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta, timezone
 from typing import Any, cast
 
@@ -370,6 +370,46 @@ def _registrations(
     redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
+) -> tuple[ToolRegistration, ...]:
+    base = _registered(
+        elasticsearch,
+        loki,
+        victorialogs,
+        live_metrics,
+        knowledge,
+        sql=sql,
+        kafka=kafka,
+        mongodb=mongodb,
+        redis=redis,
+        helm=helm,
+        argocd=argocd,
+    )
+    if window_seconds == otel_demo.OBSERVATION_SECONDS:
+        return base
+    # #779 B4-2: the loop sends the Run's whole frame as every call's
+    # top-level window, so each tool's ceiling is raised to the deployment's
+    # longest frame; a shorter Run is still bounded by its own frame.
+    return tuple(
+        replace(item, max_window_seconds=window_seconds)
+        if item.max_window_seconds == otel_demo.OBSERVATION_SECONDS
+        else item
+        for item in base
+    )
+
+
+def _registered(
+    elasticsearch: bool = False,
+    loki: bool = False,
+    victorialogs: bool = False,
+    live_metrics: bool = False,
+    knowledge: bool = False,
+    sql: str | None = None,
+    kafka: bool = False,
+    mongodb: bool = False,
+    redis: bool = False,
+    helm: bool = False,
+    argocd: bool = False,
 ) -> tuple[ToolRegistration, ...]:
     base = (
         *otel_demo._registrations(),
@@ -481,6 +521,7 @@ def tool_schema_revision(
     redis: bool = False,
     helm: bool = False,
     argocd: bool = False,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
 ) -> str:
     """C3 §5: a content hash of this profile's template bytes, with the
     static resource table (A2-5: a new resource is a new version). With a
@@ -520,6 +561,7 @@ def tool_schema_revision(
                     redis=redis,
                     helm=helm,
                     argocd=argocd,
+                    window_seconds=window_seconds,
                 )
             ).revision,
             "trace_projection": otel_demo.TRACE_PROJECTION,
@@ -622,6 +664,7 @@ def otel_demo_ext_versions(
     helm: bool = False,
     argocd: bool = False,
     cluster_name: str | None = None,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -649,6 +692,7 @@ def otel_demo_ext_versions(
             redis=redis,
             helm=helm,
             argocd=argocd,
+            window_seconds=window_seconds,
         ),
     }
 
@@ -669,6 +713,7 @@ def otel_demo_ext_face(
     helm: bool = False,
     argocd: bool = False,
     cluster_name: str | None = None,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
 ) -> ToolFace:
     """The ``otel-demo`` face with this profile's tools and source list; the
     window is fixed at submission the same way. ``elasticsearch`` / ``loki``:
@@ -714,6 +759,7 @@ def otel_demo_ext_face(
         variant_id=_variant(todo, cluster_name),
         evidence_context=evidence_context,
         cluster_name=cluster_name or None,
+        max_lookback_seconds=window_seconds,
     )
 
 
@@ -780,6 +826,7 @@ def otel_demo_ext_registrations(
     redis: redis_inspect.RedisConfig | None = None,
     helm: bool = False,
     argocd: bool = False,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
 ) -> OtelDemoExtRegistrations:
     """The same registrations ``otel_demo_ext_executor_factory`` registers."""
     return OtelDemoExtRegistrations(
@@ -795,6 +842,7 @@ def otel_demo_ext_registrations(
             redis=redis is not None,
             helm=helm,
             argocd=argocd,
+            window_seconds=window_seconds,
         ),
         targets=(
             _target(
@@ -875,6 +923,7 @@ def otel_demo_ext_executor_factory(
     argocd: bool = False,
     jq_path: str | None = None,
     token_counter: TokenCounter | None = None,
+    window_seconds: int = otel_demo.OBSERVATION_SECONDS,
 ) -> ExecutorFactory:
     """An ``ExecutorFactory`` over this profile; built once per worker slot.
 
@@ -911,6 +960,10 @@ def otel_demo_ext_executor_factory(
     face and versions and deliberately unused: ``TodoWrite`` is not a gateway
     tool, so nothing is registered or routed; the loop answers it from the
     Run input's tools.
+
+    ``window_seconds`` (#779): the deployment's ``OPSPILOT_MAX_LOOKBACK``,
+    every registered window ceiling (B4-2); each Run stays bounded by the
+    frame its own input recorded.
     """
     del todo
     if helm and not _is_lab_host(kubernetes.api_url):
@@ -935,6 +988,7 @@ def otel_demo_ext_executor_factory(
         redis=redis,
         helm=helm,
         argocd=argocd,
+        window_seconds=window_seconds,
     )
     # C2b: the worker runtime role, read-only snapshot reads only.
     knowledge_reader = (

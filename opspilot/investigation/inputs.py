@@ -220,6 +220,28 @@ class ReleaseAnchor(_FrameAnchor):
         return {"anchor": _iso(anchor), "adjusted": adjusted}
 
 
+def _lengthened(context: Mapping[str, Any] | None, seconds: int) -> dict[str, Any]:
+    """``context`` with its first time policy's frame reaching ``seconds``
+    back from the same end (#779); the policy is otherwise kept, so the
+    default query segment stays the frame's last hour. A face with no time
+    policy cannot carry a lookback."""
+    if not isinstance(context, Mapping):
+        raise ContextError("INPUT_INVALID")
+    policies = context.get("time_policies")
+    if not isinstance(policies, list) or not policies:
+        raise ContextError("INPUT_INVALID")
+    first = policies[0]
+    window = first.get("window") if isinstance(first, Mapping) else None
+    if not isinstance(window, Mapping) or not isinstance(window.get("end"), str):
+        raise ContextError("INPUT_INVALID")
+    end = datetime.fromisoformat(window["end"])
+    policy = {
+        **first,
+        "window": {"start": _iso(end - timedelta(seconds=seconds)), "end": _iso(end)},
+    }
+    return {**context, "time_policies": [policy, *policies[1:]]}
+
+
 def _iso(moment: datetime) -> str:
     # The form ``Window.as_json`` writes, so the transport parses it back.
     return moment.isoformat()
@@ -240,6 +262,9 @@ class ToolFace:
     variant_id: str
     evidence_context: Callable[[str], Mapping[str, Any] | None]
     cluster_name: str | None = None
+    #: #779 (B4-3): the longest frame a submitted Run may carry, the
+    #: deployment's ``OPSPILOT_MAX_LOOKBACK``; the default is today's 24 h.
+    max_lookback_seconds: int = ALERT_FRAME_SECONDS
 
     def input_for(
         self,
@@ -252,6 +277,7 @@ class ToolFace:
         limits: RunLimits = M1_FROZEN_LIMITS,
         alert: AlertAnchor | None = None,
         release: ReleaseAnchor | None = None,
+        lookback_seconds: int = ALERT_FRAME_SECONDS,
     ) -> InvestigationInput:
         """A fresh Run's input over ``question`` against one authorized target.
 
@@ -264,8 +290,19 @@ class ToolFace:
         (a release-anomaly Run, F11 R3) frames the Run at the anomaly's
         consumption and anchors the default window at ``released_at``; its
         anchor is recorded in the caller's ``release_observation`` fact.
+        ``lookback_seconds`` (#779) lengthens a submitted Run's frame back
+        from the same end, up to ``max_lookback_seconds``; an alert or
+        release anchor replaces the frame with its own 24 h either way.
         """
+        if not 0 < lookback_seconds <= self.max_lookback_seconds:
+            raise ContextError("INPUT_INVALID")
         context = self.evidence_context(run_id)
+        if (
+            lookback_seconds != ALERT_FRAME_SECONDS
+            and alert is None
+            and release is None
+        ):
+            context = _lengthened(context, lookback_seconds)
         scope_facts: dict[str, Any] = {
             "target_ids": [target_id],
             "deadline": deadline.isoformat(),
