@@ -514,4 +514,13 @@ MUTATIONS: tuple[Mutation, ...] = (
         "    return _redact_flag_values(_redact_named_values(text))\n",
         "    return _redact_named_values(text)\n",
     ),
+    # #807 (B1-U5): killed by tests/safety/test_safety_postmortem_report_input.py.
+    Mutation(
+        "M59",
+        "data flow: postmortem drafting sees only the report's summary, claims and gaps (#807)",
+        # Mutated: the model reads the incident's whole terminal step again.
+        "opspilot/knowledge/generation.py",
+        '        "investigation_report": report,\n',
+        '        "investigation_report": incident["conclusion"],\n',
+    ),
 )

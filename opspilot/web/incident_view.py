@@ -974,7 +974,13 @@ def _log(
                     # C1 (#565): the Agent's plan, not a query.
                     if tool.get("status") == "ok":
                         plan, plan_rejected = _plan(tool.get("todos")), False
-                        run_plan = plan
+                        # #744 (B2-R14): the card names its latest update.
+                        moment = _dt(at)
+                        run_plan = {
+                            **plan,
+                            "step": number,
+                            "updated": moment.strftime("%H:%M") if moment else None,
+                        }
                     else:
                         plan_rejected = plan is None
                     continue
@@ -1062,7 +1068,7 @@ def _log(
         )
     # Workbench P6 L3: system events, drawn from system-written fields only;
     # never messages, never queued.
-    for linked in (snapshot.get("linked") or {}).get("rows") or []:
+    for linked in (snapshot.get("linked") or {}).get("merges") or []:
         detail = f"“{linked['title']}”"
         if linked.get("actor"):
             detail += f" · by {linked['actor']}"

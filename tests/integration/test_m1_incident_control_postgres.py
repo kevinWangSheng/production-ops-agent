@@ -16,9 +16,17 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from opspilot.web.incident_list import status_of
+from opspilot.web.incident_list import page_of_items, status_of
 from opspilot.web.incident_view import page_view
 from opspilot.web.service import available_actions
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
+    _alert,
+    _post,
+    _webhook,
+)
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
+    _build as _alert_build,
+)
 from tests.integration.m1_web_postgres_support import _build, _DbClock
 from tests.m1_incident_control_support import (
     list_headers,
@@ -339,6 +347,78 @@ def test_list_tab_sql_matches_the_shared_status_rule_for_every_a8_row():
     }
 
 
+# -- #689: list search reads the decoded alert fields (B2-R12/R13) --------------
+
+
+def _search_case(kind, tok):
+    """(alert, needle, in-memory match expected) for one #689 input. Tokens
+    start with ``zz`` so they never prefix-match a hex incident id."""
+    labels = {
+        "alertname": "Issue689Search",
+        "namespace": "otel-demo",
+        "service": "checkout",
+    }
+    if kind == "quote_backslash":
+        # The page shows the decoded summary; a user copies it from there.
+        summary = f'Disk "full" on C:\\data\\{tok}'
+        return _alert(labels=labels, annotations={"summary": summary}), summary, True
+    if kind == "key_name_only":
+        return (
+            _alert(labels=labels, annotations={"summary": "plain", tok: "x"}),
+            tok,
+            False,
+        )
+    if kind == "truncated":
+        # Over the stored record bound: the stored text is cut, not JSON.
+        big = f"{tok} " + "y" * (64 * 1024)
+        return (
+            _alert(labels=labels, annotations={"summary": "plain", "description": big}),
+            tok,
+            False,
+        )
+    if kind == "nul_escape":
+        # ``\u0000`` in the stored JSON; the needle sits in a non-searched label.
+        return (
+            _alert(
+                labels={**labels, "note": f"a\x00b {tok}"},
+                annotations={"summary": "plain"},
+            ),
+            tok,
+            False,
+        )
+    raise AssertionError(kind)
+
+
+@pytest.mark.parametrize(
+    "kind", ["quote_backslash", "key_name_only", "truncated", "nul_escape"]
+)
+def test_list_search_sql_matches_the_in_memory_search(kind):
+    """``DurableIncidentStore.list_page(q=...)`` keeps the same incidents as
+    ``page_of_items`` (the in-memory reference ``_matches``) over the same
+    rows: only the decoded ``alertname``/``summary`` of the alert record are
+    searched, and a truncated or ``\\u0000`` record never fails the search."""
+    app, workbench, _ = _alert_build()
+    tok = f"zz{uuid4().hex}"
+    alert, needle, expected = _search_case(kind, tok)
+    response = _post(app, _webhook(alert))
+    assert response.status == 200, response.text
+    [result] = response.json()["results"]
+    assert result["outcome"] == "created", result
+    incident = UUID(result["incident_id"])
+
+    store = workbench.incidents
+    sql = store.list_page(tab="all", q=needle, per_page=100_000)
+    # The needle is unique to this test, so only the newest rows can hold
+    # it; reading the whole shared lab database would hit the timeout.
+    memory = page_of_items(
+        store.list_incident_items(limit=50), tab="all", q=needle, per_page=100_000
+    )
+    sql_ids = {item.summary.incident_id for item in sql.items}
+    memory_ids = {item.summary.incident_id for item in memory.items}
+    assert (incident in memory_ids) is expected
+    assert sql_ids == memory_ids
+
+
 def test_an_earlier_incomplete_report_stays_shown_after_a_later_run_without_one():
     """A8/D7a look-back: Run 1 ends with a validated report the Agent marked
     incomplete; Run 2 ends with none. The page keeps Run 1's report as
@@ -495,3 +575,51 @@ def test_a_reply_citing_evidence_links_to_it(workbench):
     )
     (row,) = re.findall(r'<span class="n">A1</span>.*?</div>', page.text, re.S)
     assert f'href="/incidents/{advised_id}/evidence/{cites["evidence_ids"][0]}"' in row
+
+
+def test_merge_log_lists_merges_beyond_the_linked_incidents_cap():
+    """#715 (B2-R11): with 21 incidents merged into one survivor, the log has a
+    "merged into this" event for every one of them; the Linked incidents block
+    keeps its cap of 20 and says more exist."""
+    app, workbench, store = _build()
+    target = f"tgt-{uuid4()}"
+    survivor = _submit(app, target)
+    sources = [_submit(app, target) for _ in range(21)]
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='open',state='running'"
+            " WHERE incident_id = ANY(%s)",
+            ([UUID(i) for i in [survivor, *sources]],),
+        )
+    for source in sources:
+        generation = _rows(store, UUID(source))[0]["control_generation"]
+        response = post_form(
+            app,
+            f"/incidents/{source}/control",
+            {
+                "action": "merge_into",
+                "into_incident_id": survivor,
+                "text": "same incident",
+                "expected_generation": str(generation),
+                "idempotency_key": f"merge-{uuid4()}",
+            },
+            headers={**basic(), **same_origin()},
+        )
+        assert response.status == 200, response.text
+
+    snapshot = workbench.snapshot(UUID(survivor))
+    view = page_view(
+        snapshot, None, available_actions(snapshot), message_available=True
+    )
+    log = [
+        json.dumps(entry, sort_keys=True, default=str)
+        for entry in view["log"]["entries"]
+        if entry.get("kind") == "event"
+    ]
+    missing = [s for s in sources if not any(s in entry for entry in log)]
+    assert missing == []
+
+    linked = [str(row["incident_id"]) for row in view["linked_incidents"]]
+    assert len(linked) == 20 and set(linked) <= set(sources)
+    assert view["links"]["linked_cut"] is True
+    assert "20+, the first 20 shown" in _detail(app, survivor)
