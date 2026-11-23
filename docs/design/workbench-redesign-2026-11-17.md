@@ -1,5 +1,7 @@
 > 状态说明（2026-11-17）：本稿是设计输入。以下几处已被用户决定或合同预审取代，以 [任务记录](../tasks/2026-11-17-workbench-redesign.md) 与 [合同](../tasks/2026-11-17-workbench-redesign-contract.md) 为准：详情页不用 Summary/Timeline 标签页，改为原型 v2 的结果在前单页加可展开的 Investigation log；回复在读到消息的那一步写进日志；Chat 面板要做（P7），不是「跳过」；D13 改为照 AWS（取消、失败、超时不能聊）；D25 改为每个调查一份反馈；D27 不做迁移；外观以原型 v2 为准、系统字体。
 
+> 状态说明（2026-11-22，#652）：§5「Root cause / 当前假设」一行（supported 标「Confirmed」、否则显示第一条假设）作废。按用户裁决 B2-U1=a，结论摘要下一行写「Root cause」（supported）或「Likely root cause」（partial），接 `Kind namespace/name` 与证据链接；根因为空、inconclusive 或不完整报告时不显示；不用「Confirmed」。复盘页按 B2-U2=a 在渲染时读当前报告显示根因，不存入版本。见 [批次 2 预审](../tasks/2026-11-22-next-batches-b2-prereview.md)。
+
 # OpsPilot 事故页重设计：对标 AWS DevOps Agent
 
 日期 2026-11-17 · 状态：设计稿，未实现 · 取代 layout-B（web-ux-spec-2026-11-16）的交互模型

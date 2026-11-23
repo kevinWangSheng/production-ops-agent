@@ -66,7 +66,12 @@ from opspilot.web.auth import (
 )
 from opspilot.web.events import CursorTooOld
 from opspilot.web.incident_list import parse_query
-from opspilot.web.incident_view import LIVE_KINDS, handoff_view, page_view
+from opspilot.web.incident_view import (
+    LIVE_KINDS,
+    handoff_view,
+    page_view,
+    postmortem_root_cause,
+)
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
 from opspilot.web.runbooks import MAX_FORM_BYTES as RUNBOOK_FORM_BYTES
 from opspilot.web.runbooks import RunbookReview, RunbookStoreSurface
@@ -713,12 +718,20 @@ def create_app(
         # Workbench P5 F11 (user, option A): the reviewer sees the
         # incident's feedback here; it is never sent to the drafting model.
         feedback = await in_thread(workbench.feedback_for, page["incident_id"])
+        # #652 B2-U2 (user, option a): the incident's current report's root
+        # cause, read at render time like the feedback above; never stored in
+        # the version, exported or sent to the drafting model.
+        snapshot = await in_thread(workbench.snapshot, page["incident_id"])
+        root_cause = postmortem_root_cause(
+            snapshot, (page.get("version") or {}).get("last_run_id")
+        )
         response = render(
             "postmortem.html",
             principal=principal,
             page=page,
             incident=incident,
             feedback=feedback,
+            root_cause=root_cause,
             error=error,
             postmortem_kinds=EVENT_KINDS,
             form_nonce=uuid4().hex,
