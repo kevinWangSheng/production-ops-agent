@@ -199,14 +199,14 @@ def test_switch_rejects_other_values(value):
 def test_existing_revisions_unchanged_and_live_set_distinct():
     revision = ext.tool_schema_revision
     unchanged = {
-        (False, False, False): "otel-demo-ext-a44404dc7e6b",
-        (True, False, False): "otel-demo-ext-d63fcfb8ca53",
-        (False, True, False): "otel-demo-ext-2dc0a5a39cd2",
-        (True, True, False): "otel-demo-ext-ad26b86587c9",
-        (False, False, True): "otel-demo-ext-d573d23107f9",
-        (True, False, True): "otel-demo-ext-3c6477060dc8",
-        (False, True, True): "otel-demo-ext-20f3c62fab1a",
-        (True, True, True): "otel-demo-ext-b18c0dee5cb3",
+        (False, False, False): "otel-demo-ext-b90c54386594",
+        (True, False, False): "otel-demo-ext-f141e16e1a61",
+        (False, True, False): "otel-demo-ext-06a1afb380f4",
+        (True, True, False): "otel-demo-ext-a78cc2b3a1a6",
+        (False, False, True): "otel-demo-ext-4f224386bf21",
+        (True, False, True): "otel-demo-ext-87efed188a0e",
+        (False, True, True): "otel-demo-ext-2fe3cc8565cf",
+        (True, True, True): "otel-demo-ext-8e644bd58950",
     }
     live = set()
     for (es, loki, vl), value in unchanged.items():

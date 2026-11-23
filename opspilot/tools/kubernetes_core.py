@@ -13,8 +13,9 @@ direct HTTPS GET to the API server (R1) instead of a command-line client pipe:
   DNS label, and a cluster-scoped kind ignores it with a note.
 * Pages of 500 are read to the end and merged, with a 4 MiB cumulative
   read cap -- past it the whole call is ``RESULT_TOO_LARGE``, never a
-  partial result (A2-9); ``metadata.managedFields`` is dropped from every
-  object (R7). Events are kept only inside the authorized window, before
+  partial result (A2-9); ``metadata.managedFields`` is replaced in every
+  object by ``metadata.managedFieldsSummary`` (manager, operation, time,
+  subresource; no field tree; at most 20, newest kept, #696 B4-6). Events are kept only inside the authorized window, before
   jq runs (A2-11); the dropped count is in ``notes``.
 * The model's jq expression runs once over the merged list in a separate
   process (A2-8): argument list without a shell, empty environment, an
@@ -658,7 +659,7 @@ def secret_request_problem(url: str, accept: str, *, helm_page: bool) -> str | N
 class ListResult:
     """Every object of one kind (one scope), merged across pages.
 
-    ``items`` have ``managedFields`` removed and carry ``kind``/``apiVersion``
+    ``items`` have ``managedFields`` replaced by ``managedFieldsSummary`` and carry ``kind``/``apiVersion``
     as the upstream tools' JSON list output does; events are already limited to the
     window. ``source_start_at``/``source_end_at`` bound the kept events' own
     timestamps (``None`` for other kinds: an object is current state).
@@ -853,7 +854,7 @@ class KubernetesClient:
             for item in page_items:
                 metadata = item.get("metadata")
                 if isinstance(metadata, dict):
-                    metadata.pop("managedFields", None)
+                    _summarise_managed_fields(metadata)
                 if list_kind:
                     item.setdefault("kind", list_kind)
                 if api_version:
@@ -882,6 +883,48 @@ class KubernetesClient:
             source_start_at=start_at,
             source_end_at=end_at,
         )
+
+
+MAX_MANAGED_FIELDS_SUMMARY = 20
+_MANAGED_FIELDS_KEYS = ("manager", "operation", "time", "subresource")
+
+
+def _summarise_managed_fields(metadata: dict[str, Any]) -> None:
+    """Replace ``managedFields`` with ``managedFieldsSummary`` (#696, B4-6).
+
+    Each entry keeps only ``manager``, ``operation``, ``time`` and, when
+    present, ``subresource`` -- never the field tree; an entry with none of
+    manager, operation or time is skipped. Entries are sorted by
+    ``time`` ascending (the API server's string, unchanged); past
+    ``MAX_MANAGED_FIELDS_SUMMARY`` the newest are kept and the number dropped
+    is ``managedFieldsSummaryDropped``. Absent or empty ``managedFields``
+    leaves no summary key.
+    """
+    managed = metadata.pop("managedFields", None)
+    if not isinstance(managed, list):
+        return
+    summary = [
+        {
+            key: entry[key]
+            for key in _MANAGED_FIELDS_KEYS
+            if isinstance(entry.get(key), str)
+        }
+        for entry in managed
+        if isinstance(entry, dict)
+    ]
+    # An entry with none of manager, operation or time says nothing.
+    summary = [
+        entry
+        for entry in summary
+        if any(key in entry for key in ("manager", "operation", "time"))
+    ]
+    if not summary:
+        return
+    summary.sort(key=lambda entry: entry.get("time", ""))
+    dropped = max(0, len(summary) - MAX_MANAGED_FIELDS_SUMMARY)
+    metadata["managedFieldsSummary"] = summary[dropped:]
+    if dropped:
+        metadata["managedFieldsSummaryDropped"] = dropped
 
 
 def _page(body: bytes) -> tuple[list[dict[str, Any]], str | None, str, str] | None:
@@ -1471,7 +1514,11 @@ _COMMON_DESCRIPTION = (
     "label_selector and field_selector are passed to the API server as is. "
     "jq_expr runs once over the whole list "
     '{"apiVersion":"v1","kind":"List","items":[...]}, every object as the '
-    "API server returns it without metadata.managedFields. Do not escape "
+    "API server returns it, except that metadata.managedFields is replaced "
+    "by metadata.managedFieldsSummary: one entry per manager, operation and "
+    "subresource, each with manager, operation, time and subresource (when "
+    "set), sorted oldest first (newest last), at most the newest 20 "
+    "(metadata.managedFieldsSummaryDropped counts the rest). Do not escape "
     "jq_expr; give it unescaped. import and include are refused, and at most "
     "2000 characters are accepted. "
     "Objects are their state at the moment of the query, not at the time of "
@@ -1589,6 +1636,11 @@ _LIMITS = (
     "INVALID_PARAMS, 401/403 denied/SOURCE_FORBIDDEN, 410 SOURCE_ERROR, 429 "
     "and 5xx SOURCE_UNAVAILABLE."
 )
+_MANAGED_FIELDS_CANNOT_PROVE = (
+    "metadata.managedFieldsSummary gives each manager's last write time "
+    "only: it is not a full change history (earlier writes by the same "
+    "manager are gone) and it does not say which fields that write changed."
+)
 _CANNOT_PROVE = (
     "Objects are the cluster's state when the query ran, not during the "
     "incident window: they cannot prove what was true earlier, and an "
@@ -1596,7 +1648,7 @@ _CANNOT_PROVE = (
     "timestamps inside the window; an event that is not returned is unknown, "
     "not proof nothing happened (events expire and timestamps are often "
     "null). A jq result is what the expression selected, not a full picture "
-    "of the kind."
+    "of the kind. " + _MANAGED_FIELDS_CANNOT_PROVE
 )
 
 

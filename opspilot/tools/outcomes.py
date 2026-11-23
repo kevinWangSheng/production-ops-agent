@@ -86,7 +86,11 @@ __all__ = [
 # v16: a credential-named command-line flag's value is redacted
 # (``--password=v``, ``--password v``, ``-token v``, and the element after
 # such a flag in a list, #802).
-PROJECTION_REVISION = "m1-01-tool-view-v17"
+# v17: a credential after a short or glued credential value is redacted (#803).
+# v18: Kubernetes objects keep ``metadata.managedFieldsSummary`` (manager,
+# operation, time, subresource; no field tree) instead of dropping
+# ``managedFields`` whole (#696).
+PROJECTION_REVISION = "m1-01-tool-view-v18"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
