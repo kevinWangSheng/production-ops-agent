@@ -272,7 +272,10 @@ def test_the_model_sees_the_longer_frame_without_a_prompt_change(loki):
     assert long_system == short_system  # no prompt change (B4-5)
     assert long_input.tool_schemas == short_input.tool_schemas
     # The model has no way to ask for another frame (B4-3, 必答 4).
-    assert "lookback" not in json.dumps([dict(s) for s in long_input.tool_schemas])
+    # Existing descriptions already use the word; no parameter may set it.
+    for schema in long_input.tool_schemas:
+        properties = schema["function"]["parameters"].get("properties", {})
+        assert not {"lookback", "frame", "window"} & set(properties), schema
 
 
 # -- 2 / 7: refusals -----------------------------------------------------------
