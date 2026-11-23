@@ -798,7 +798,13 @@ class _RunSpan(_LiveSpan):
         self._owner = owner
         self._previous: _RunSpan | None = None
         self.model_calls = 0
+        # ``tool_calls`` counts data-source calls (those reaching the gateway
+        # executor), the same count ``summary.json`` reports; task-list calls
+        # are counted apart (C1-9, #744). ``tool_spans`` orders every tool
+        # span for ``tool_call_seq``.
         self.tool_calls = 0
+        self.task_list_calls = 0
+        self.tool_spans = 0
 
     def __enter__(self) -> _RunSpan:
         self._previous = getattr(self._owner._current, "run", None)
@@ -814,6 +820,7 @@ class _RunSpan(_LiveSpan):
         self._owner._current.run = self._previous
         _write(self._span, "opspilot.run.model_calls", self.model_calls)
         _write(self._span, "opspilot.run.tool_calls", self.tool_calls)
+        _write(self._span, "opspilot.run.task_list_calls", self.task_list_calls)
         super().__exit__(exc_type, exc, tb)
 
 
@@ -844,6 +851,7 @@ class NullTracer:
         *,
         tool_name: str | None = None,
         target_id: str | None = None,
+        counted: bool = True,
     ) -> _NullSpan:
         return _NULL_SPAN
 
@@ -962,15 +970,22 @@ class Tracer:
         *,
         tool_name: str | None = None,
         target_id: str | None = None,
+        counted: bool = True,
     ) -> _LiveSpan | _NullSpan:
         """``tool_name``/``target_id``: the registry-resolved identities, or
-        ``None``; the span never names an unregistered tool or target."""
+        ``None``; the span never names an unregistered tool or target.
+        ``counted=False`` marks the loop's own task-list call, which adds to
+        ``task_list_calls`` instead of ``tool_calls`` (#744)."""
         parent = getattr(self._current, "run", None)
         if parent is None:
             return _NULL_SPAN
         with self._seq_lock:
-            parent.tool_calls += 1
-            seq = parent.tool_calls
+            if counted:
+                parent.tool_calls += 1
+            else:
+                parent.task_list_calls += 1
+            parent.tool_spans += 1
+            seq = parent.tool_spans
         return self._child(
             f"tool:{'unknown' if tool_name is None else _bounded(tool_name)[:80]}",
             _tool_request_attributes(
