@@ -1,14 +1,39 @@
 """Workbench P3-1/5/10: a late result (a reply fenced off by a pause,
 takeover or lost lease, kept as history) is never an answer, never the step
-that read a message, and takes no number in the incident's step count."""
+that read a message, and takes no number in the incident's step count.
+
+#652 (B2-U1/U2 = a, B2-R1..R7, B2-R17): the report's structured root cause
+on the incident page (one line under the conclusion, ``id="root-cause"``) and
+on the postmortem version page (``id="investigation-root-cause"``, read at
+render time from the incident's current report via ``Workbench.snapshot``,
+never stored in the draft). Rendered with the app's own Jinja environment.
+"""
 
 from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from types import SimpleNamespace
+from uuid import UUID
 
-from opspilot.web.incident_view import page_view
+import pytest
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from opspilot.investigation.reports import ReportV2
+from opspilot.web import (
+    AuthConfig,
+    Authenticator,
+    MemoryEventLog,
+    PostmortemReview,
+    create_app,
+    hash_password,
+)
+from opspilot.web.app import _TEMPLATES
+from opspilot.web.incident_view import LIVE_KINDS, page_view
+from opspilot.web.review import EVENT_KINDS
+from opspilot.web.service import categorize_report
+from tests.m1_web_support import ORIGIN, UI_PASSWORD, UI_USER, basic, call
 
 T = "2026-11-18T10:00:{:02d}+00:00"
 
@@ -281,3 +306,399 @@ def test_recovery_watch_records_mark_each_reading_on_its_own_row():
     assert "0.01" in text["delta"] and "0.9" in text["delta"]
     assert "ERROR_RATE_ABOVE_THRESHOLD" in text["delta"]
     assert "–" in text["charlie"]
+
+
+# -- #652: the report's root cause ------------------------------------------
+
+INCIDENT = UUID("00000000-0000-4000-8000-000000000652")
+POSTMORTEM = UUID("00000000-0000-4000-8000-000000000653")
+RUN = UUID("00000000-0000-4000-8000-000000000654")
+EARLIER_RUN = UUID("00000000-0000-4000-8000-000000000655")
+AT = datetime(2026, 11, 22, 12, tzinfo=timezone.utc)
+#: The F3 live report's root cause (docs/evidence/f3-acceptance-live/
+#: prompt-8688f6e52275/run-1/summary.json): three long evidence ids.
+EIDS = [
+    "e6f4db30-7538-4a22-98d0-97deaab8c296-t2:d8574e8b-e2d0-4992-8fae-30628b29beec",
+    "f6610e4d-9566-4c8f-85d5-5adf8f14407e-t0:fe67520f-6458-4ee3-952d-38d88d334020",
+    "f6610e4d-9566-4c8f-85d5-5adf8f14407e-t1:36eb1ce5-08a3-4cde-9839-50163ecc4155",
+]
+PAYMENT = {
+    "kind": "Deployment",
+    "namespace": "otel-demo",
+    "name": "payment",
+    "evidence_ids": EIDS,
+}
+_ENV = Environment(
+    loader=FileSystemLoader(str(_TEMPLATES)),
+    autoescape=select_autoescape(default=True, default_for_string=True),
+)
+_VOID = {"br", "img", "input", "hr", "meta", "link", "wbr", "source", "col"}
+
+
+def _report(conclusion="supported", root_cause=PAYMENT, *, schema="m0-report-v3"):
+    body = {
+        "schema_version": schema,
+        "assessment_status": "completed",
+        "conclusion": conclusion,
+        "summary": "Charge requests fail after the flag flip. Spans show it.",
+        "claims": [
+            {
+                "kind": "fact",
+                "text": "Charge spans error from 01:10.",
+                "evidence_ids": [EIDS[0]],
+                "target_refs": ["target:checkout"],
+                "time_scope_ref": "window:1",
+            }
+        ],
+        "gaps": ["no payment logs"],
+    }
+    if conclusion == "incomplete":
+        body["assessment_status"] = "incomplete"
+        body["conclusion"] = "inconclusive"
+    if root_cause is not None:
+        body["root_cause"] = root_cause
+    return ReportV2.model_validate(body)
+
+
+def _view_of(report: ReportV2) -> dict:
+    return dict(categorize_report(report), parsed=True, content_sha256="ab" * 32)
+
+
+def _incident_snapshot(report: ReportV2) -> dict:
+    incident = SimpleNamespace(
+        incident_id=INCIDENT,
+        concluded=True,
+        mode="automatic",
+        lifecycle="open",
+        state="completed",
+        control_generation=0,
+        current_run_id=RUN,
+        created_at=AT,
+        merged_into_incident_id=None,
+    )
+    step = {
+        "step_id": "s1",
+        "observed_at": "2026-11-22T12:00:01+00:00",
+        # Only the first root-cause id was queried on this page.
+        "tools": [{"evidence_id": EIDS[0], "tool": "query_traces", "status": "ok"}],
+        "note": None,
+        "final_round": False,
+        "planned_tools": 1,
+        "history_only": False,
+        "conclusion": None,
+        "input_watermark": 0,
+        "replies": [],
+    }
+    snapshot = {
+        "incident": incident,
+        "run": {"run_id": str(RUN), "state": "completed"},
+        "steps": [step],
+        "runs": [
+            {
+                "run_id": str(RUN),
+                "state": "completed",
+                "current": True,
+                "origin": {"kind": "started"},
+                "steps": [step],
+                "inline": True,
+                "floor": 0,
+                "watermark": 0,
+            }
+        ],
+        "messages": [],
+        "report": _view_of(report),
+    }
+    if report.assessment_status == "incomplete":  # A8: shown, not published
+        snapshot["handoff_report"] = snapshot.pop("report")
+        snapshot["outcome"] = {"reasons": ["INCOMPLETE_INVESTIGATION"]}
+    return snapshot
+
+
+def _incident_html(report: ReportV2) -> str:
+    snapshot = _incident_snapshot(report)
+    view = page_view(snapshot, None, [], message_available=True)
+    return _ENV.get_template("incident.html").render(
+        feedback=None,
+        principal=SimpleNamespace(actor_id="alice", display="alice"),
+        snapshot=snapshot,
+        release_links=[],
+        postmortem=None,
+        postmortem_kinds=EVENT_KINDS,
+        live_kinds=LIVE_KINDS,
+        actions=[],
+        view=view,
+        form_nonce="n",
+    )
+
+
+class _Element(HTMLParser):
+    """The text and links inside the element with ``id``."""
+
+    def __init__(self, element_id: str) -> None:
+        super().__init__()
+        self.target = element_id
+        self.depth = 0
+        self.found = False
+        self.text: list[str] = []
+        self.links: list[tuple[str, list[str]]] = []
+        self.in_link = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if self.depth == 0 and attrs.get("id") == self.target:
+            self.found = True
+            self.depth = 1 if tag not in _VOID else 0
+            return
+        if self.depth and tag not in _VOID:
+            self.depth += 1
+            if tag == "a":
+                self.links.append((attrs.get("href") or "", []))
+                self.in_link = True
+
+    def handle_endtag(self, tag):
+        if self.depth and tag not in _VOID:
+            self.depth -= 1
+            if tag == "a":
+                self.in_link = False
+
+    def handle_data(self, data):
+        if self.depth:
+            self.text.append(data)
+            if self.in_link:
+                self.links[-1][1].append(data)
+
+
+def _element(html: str, element_id: str) -> _Element | None:
+    parser = _Element(element_id)
+    parser.feed(html)
+    return parser if parser.found else None
+
+
+def _words(parts) -> str:
+    return " ".join("".join(parts).split())
+
+
+def test_categorize_report_carries_the_root_cause_object():
+    """B2-R1: {kind, namespace, name, evidence_ids} or None; an empty
+    namespace is None; a v2 report has none."""
+    assert categorize_report(_report())["root_cause"] == PAYMENT
+    node = {"kind": "Node", "namespace": "", "name": "w1", "evidence_ids": EIDS[:1]}
+    assert categorize_report(_report(root_cause=node))["root_cause"] == {
+        **node,
+        "namespace": None,
+    }
+    assert categorize_report(_report(root_cause=None))["root_cause"] is None
+    v2 = _report(root_cause=None, schema="m0-report-v2")
+    assert categorize_report(v2)["root_cause"] is None
+
+
+def test_supported_report_shows_root_cause_line_with_evidence_links():
+    """B2-U1 a, R2, R3: "Root cause", then ``Kind namespace/name`` as written,
+    then links that resolve to the report's evidence ids; never "Confirmed"."""
+    html = _incident_html(_report())
+    line = _element(html, "root-cause")
+    assert line is not None, "no root cause line on a supported report"
+    words = _words(line.text)
+    assert words.startswith("Root cause"), words
+    assert "Deployment otel-demo/payment" in words
+    # One line under the conclusion summary, above Key evidence.
+    assert html.index('class="lede"') < html.index('id="root-cause"')
+    assert html.index('id="root-cause"') < html.index('id="h-key"')
+    hrefs = [href for href, _ in line.links]
+    for eid in EIDS:
+        assert f"/incidents/{INCIDENT}/evidence/{eid}" in hrefs, (eid, hrefs)
+        # R3: the long id is never the visible link text.
+        assert eid not in words
+    queried = [t for href, t in line.links if href.endswith(EIDS[0])]
+    assert "query_traces · step 1" in _words(queried[0])
+    assert "Confirmed" not in html
+
+
+def _root_line_words(report: ReportV2) -> str:
+    line = _element(_incident_html(report), "root-cause")
+    assert line is not None, "no root cause line"
+    return _words(line.text)
+
+
+def test_partial_and_cluster_scoped_root_cause_kept_verbatim():
+    """partial -> "Likely root cause"; no namespace -> ``Kind name``; kind is
+    shown as the report wrote it (no normalisation)."""
+    node = {
+        "kind": "node",
+        "namespace": None,
+        "name": "worker-1",
+        "evidence_ids": EIDS[1:2],
+    }
+    words = _root_line_words(_report("partial", node))
+    assert words.startswith("Likely root cause"), words
+    assert "node worker-1" in words
+    assert "/worker-1" not in words
+    words = _root_line_words(
+        _report("partial", {**node, "kind": "Node", "namespace": ""})
+    )
+    assert "Node worker-1" in words and "/worker-1" not in words
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        _report("supported", None),
+        _report("inconclusive", PAYMENT),
+        _report("incomplete", PAYMENT),  # A8: always inconclusive (B2-R4)
+        _report("supported", None, schema="m0-report-v2"),
+    ],
+    ids=["null-root-cause", "inconclusive", "incomplete", "v2-report"],
+)
+def test_root_cause_line_hidden(report):
+    html = _incident_html(report)
+    assert 'class="lede"' in html, "the report itself must still render"
+    assert _element(html, "root-cause") is None
+    assert "otel-demo/payment" not in html
+    assert "Likely root cause" not in html
+
+
+def test_hostile_root_cause_name_is_escaped():
+    hostile = {**PAYMENT, "name": '<script>alert("rc")</script>'}
+    html = _incident_html(_report(root_cause=hostile))
+    assert '<script>alert("rc")</script>' not in html
+    assert "&lt;script&gt;" in html
+    assert 'otel-demo/<script>alert("rc")</script>' in _root_line_words(
+        _report(root_cause=hostile)
+    )
+
+
+# -- postmortem version page (B2-U2 a, B2-R6) --------------------------------
+
+
+class _Knowledge:
+    """The knowledge reads ``PostmortemReview.version_page`` makes: one
+    version under review, drafted from ``RUN``."""
+
+    def postmortem(self, postmortem_id):
+        row = {
+            "version": 1,
+            "state": "under_review",
+            "stale_reason": None,
+            "revises_version": None,
+            "created_at": AT,
+            "generated_by": "postmortem-worker",
+            "generated_by_kind": "worker",
+            "conclusions": [],
+            "proposals": [],
+            "content": "{}",
+            "incident_control_generation": 0,
+            "observation_generation": 0,
+            "observation_session_id": UUID(int=1),
+            "observation_ending_id": UUID(int=2),
+            "run_count": 1,
+            "last_run_id": RUN,
+            "input_watermark": 0,
+            "evidence_snapshot_sha256": "0" * 64,
+        }
+        return {
+            "incident_id": INCIDENT,
+            "postmortem_id": POSTMORTEM,
+            "generation": 1,
+            "latest_version": 1,
+            "versions": [row],
+        }
+
+    def audit_trail(self, kind, object_id):
+        return []
+
+    def knowledge_from_postmortem(self, postmortem_id):
+        return []
+
+    def generation_attempts(self, incident_id):
+        return {"attempts": [], "schedule": None}
+
+
+class _Workbench:
+    """The incident reads the version page makes; ``snapshot`` is the
+    incident's current state (current Run ``current_run``)."""
+
+    def __init__(self, report, current_run):
+        self.report = report
+        self.current_run = current_run
+
+    def incident_subject(self, incident_id):
+        return {
+            "alert_name": "PaymentFailures",
+            "service": "otel-demo/checkout",
+            "question": None,
+            "target": "checkout",
+            "lifecycle": "open",
+        }
+
+    def feedback_for(self, incident_id, snapshot=None):
+        return None
+
+    def snapshot(self, incident_id):
+        assert incident_id == INCIDENT
+        snapshot = (
+            _incident_snapshot(self.report)
+            if self.report
+            else {
+                **_incident_snapshot(_report()),
+                "report": None,
+            }
+        )
+        snapshot["incident"].current_run_id = self.current_run
+        snapshot["run"]["run_id"] = str(self.current_run)
+        snapshot["runs"][0]["run_id"] = str(self.current_run)
+        return snapshot
+
+
+def _version_html(report, current_run=RUN) -> str:
+    config = AuthConfig(
+        ui_users={UI_USER: hash_password(UI_PASSWORD, salt=b"fixed-salt-16byt")},
+        event_tokens={},
+        auth_revision="auth-rev-1",
+        allowed_origins=frozenset({ORIGIN}),
+    )
+    app = create_app(
+        _Workbench(report, current_run),
+        Authenticator(config),
+        SimpleNamespace(now=lambda: AT),
+        review=PostmortemReview(knowledge=_Knowledge(), events=MemoryEventLog()),
+    )
+    response = call(
+        app, "GET", f"/postmortems/{POSTMORTEM}/versions/1", headers=basic()
+    )
+    assert response.status == 200, response.text[:500]
+    return response.text
+
+
+def test_postmortem_page_shows_the_current_report_root_cause_outside_the_draft():
+    html = _version_html(_report())
+    block = _element(html, "investigation-root-cause")
+    assert block is not None, "no investigation root cause on the version page"
+    words = _words(block.text)
+    assert "Investigation root cause" in words
+    assert "from the investigation report · not part of this draft" in words
+    assert "Deployment otel-demo/payment" in words
+    hrefs = [href for href, _ in block.links]
+    for eid in EIDS:
+        assert f"/incidents/{INCIDENT}/evidence/{eid}" in hrefs, (eid, hrefs)
+    assert "the report has changed since this draft" not in html
+    assert "Confirmed" not in html
+
+
+def test_postmortem_page_says_when_the_report_changed_since_the_draft():
+    """The incident's current Run is not the draft watermark's last_run_id."""
+    block = _element(
+        _version_html(_report(), current_run=EARLIER_RUN), "investigation-root-cause"
+    )
+    assert block is not None
+    assert "the report has changed since this draft" in _words(block.text)
+
+
+@pytest.mark.parametrize(
+    "report",
+    [None, _report("supported", None), _report("inconclusive", PAYMENT)],
+    ids=["no-report", "null-root-cause", "inconclusive"],
+)
+def test_postmortem_page_without_a_root_cause_shows_no_block(report):
+    html = _version_html(report)
+    assert _element(html, "investigation-root-cause") is None
+    assert "otel-demo/payment" not in html
