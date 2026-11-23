@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import contextvars
 import json
 import re
 
@@ -417,6 +418,97 @@ def _escaped(text: str, index: int) -> bool:
     return run % 2 == 1
 
 
+# A credential pair glued to a credential value (#803, R2-1: fail closed).
+# A value read up to whitespace or a stop can end early, with the next
+# key's name as its own last word: ``"password":x&"secret": "v"`` reads
+# ``x&"secret":``, ``password=x|token :v`` reads ``x|token``, ``token:
+# "password": "v"`` reads ``"password":``. The rules above are left exactly
+# as they read; a rule whose hidden span ends that way puts a mark (a
+# private-use character absent from the text, ``_GLUE_MARK``) right after
+# its marker, and ``_redact_glued`` hides the value after each mark once all
+# rules have run, then strips the marks. It only replaces more of the rules'
+# output, so it never shows what they hid.
+_GLUE_MARK: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "opspilot_glue_mark", default=""
+)
+#: Characters of a name read backwards from a separator (``_glued_value``);
+#: the quotes and backslashes a quoted or escaped key may end with.
+_NAME_CHARS = frozenset("_.-")
+_KEY_QUOTES = frozenset("\"'`\\")
+_GLUED_SCHEMES = ("bearer", "basic", "digest", "token")
+#: Where a glued value ends (with whitespace): a stop of every rule, so the
+#: read is at least as long as any rule's own read of that pair, and a
+#: second call, reading the marker by any rule, ends it at the same place.
+_GLUED_STOPS = frozenset(",")
+
+
+def _credential_before(text: str, start: int, separator: int) -> bool:
+    """Whether the name just before ``separator``, read backwards no
+    further than ``start`` (closing quotes and backslashes skipped), is a
+    credential name. Reads only that name."""
+    name_end = separator
+    while name_end > start and text[name_end - 1] in " \t":
+        name_end -= 1
+    while name_end > start and text[name_end - 1] in _KEY_QUOTES:
+        name_end -= 1
+    name_start = name_end
+    while name_start > start and (
+        text[name_start - 1].isalnum() or text[name_start - 1] in _NAME_CHARS
+    ):
+        name_start -= 1
+    return name_start < name_end and _credential_name(text[name_start:name_end])
+
+
+def _glued_value(text: str, start: int, end: int) -> bool:
+    """Whether the hidden value span ``[start, end)`` ends with a credential
+    name and its separator inside it (``x&"secret":``), with the name while
+    the separator follows past blanks (``x|token`` before `` :v``), or with
+    a credential name, its separator and an auth scheme word
+    (``x|authorization=Bearer`` before `` v``)."""
+    index = end
+    while index < len(text) and text[index] in " \t":
+        index += 1
+    if index < len(text) and text[index] in ":=":
+        return _credential_before(text, start, end)
+    if end > start and text[end - 1] in ":=":
+        return _credential_before(text, start, end - 1)
+    tail = text[max(start, end - 6) : end].lower()
+    for word in _GLUED_SCHEMES:
+        begin = end - len(word)
+        if begin > start and tail.endswith(word):
+            index = begin
+            while index > start and text[index - 1] in " \t":
+                index -= 1
+            if index > start and text[index - 1] in ":=":
+                return _credential_before(text, start, index - 1)
+    return False
+
+
+def _ends_in_scheme_word(text: str, start: int, end: int) -> bool:
+    """Whether ``[start, end)`` ends in a whole auth scheme word
+    (``x|bearer``), whose token is the next word."""
+    tail = text[max(start, end - 6) : end].lower()
+    for word in _GLUED_SCHEMES:
+        begin = end - len(word)
+        if begin >= start and tail.endswith(word):
+            return begin == start or not (
+                text[begin - 1].isalnum() or text[begin - 1] == "_"
+            )
+    return False
+
+
+def _glue_mark(text: str, start: int, end: int) -> str:
+    """The mark to put after the marker that replaces ``[start, end)``: when
+    a credential pair is glued to that span, or the span itself ended in a
+    mark (the value it marked still follows)."""
+    mark = _GLUE_MARK.get()
+    if not mark or end <= start:
+        return ""
+    if text[end - 1] == mark or _glued_value(text, start, end):
+        return mark
+    return ""
+
+
 def _value_redaction(text: str, start: int) -> tuple[str, int] | None:
     """The marker for a credential value starting at ``start`` and where the
     value ends, by the rules of ``_redact_quoted``; ``None`` when there is
@@ -481,7 +573,11 @@ def _redact_escaped_keys(text: str) -> str:
         ):
             continue
         marker, value_end = redaction
-        parts.append(text[pos : separator.end()] + marker)
+        parts.append(
+            text[pos : separator.end()]
+            + marker
+            + _glue_mark(text, separator.end(), value_end)
+        )
         pos = value_end
     parts.append(text[pos:])
     return "".join(parts)
@@ -550,7 +646,7 @@ def _redact_escaped_quotes(text: str) -> str:
                 continue
         else:
             continue
-        parts.append(text[pos:start] + marker)
+        parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
@@ -588,7 +684,7 @@ def _redact_quoted(text: str) -> str:
             pos = end
             continue
         marker, end = redaction
-        parts.append(text[pos:start] + marker)
+        parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
@@ -611,7 +707,7 @@ def _redact_assignments(text: str) -> str:
             pos = end
             continue
         parts.append(text[pos : match.start("sep")] + match.group("sep"))
-        parts.append(REDACTED_CREDENTIAL)
+        parts.append(REDACTED_CREDENTIAL + _glue_mark(text, body, end))
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
@@ -901,10 +997,10 @@ def _redact_flag_values(text: str) -> str:
         marker, end = spans[start]
         if start < pos:
             if end > pos:  # overlaps the span before: hide the rest too
-                parts.append(REDACTED_CREDENTIAL)
+                parts.append(REDACTED_CREDENTIAL + _glue_mark(text, pos, end))
                 pos = end
             continue
-        parts.append(text[pos:start] + marker)
+        parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
@@ -991,7 +1087,9 @@ def _redact_env_pairs(text: str) -> str:
         if redaction is None:
             continue
         marker, end = redaction
-        parts.append(text[pos : match.end()] + marker)
+        parts.append(
+            text[pos : match.end()] + marker + _glue_mark(text, match.end(), end)
+        )
         pos = end
     parts.append(text[pos:])
     return "".join(parts)
@@ -1018,9 +1116,93 @@ def _redact_name_rules(text: str) -> str:
     )
 
 
+def _redact_glued(text: str, mark: str) -> str:
+    """Hide the value after each glue mark (``_glue_mark``) and strip the
+    marks. The value starts past blanks, one separator (when the span ended
+    before it) and whitespace; a quote or bracket is read by
+    ``_value_redaction``'s rules, then, like any other value, up to
+    whitespace or ``,``; an auth scheme word takes the word after it. A
+    value that itself ends with a glued credential pair continues the run.
+    One forward pass."""
+    parts: list[str] = []
+    pos = 0
+    size = len(text)
+    index = text.find(mark)
+    while index != -1:
+        if index < pos:
+            index = text.find(mark, pos)
+            continue
+        at = index + 1
+        while True:
+            start = at
+            while start < size and text[start] in " \t":
+                start += 1
+            if start < size and text[start] in ":=":
+                start += 1
+            while start < size and text[start].isspace():
+                start += 1
+            if start >= size or text.startswith(REDACTED_CREDENTIAL, start):
+                break
+            if text[start] == mark:
+                break  # the next mark's own value follows
+            marker = REDACTED_CREDENTIAL
+            if text[start] in "\"'" or text[start] in _CLOSERS:
+                redaction = _value_redaction(text, start)
+                if redaction is None:
+                    break
+                marker, end = redaction
+                end = _value_end(text, end, _GLUED_STOPS)
+            else:
+                end = _value_end(text, start, _GLUED_STOPS)
+                if end == start:
+                    break
+                if _ends_in_scheme_word(text, start, end):
+                    word = end
+                    while word < size and text[word] in " \t":
+                        word += 1
+                    after = _value_end(text, word, _GLUED_STOPS)
+                    if after > word:
+                        end = after
+            parts.append(text[pos:start] + marker)
+            pos = at = end
+            if not (text[end - 1] == mark or _glued_value(text, start, end)):
+                break
+        index = text.find(mark, max(pos, index + 1))
+    parts.append(text[pos:])
+    return "".join(parts).replace(mark, "")
+
+
+def _free_mark(text: str) -> str:
+    """A private-use character absent from ``text``, or ``""``."""
+    if "\ue000" not in text:
+        return "\ue000"
+    present = set(text)
+    for code in range(0xE001, 0xF900):
+        if chr(code) not in present:
+            return chr(code)
+    return ""
+
+
 def redact_credentials(text: str) -> str:
     """Replace credential-bearing spans in prose with ``REDACTED_CREDENTIAL``."""
+    mark = _free_mark(text)
+    token = _GLUE_MARK.set(mark)
+    try:
+        redacted = _redact_rules(text)
+        if not mark or mark not in redacted:
+            return redacted
+        glued = _redact_glued(redacted, mark)
+        if glued == redacted.replace(mark, ""):
+            return glued
+        # The glued values hidden, every rule runs once more on the result
+        # (a hidden value changes what they read around it).
+        again = _redact_rules(glued)
+        return _redact_glued(again, mark) if mark in again else again
+    finally:
+        _GLUE_MARK.reset(token)
 
+
+def _redact_rules(text: str) -> str:
     # The encoded forms (#359) run after the rules above, so whatever those
     # hid stays hidden and these only replace userinfo still in view. Their
     # output keeps ``@`` as it was spelled (``%40``, ``&#64;``, ...), so it

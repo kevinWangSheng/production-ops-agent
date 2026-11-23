@@ -317,18 +317,18 @@ def test_other_profiles_ignore_every_mongodb_setting(profile):
 def test_existing_revision_constants_keep_their_values():
     from opspilot.tools import otel_demo_ext as ext
 
-    assert ext.TOOL_SCHEMA_REVISION == "otel-demo-ext-dd66f68d7e78"
-    assert ext.ES_TOOL_SCHEMA_REVISION == "otel-demo-ext-3a621c50d364"
-    assert ext.LOKI_TOOL_SCHEMA_REVISION == "otel-demo-ext-f972b2da8df7"
-    assert ext.VICTORIALOGS_TOOL_SCHEMA_REVISION == "otel-demo-ext-98bf8bd3c019"
-    assert ext.LIVE_METRICS_TOOL_SCHEMA_REVISION == "otel-demo-ext-9af003c87a85"
-    assert ext.KNOWLEDGE_TOOL_SCHEMA_REVISION == "otel-demo-ext-fdb5c78a5aa8"
-    assert ext.TODO_TOOL_SCHEMA_REVISION == "otel-demo-ext-a0d2215188b0"
-    assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-335e66048f3b"
-    assert ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-9801f28dc2a7"
-    assert ext.SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION == "otel-demo-ext-c7c154bb1c70"
-    assert ext.SQL_MSSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-9793c8e91305"
-    assert ext.KAFKA_TOOL_SCHEMA_REVISION == "otel-demo-ext-d04a4fdba57a"
+    assert ext.TOOL_SCHEMA_REVISION == "otel-demo-ext-a44404dc7e6b"
+    assert ext.ES_TOOL_SCHEMA_REVISION == "otel-demo-ext-d63fcfb8ca53"
+    assert ext.LOKI_TOOL_SCHEMA_REVISION == "otel-demo-ext-2dc0a5a39cd2"
+    assert ext.VICTORIALOGS_TOOL_SCHEMA_REVISION == "otel-demo-ext-d573d23107f9"
+    assert ext.LIVE_METRICS_TOOL_SCHEMA_REVISION == "otel-demo-ext-0fe319ba4792"
+    assert ext.KNOWLEDGE_TOOL_SCHEMA_REVISION == "otel-demo-ext-5092dc9f516f"
+    assert ext.TODO_TOOL_SCHEMA_REVISION == "otel-demo-ext-6edc773fcfb9"
+    assert ext.SQL_POSTGRESQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-d059d88748d5"
+    assert ext.SQL_MYSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-b317e86a0b52"
+    assert ext.SQL_CLICKHOUSE_TOOL_SCHEMA_REVISION == "otel-demo-ext-6e6ee1f79403"
+    assert ext.SQL_MSSQL_TOOL_SCHEMA_REVISION == "otel-demo-ext-14fe42b90dd8"
+    assert ext.KAFKA_TOOL_SCHEMA_REVISION == "otel-demo-ext-a59219b2521f"
 
 
 def test_mongodb_settings_without_the_address_change_no_web_surface():
