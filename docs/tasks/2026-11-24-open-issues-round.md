@@ -13,7 +13,7 @@
 |---|---|---|
 | 实施 | #295 + PR #551 | 解 SPEC 冲突，盲标 111 份考试报告校准二值 judge 流程，出结论；F1 第 5 步按结论处理 |
 | 实施 | #780 | 每目标常驻操作员说明作为模型输入（新输入通道，进 tests/safety 加变异） |
-| 实施 | #830 | SREGym p12 在故障注入前建 Valkey 只读账号 |
+| 实施 | #830 | SREGym p12 在故障注入前建 Valkey 只读账号。PR 已开（`chore/830-valkey-pre-fault-account`，worktree `../poa-830-valkey-hook`）：钩子 `scripts/sregym_eval/opspilot_sregym_hooks.py`，入口改为只读账号自查；本机 Valkey 容器模拟「注入前无口令→注入后设口令」通过；p12 ×3 搭下次租机 |
 | 实施 | #498 | 用近期租机 Run 的产品内时间戳出性能基线，只测量 |
 | 实施（Agent 自定） | 无 issue | 工作台 Human-owned 状态 Resume 提示语改为「解除暂停」语义（`opspilot/web/incident_view.py`）；`docs/portfolio/architecture.md` 过时的工具列表 |
 | 关闭为已知限制 | #374 #375 #197 #124 #134 #159 #391 | 一个文档 PR 改 C3 文字为现状 + AGENTS.md 加一句，合并后关 issue |
