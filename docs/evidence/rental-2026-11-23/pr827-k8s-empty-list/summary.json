@@ -1,0 +1,1309 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "cp1-pr827-netpol",
+  "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+  "frozen_at": "2026-11-23T15:09:42.104460+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+    "incident_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-23T17:09:10.037227+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "Before we roll out a new service in namespace cp1-np-empty, I need to know whether any Kubernetes NetworkPolicy currently applies there. Check the cluster: does namespace cp1-np-empty have any NetworkPolicy objects right now? Report what you found, citing the query you ran.",
+      "authorized_window": {
+        "end": "2026-11-23T15:09:10+00:00",
+        "start": "2026-11-22T15:09:10+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+      "target_id": "189dab68-51e9-445c-8c33-9d9aeab1f12d",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+      "created_at": "2026-11-23T15:09:10.054514+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-f94273f95547",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "Yes — checked, and there are no NetworkPolicy objects in namespace cp1-np-empty right now. A namespace-scoped read of kind=networkpolicies in cp1-np-empty (jq selecting name/namespace/podSelector/policyTypes) completed with status ok and total_items_processed 0, returning an empty list, so nothing currently applies to that namespace. A second, cluster-wide read of kind=networkpolicies (grouped by namespace) also processed 0 objects, i.e. in this cluster there is no NetworkPolicy object in any namespace at query time — so the empty result for cp1-np-empty is not a namespace-scoped anomaly. The namespace itself does exist and is Active, and it is not empty of workloads: one pod, web-6bd858c6f9-8tfzk, is present. Caveat from the tool's own limits: these are the cluster's objects at the moment of the query (2026-11-23T15:09:13Z and 2026-11-23T15:09:15Z), which cannot show what existed earlier in the authorized window, and the change_history integration is not available in this Run, so I cannot show whether a NetworkPolicy was created or deleted during the window. I also did not verify which CNI/network plugin is installed or whether it enforces NetworkPolicy, so a future policy's actual effect is unverified.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Query on kind=networkpolicies in namespace cp1-np-empty (jq: .items | map({name, namespace, podSelector, policyTypes})) returned status ok with total_items_processed 0 and an empty list, so no NetworkPolicy object exists in cp1-np-empty at query time 2026-11-23T15:09:13Z.",
+          "evidence_ids": [
+            "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The same NetworkPolicy kind is readable cluster-wide and returned nothing either: a cluster-wide query on kind=networkpolicies (grouped by namespace, all namespaces, no label or field selector) returned status ok with total_items_processed 0 and an empty list at 2026-11-23T15:09:15Z, so no NetworkPolicy exists in any namespace of this cluster at that time.",
+          "evidence_ids": [
+            "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Namespace cp1-np-empty exists and its status.phase is Active (namespace query filtered to metadata.name == \"cp1-np-empty\").",
+          "evidence_ids": [
+            "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Namespace cp1-np-empty already contains one pod, web-6bd858c6f9-8tfzk (kind=pods, namespace=cp1-np-empty, jq listing .metadata.name), so the namespace is not empty even though no NetworkPolicy selects anything there.",
+          "evidence_ids": [
+            "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "recommendation",
+          "text": "Treat traffic in and out of cp1-np-empty as unrestricted by policy at present (no NetworkPolicy object exists to select any pod there), and if the new service needs isolation, plan an explicit NetworkPolicy with an appropriate podSelector rather than assuming one inherits from another namespace — no cluster-wide default policy exists either.",
+          "evidence_ids": [
+            "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+            "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "Object state is observed only at query time (2026-11-23T15:09:13Z–15:09:15Z); existing queries cannot prove whether a NetworkPolicy existed in cp1-np-empty earlier in the authorized window 2026-11-22T15:09:10Z–2026-11-23T15:09:10Z.",
+        "The change_history integration is not available in this Run, so create/delete history of NetworkPolicy objects cannot be checked.",
+        "The cluster's CNI/network plugin and its NetworkPolicy enforcement capability were not inspected, so a future policy's actual effect is unverified.",
+        "Whether the single pod web-6bd858c6f9-8tfzk is the intended rollout target and how it is owned (its controller chain) was not examined, since the question was scoped to NetworkPolicy presence."
+      ],
+      "next_steps": [
+        "If rollout isolation matters, plan to author a NetworkPolicy in cp1-np-empty explicitly and review the existing pod web-6bd858c6f9-8tfzk's labels so a podSelector can match the new service.",
+        "Confirm with the platform owner which CNI is installed and that it enforces NetworkPolicy before relying on any policy for security."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T15:09:27.735120+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T15:09:13.037869+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T15:09:15.588799+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T15:09:17.835184+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T15:09:27.728359+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T15:09:27.735120+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 61751,
+      "completion_tokens": 2776,
+      "total_tokens": 64527,
+      "prompt_cache_hit_tokens": 52224,
+      "prompt_cache_miss_tokens": 9527
+    },
+    "tool_requests": [
+      {
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1",
+        "epoch": 1,
+        "tool": "kubernetes_count",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "operation_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "operation_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+        "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "networkpolicies",
+          "jq_expr": ".items | map({name: .metadata.name, namespace: .metadata.namespace, podSelector: .spec.podSelector, policyTypes: .spec.policyTypes})",
+          "namespace": "cp1-np-empty"
+        },
+        "window": {
+          "end": "2026-11-23T15:09:10+00:00",
+          "start": "2026-11-22T15:09:10+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T15:09:13.094961+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_count",
+        "tool_version": "v2",
+        "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+        "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "namespaces",
+          "jq_expr": ".items[] | select(.metadata.name == \"cp1-np-empty\") | {name: .metadata.name, phase: .status.phase}"
+        },
+        "window": {
+          "end": "2026-11-23T15:09:10+00:00",
+          "start": "2026-11-22T15:09:10+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T15:09:13.101028+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+        "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "networkpolicies",
+          "jq_expr": ".items | map({namespace: .metadata.namespace, name: .metadata.name, policyTypes: .spec.policyTypes}) | group_by(.namespace) | map({namespace: .[0].namespace, count: length, names: map(.name)})"
+        },
+        "window": {
+          "end": "2026-11-23T15:09:10+00:00",
+          "start": "2026-11-22T15:09:10+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T15:09:15.632390+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+        "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+        "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "pods",
+          "jq_expr": ".items | map(.metadata.name)",
+          "namespace": "cp1-np-empty"
+        },
+        "window": {
+          "end": "2026-11-23T15:09:10+00:00",
+          "start": "2026-11-22T15:09:10+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T15:09:17.878797+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+      "observations": [
+        {
+          "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+          "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "networkpolicies",
+            "jq_expr": ".items | map({name: .metadata.name, namespace: .metadata.namespace, podSelector: .spec.podSelector, policyTypes: .spec.policyTypes})",
+            "namespace": "cp1-np-empty"
+          },
+          "window": {
+            "end": "2026-11-23T15:09:10+00:00",
+            "start": "2026-11-22T15:09:10+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T15:09:13.094961+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_count",
+          "tool_version": "v2",
+          "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+          "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "namespaces",
+            "jq_expr": ".items[] | select(.metadata.name == \"cp1-np-empty\") | {name: .metadata.name, phase: .status.phase}"
+          },
+          "window": {
+            "end": "2026-11-23T15:09:10+00:00",
+            "start": "2026-11-22T15:09:10+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T15:09:13.101028+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+          "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "networkpolicies",
+            "jq_expr": ".items | map({namespace: .metadata.namespace, name: .metadata.name, policyTypes: .spec.policyTypes}) | group_by(.namespace) | map({namespace: .[0].namespace, count: length, names: map(.name)})"
+          },
+          "window": {
+            "end": "2026-11-23T15:09:10+00:00",
+            "start": "2026-11-22T15:09:10+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T15:09:15.632390+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+          "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "pods",
+            "jq_expr": ".items | map(.metadata.name)",
+            "namespace": "cp1-np-empty"
+          },
+          "window": {
+            "end": "2026-11-23T15:09:10+00:00",
+            "start": "2026-11-22T15:09:10+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T15:09:17.878797+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "claims": {
+            "fact": [
+              {
+                "text": "Query on kind=networkpolicies in namespace cp1-np-empty (jq: .items | map({name, namespace, podSelector, policyTypes})) returned status ok with total_items_processed 0 and an empty list, so no NetworkPolicy object exists in cp1-np-empty at query time 2026-11-23T15:09:13Z.",
+                "evidence": [
+                  {
+                    "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The same NetworkPolicy kind is readable cluster-wide and returned nothing either: a cluster-wide query on kind=networkpolicies (grouped by namespace, all namespaces, no label or field selector) returned status ok with total_items_processed 0 and an empty list at 2026-11-23T15:09:15Z, so no NetworkPolicy exists in any namespace of this cluster at that time.",
+                "evidence": [
+                  {
+                    "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Namespace cp1-np-empty exists and its status.phase is Active (namespace query filtered to metadata.name == \"cp1-np-empty\").",
+                "evidence": [
+                  {
+                    "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Namespace cp1-np-empty already contains one pod, web-6bd858c6f9-8tfzk (kind=pods, namespace=cp1-np-empty, jq listing .metadata.name), so the namespace is not empty even though no NetworkPolicy selects anything there.",
+                "evidence": [
+                  {
+                    "evidence_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [],
+            "recommendation": [
+              {
+                "text": "Treat traffic in and out of cp1-np-empty as unrestricted by policy at present (no NetworkPolicy object exists to select any pod there), and if the new service needs isolation, plan an explicit NetworkPolicy with an appropriate podSelector rather than assuming one inherits from another namespace — no cluster-wide default policy exists either.",
+                "evidence": [
+                  {
+                    "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 4,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "subject_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "networkpolicies",
+              "jq_expr": ".items | map({namespace: .metadata.namespace, name: .metadata.name, policyTypes: .spec.policyTypes}) | group_by(.namespace) | map({namespace: .[0].namespace, count: length, names: map(.name)})"
+            },
+            "scope": {
+              "kind": "networkpolicies",
+              "api_group": "networking.k8s.io",
+              "namespace": null,
+              "all_namespaces": true,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T15:09:10+00:00",
+              "start": "2026-11-22T15:09:10+00:00"
+            },
+            "adopted": true,
+            "content": [
+              []
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+            "observed_at": "2026-11-23T15:09:15.632390+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+            "dispatch_started_at": "2026-11-23T15:09:15.598232+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 0,
+            "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c"
+          }
+        }
+      },
+      {
+        "evidence_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "subject_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "pods",
+              "jq_expr": ".items | map(.metadata.name)",
+              "namespace": "cp1-np-empty"
+            },
+            "scope": {
+              "kind": "pods",
+              "api_group": "",
+              "namespace": "cp1-np-empty",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T15:09:10+00:00",
+              "start": "2026-11-22T15:09:10+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                "web-6bd858c6f9-8tfzk"
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+            "observed_at": "2026-11-23T15:09:17.878797+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+            "dispatch_started_at": "2026-11-23T15:09:17.843569+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 1,
+            "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c"
+          }
+        }
+      },
+      {
+        "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "subject_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "networkpolicies",
+              "jq_expr": ".items | map({name: .metadata.name, namespace: .metadata.namespace, podSelector: .spec.podSelector, policyTypes: .spec.policyTypes})",
+              "namespace": "cp1-np-empty"
+            },
+            "scope": {
+              "kind": "networkpolicies",
+              "api_group": "networking.k8s.io",
+              "namespace": "cp1-np-empty",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T15:09:10+00:00",
+              "start": "2026-11-22T15:09:10+00:00"
+            },
+            "adopted": true,
+            "content": [
+              []
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+            "observed_at": "2026-11-23T15:09:13.094961+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+            "dispatch_started_at": "2026-11-23T15:09:13.048082+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 0,
+            "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c"
+          }
+        }
+      },
+      {
+        "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+        "resolvable": true,
+        "tool": "kubernetes_count",
+        "status": "ok",
+        "stored": {
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "subject_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_count",
+            "notes": [],
+            "query": {
+              "kind": "namespaces",
+              "jq_expr": ".items[] | select(.metadata.name == \"cp1-np-empty\") | {name: .metadata.name, phase: .status.phase}"
+            },
+            "scope": {
+              "kind": "namespaces",
+              "api_group": "",
+              "namespace": null,
+              "all_namespaces": false,
+              "cluster_scoped": true,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T15:09:10+00:00",
+              "start": "2026-11-22T15:09:10+00:00"
+            },
+            "adopted": true,
+            "content": [
+              "{\"name\":\"cp1-np-empty\",\"phase\":\"Active\"}"
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+            "observed_at": "2026-11-23T15:09:13.101028+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1",
+            "result_count": 1,
+            "tool_version": "v2",
+            "matches_found": 1,
+            "matches_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "matches_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "5e6425d6f4b29cb312b8894d32a6ce45e99d08273ae2b7bea2957c24687b8946",
+            "dispatch_started_at": "2026-11-23T15:09:13.055824+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 8,
+            "tool_registry_revision": "86c436bd998d946e60e89205bcf6fa0bace8839130a7a3f69430016f1b54cc2c",
+            "backend_matches_returned": 1
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "ccf63008-78b3-5c3b-8db0-863e5694e44b",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T15:09:10.063506+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:10.063506+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:1",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:10.485950+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.037869+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:fedd703d-c249-4e06-8557-b4f59f86b227",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.042059+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.124702+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.124702+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.124702+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.134328+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "b2ad5979-162d-4fb7-b025-28c069943487",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "operation_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1",
+            "epoch": 1,
+            "tool": "kubernetes_count",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.134328+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:13.134328+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:15.588799+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:45440afc-5515-4f6d-8f02-a02fc0ba17fe",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:15.592233+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:15.651917+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "08feea4c-b1c0-41d4-9545-ac9dce484c72",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "operation_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:15.651917+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:15.651917+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:17.835184+00:00",
+          "sequence": 16,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:bab0b0f1-103b-4831-b54a-56f9a6e86429",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:17.838620+00:00",
+          "sequence": 17,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:17.898799+00:00",
+          "sequence": 18,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "operation_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:17.898799+00:00",
+          "sequence": 19,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:17.898799+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:27.728359+00:00",
+          "sequence": 21,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:266a6e35-fc53-4cfd-a9ed-717f62840546",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:27.731526+00:00",
+          "sequence": 22,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:27.744069+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T15:09:27.744069+00:00",
+          "sequence": 24,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "01c47189-de6a-5072-87c2-7ab09f9df94c:11",
+          "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 11
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 4,
+        "evidence": 4,
+        "state_change": 13,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "01c47189-de6a-5072-87c2-7ab09f9df94c",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "fedd703d-c249-4e06-8557-b4f59f86b227-t0:c7b55503-bb81-4ca4-86eb-4784a3ddf2da",
+        "fedd703d-c249-4e06-8557-b4f59f86b227-t1:b2ad5979-162d-4fb7-b025-28c069943487",
+        "45440afc-5515-4f6d-8f02-a02fc0ba17fe-t0:08feea4c-b1c0-41d4-9545-ac9dce484c72",
+        "bab0b0f1-103b-4831-b54a-56f9a6e86429-t0:fbdc566f-1c6c-46de-a1ec-8da368c034b4"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T15:09:30.539714+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-cp1-2026-11-23",
+    "project_id": "d9043906-3b89-466d-bd20-a0ceca5d77cf",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-d679-2ecb398caf29",
+        "start_time": "2026-11-23T15:09:10.486929+00:00",
+        "end_time": "2026-11-23T15:09:27.744990+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d9043906-3b89-466d-bd20-a0ceca5d77cf/r/00000000-0000-0000-d679-2ecb398caf29?poll=true"
+      }
+    ]
+  },
+  "cp1": {
+    "label": "pr827-netpol",
+    "backend": "kubernetes",
+    "max_lookback": null,
+    "submitted_lookback": null,
+    "todo": false,
+    "terminal_state": "completed",
+    "project": null,
+    "question_file": "q1-netpol.txt"
+  },
+  "raw_ledger": {
+    "sha256": "d9e4de89fb74ef79bfb0d97651a8473fbef6ccc2bb7209fec005a06cd2500248",
+    "bytes": 105093,
+    "path": "tmp/lab-ledgers/cp1-pr827-netpol/01c47189-de6a-5072-87c2-7ab09f9df94c/ledger.json",
+    "in_repository": false
+  }
+}

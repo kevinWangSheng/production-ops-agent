@@ -1,0 +1,1768 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-b1a",
+  "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+  "frozen_at": "2026-11-23T17:19:39.581406+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+    "incident_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-23T19:19:13.431655+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "What are the statistics for the 'app-183g-stats' index? Tell me the document count, store size, and indexing rate.",
+      "authorized_window": {
+        "end": "2026-11-23T17:19:13+00:00",
+        "start": "2026-10-24T17:19:13+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+      "target_id": "55433863-0844-44af-8018-26816d1f71b4",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+      "created_at": "2026-11-23T17:19:13.447231+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-231b046ecbb5",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "The exact index app-183g-stats exists and was queried successfully. As of the query at 2026-11-23T17:19:15Z it is health green, status open, with 1 primary shard and 0 replicas, holding 50 documents and a store size of 8.6kb (8,811 bytes). Its indexing counters are cumulative since index creation (2026-11-23T17:19:03.651Z): index_total 50, index_time_in_millis 1, index_current 0, index_failed 0, delete_total 0. Elasticsearch exposes no per-time-window indexing rate here — only cumulative counters — so no observed indexing rate exists in the returned data; the index is only ~14 seconds older than the query, and dividing 50 cumulative docs by that age would be a derived estimate, not a measured rate. The registered Prometheus source returned SOURCE_UNAVAILABLE for a metric-name query, so a time-series indexing-rate metric could not be checked.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Index app-183g-stats exists with health green, status open, docs.count 50 and store.size 8.6kb; a wildcard search for *183g* returned this same single index.",
+          "evidence_ids": [
+            "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+            "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Index app-183g-stats was created at 2026-11-23T17:19:03.651Z with 1 primary shard and 0 replicas, so it is roughly 12-14 seconds older than the statistics queries.",
+          "evidence_ids": [
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Store statistics for app-183g-stats: primaries store size_in_bytes 8811, total_data_set_size_in_bytes 8811, docs total_size_in_bytes 8584, reserved_in_bytes 0, with 1 successful shard and 0 failed shards.",
+          "evidence_ids": [
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Indexing statistics for app-183g-stats are cumulative counters: index_total 50, index_time_in_millis 1, index_current 0, index_failed 0, index_failed_due_to_version_conflict 0, delete_total 0, noop_update_total 0, is_throttled false, throttle_time_in_millis 0, write_load 9.03e-05. These are cumulative since index creation, not a rate inside a time window.",
+          "evidence_ids": [
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Search activity on app-183g-stats is minimal: query_total 1, fetch_total 1, query_failure 0, fetch_failure 0, get_total 0, matching the 1-vs-1 primaries/total shard figures with 0 failed shards.",
+          "evidence_ids": [
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "If all 50 cumulative index_total documents were written inside the index's ~14-second lifetime, the average indexing rate would be roughly 3.5-4 documents/second; this is a derived arithmetic estimate from a cumulative counter and the creation timestamp, not an observed rate, and the actual distribution of the 50 writes over time is unknown.",
+          "evidence_ids": [
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+            "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "No observed per-time-window indexing rate is available: elasticsearch_index_stats returns only cumulative counters (index_total 50, index_time_in_millis 1) taken at a single instant, and the index is only ~14 seconds old, so no trend or windowed rate can be derived from the returned data.",
+        "A check for a Prometheus-exposed Elasticsearch indexing-rate metric could not be completed: get_metric_names for the pattern elasticsearch.*|es_.*|.*index.* returned status error with reason SOURCE_UNAVAILABLE, so the existence of any such time series is unknown rather than absent.",
+        "Statistics are point-in-time at 2026-11-23T17:19:15Z and 2026-11-23T17:19:17Z, after the authorized window's end (2026-11-23T17:19:13Z); they cannot show the index's state at any earlier time inside the window.",
+        "Document counts are index-level totals; the per-document contents and whether the 50 documents lie inside any incident window were not examined."
+      ],
+      "next_steps": [
+        "Poll _stats (or an Elasticsearch exporter in Prometheus) repeatedly over a chosen interval if a real indexing rate in documents/second is needed, since a single cumulative sample cannot yield it.",
+        "Confirm whether the missing Prometheus metric source (SOURCE_UNAVAILABLE) is a temporary outage or a configuration gap before relying on Prometheus for Elasticsearch index metrics."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T17:19:30.030107+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:19:15.184649+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:19:17.372968+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:19:19.748122+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:19:30.024152+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:19:30.030107+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 78012,
+      "completion_tokens": 3178,
+      "total_tokens": 81190,
+      "prompt_cache_hit_tokens": 73472,
+      "prompt_cache_miss_tokens": 4540
+    },
+    "tool_requests": [
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_index_stats",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "operation_id": "6900d724-b68b-4b61-8340-a0db2e88effd-t0",
+        "epoch": 1,
+        "tool": "get_metric_names",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "SOURCE_UNAVAILABLE",
+        "outbound": null,
+        "source_contact": "possible",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "pattern": "app-183g-stats"
+        },
+        "window": {
+          "end": "2026-11-23T17:19:13+00:00",
+          "start": "2026-10-24T17:19:13+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:19:15.212988+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "pattern": "*183g*"
+        },
+        "window": {
+          "end": "2026-11-23T17:19:13+00:00",
+          "start": "2026-10-24T17:19:13+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:19:15.215895+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_index_stats",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "index": "app-183g-stats",
+          "metrics": "docs,store,indexing,search,get"
+        },
+        "window": {
+          "end": "2026-11-23T17:19:13+00:00",
+          "start": "2026-10-24T17:19:13+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:19:17.401304+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+        "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "columns": "index,health,status,docs.count,store.size,pri,rep,creation.date,creation.date.string",
+          "pattern": "app-183g-stats"
+        },
+        "window": {
+          "end": "2026-11-23T17:19:13+00:00",
+          "start": "2026-10-24T17:19:13+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:19:17.410781+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+      "observations": [
+        {
+          "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "pattern": "app-183g-stats"
+          },
+          "window": {
+            "end": "2026-11-23T17:19:13+00:00",
+            "start": "2026-10-24T17:19:13+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:19:15.212988+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "pattern": "*183g*"
+          },
+          "window": {
+            "end": "2026-11-23T17:19:13+00:00",
+            "start": "2026-10-24T17:19:13+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:19:15.215895+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_index_stats",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "index": "app-183g-stats",
+            "metrics": "docs,store,indexing,search,get"
+          },
+          "window": {
+            "end": "2026-11-23T17:19:13+00:00",
+            "start": "2026-10-24T17:19:13+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:19:17.401304+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "columns": "index,health,status,docs.count,store.size,pri,rep,creation.date,creation.date.string",
+            "pattern": "app-183g-stats"
+          },
+          "window": {
+            "end": "2026-11-23T17:19:13+00:00",
+            "start": "2026-10-24T17:19:13+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:19:17.410781+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [
+        {
+          "operation_id": "6900d724-b68b-4b61-8340-a0db2e88effd-t0",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "tool": "get_metric_names",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "SOURCE_UNAVAILABLE",
+          "source_contact": "possible"
+        }
+      ],
+      "reports": [
+        {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "claims": {
+            "fact": [
+              {
+                "text": "Index app-183g-stats exists with health green, status open, docs.count 50 and store.size 8.6kb; a wildcard search for *183g* returned this same single index.",
+                "evidence": [
+                  {
+                    "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Index app-183g-stats was created at 2026-11-23T17:19:03.651Z with 1 primary shard and 0 replicas, so it is roughly 12-14 seconds older than the statistics queries.",
+                "evidence": [
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Store statistics for app-183g-stats: primaries store size_in_bytes 8811, total_data_set_size_in_bytes 8811, docs total_size_in_bytes 8584, reserved_in_bytes 0, with 1 successful shard and 0 failed shards.",
+                "evidence": [
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Indexing statistics for app-183g-stats are cumulative counters: index_total 50, index_time_in_millis 1, index_current 0, index_failed 0, index_failed_due_to_version_conflict 0, delete_total 0, noop_update_total 0, is_throttled false, throttle_time_in_millis 0, write_load 9.03e-05. These are cumulative since index creation, not a rate inside a time window.",
+                "evidence": [
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Search activity on app-183g-stats is minimal: query_total 1, fetch_total 1, query_failure 0, fetch_failure 0, get_total 0, matching the 1-vs-1 primaries/total shard figures with 0 failed shards.",
+                "evidence": [
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "If all 50 cumulative index_total documents were written inside the index's ~14-second lifetime, the average indexing rate would be roughly 3.5-4 documents/second; this is a derived arithmetic estimate from a cumulative counter and the creation timestamp, not an observed rate, and the actual distribution of the 50 writes over time is unknown.",
+                "evidence": [
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 1,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 1
+              },
+              "state": "failed",
+              "gap": true
+            },
+            {
+              "name": "elasticsearch",
+              "ok": 4,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+        "resolvable": true,
+        "tool": "elasticsearch_index_stats",
+        "status": "ok",
+        "stored": {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "subject_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_index_stats",
+            "notes": [
+              "This tool has no time range: it shows the cluster's state at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "index": "app-183g-stats",
+              "metrics": "docs,store,indexing,search,get"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:19:13+00:00",
+              "start": "2026-10-24T17:19:13+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "_all": {
+                  "total": {
+                    "get": {
+                      "total": 0,
+                      "current": 0,
+                      "exists_total": 0,
+                      "missing_total": 0,
+                      "time_in_millis": 0,
+                      "exists_time_in_millis": 0,
+                      "missing_time_in_millis": 0
+                    },
+                    "docs": {
+                      "count": 50,
+                      "deleted": 0,
+                      "total_size_in_bytes": 8584
+                    },
+                    "store": {
+                      "size_in_bytes": 8811,
+                      "reserved_in_bytes": 0,
+                      "total_data_set_size_in_bytes": 8811
+                    },
+                    "search": {
+                      "fetch_total": 1,
+                      "query_total": 1,
+                      "scroll_total": 0,
+                      "fetch_current": 0,
+                      "fetch_failure": 0,
+                      "open_contexts": 0,
+                      "query_current": 0,
+                      "query_failure": 0,
+                      "suggest_total": 0,
+                      "scroll_current": 0,
+                      "suggest_current": 0,
+                      "fetch_time_in_millis": 0,
+                      "query_time_in_millis": 0,
+                      "scroll_time_in_millis": 0,
+                      "suggest_time_in_millis": 0
+                    },
+                    "indexing": {
+                      "write_load": 9.033241795360345e-05,
+                      "index_total": 50,
+                      "delete_total": 0,
+                      "index_failed": 0,
+                      "is_throttled": false,
+                      "index_current": 0,
+                      "delete_current": 0,
+                      "noop_update_total": 0,
+                      "index_time_in_millis": 1,
+                      "delete_time_in_millis": 0,
+                      "throttle_time_in_millis": 0,
+                      "index_failed_due_to_version_conflict": 0
+                    }
+                  },
+                  "primaries": {
+                    "get": {
+                      "total": 0,
+                      "current": 0,
+                      "exists_total": 0,
+                      "missing_total": 0,
+                      "time_in_millis": 0,
+                      "exists_time_in_millis": 0,
+                      "missing_time_in_millis": 0
+                    },
+                    "docs": {
+                      "count": 50,
+                      "deleted": 0,
+                      "total_size_in_bytes": 8584
+                    },
+                    "store": {
+                      "size_in_bytes": 8811,
+                      "reserved_in_bytes": 0,
+                      "total_data_set_size_in_bytes": 8811
+                    },
+                    "search": {
+                      "fetch_total": 1,
+                      "query_total": 1,
+                      "scroll_total": 0,
+                      "fetch_current": 0,
+                      "fetch_failure": 0,
+                      "open_contexts": 0,
+                      "query_current": 0,
+                      "query_failure": 0,
+                      "suggest_total": 0,
+                      "scroll_current": 0,
+                      "suggest_current": 0,
+                      "fetch_time_in_millis": 0,
+                      "query_time_in_millis": 0,
+                      "scroll_time_in_millis": 0,
+                      "suggest_time_in_millis": 0
+                    },
+                    "indexing": {
+                      "write_load": 9.033241795360345e-05,
+                      "index_total": 50,
+                      "delete_total": 0,
+                      "index_failed": 0,
+                      "is_throttled": false,
+                      "index_current": 0,
+                      "delete_current": 0,
+                      "noop_update_total": 0,
+                      "index_time_in_millis": 1,
+                      "delete_time_in_millis": 0,
+                      "throttle_time_in_millis": 0,
+                      "index_failed_due_to_version_conflict": 0
+                    }
+                  }
+                },
+                "_shards": {
+                  "total": 1,
+                  "failed": 0,
+                  "successful": 1
+                },
+                "indices": {
+                  "app-183g-stats": {
+                    "uuid": "Oqphnw2vTf2T2t0xz-7ybg",
+                    "total": {
+                      "get": {
+                        "total": 0,
+                        "current": 0,
+                        "exists_total": 0,
+                        "missing_total": 0,
+                        "time_in_millis": 0,
+                        "exists_time_in_millis": 0,
+                        "missing_time_in_millis": 0
+                      },
+                      "docs": {
+                        "count": 50,
+                        "deleted": 0,
+                        "total_size_in_bytes": 8584
+                      },
+                      "store": {
+                        "size_in_bytes": 8811,
+                        "reserved_in_bytes": 0,
+                        "total_data_set_size_in_bytes": 8811
+                      },
+                      "search": {
+                        "fetch_total": 1,
+                        "query_total": 1,
+                        "scroll_total": 0,
+                        "fetch_current": 0,
+                        "fetch_failure": 0,
+                        "open_contexts": 0,
+                        "query_current": 0,
+                        "query_failure": 0,
+                        "suggest_total": 0,
+                        "scroll_current": 0,
+                        "suggest_current": 0,
+                        "fetch_time_in_millis": 0,
+                        "query_time_in_millis": 0,
+                        "scroll_time_in_millis": 0,
+                        "suggest_time_in_millis": 0
+                      },
+                      "indexing": {
+                        "write_load": 9.033241795360345e-05,
+                        "index_total": 50,
+                        "delete_total": 0,
+                        "index_failed": 0,
+                        "is_throttled": false,
+                        "index_current": 0,
+                        "delete_current": 0,
+                        "noop_update_total": 0,
+                        "index_time_in_millis": 1,
+                        "delete_time_in_millis": 0,
+                        "throttle_time_in_millis": 0,
+                        "index_failed_due_to_version_conflict": 0
+                      }
+                    },
+                    "health": "green",
+                    "status": "open",
+                    "primaries": {
+                      "get": {
+                        "total": 0,
+                        "current": 0,
+                        "exists_total": 0,
+                        "missing_total": 0,
+                        "time_in_millis": 0,
+                        "exists_time_in_millis": 0,
+                        "missing_time_in_millis": 0
+                      },
+                      "docs": {
+                        "count": 50,
+                        "deleted": 0,
+                        "total_size_in_bytes": 8584
+                      },
+                      "store": {
+                        "size_in_bytes": 8811,
+                        "reserved_in_bytes": 0,
+                        "total_data_set_size_in_bytes": 8811
+                      },
+                      "search": {
+                        "fetch_total": 1,
+                        "query_total": 1,
+                        "scroll_total": 0,
+                        "fetch_current": 0,
+                        "fetch_failure": 0,
+                        "open_contexts": 0,
+                        "query_current": 0,
+                        "query_failure": 0,
+                        "suggest_total": 0,
+                        "scroll_current": 0,
+                        "suggest_current": 0,
+                        "fetch_time_in_millis": 0,
+                        "query_time_in_millis": 0,
+                        "scroll_time_in_millis": 0,
+                        "suggest_time_in_millis": 0
+                      },
+                      "indexing": {
+                        "write_load": 9.033241795360345e-05,
+                        "index_total": 50,
+                        "delete_total": 0,
+                        "index_failed": 0,
+                        "is_throttled": false,
+                        "index_current": 0,
+                        "delete_current": 0,
+                        "noop_update_total": 0,
+                        "index_time_in_millis": 1,
+                        "delete_time_in_millis": 0,
+                        "throttle_time_in_millis": 0,
+                        "index_failed_due_to_version_conflict": 0
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+            "observed_at": "2026-11-23T17:19:17.401304+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove what the cluster health, shard allocation, or node and index statistics were during the incident window. Statistics counters are cumulative since a node started or an index was created, not counts inside the window.",
+            "omitted_rows": 0,
+            "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:19:17.383267+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+        "resolvable": true,
+        "tool": "elasticsearch_list_indices",
+        "status": "ok",
+        "stored": {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "subject_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_list_indices",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "columns": "index,health,status,docs.count,store.size,pri,rep,creation.date,creation.date.string",
+              "pattern": "app-183g-stats"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:19:13+00:00",
+              "start": "2026-10-24T17:19:13+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "index",
+              "health",
+              "status",
+              "docs.count",
+              "store.size",
+              "pri",
+              "rep",
+              "creation.date",
+              "creation.date.string"
+            ],
+            "content": [
+              {
+                "pri": "1",
+                "rep": "0",
+                "index": "app-183g-stats",
+                "health": "green",
+                "status": "open",
+                "docs.count": "50",
+                "store.size": "8.6kb",
+                "creation.date": "1795454343651",
+                "creation.date.string": "2026-11-23T17:19:03.651Z"
+              }
+            ],
+            "pattern": "app-183g-stats",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+            "observed_at": "2026-11-23T17:19:17.410781+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1",
+            "result_count": 1,
+            "tool_version": "v1",
+            "indices_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:19:17.388462+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+        "resolvable": true,
+        "tool": "elasticsearch_list_indices",
+        "status": "ok",
+        "stored": {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "subject_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_list_indices",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "pattern": "app-183g-stats"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:19:13+00:00",
+              "start": "2026-10-24T17:19:13+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "index",
+              "health",
+              "status",
+              "docs.count",
+              "store.size"
+            ],
+            "content": [
+              {
+                "index": "app-183g-stats",
+                "health": "green",
+                "status": "open",
+                "docs.count": "50",
+                "store.size": "8.6kb"
+              }
+            ],
+            "pattern": "app-183g-stats",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+            "observed_at": "2026-11-23T17:19:15.212988+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "indices_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:19:15.194461+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+        "resolvable": true,
+        "tool": "elasticsearch_list_indices",
+        "status": "ok",
+        "stored": {
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "subject_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_list_indices",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "pattern": "*183g*"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:19:13+00:00",
+              "start": "2026-10-24T17:19:13+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "index",
+              "health",
+              "status",
+              "docs.count",
+              "store.size"
+            ],
+            "content": [
+              {
+                "index": "app-183g-stats",
+                "health": "green",
+                "status": "open",
+                "docs.count": "50",
+                "store.size": "8.6kb"
+              }
+            ],
+            "pattern": "*183g*",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+            "observed_at": "2026-11-23T17:19:15.215895+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1",
+            "result_count": 1,
+            "tool_version": "v1",
+            "indices_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:19:15.201176+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 1
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T17:19:13.454348+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:13.454348+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:1",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:13.648412+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.184649+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:f8e134e8-5f11-4d55-8db7-c4339cd16c9a",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.188797+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.237034+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.237034+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.237034+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.244298+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "dc989230-05ee-4ef9-9eba-f7fb853924c7",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "operation_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.244298+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:15.244298+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.372968+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:ad22b42b-4e24-4358-ac10-a4ce750fbd3c",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.376560+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.433028+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "6659666a-cd02-4592-a728-a471cd6441b9",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_index_stats",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.433028+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.433028+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.441682+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "9a75a15f-f742-41f8-a069-052bfbff8002",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "operation_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.441682+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:17.441682+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:19.748122+00:00",
+          "sequence": 19,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:6900d724-b68b-4b61-8340-a0db2e88effd",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:19.750714+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:19.774450+00:00",
+          "sequence": 21,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "a4234371-1d46-4bbf-815a-4152be02b3f6",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "operation_id": "6900d724-b68b-4b61-8340-a0db2e88effd-t0",
+            "epoch": 1,
+            "tool": "get_metric_names",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "SOURCE_UNAVAILABLE",
+            "outbound": null,
+            "source_contact": "possible",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:19.774450+00:00",
+          "sequence": 22,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:30.024152+00:00",
+          "sequence": 23,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:619eca7b-5d99-49b7-91ee-fb1da37711ea",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:30.026818+00:00",
+          "sequence": 24,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:30.039287+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:19:30.039287+00:00",
+          "sequence": 26,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "4edef58a-c904-5346-96e6-721e4202b3dc:12",
+          "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 12
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 5,
+        "evidence": 4,
+        "state_change": 14,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t0:304e5b0c-c37a-4215-a81c-c0eb6433fe9d",
+        "f8e134e8-5f11-4d55-8db7-c4339cd16c9a-t1:dc989230-05ee-4ef9-9eba-f7fb853924c7",
+        "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t0:6659666a-cd02-4592-a728-a471cd6441b9",
+        "ad22b42b-4e24-4358-ac10-a4ce750fbd3c-t1:9a75a15f-f742-41f8-a069-052bfbff8002"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T17:19:33.771526+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-b1a",
+    "project_id": "39f11e69-f040-4972-aa82-f1f41cf8a17d",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-fea4-a0a3d32494f8",
+        "start_time": "2026-11-23T17:19:13.649256+00:00",
+        "end_time": "2026-11-23T17:19:30.039908+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/39f11e69-f040-4972-aa82-f1f41cf8a17d/r/00000000-0000-0000-fea4-a0a3d32494f8?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-b1a",
+    "qid": "183g_elasticsearch_index_stats",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 3,
+    "chance": 1,
+    "git": {
+      "commit": "51257e79a6eba6872b5435c23086f6ea7aec1f33",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 30010,
+      "web": 30080,
+      "es": 30092,
+      "prometheus": 30090,
+      "jaeger_query": 30086,
+      "k8s": 30043
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:19:03.570126+00:00",
+        "ended_at": "2026-11-23T17:19:03.586249+00:00",
+        "seconds": 0.016,
+        "log_sha256": "464b2c04f33a0bba5eb0994580623c1506636dc264971086ffb3f54d8bedb448",
+        "skipped": false
+      },
+      "purged": {
+        "before": [],
+        "after": []
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:19:03.589456+00:00",
+        "ended_at": "2026-11-23T17:19:05.810057+00:00",
+        "seconds": 2.221,
+        "log_sha256": "b46e6e195bea5439ab67460623c9b5646f89134604e47d85be2edd1d7ccc20da",
+        "skipped": false
+      },
+      "ended_at": "2026-11-23T17:19:05.810274+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:19:33.806290+00:00",
+        "ended_at": "2026-11-23T17:19:33.838611+00:00",
+        "seconds": 0.032,
+        "log_sha256": "5fbeb3e56f422cfb81082aa519d4b955bb667b4873f11dcf54ae9e61e07d6de3",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": false,
+      "reason": "RELATIVE_TIME",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "indices": [],
+      "store_size_before": {},
+      "store_size_after": {},
+      "question_rewrites": [],
+      "time_only_phrases": 0
+    },
+    "shift_timing": {
+      "started_at": "2026-11-23T17:19:05.810274+00:00",
+      "ended_at": "2026-11-23T17:19:05.810339+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "d3df108337ac0abb3ad9dbf103a41fb89548a5129bb53dd2d208dd44a2000993",
+      "sha256_delivered": "d3df108337ac0abb3ad9dbf103a41fb89548a5129bb53dd2d208dd44a2000993",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM"
+    ],
+    "data_plane": {
+      "backend": "elasticsearch",
+      "mode": "external",
+      "product_url": "http://127.0.0.1:30920",
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-23T17:19:13.377807+00:00",
+      "setup_to_delivery_seconds": 7.567,
+      "status": 201,
+      "code": null,
+      "incident_id": "0b57834b-d1b1-5bc6-bc89-e2432b19a0cb",
+      "run_id": "4edef58a-c904-5346-96e6-721e4202b3dc",
+      "idempotency_label": "holmes-full-o-b1a-183g_elasticsearch_index_stats-t3-c1",
+      "responded_at": "2026-11-23T17:19:13.457141+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 20.043
+    },
+    "conversion": {
+      "with_tool_calls": false,
+      "tool_calls": null,
+      "deshift_count": 0,
+      "reason": null,
+      "text_sha256": "eaed65351052b6f6453edf01b3f862b03e5afca99b05f1141ebf0d16473c23a2"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "A",
+      "passed": true,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 5356
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "f0be443ba7a7fa2af9999c2db5cedfd5b3adaac92585b888ed7b96a8ca0a9421",
+    "bytes": 133235,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-b1a/4edef58a-c904-5346-96e6-721e4202b3dc/ledger.json",
+    "in_repository": false
+  }
+}

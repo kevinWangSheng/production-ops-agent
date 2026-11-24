@@ -131,6 +131,18 @@ paths = ['(^|/)docs/evidence/rental-2026-11-20/rerun-2026-11-22/sregym/sregym-li
 regexTarget = "secret"
 regexes = ['^9\\.0\\.1-alpine3\\.23$']
 [[rules.allowlists]]
+description = "valkey image tag in the 2026-11-23 rental SREGym evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-23/full/sregym/sregym-lite-full/p[0-9]+/trial-[0-9]+/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^9\\.0\\.1-alpine3\\.23$']
+[[rules.allowlists]]
+description = "lab cluster name in the 2026-11-23 rental Holmes-set evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-23/full/opspilot/holmes-evals-full-o-b1b/267_cluster_name_alias/trial-2/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^acme-prod-eu-west-1$']
+[[rules.allowlists]]
 description = "idempotency label in the 2026-11-20 rental SREGym smoke evidence (not a credential)"
 condition = "AND"
 paths = ['(^|/)docs/evidence/rental-2026-11-20/cp2/sregym/sregym-lite-cp2-smoke/p10/trial-1/summary\\.json$']

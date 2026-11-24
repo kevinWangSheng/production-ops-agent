@@ -1,0 +1,4309 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-b1a",
+  "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+  "frozen_at": "2026-11-23T17:42:10.945092+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+    "incident_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-23T19:41:35.708561+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "We're getting mapping errors and slow indexing on our events index. Can you check the field mappings for our app-188-index-* indexes and tell me if any have an unusually high number of fields? What's the exact field count for each?",
+      "authorized_window": {
+        "end": "2026-11-23T17:41:35+00:00",
+        "start": "2026-10-24T17:41:35+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+      "target_id": "d2d15828-4fb0-4cfe-9533-9a8059e2882b",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+      "created_at": "2026-11-23T17:41:35.728034+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-231b046ecbb5",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "All four indices matching app-188-index-* exist and are green/open at query time (2026-11-23T17:41:37Z–17:41:44Z, the tool has no time range). app-188-index-a, app-188-index-b and app-188-index-c each have exactly 10 top-level mapped properties and no multi-fields. app-188-index-x is the outlier: 523 top-level properties, or 655 fields when its 132 keyword multi-fields are counted — roughly 52x the others. Index-x's fields are machine-generated families (counter_0001…counter_0519, flag_0002…flag_0518, label_0003…label_0519, metric_0000…metric_0516) plus only @timestamp, event_type and user_id, and it holds 1 document in 204.4kb while a/b/c hold 0 documents in 227b each. Index-x's schema also differs from a/b/c, which share action, duration_ms, error_message, event_type, ip_address, metadata, session_id, status, user_id. That field explosion in app-188-index-x is the strongest candidate explanation for mapping errors and slow indexing, but I did not observe the error messages or indexing-latency measurements themselves, so the causal link remains a hypothesis.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "The pattern app-188-index-* matches exactly four indices, all status open and health green at query time: app-188-index-a (docs.count 0, 227b), app-188-index-b (0, 227b), app-188-index-c (0, 227b) and app-188-index-x (1, 204.4kb).",
+          "evidence_ids": [
+            "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "app-188-index-a, app-188-index-b and app-188-index-c each have exactly 10 top-level mapped properties and 0 keyword multi-fields (total 10 fields each); the three mappings list the same property set: @timestamp (date), action (keyword), duration_ms (integer), error_message (text), event_type (keyword), ip_address (ip), metadata (object), session_id (value redacted by the tool), status (keyword), user_id (keyword).",
+          "evidence_ids": [
+            "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+            "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "app-188-index-x has 523 top-level mapped properties and 655 fields counted with its 132 keyword sub-fields (multi-fields), versus 10 properties each for app-188-index-a, -b and -c.",
+          "evidence_ids": [
+            "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+            "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "In app-188-index-x the 523 top-level properties break down by type as 131 long, 132 text, 130 boolean, 129 float and 1 date.",
+          "evidence_ids": [
+            "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The app-188-index-x mapping consists mainly of generated field-name families — counter_0001 through counter_0519 (long), flag_0002 through flag_0518 (boolean), label_0003 through label_0519 (text with keyword sub-field) and metric_0000 through metric_0516 (float) — alongside @timestamp (date), event_type (text with keyword sub-field) and user_id (text with keyword sub-field).",
+          "evidence_ids": [
+            "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "app-188-index-a, app-188-index-b and app-188-index-c are not affected by field growth: each shows 10 top-level properties and no multi-fields, i.e. no unusually high field count.",
+          "evidence_ids": [
+            "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "The field explosion in app-188-index-x (523 properties / 655 fields from generated counter_/flag_/label_/metric_ names, with only 1 document stored) is the likely source of the reported mapping errors and slow indexing on that index; this is inferred from the mapping shape only and was not verified against an error message or an indexing-latency measurement.",
+          "evidence_ids": [
+            "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+            "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "app-188-index-x uses a different document schema than its siblings: it lacks action, duration_ms, error_message, ip_address, metadata, status and session_id that a/b/c share, and maps event_type as text+keyword instead of keyword; a schema or index-template mismatch is therefore a second candidate cause of mapping errors on this index, unverified.",
+          "evidence_ids": [
+            "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "I did not observe any actual mapping-error message or indexing-latency measurement for app-188-index-x; no Elasticsearch error log or index/search latency signal was queried, so the causal link between the 523-field mapping and the reported symptoms is unverified.",
+        "Index settings were not observed (for example index.mapping.total_fields.limit, dynamic mapping mode, index templates), so I cannot state which limit or template produced the wide mapping or whether writes are currently rejected.",
+        "The mappings view has no time range: it reflects the indices at 2026-11-23T17:41:37Z–17:41:44Z only, not during the earlier part of the authorized window, so when the counter_/flag_/label_/metric_ fields were created is unknown.",
+        "Change history is not an integrated source in this Run, so I could not check what introduced the generated field names into app-188-index-x.",
+        "session_id in the a/b/c mappings had its value redacted by the tool, so its type could not be verified.",
+        "No application logs for the writer of these indices were identified or read, so the producer-side cause (for example a document with per-metric generated keys) is unchecked."
+      ],
+      "next_steps": [
+        "Confirm the reported errors by inspecting Elasticsearch logs for mapper_parsing_exception / illegal_argument_exception messages naming app-188-index-x and its field paths.",
+        "Compare index.mapping.total_fields.limit and any index template applied to app-188-index-* so the writer for index-x can be matched to the a/b/c schema.",
+        "If the generated counter_/flag_/label_/metric_ fields are not needed for search, plan a reindex of app-188-index-x into a mapping that keeps the a/b/c schema and stores the wide payload as a single flattened or disabled field."
+      ],
+      "root_cause": {
+        "kind": "Index",
+        "namespace": null,
+        "name": "app-188-index-x",
+        "evidence_ids": [
+          "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+          "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe"
+        ]
+      }
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T17:42:02.570807+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:41:37.398968+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:41:40.048521+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:41:44.756910+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:42:02.564783+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:42:02.570807+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 99507,
+      "completion_tokens": 4964,
+      "total_tokens": 104471,
+      "prompt_cache_hit_tokens": 87680,
+      "prompt_cache_miss_tokens": 11827
+    },
+    "tool_requests": [
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_mappings",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_mappings",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_mappings",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "operation_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_mappings",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "columns": "index,health,status,docs.count,store.size",
+          "pattern": "app-188-index-*"
+        },
+        "window": {
+          "end": "2026-11-23T17:41:35+00:00",
+          "start": "2026-10-24T17:41:35+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:41:37.428798+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_mappings",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "index": "app-188-index-*"
+        },
+        "window": {
+          "end": "2026-11-23T17:41:35+00:00",
+          "start": "2026-10-24T17:41:35+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:41:37.434705+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_mappings",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "jq": "to_entries | map({index: .key, top_level_properties: (.value.mappings.properties | keys | length)})",
+          "index": "app-188-index-*"
+        },
+        "window": {
+          "end": "2026-11-23T17:41:35+00:00",
+          "start": "2026-10-24T17:41:35+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:41:40.096964+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_mappings",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "jq": ".[] | .mappings.properties | to_entries | group_by(.value.type) | map({type: .[0].value.type, count: length})",
+          "index": "app-188-index-x"
+        },
+        "window": {
+          "end": "2026-11-23T17:41:35+00:00",
+          "start": "2026-10-24T17:41:35+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:41:40.103879+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+        "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_mappings",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "jq": "to_entries | map({index: .key, props: (.value.mappings.properties | keys | length), with_keyword_multifield: ([.value.mappings.properties[] | select(.fields.keyword != null)] | length), total_including_multifields: ((.value.mappings.properties | keys | length) + ([.value.mappings.properties[] | select(.fields.keyword != null)] | length))})",
+          "index": "app-188-index-*"
+        },
+        "window": {
+          "end": "2026-11-23T17:41:35+00:00",
+          "start": "2026-10-24T17:41:35+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:41:44.802967+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+      "observations": [
+        {
+          "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "columns": "index,health,status,docs.count,store.size",
+            "pattern": "app-188-index-*"
+          },
+          "window": {
+            "end": "2026-11-23T17:41:35+00:00",
+            "start": "2026-10-24T17:41:35+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:41:37.428798+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_mappings",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "index": "app-188-index-*"
+          },
+          "window": {
+            "end": "2026-11-23T17:41:35+00:00",
+            "start": "2026-10-24T17:41:35+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:41:37.434705+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_mappings",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "jq": "to_entries | map({index: .key, top_level_properties: (.value.mappings.properties | keys | length)})",
+            "index": "app-188-index-*"
+          },
+          "window": {
+            "end": "2026-11-23T17:41:35+00:00",
+            "start": "2026-10-24T17:41:35+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:41:40.096964+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_mappings",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "jq": ".[] | .mappings.properties | to_entries | group_by(.value.type) | map({type: .[0].value.type, count: length})",
+            "index": "app-188-index-x"
+          },
+          "window": {
+            "end": "2026-11-23T17:41:35+00:00",
+            "start": "2026-10-24T17:41:35+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:41:40.103879+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_mappings",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "jq": "to_entries | map({index: .key, props: (.value.mappings.properties | keys | length), with_keyword_multifield: ([.value.mappings.properties[] | select(.fields.keyword != null)] | length), total_including_multifields: ((.value.mappings.properties | keys | length) + ([.value.mappings.properties[] | select(.fields.keyword != null)] | length))})",
+            "index": "app-188-index-*"
+          },
+          "window": {
+            "end": "2026-11-23T17:41:35+00:00",
+            "start": "2026-10-24T17:41:35+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:41:44.802967+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "claims": {
+            "fact": [
+              {
+                "text": "The pattern app-188-index-* matches exactly four indices, all status open and health green at query time: app-188-index-a (docs.count 0, 227b), app-188-index-b (0, 227b), app-188-index-c (0, 227b) and app-188-index-x (1, 204.4kb).",
+                "evidence": [
+                  {
+                    "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "app-188-index-a, app-188-index-b and app-188-index-c each have exactly 10 top-level mapped properties and 0 keyword multi-fields (total 10 fields each); the three mappings list the same property set: @timestamp (date), action (keyword), duration_ms (integer), error_message (text), event_type (keyword), ip_address (ip), metadata (object), session_id (value redacted by the tool), status (keyword), user_id (keyword).",
+                "evidence": [
+                  {
+                    "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "app-188-index-x has 523 top-level mapped properties and 655 fields counted with its 132 keyword sub-fields (multi-fields), versus 10 properties each for app-188-index-a, -b and -c.",
+                "evidence": [
+                  {
+                    "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "In app-188-index-x the 523 top-level properties break down by type as 131 long, 132 text, 130 boolean, 129 float and 1 date.",
+                "evidence": [
+                  {
+                    "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The app-188-index-x mapping consists mainly of generated field-name families — counter_0001 through counter_0519 (long), flag_0002 through flag_0518 (boolean), label_0003 through label_0519 (text with keyword sub-field) and metric_0000 through metric_0516 (float) — alongside @timestamp (date), event_type (text with keyword sub-field) and user_id (text with keyword sub-field).",
+                "evidence": [
+                  {
+                    "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "The field explosion in app-188-index-x (523 properties / 655 fields from generated counter_/flag_/label_/metric_ names, with only 1 document stored) is the likely source of the reported mapping errors and slow indexing on that index; this is inferred from the mapping shape only and was not verified against an error message or an indexing-latency measurement.",
+                "evidence": [
+                  {
+                    "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "app-188-index-x uses a different document schema than its siblings: it lacks action, duration_ms, error_message, ip_address, metadata, status and session_id that a/b/c share, and maps event_type as text+keyword instead of keyword; a schema or index-template mismatch is therefore a second candidate cause of mapping errors on this index, unverified.",
+                "evidence": [
+                  {
+                    "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [],
+            "counter_evidence": [
+              {
+                "text": "app-188-index-a, app-188-index-b and app-188-index-c are not affected by field growth: each shows 10 top-level properties and no multi-fields, i.e. no unusually high field count.",
+                "evidence": [
+                  {
+                    "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "elasticsearch",
+              "ok": 5,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+        "resolvable": true,
+        "tool": "elasticsearch_mappings",
+        "status": "ok",
+        "stored": {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "subject_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_mappings",
+            "index": "app-188-index-*",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "jq": "to_entries | map({index: .key, top_level_properties: (.value.mappings.properties | keys | length)})",
+              "index": "app-188-index-*"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:41:35+00:00",
+              "start": "2026-10-24T17:41:35+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                {
+                  "index": "app-188-index-c",
+                  "top_level_properties": 10
+                },
+                {
+                  "index": "app-188-index-b",
+                  "top_level_properties": 10
+                },
+                {
+                  "index": "app-188-index-a",
+                  "top_level_properties": 10
+                },
+                {
+                  "index": "app-188-index-x",
+                  "top_level_properties": 523
+                }
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "jq_applied": true,
+            "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+            "observed_at": "2026-11-23T17:41:40.096964+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_matched": 4,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:41:40.057075+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+        "resolvable": true,
+        "tool": "elasticsearch_mappings",
+        "status": "ok",
+        "stored": {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "subject_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_mappings",
+            "index": "app-188-index-x",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "jq": ".[] | .mappings.properties | to_entries | group_by(.value.type) | map({type: .[0].value.type, count: length})",
+              "index": "app-188-index-x"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:41:35+00:00",
+              "start": "2026-10-24T17:41:35+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                {
+                  "type": "boolean",
+                  "count": 130
+                },
+                {
+                  "type": "date",
+                  "count": 1
+                },
+                {
+                  "type": "float",
+                  "count": 129
+                },
+                {
+                  "type": "long",
+                  "count": 131
+                },
+                {
+                  "type": "text",
+                  "count": 132
+                }
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "jq_applied": true,
+            "evidence_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+            "observed_at": "2026-11-23T17:41:40.103879+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_matched": 1,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:41:40.063456+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+        "resolvable": true,
+        "tool": "elasticsearch_list_indices",
+        "status": "ok",
+        "stored": {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "subject_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_list_indices",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "columns": "index,health,status,docs.count,store.size",
+              "pattern": "app-188-index-*"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:41:35+00:00",
+              "start": "2026-10-24T17:41:35+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "index",
+              "health",
+              "status",
+              "docs.count",
+              "store.size"
+            ],
+            "content": [
+              {
+                "index": "app-188-index-a",
+                "health": "green",
+                "status": "open",
+                "docs.count": "0",
+                "store.size": "227b"
+              },
+              {
+                "index": "app-188-index-b",
+                "health": "green",
+                "status": "open",
+                "docs.count": "0",
+                "store.size": "227b"
+              },
+              {
+                "index": "app-188-index-c",
+                "health": "green",
+                "status": "open",
+                "docs.count": "0",
+                "store.size": "227b"
+              },
+              {
+                "index": "app-188-index-x",
+                "health": "green",
+                "status": "open",
+                "docs.count": "1",
+                "store.size": "204.4kb"
+              }
+            ],
+            "pattern": "app-188-index-*",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+            "observed_at": "2026-11-23T17:41:37.428798+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0",
+            "result_count": 4,
+            "tool_version": "v1",
+            "indices_shown": 4,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:41:37.407867+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 4
+          }
+        }
+      },
+      {
+        "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+        "resolvable": true,
+        "tool": "elasticsearch_mappings",
+        "status": "ok",
+        "stored": {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "subject_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_mappings",
+            "index": "app-188-index-*",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "index": "app-188-index-*"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:41:35+00:00",
+              "start": "2026-10-24T17:41:35+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "index": "app-188-index-a",
+                "mappings": {
+                  "properties": {
+                    "action": {
+                      "type": "keyword"
+                    },
+                    "status": {
+                      "type": "keyword"
+                    },
+                    "user_id": {
+                      "type": "keyword"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "@timestamp": {
+                      "type": "date"
+                    },
+                    "event_type": {
+                      "type": "keyword"
+                    },
+                    "ip_address": {
+                      "type": "ip"
+                    },
+                    "session_id": "[REDACTED_CREDENTIAL]",
+                    "duration_ms": {
+                      "type": "integer"
+                    },
+                    "error_message": {
+                      "type": "text"
+                    }
+                  }
+                }
+              },
+              {
+                "index": "app-188-index-b",
+                "mappings": {
+                  "properties": {
+                    "action": {
+                      "type": "keyword"
+                    },
+                    "status": {
+                      "type": "keyword"
+                    },
+                    "user_id": {
+                      "type": "keyword"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "@timestamp": {
+                      "type": "date"
+                    },
+                    "event_type": {
+                      "type": "keyword"
+                    },
+                    "ip_address": {
+                      "type": "ip"
+                    },
+                    "session_id": "[REDACTED_CREDENTIAL]",
+                    "duration_ms": {
+                      "type": "integer"
+                    },
+                    "error_message": {
+                      "type": "text"
+                    }
+                  }
+                }
+              },
+              {
+                "index": "app-188-index-c",
+                "mappings": {
+                  "properties": {
+                    "action": {
+                      "type": "keyword"
+                    },
+                    "status": {
+                      "type": "keyword"
+                    },
+                    "user_id": {
+                      "type": "keyword"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "@timestamp": {
+                      "type": "date"
+                    },
+                    "event_type": {
+                      "type": "keyword"
+                    },
+                    "ip_address": {
+                      "type": "ip"
+                    },
+                    "session_id": "[REDACTED_CREDENTIAL]",
+                    "duration_ms": {
+                      "type": "integer"
+                    },
+                    "error_message": {
+                      "type": "text"
+                    }
+                  }
+                }
+              },
+              {
+                "index": "app-188-index-x",
+                "mappings": {
+                  "properties": {
+                    "user_id": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "flag_0002": {
+                      "type": "boolean"
+                    },
+                    "flag_0006": {
+                      "type": "boolean"
+                    },
+                    "flag_0010": {
+                      "type": "boolean"
+                    },
+                    "flag_0014": {
+                      "type": "boolean"
+                    },
+                    "flag_0018": {
+                      "type": "boolean"
+                    },
+                    "flag_0022": {
+                      "type": "boolean"
+                    },
+                    "flag_0026": {
+                      "type": "boolean"
+                    },
+                    "flag_0030": {
+                      "type": "boolean"
+                    },
+                    "flag_0034": {
+                      "type": "boolean"
+                    },
+                    "flag_0038": {
+                      "type": "boolean"
+                    },
+                    "flag_0042": {
+                      "type": "boolean"
+                    },
+                    "flag_0046": {
+                      "type": "boolean"
+                    },
+                    "flag_0050": {
+                      "type": "boolean"
+                    },
+                    "flag_0054": {
+                      "type": "boolean"
+                    },
+                    "flag_0058": {
+                      "type": "boolean"
+                    },
+                    "flag_0062": {
+                      "type": "boolean"
+                    },
+                    "flag_0066": {
+                      "type": "boolean"
+                    },
+                    "flag_0070": {
+                      "type": "boolean"
+                    },
+                    "flag_0074": {
+                      "type": "boolean"
+                    },
+                    "flag_0078": {
+                      "type": "boolean"
+                    },
+                    "flag_0082": {
+                      "type": "boolean"
+                    },
+                    "flag_0086": {
+                      "type": "boolean"
+                    },
+                    "flag_0090": {
+                      "type": "boolean"
+                    },
+                    "flag_0094": {
+                      "type": "boolean"
+                    },
+                    "flag_0098": {
+                      "type": "boolean"
+                    },
+                    "flag_0102": {
+                      "type": "boolean"
+                    },
+                    "flag_0106": {
+                      "type": "boolean"
+                    },
+                    "flag_0110": {
+                      "type": "boolean"
+                    },
+                    "flag_0114": {
+                      "type": "boolean"
+                    },
+                    "flag_0118": {
+                      "type": "boolean"
+                    },
+                    "flag_0122": {
+                      "type": "boolean"
+                    },
+                    "flag_0126": {
+                      "type": "boolean"
+                    },
+                    "flag_0130": {
+                      "type": "boolean"
+                    },
+                    "flag_0134": {
+                      "type": "boolean"
+                    },
+                    "flag_0138": {
+                      "type": "boolean"
+                    },
+                    "flag_0142": {
+                      "type": "boolean"
+                    },
+                    "flag_0146": {
+                      "type": "boolean"
+                    },
+                    "flag_0150": {
+                      "type": "boolean"
+                    },
+                    "flag_0154": {
+                      "type": "boolean"
+                    },
+                    "flag_0158": {
+                      "type": "boolean"
+                    },
+                    "flag_0162": {
+                      "type": "boolean"
+                    },
+                    "flag_0166": {
+                      "type": "boolean"
+                    },
+                    "flag_0170": {
+                      "type": "boolean"
+                    },
+                    "flag_0174": {
+                      "type": "boolean"
+                    },
+                    "flag_0178": {
+                      "type": "boolean"
+                    },
+                    "flag_0182": {
+                      "type": "boolean"
+                    },
+                    "flag_0186": {
+                      "type": "boolean"
+                    },
+                    "flag_0190": {
+                      "type": "boolean"
+                    },
+                    "flag_0194": {
+                      "type": "boolean"
+                    },
+                    "flag_0198": {
+                      "type": "boolean"
+                    },
+                    "flag_0202": {
+                      "type": "boolean"
+                    },
+                    "flag_0206": {
+                      "type": "boolean"
+                    },
+                    "flag_0210": {
+                      "type": "boolean"
+                    },
+                    "flag_0214": {
+                      "type": "boolean"
+                    },
+                    "flag_0218": {
+                      "type": "boolean"
+                    },
+                    "flag_0222": {
+                      "type": "boolean"
+                    },
+                    "flag_0226": {
+                      "type": "boolean"
+                    },
+                    "flag_0230": {
+                      "type": "boolean"
+                    },
+                    "flag_0234": {
+                      "type": "boolean"
+                    },
+                    "flag_0238": {
+                      "type": "boolean"
+                    },
+                    "flag_0242": {
+                      "type": "boolean"
+                    },
+                    "flag_0246": {
+                      "type": "boolean"
+                    },
+                    "flag_0250": {
+                      "type": "boolean"
+                    },
+                    "flag_0254": {
+                      "type": "boolean"
+                    },
+                    "flag_0258": {
+                      "type": "boolean"
+                    },
+                    "flag_0262": {
+                      "type": "boolean"
+                    },
+                    "flag_0266": {
+                      "type": "boolean"
+                    },
+                    "flag_0270": {
+                      "type": "boolean"
+                    },
+                    "flag_0274": {
+                      "type": "boolean"
+                    },
+                    "flag_0278": {
+                      "type": "boolean"
+                    },
+                    "flag_0282": {
+                      "type": "boolean"
+                    },
+                    "flag_0286": {
+                      "type": "boolean"
+                    },
+                    "flag_0290": {
+                      "type": "boolean"
+                    },
+                    "flag_0294": {
+                      "type": "boolean"
+                    },
+                    "flag_0298": {
+                      "type": "boolean"
+                    },
+                    "flag_0302": {
+                      "type": "boolean"
+                    },
+                    "flag_0306": {
+                      "type": "boolean"
+                    },
+                    "flag_0310": {
+                      "type": "boolean"
+                    },
+                    "flag_0314": {
+                      "type": "boolean"
+                    },
+                    "flag_0318": {
+                      "type": "boolean"
+                    },
+                    "flag_0322": {
+                      "type": "boolean"
+                    },
+                    "flag_0326": {
+                      "type": "boolean"
+                    },
+                    "flag_0330": {
+                      "type": "boolean"
+                    },
+                    "flag_0334": {
+                      "type": "boolean"
+                    },
+                    "flag_0338": {
+                      "type": "boolean"
+                    },
+                    "flag_0342": {
+                      "type": "boolean"
+                    },
+                    "flag_0346": {
+                      "type": "boolean"
+                    },
+                    "flag_0350": {
+                      "type": "boolean"
+                    },
+                    "flag_0354": {
+                      "type": "boolean"
+                    },
+                    "flag_0358": {
+                      "type": "boolean"
+                    },
+                    "flag_0362": {
+                      "type": "boolean"
+                    },
+                    "flag_0366": {
+                      "type": "boolean"
+                    },
+                    "flag_0370": {
+                      "type": "boolean"
+                    },
+                    "flag_0374": {
+                      "type": "boolean"
+                    },
+                    "flag_0378": {
+                      "type": "boolean"
+                    },
+                    "flag_0382": {
+                      "type": "boolean"
+                    },
+                    "flag_0386": {
+                      "type": "boolean"
+                    },
+                    "flag_0390": {
+                      "type": "boolean"
+                    },
+                    "flag_0394": {
+                      "type": "boolean"
+                    },
+                    "flag_0398": {
+                      "type": "boolean"
+                    },
+                    "flag_0402": {
+                      "type": "boolean"
+                    },
+                    "flag_0406": {
+                      "type": "boolean"
+                    },
+                    "flag_0410": {
+                      "type": "boolean"
+                    },
+                    "flag_0414": {
+                      "type": "boolean"
+                    },
+                    "flag_0418": {
+                      "type": "boolean"
+                    },
+                    "flag_0422": {
+                      "type": "boolean"
+                    },
+                    "flag_0426": {
+                      "type": "boolean"
+                    },
+                    "flag_0430": {
+                      "type": "boolean"
+                    },
+                    "flag_0434": {
+                      "type": "boolean"
+                    },
+                    "flag_0438": {
+                      "type": "boolean"
+                    },
+                    "flag_0442": {
+                      "type": "boolean"
+                    },
+                    "flag_0446": {
+                      "type": "boolean"
+                    },
+                    "flag_0450": {
+                      "type": "boolean"
+                    },
+                    "flag_0454": {
+                      "type": "boolean"
+                    },
+                    "flag_0458": {
+                      "type": "boolean"
+                    },
+                    "flag_0462": {
+                      "type": "boolean"
+                    },
+                    "flag_0466": {
+                      "type": "boolean"
+                    },
+                    "flag_0470": {
+                      "type": "boolean"
+                    },
+                    "flag_0474": {
+                      "type": "boolean"
+                    },
+                    "flag_0478": {
+                      "type": "boolean"
+                    },
+                    "flag_0482": {
+                      "type": "boolean"
+                    },
+                    "flag_0486": {
+                      "type": "boolean"
+                    },
+                    "flag_0490": {
+                      "type": "boolean"
+                    },
+                    "flag_0494": {
+                      "type": "boolean"
+                    },
+                    "flag_0498": {
+                      "type": "boolean"
+                    },
+                    "flag_0502": {
+                      "type": "boolean"
+                    },
+                    "flag_0506": {
+                      "type": "boolean"
+                    },
+                    "flag_0510": {
+                      "type": "boolean"
+                    },
+                    "flag_0514": {
+                      "type": "boolean"
+                    },
+                    "flag_0518": {
+                      "type": "boolean"
+                    },
+                    "@timestamp": {
+                      "type": "date"
+                    },
+                    "event_type": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0003": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0007": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0011": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0015": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0019": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0023": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0027": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0031": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0035": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0039": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0043": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0047": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0051": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0055": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0059": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0063": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0067": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0071": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0075": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0079": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0083": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0087": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0091": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0095": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0099": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0103": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0107": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0111": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0115": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0119": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0123": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0127": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0131": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0135": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0139": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0143": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0147": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0151": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0155": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0159": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0163": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0167": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0171": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0175": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0179": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0183": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0187": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0191": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0195": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0199": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0203": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0207": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0211": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0215": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0219": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0223": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0227": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0231": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0235": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0239": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0243": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0247": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0251": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0255": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0259": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0263": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0267": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0271": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0275": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0279": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0283": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0287": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0291": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0295": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0299": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0303": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0307": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0311": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0315": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0319": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0323": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0327": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0331": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0335": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0339": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0343": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0347": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0351": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0355": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0359": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0363": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0367": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0371": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0375": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0379": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0383": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0387": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0391": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0395": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0399": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0403": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0407": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0411": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0415": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0419": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0423": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0427": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0431": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0435": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0439": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0443": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0447": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0451": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0455": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0459": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0463": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0467": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0471": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0475": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0479": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0483": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0487": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0491": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0495": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0499": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0503": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0507": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0511": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0515": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "label_0519": {
+                      "type": "text",
+                      "fields": {
+                        "keyword": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "metric_0000": {
+                      "type": "long"
+                    },
+                    "metric_0004": {
+                      "type": "float"
+                    },
+                    "metric_0008": {
+                      "type": "float"
+                    },
+                    "metric_0012": {
+                      "type": "float"
+                    },
+                    "metric_0016": {
+                      "type": "float"
+                    },
+                    "metric_0020": {
+                      "type": "float"
+                    },
+                    "metric_0024": {
+                      "type": "float"
+                    },
+                    "metric_0028": {
+                      "type": "float"
+                    },
+                    "metric_0032": {
+                      "type": "float"
+                    },
+                    "metric_0036": {
+                      "type": "float"
+                    },
+                    "metric_0040": {
+                      "type": "float"
+                    },
+                    "metric_0044": {
+                      "type": "float"
+                    },
+                    "metric_0048": {
+                      "type": "float"
+                    },
+                    "metric_0052": {
+                      "type": "float"
+                    },
+                    "metric_0056": {
+                      "type": "float"
+                    },
+                    "metric_0060": {
+                      "type": "float"
+                    },
+                    "metric_0064": {
+                      "type": "float"
+                    },
+                    "metric_0068": {
+                      "type": "float"
+                    },
+                    "metric_0072": {
+                      "type": "float"
+                    },
+                    "metric_0076": {
+                      "type": "float"
+                    },
+                    "metric_0080": {
+                      "type": "float"
+                    },
+                    "metric_0084": {
+                      "type": "float"
+                    },
+                    "metric_0088": {
+                      "type": "float"
+                    },
+                    "metric_0092": {
+                      "type": "float"
+                    },
+                    "metric_0096": {
+                      "type": "float"
+                    },
+                    "metric_0100": {
+                      "type": "float"
+                    },
+                    "metric_0104": {
+                      "type": "float"
+                    },
+                    "metric_0108": {
+                      "type": "float"
+                    },
+                    "metric_0112": {
+                      "type": "float"
+                    },
+                    "metric_0116": {
+                      "type": "float"
+                    },
+                    "metric_0120": {
+                      "type": "float"
+                    },
+                    "metric_0124": {
+                      "type": "float"
+                    },
+                    "metric_0128": {
+                      "type": "float"
+                    },
+                    "metric_0132": {
+                      "type": "float"
+                    },
+                    "metric_0136": {
+                      "type": "float"
+                    },
+                    "metric_0140": {
+                      "type": "float"
+                    },
+                    "metric_0144": {
+                      "type": "float"
+                    },
+                    "metric_0148": {
+                      "type": "float"
+                    },
+                    "metric_0152": {
+                      "type": "float"
+                    },
+                    "metric_0156": {
+                      "type": "float"
+                    },
+                    "metric_0160": {
+                      "type": "float"
+                    },
+                    "metric_0164": {
+                      "type": "float"
+                    },
+                    "metric_0168": {
+                      "type": "float"
+                    },
+                    "metric_0172": {
+                      "type": "float"
+                    },
+                    "metric_0176": {
+                      "type": "float"
+                    },
+                    "metric_0180": {
+                      "type": "float"
+                    },
+                    "metric_0184": {
+                      "type": "float"
+                    },
+                    "metric_0188": {
+                      "type": "float"
+                    },
+                    "metric_0192": {
+                      "type": "float"
+                    },
+                    "metric_0196": {
+                      "type": "float"
+                    },
+                    "metric_0200": {
+                      "type": "float"
+                    },
+                    "metric_0204": {
+                      "type": "float"
+                    },
+                    "metric_0208": {
+                      "type": "float"
+                    },
+                    "metric_0212": {
+                      "type": "float"
+                    },
+                    "metric_0216": {
+                      "type": "float"
+                    },
+                    "metric_0220": {
+                      "type": "float"
+                    },
+                    "metric_0224": {
+                      "type": "float"
+                    },
+                    "metric_0228": {
+                      "type": "float"
+                    },
+                    "metric_0232": {
+                      "type": "float"
+                    },
+                    "metric_0236": {
+                      "type": "float"
+                    },
+                    "metric_0240": {
+                      "type": "float"
+                    },
+                    "metric_0244": {
+                      "type": "float"
+                    },
+                    "metric_0248": {
+                      "type": "float"
+                    },
+                    "metric_0252": {
+                      "type": "float"
+                    },
+                    "metric_0256": {
+                      "type": "float"
+                    },
+                    "metric_0260": {
+                      "type": "float"
+                    },
+                    "metric_0264": {
+                      "type": "float"
+                    },
+                    "metric_0268": {
+                      "type": "float"
+                    },
+                    "metric_0272": {
+                      "type": "float"
+                    },
+                    "metric_0276": {
+                      "type": "float"
+                    },
+                    "metric_0280": {
+                      "type": "float"
+                    },
+                    "metric_0284": {
+                      "type": "float"
+                    },
+                    "metric_0288": {
+                      "type": "float"
+                    },
+                    "metric_0292": {
+                      "type": "float"
+                    },
+                    "metric_0296": {
+                      "type": "float"
+                    },
+                    "metric_0300": {
+                      "type": "float"
+                    },
+                    "metric_0304": {
+                      "type": "float"
+                    },
+                    "metric_0308": {
+                      "type": "float"
+                    },
+                    "metric_0312": {
+                      "type": "float"
+                    },
+                    "metric_0316": {
+                      "type": "float"
+                    },
+                    "metric_0320": {
+                      "type": "float"
+                    },
+                    "metric_0324": {
+                      "type": "float"
+                    },
+                    "metric_0328": {
+                      "type": "float"
+                    },
+                    "metric_0332": {
+                      "type": "float"
+                    },
+                    "metric_0336": {
+                      "type": "float"
+                    },
+                    "metric_0340": {
+                      "type": "float"
+                    },
+                    "metric_0344": {
+                      "type": "float"
+                    },
+                    "metric_0348": {
+                      "type": "float"
+                    },
+                    "metric_0352": {
+                      "type": "float"
+                    },
+                    "metric_0356": {
+                      "type": "float"
+                    },
+                    "metric_0360": {
+                      "type": "float"
+                    },
+                    "metric_0364": {
+                      "type": "float"
+                    },
+                    "metric_0368": {
+                      "type": "float"
+                    },
+                    "metric_0372": {
+                      "type": "float"
+                    },
+                    "metric_0376": {
+                      "type": "float"
+                    },
+                    "metric_0380": {
+                      "type": "float"
+                    },
+                    "metric_0384": {
+                      "type": "float"
+                    },
+                    "metric_0388": {
+                      "type": "float"
+                    },
+                    "metric_0392": {
+                      "type": "float"
+                    },
+                    "metric_0396": {
+                      "type": "float"
+                    },
+                    "metric_0400": {
+                      "type": "float"
+                    },
+                    "metric_0404": {
+                      "type": "float"
+                    },
+                    "metric_0408": {
+                      "type": "float"
+                    },
+                    "metric_0412": {
+                      "type": "float"
+                    },
+                    "metric_0416": {
+                      "type": "float"
+                    },
+                    "metric_0420": {
+                      "type": "float"
+                    },
+                    "metric_0424": {
+                      "type": "float"
+                    },
+                    "metric_0428": {
+                      "type": "float"
+                    },
+                    "metric_0432": {
+                      "type": "float"
+                    },
+                    "metric_0436": {
+                      "type": "float"
+                    },
+                    "metric_0440": {
+                      "type": "float"
+                    },
+                    "metric_0444": {
+                      "type": "float"
+                    },
+                    "metric_0448": {
+                      "type": "float"
+                    },
+                    "metric_0452": {
+                      "type": "float"
+                    },
+                    "metric_0456": {
+                      "type": "float"
+                    },
+                    "metric_0460": {
+                      "type": "float"
+                    },
+                    "metric_0464": {
+                      "type": "float"
+                    },
+                    "metric_0468": {
+                      "type": "float"
+                    },
+                    "metric_0472": {
+                      "type": "float"
+                    },
+                    "metric_0476": {
+                      "type": "float"
+                    },
+                    "metric_0480": {
+                      "type": "float"
+                    },
+                    "metric_0484": {
+                      "type": "float"
+                    },
+                    "metric_0488": {
+                      "type": "float"
+                    },
+                    "metric_0492": {
+                      "type": "float"
+                    },
+                    "metric_0496": {
+                      "type": "float"
+                    },
+                    "metric_0500": {
+                      "type": "float"
+                    },
+                    "metric_0504": {
+                      "type": "float"
+                    },
+                    "metric_0508": {
+                      "type": "float"
+                    },
+                    "metric_0512": {
+                      "type": "float"
+                    },
+                    "metric_0516": {
+                      "type": "float"
+                    },
+                    "counter_0001": {
+                      "type": "long"
+                    },
+                    "counter_0005": {
+                      "type": "long"
+                    },
+                    "counter_0009": {
+                      "type": "long"
+                    },
+                    "counter_0013": {
+                      "type": "long"
+                    },
+                    "counter_0017": {
+                      "type": "long"
+                    },
+                    "counter_0021": {
+                      "type": "long"
+                    },
+                    "counter_0025": {
+                      "type": "long"
+                    },
+                    "counter_0029": {
+                      "type": "long"
+                    },
+                    "counter_0033": {
+                      "type": "long"
+                    },
+                    "counter_0037": {
+                      "type": "long"
+                    },
+                    "counter_0041": {
+                      "type": "long"
+                    },
+                    "counter_0045": {
+                      "type": "long"
+                    },
+                    "counter_0049": {
+                      "type": "long"
+                    },
+                    "counter_0053": {
+                      "type": "long"
+                    },
+                    "counter_0057": {
+                      "type": "long"
+                    },
+                    "counter_0061": {
+                      "type": "long"
+                    },
+                    "counter_0065": {
+                      "type": "long"
+                    },
+                    "counter_0069": {
+                      "type": "long"
+                    },
+                    "counter_0073": {
+                      "type": "long"
+                    },
+                    "counter_0077": {
+                      "type": "long"
+                    },
+                    "counter_0081": {
+                      "type": "long"
+                    },
+                    "counter_0085": {
+                      "type": "long"
+                    },
+                    "counter_0089": {
+                      "type": "long"
+                    },
+                    "counter_0093": {
+                      "type": "long"
+                    },
+                    "counter_0097": {
+                      "type": "long"
+                    },
+                    "counter_0101": {
+                      "type": "long"
+                    },
+                    "counter_0105": {
+                      "type": "long"
+                    },
+                    "counter_0109": {
+                      "type": "long"
+                    },
+                    "counter_0113": {
+                      "type": "long"
+                    },
+                    "counter_0117": {
+                      "type": "long"
+                    },
+                    "counter_0121": {
+                      "type": "long"
+                    },
+                    "counter_0125": {
+                      "type": "long"
+                    },
+                    "counter_0129": {
+                      "type": "long"
+                    },
+                    "counter_0133": {
+                      "type": "long"
+                    },
+                    "counter_0137": {
+                      "type": "long"
+                    },
+                    "counter_0141": {
+                      "type": "long"
+                    },
+                    "counter_0145": {
+                      "type": "long"
+                    },
+                    "counter_0149": {
+                      "type": "long"
+                    },
+                    "counter_0153": {
+                      "type": "long"
+                    },
+                    "counter_0157": {
+                      "type": "long"
+                    },
+                    "counter_0161": {
+                      "type": "long"
+                    },
+                    "counter_0165": {
+                      "type": "long"
+                    },
+                    "counter_0169": {
+                      "type": "long"
+                    },
+                    "counter_0173": {
+                      "type": "long"
+                    },
+                    "counter_0177": {
+                      "type": "long"
+                    },
+                    "counter_0181": {
+                      "type": "long"
+                    },
+                    "counter_0185": {
+                      "type": "long"
+                    },
+                    "counter_0189": {
+                      "type": "long"
+                    },
+                    "counter_0193": {
+                      "type": "long"
+                    },
+                    "counter_0197": {
+                      "type": "long"
+                    },
+                    "counter_0201": {
+                      "type": "long"
+                    },
+                    "counter_0205": {
+                      "type": "long"
+                    },
+                    "counter_0209": {
+                      "type": "long"
+                    },
+                    "counter_0213": {
+                      "type": "long"
+                    },
+                    "counter_0217": {
+                      "type": "long"
+                    },
+                    "counter_0221": {
+                      "type": "long"
+                    },
+                    "counter_0225": {
+                      "type": "long"
+                    },
+                    "counter_0229": {
+                      "type": "long"
+                    },
+                    "counter_0233": {
+                      "type": "long"
+                    },
+                    "counter_0237": {
+                      "type": "long"
+                    },
+                    "counter_0241": {
+                      "type": "long"
+                    },
+                    "counter_0245": {
+                      "type": "long"
+                    },
+                    "counter_0249": {
+                      "type": "long"
+                    },
+                    "counter_0253": {
+                      "type": "long"
+                    },
+                    "counter_0257": {
+                      "type": "long"
+                    },
+                    "counter_0261": {
+                      "type": "long"
+                    },
+                    "counter_0265": {
+                      "type": "long"
+                    },
+                    "counter_0269": {
+                      "type": "long"
+                    },
+                    "counter_0273": {
+                      "type": "long"
+                    },
+                    "counter_0277": {
+                      "type": "long"
+                    },
+                    "counter_0281": {
+                      "type": "long"
+                    },
+                    "counter_0285": {
+                      "type": "long"
+                    },
+                    "counter_0289": {
+                      "type": "long"
+                    },
+                    "counter_0293": {
+                      "type": "long"
+                    },
+                    "counter_0297": {
+                      "type": "long"
+                    },
+                    "counter_0301": {
+                      "type": "long"
+                    },
+                    "counter_0305": {
+                      "type": "long"
+                    },
+                    "counter_0309": {
+                      "type": "long"
+                    },
+                    "counter_0313": {
+                      "type": "long"
+                    },
+                    "counter_0317": {
+                      "type": "long"
+                    },
+                    "counter_0321": {
+                      "type": "long"
+                    },
+                    "counter_0325": {
+                      "type": "long"
+                    },
+                    "counter_0329": {
+                      "type": "long"
+                    },
+                    "counter_0333": {
+                      "type": "long"
+                    },
+                    "counter_0337": {
+                      "type": "long"
+                    },
+                    "counter_0341": {
+                      "type": "long"
+                    },
+                    "counter_0345": {
+                      "type": "long"
+                    },
+                    "counter_0349": {
+                      "type": "long"
+                    },
+                    "counter_0353": {
+                      "type": "long"
+                    },
+                    "counter_0357": {
+                      "type": "long"
+                    },
+                    "counter_0361": {
+                      "type": "long"
+                    },
+                    "counter_0365": {
+                      "type": "long"
+                    },
+                    "counter_0369": {
+                      "type": "long"
+                    },
+                    "counter_0373": {
+                      "type": "long"
+                    },
+                    "counter_0377": {
+                      "type": "long"
+                    },
+                    "counter_0381": {
+                      "type": "long"
+                    },
+                    "counter_0385": {
+                      "type": "long"
+                    },
+                    "counter_0389": {
+                      "type": "long"
+                    },
+                    "counter_0393": {
+                      "type": "long"
+                    },
+                    "counter_0397": {
+                      "type": "long"
+                    },
+                    "counter_0401": {
+                      "type": "long"
+                    },
+                    "counter_0405": {
+                      "type": "long"
+                    },
+                    "counter_0409": {
+                      "type": "long"
+                    },
+                    "counter_0413": {
+                      "type": "long"
+                    },
+                    "counter_0417": {
+                      "type": "long"
+                    },
+                    "counter_0421": {
+                      "type": "long"
+                    },
+                    "counter_0425": {
+                      "type": "long"
+                    },
+                    "counter_0429": {
+                      "type": "long"
+                    },
+                    "counter_0433": {
+                      "type": "long"
+                    },
+                    "counter_0437": {
+                      "type": "long"
+                    },
+                    "counter_0441": {
+                      "type": "long"
+                    },
+                    "counter_0445": {
+                      "type": "long"
+                    },
+                    "counter_0449": {
+                      "type": "long"
+                    },
+                    "counter_0453": {
+                      "type": "long"
+                    },
+                    "counter_0457": {
+                      "type": "long"
+                    },
+                    "counter_0461": {
+                      "type": "long"
+                    },
+                    "counter_0465": {
+                      "type": "long"
+                    },
+                    "counter_0469": {
+                      "type": "long"
+                    },
+                    "counter_0473": {
+                      "type": "long"
+                    },
+                    "counter_0477": {
+                      "type": "long"
+                    },
+                    "counter_0481": {
+                      "type": "long"
+                    },
+                    "counter_0485": {
+                      "type": "long"
+                    },
+                    "counter_0489": {
+                      "type": "long"
+                    },
+                    "counter_0493": {
+                      "type": "long"
+                    },
+                    "counter_0497": {
+                      "type": "long"
+                    },
+                    "counter_0501": {
+                      "type": "long"
+                    },
+                    "counter_0505": {
+                      "type": "long"
+                    },
+                    "counter_0509": {
+                      "type": "long"
+                    },
+                    "counter_0513": {
+                      "type": "long"
+                    },
+                    "counter_0517": {
+                      "type": "long"
+                    }
+                  }
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+            "observed_at": "2026-11-23T17:41:37.434705+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1",
+            "result_count": 4,
+            "tool_version": "v1",
+            "indices_shown": 4,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "indices_matched": 4,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:41:37.417092+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 4
+          }
+        }
+      },
+      {
+        "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+        "resolvable": true,
+        "tool": "elasticsearch_mappings",
+        "status": "ok",
+        "stored": {
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "subject_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_mappings",
+            "index": "app-188-index-*",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "jq": "to_entries | map({index: .key, props: (.value.mappings.properties | keys | length), with_keyword_multifield: ([.value.mappings.properties[] | select(.fields.keyword != null)] | length), total_including_multifields: ((.value.mappings.properties | keys | length) + ([.value.mappings.properties[] | select(.fields.keyword != null)] | length))})",
+              "index": "app-188-index-*"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:41:35+00:00",
+              "start": "2026-10-24T17:41:35+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                {
+                  "index": "app-188-index-c",
+                  "props": 10,
+                  "with_keyword_multifield": 0,
+                  "total_including_multifields": 10
+                },
+                {
+                  "index": "app-188-index-b",
+                  "props": 10,
+                  "with_keyword_multifield": 0,
+                  "total_including_multifields": 10
+                },
+                {
+                  "index": "app-188-index-a",
+                  "props": 10,
+                  "with_keyword_multifield": 0,
+                  "total_including_multifields": 10
+                },
+                {
+                  "index": "app-188-index-x",
+                  "props": 523,
+                  "with_keyword_multifield": 132,
+                  "total_including_multifields": 655
+                }
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "jq_applied": true,
+            "evidence_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+            "observed_at": "2026-11-23T17:41:44.802967+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_matched": 4,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:41:44.766313+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T17:41:35.737197+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:35.737197+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:1",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:36.014909+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.398968+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:6773e7a1-7d92-4b43-8ef4-252acad2306a",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.402861+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.503460+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "99b3c358-e87e-42b5-af0e-42d529735a40",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.503460+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.503460+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.516519+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "10588ea5-9d74-426f-b155-35df794340fe",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "operation_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_mappings",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.516519+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:37.516519+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.048521+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:50f59037-6e94-4ea4-82e5-9903e4b60899",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.051455+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.122903+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_mappings",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.122903+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.122903+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.129589+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "operation_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_mappings",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.129589+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:40.129589+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:44.756910+00:00",
+          "sequence": 19,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:7a8aade2-c5e7-498b-a3d6-e4d261c57a67",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:44.761102+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:44.825230+00:00",
+          "sequence": 21,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "3b6442d5-70df-43ea-8108-a63db084b55f",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "operation_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_mappings",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:44.825230+00:00",
+          "sequence": 22,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:41:44.825230+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:42:02.564783+00:00",
+          "sequence": 24,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:d3da7a7a-da89-4ab6-80f1-372fafa40f5e",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:42:02.567708+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:42:02.579722+00:00",
+          "sequence": 26,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:42:02.579722+00:00",
+          "sequence": 27,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "11f0285d-7357-5b29-86d6-79ac86c28893:12",
+          "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 12
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 5,
+        "evidence": 5,
+        "state_change": 14,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "6773e7a1-7d92-4b43-8ef4-252acad2306a-t0:99b3c358-e87e-42b5-af0e-42d529735a40",
+        "6773e7a1-7d92-4b43-8ef4-252acad2306a-t1:10588ea5-9d74-426f-b155-35df794340fe",
+        "50f59037-6e94-4ea4-82e5-9903e4b60899-t0:e3ea9f7b-3b57-4bd3-bf3c-121821bc9614",
+        "50f59037-6e94-4ea4-82e5-9903e4b60899-t1:692aa524-3db8-42d5-9c8c-ecc35ffe1869",
+        "7a8aade2-c5e7-498b-a3d6-e4d261c57a67-t0:3b6442d5-70df-43ea-8108-a63db084b55f"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T17:42:06.125210+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-b1a",
+    "project_id": "39f11e69-f040-4972-aa82-f1f41cf8a17d",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-69d2-f7e7bb7898f2",
+        "start_time": "2026-11-23T17:41:36.015741+00:00",
+        "end_time": "2026-11-23T17:42:02.580549+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/39f11e69-f040-4972-aa82-f1f41cf8a17d/r/00000000-0000-0000-69d2-f7e7bb7898f2?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-b1a",
+    "qid": "188_elasticsearch_mapping_explosion",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 1,
+    "chance": 1,
+    "git": {
+      "commit": "51257e79a6eba6872b5435c23086f6ea7aec1f33",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 30010,
+      "web": 30080,
+      "es": 30092,
+      "prometheus": 30090,
+      "jaeger_query": 30086,
+      "k8s": 30043
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:41:25.220922+00:00",
+        "ended_at": "2026-11-23T17:41:25.237102+00:00",
+        "seconds": 0.016,
+        "log_sha256": "639b7c84600dd598588201ba3ba5606b34a5a1bf8369caa6f3af1caae418879f",
+        "skipped": false
+      },
+      "purged": {
+        "before": [],
+        "after": [
+          "app-188-index-a",
+          "app-188-index-b",
+          "app-188-index-c",
+          "app-188-index-x"
+        ]
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:41:25.240075+00:00",
+        "ended_at": "2026-11-23T17:41:28.463576+00:00",
+        "seconds": 3.224,
+        "log_sha256": "5897f4da8ee3143af29ca5c697e2b73a413f3d274c53f59988718d108cb6613b",
+        "skipped": false
+      },
+      "ended_at": "2026-11-23T17:41:28.463877+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:42:06.178976+00:00",
+        "ended_at": "2026-11-23T17:42:06.195231+00:00",
+        "seconds": 0.016,
+        "log_sha256": "639b7c84600dd598588201ba3ba5606b34a5a1bf8369caa6f3af1caae418879f",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": true,
+      "reason": null,
+      "seconds": 90135600,
+      "anchor": "2024-01-15T12:00:00+00:00",
+      "original_min": "2024-01-15T12:00:00+00:00",
+      "original_max": "2024-01-15T12:00:00+00:00",
+      "shifted_min": "2026-11-23T17:40:00+00:00",
+      "shifted_max": "2026-11-23T17:40:00+00:00",
+      "indices": [
+        {
+          "index": "app-188-index-a",
+          "fields": [
+            "@timestamp"
+          ],
+          "documents": 0,
+          "rewritten": 0,
+          "unparsed": 0
+        },
+        {
+          "index": "app-188-index-b",
+          "fields": [
+            "@timestamp"
+          ],
+          "documents": 0,
+          "rewritten": 0,
+          "unparsed": 0
+        },
+        {
+          "index": "app-188-index-c",
+          "fields": [
+            "@timestamp"
+          ],
+          "documents": 0,
+          "rewritten": 0,
+          "unparsed": 0
+        },
+        {
+          "index": "app-188-index-x",
+          "fields": [
+            "@timestamp"
+          ],
+          "documents": 1,
+          "rewritten": 1,
+          "unparsed": 0
+        }
+      ],
+      "store_size_before": {
+        "app-188-index-a": 227,
+        "app-188-index-b": 227,
+        "app-188-index-c": 227,
+        "app-188-index-x": 203113
+      },
+      "store_size_after": {
+        "app-188-index-a": 227,
+        "app-188-index-b": 227,
+        "app-188-index-c": 227,
+        "app-188-index-x": 203113
+      },
+      "question_rewrites": [],
+      "time_only_phrases": 0
+    },
+    "shift_timing": {
+      "started_at": "2026-11-23T17:41:28.463877+00:00",
+      "ended_at": "2026-11-23T17:41:28.572044+00:00",
+      "seconds": 0.108
+    },
+    "question": {
+      "sha256_original": "32e9bc099082bb353e52e75ea10260ae1baafa221ed7c13ba95ec06214ee14f4",
+      "sha256_delivered": "32e9bc099082bb353e52e75ea10260ae1baafa221ed7c13ba95ec06214ee14f4",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "DESHIFT_TIME_ONLY_UNCHANGED",
+      "DESHIFT_DATE_MIDPOINT"
+    ],
+    "data_plane": {
+      "backend": "elasticsearch",
+      "mode": "external",
+      "product_url": "http://127.0.0.1:30920",
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-23T17:41:35.644655+00:00",
+      "setup_to_delivery_seconds": 7.073,
+      "data_end_to_delivery_seconds": 95.645,
+      "status": 201,
+      "code": null,
+      "incident_id": "b030e097-c748-5f99-8c19-27457f5ddc2e",
+      "run_id": "11f0285d-7357-5b29-86d6-79ac86c28893",
+      "idempotency_label": "holmes-full-o-b1a-188_elasticsearch_mapping_explosion-t1-c1",
+      "responded_at": "2026-11-23T17:41:35.740912+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 30.061
+    },
+    "conversion": {
+      "with_tool_calls": false,
+      "tool_calls": null,
+      "deshift_count": 2,
+      "reason": null,
+      "text_sha256": "c15db135b023c8fe0831080b3caa095bf51018974e4db7e3b94cb241c93daaf7"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "A",
+      "passed": true,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 6831
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "29651364c6971425d6792fbdf5db4ab1b60c52d69e0d9c2591d2817a001515b8",
+    "bytes": 220916,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-b1a/11f0285d-7357-5b29-86d6-79ac86c28893/ledger.json",
+    "in_repository": false
+  }
+}

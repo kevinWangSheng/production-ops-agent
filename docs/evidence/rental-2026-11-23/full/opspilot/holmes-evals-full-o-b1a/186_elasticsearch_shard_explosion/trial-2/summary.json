@@ -1,0 +1,3921 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-b1a",
+  "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+  "frozen_at": "2026-11-23T17:37:59.791883+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+    "incident_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 4,
+      "deadline": "2026-11-23T19:37:25.715035+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "Our analytics dashboard seems slow. Can you check the shard configuration for the app-186-shard-analytics index? How many primary shards does it have and what is their status?",
+      "authorized_window": {
+        "end": "2026-11-23T17:37:25+00:00",
+        "start": "2026-10-24T17:37:25+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+      "target_id": "e23ed411-c826-46f2-871d-c903701f0b73",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+      "created_at": "2026-11-23T17:37:25.731549+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-231b046ecbb5",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "Shard-configuration question is answered: app-186-shard-analytics has 7 primary shards and 0 replicas; all 7 primaries (shard 0 through 6) are STARTED on the single node bea971fdc0c6 (172.17.0.2), and the index reports health green with no unassigned, relocating or initializing shards at query time. The index holds 1 document (store ~6.1 kB), so 7 shards is over-sharded for its data volume and is also the only app-186 index with 7 shards — the 100 app-186-shard-data-001..100 indices each have 5. That does not by itself explain dashboard slowness: at the sampled instant the node shows heap 49%, CPU 12%, 104 GB free of 160 GB disk, and zero rejections in the search and write thread pools. The cluster carries 510 primary shards on one node with a 2 GiB heap (~255 shards per GB), which is a plausible contributor to query latency but was not measured. I found no measured latency signal for this index or for a dashboard service, so the slowness cause remains unresolved rather than identified. No root cause is named.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Index app-186-shard-analytics reports pri=7, rep=0, health green, status open, docs.count=1 and store.size 1.5kb in the index listing.",
+          "evidence_ids": [
+            "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "All 7 primary shards of app-186-shard-analytics (shard 0,1,2,3,4,5,6) have state STARTED, are of type p (primary, no replica rows), and are all allocated on node bea971fdc0c6 at ip 172.17.0.2; shard 0 holds 1 document and shards 1-6 hold 0.",
+          "evidence_ids": [
+            "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Cluster health at index level shows for app-186-shard-analytics: number_of_shards 7, number_of_replicas 0, active_primary_shards 7, active_shards 7, unassigned_shards 0, unassigned_primary_shards 0, relocating_shards 0, initializing_shards 0, status green.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The cluster docker-cluster has number_of_nodes 1 and number_of_data_nodes 1, 510 active primary shards and 510 active shards with 0 unassigned, 0 relocating, 0 initializing and overall status green; the other workload indices app-186-shard-data-001 through app-186-shard-data-100 each have number_of_shards 5 and number_of_replicas 0, while .security-7 and two .ds-* indices have 1 shard each.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Index stats for app-186-shard-analytics show docs.count 1, indexing.index_total 1 with index_failed 0, search.query_total 0, search.fetch_total 0, search.query_failure 0, refresh.total 15, 1 segment and store size_in_bytes 6143 (cumulative counters, not window deltas).",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The single node bea971fdc0c6 (roles include data, master, ingest) shows jvm heap_used_percent 49 (heap_max 2 GiB), os.cpu.percent 12 with load_average 1m 1.48 / 5m 2.05, filesystem 104036843520 bytes free of 160497381376, thread_pool search rejected 0 / queue 0 and write rejected 0 / queue 0.",
+          "evidence_ids": [
+            "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "Over-sharding may contribute to dashboard slowness: app-186-shard-analytics spreads 1 document across 7 primary shards (its sibling indices use 5), and the whole cluster runs 510 primary shards on one data node with a 2 GiB heap (~255 shards per GB), so each dashboard search fans out across many shard-level search contexts. This is a plausible contributor only; no query latency for this index or for a dashboard service was measured.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+            "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "Nothing at the sampled instant shows shard-related resource saturation or allocation failure: no unassigned/relocating/initializing shards cluster-wide, index green, node CPU 12%, heap 49%, disk 65% free, and zero search and write thread-pool rejections or queued tasks.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+            "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "Cumulative index stats for app-186-shard-analytics report search.query_total 0 and fetch_total 0, so these counters show no searches counted against this index since the stats were reset; this does not show the dashboard avoids the index, since counters are cumulative and not scoped to the incident window.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "recommendation",
+          "text": "Review whether the analytics dashboard actually queries app-186-shard-analytics or the app-186-shard-data-* indices, and compare the index/template number_of_shards setting that produced 7 shards for this index against the 5 used by its siblings; if the 510-shards-per-node ratio is confirmed as a latency factor, reduce shard count (shrink/ILM or fewer shards per index) before assuming the shard layout is the cause of slowness.",
+          "evidence_ids": [
+            "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "No query-latency or search-duration signal for app-186-shard-analytics (or for any dashboard service) was measured; search.query_time_in_millis for this index is 0 in cumulative stats, so slowness is unquantified.",
+        "All Elasticsearch state read here (index list, _cat/shards, cluster health, index stats, node stats) describes the cluster at query time 2026-11-23T17:37 and cannot show shard allocation or health during the incident window inside 2026-10-24..2026-11-23.",
+        "The change_history integration is not available in this Run, so when or by which change the 7-shard configuration was applied could not be verified.",
+        "Index settings (number_of_shards template, routing, ILM) cannot be read directly with the available tools; the 7 shards are known only from pri/shard listings, and any shard-count rationale or template is unknown.",
+        "Whether the slow dashboard is served by a Kubernetes workload that queries this index was not established: no service-to-index mapping, logs or traces were examined for this question.",
+        "search.query_total 0 is a cumulative counter that shows only what was counted since the last stats reset; it is not evidence of query volume, or its absence, during the incident window."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 4,
+      "logical_key": "conclusion:g0:ctx0:round-4",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T17:37:53.703977+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:37:27.517591+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:37:29.989918+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:37:33.645033+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:37:53.698150+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "conclusion:g0:ctx0:round-4",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:37:53.703977+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 4,
+      "prompt_tokens": 99478,
+      "completion_tokens": 5570,
+      "total_tokens": 105048,
+      "prompt_cache_hit_tokens": 83072,
+      "prompt_cache_miss_tokens": 16406
+    },
+    "tool_requests": [
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_cat",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_cluster_health",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_index_stats",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "operation_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_nodes_stats",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "columns": "index,health,status,pri,rep,docs.count,store.size",
+          "pattern": "app-186-shard-analytics"
+        },
+        "window": {
+          "end": "2026-11-23T17:37:25+00:00",
+          "start": "2026-10-24T17:37:25+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:37:27.543485+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_cat",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "api": "shards",
+          "index": "app-186-shard-analytics"
+        },
+        "window": {
+          "end": "2026-11-23T17:37:25+00:00",
+          "start": "2026-10-24T17:37:25+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:37:27.548367+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_cluster_health",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "level": "indices"
+        },
+        "window": {
+          "end": "2026-11-23T17:37:25+00:00",
+          "start": "2026-10-24T17:37:25+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:37:30.012974+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_index_stats",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "index": "app-186-shard-analytics",
+          "metrics": "docs,store,search,indexing,segments,merge,refresh"
+        },
+        "window": {
+          "end": "2026-11-23T17:37:25+00:00",
+          "start": "2026-10-24T17:37:25+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:37:30.030011+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+        "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_nodes_stats",
+        "tool_version": "v1",
+        "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "metrics": "jvm,os,thread_pool,fs,process"
+        },
+        "window": {
+          "end": "2026-11-23T17:37:25+00:00",
+          "start": "2026-10-24T17:37:25+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:37:33.674567+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+      "observations": [
+        {
+          "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "columns": "index,health,status,pri,rep,docs.count,store.size",
+            "pattern": "app-186-shard-analytics"
+          },
+          "window": {
+            "end": "2026-11-23T17:37:25+00:00",
+            "start": "2026-10-24T17:37:25+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:37:27.543485+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_cat",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "api": "shards",
+            "index": "app-186-shard-analytics"
+          },
+          "window": {
+            "end": "2026-11-23T17:37:25+00:00",
+            "start": "2026-10-24T17:37:25+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:37:27.548367+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_cluster_health",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "level": "indices"
+          },
+          "window": {
+            "end": "2026-11-23T17:37:25+00:00",
+            "start": "2026-10-24T17:37:25+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:37:30.012974+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_index_stats",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "index": "app-186-shard-analytics",
+            "metrics": "docs,store,search,indexing,segments,merge,refresh"
+          },
+          "window": {
+            "end": "2026-11-23T17:37:25+00:00",
+            "start": "2026-10-24T17:37:25+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:37:30.030011+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_nodes_stats",
+          "tool_version": "v1",
+          "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "metrics": "jvm,os,thread_pool,fs,process"
+          },
+          "window": {
+            "end": "2026-11-23T17:37:25+00:00",
+            "start": "2026-10-24T17:37:25+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:37:33.674567+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "claims": {
+            "fact": [
+              {
+                "text": "Index app-186-shard-analytics reports pri=7, rep=0, health green, status open, docs.count=1 and store.size 1.5kb in the index listing.",
+                "evidence": [
+                  {
+                    "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "All 7 primary shards of app-186-shard-analytics (shard 0,1,2,3,4,5,6) have state STARTED, are of type p (primary, no replica rows), and are all allocated on node bea971fdc0c6 at ip 172.17.0.2; shard 0 holds 1 document and shards 1-6 hold 0.",
+                "evidence": [
+                  {
+                    "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Cluster health at index level shows for app-186-shard-analytics: number_of_shards 7, number_of_replicas 0, active_primary_shards 7, active_shards 7, unassigned_shards 0, unassigned_primary_shards 0, relocating_shards 0, initializing_shards 0, status green.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The cluster docker-cluster has number_of_nodes 1 and number_of_data_nodes 1, 510 active primary shards and 510 active shards with 0 unassigned, 0 relocating, 0 initializing and overall status green; the other workload indices app-186-shard-data-001 through app-186-shard-data-100 each have number_of_shards 5 and number_of_replicas 0, while .security-7 and two .ds-* indices have 1 shard each.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Index stats for app-186-shard-analytics show docs.count 1, indexing.index_total 1 with index_failed 0, search.query_total 0, search.fetch_total 0, search.query_failure 0, refresh.total 15, 1 segment and store size_in_bytes 6143 (cumulative counters, not window deltas).",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The single node bea971fdc0c6 (roles include data, master, ingest) shows jvm heap_used_percent 49 (heap_max 2 GiB), os.cpu.percent 12 with load_average 1m 1.48 / 5m 2.05, filesystem 104036843520 bytes free of 160497381376, thread_pool search rejected 0 / queue 0 and write rejected 0 / queue 0.",
+                "evidence": [
+                  {
+                    "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "Over-sharding may contribute to dashboard slowness: app-186-shard-analytics spreads 1 document across 7 primary shards (its sibling indices use 5), and the whole cluster runs 510 primary shards on one data node with a 2 GiB heap (~255 shards per GB), so each dashboard search fans out across many shard-level search contexts. This is a plausible contributor only; no query latency for this index or for a dashboard service was measured.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [
+              {
+                "text": "Review whether the analytics dashboard actually queries app-186-shard-analytics or the app-186-shard-data-* indices, and compare the index/template number_of_shards setting that produced 7 shards for this index against the 5 used by its siblings; if the 510-shards-per-node ratio is confirmed as a latency factor, reduce shard count (shrink/ILM or fewer shards per index) before assuming the shard layout is the cause of slowness.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "counter_evidence": [
+              {
+                "text": "Nothing at the sampled instant shows shard-related resource saturation or allocation failure: no unassigned/relocating/initializing shards cluster-wide, index green, node CPU 12%, heap 49%, disk 65% free, and zero search and write thread-pool rejections or queued tasks.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Cumulative index stats for app-186-shard-analytics report search.query_total 0 and fetch_total 0, so these counters show no searches counted against this index since the stats were reset; this does not show the dashboard avoids the index, since counters are cumulative and not scoped to the incident window.",
+                "evidence": [
+                  {
+                    "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "elasticsearch",
+              "ok": 5,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+        "resolvable": true,
+        "tool": "elasticsearch_cluster_health",
+        "status": "ok",
+        "stored": {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "subject_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_cluster_health",
+            "notes": [
+              "This tool has no time range: it shows the cluster's state at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "level": "indices"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:37:25+00:00",
+              "start": "2026-10-24T17:37:25+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "status": "green",
+                "indices": {
+                  ".security-7": {
+                    "status": "green",
+                    "active_shards": 1,
+                    "number_of_shards": 1,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 1,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-001": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-002": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-003": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-004": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-005": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-006": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-007": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-008": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-009": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-010": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-011": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-012": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-013": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-014": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-015": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-016": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-017": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-018": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-019": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-020": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-021": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-022": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-023": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-024": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-025": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-026": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-027": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-028": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-029": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-030": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-031": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-032": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-033": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-034": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-035": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-036": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-037": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-038": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-039": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-040": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-041": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-042": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-043": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-044": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-045": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-046": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-047": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-048": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-049": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-050": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-051": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-052": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-053": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-054": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-055": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-056": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-057": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-058": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-059": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-060": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-061": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-062": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-063": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-064": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-065": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-066": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-067": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-068": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-069": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-070": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-071": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-072": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-073": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-074": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-075": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-076": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-077": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-078": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-079": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-080": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-081": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-082": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-083": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-084": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-085": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-086": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-087": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-088": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-089": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-090": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-091": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-092": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-093": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-094": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-095": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-096": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-097": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-098": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-099": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-data-100": {
+                    "status": "green",
+                    "active_shards": 5,
+                    "number_of_shards": 5,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 5,
+                    "unassigned_primary_shards": 0
+                  },
+                  "app-186-shard-analytics": {
+                    "status": "green",
+                    "active_shards": 7,
+                    "number_of_shards": 7,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 7,
+                    "unassigned_primary_shards": 0
+                  },
+                  ".ds-ilm-history-7-2026.11.23-000001": {
+                    "status": "green",
+                    "active_shards": 1,
+                    "number_of_shards": 1,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 1,
+                    "unassigned_primary_shards": 0
+                  },
+                  ".ds-.logs-deprecation.elasticsearch-default-2026.11.23-000001": {
+                    "status": "green",
+                    "active_shards": 1,
+                    "number_of_shards": 1,
+                    "relocating_shards": 0,
+                    "unassigned_shards": 0,
+                    "number_of_replicas": 0,
+                    "initializing_shards": 0,
+                    "active_primary_shards": 1,
+                    "unassigned_primary_shards": 0
+                  }
+                },
+                "timed_out": false,
+                "cluster_name": "docker-cluster",
+                "active_shards": 510,
+                "number_of_nodes": 1,
+                "relocating_shards": 0,
+                "unassigned_shards": 0,
+                "initializing_shards": 0,
+                "number_of_data_nodes": 1,
+                "active_primary_shards": 510,
+                "number_of_pending_tasks": 0,
+                "delayed_unassigned_shards": 0,
+                "number_of_in_flight_fetch": 0,
+                "unassigned_primary_shards": 0,
+                "active_shards_percent_as_number": 100.0,
+                "task_max_waiting_in_queue_millis": 0
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+            "observed_at": "2026-11-23T17:37:30.012974+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove what the cluster health, shard allocation, or node and index statistics were during the incident window. Statistics counters are cumulative since a node started or an index was created, not counts inside the window.",
+            "omitted_rows": 0,
+            "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:37:29.997478+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+        "resolvable": true,
+        "tool": "elasticsearch_index_stats",
+        "status": "ok",
+        "stored": {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "subject_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_index_stats",
+            "notes": [
+              "This tool has no time range: it shows the cluster's state at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "index": "app-186-shard-analytics",
+              "metrics": "docs,store,search,indexing,segments,merge,refresh"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:37:25+00:00",
+              "start": "2026-10-24T17:37:25+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "_all": {
+                  "total": {
+                    "docs": {
+                      "count": 1,
+                      "deleted": 0,
+                      "total_size_in_bytes": 4554
+                    },
+                    "store": {
+                      "size_in_bytes": 6143,
+                      "reserved_in_bytes": 0,
+                      "total_data_set_size_in_bytes": 6143
+                    },
+                    "merges": {
+                      "total": 0,
+                      "current": 0,
+                      "total_docs": 0,
+                      "current_docs": 0,
+                      "total_size_in_bytes": 0,
+                      "total_time_in_millis": 0,
+                      "current_size_in_bytes": 0,
+                      "total_auto_throttle_in_bytes": 146800640,
+                      "total_stopped_time_in_millis": 0,
+                      "total_throttled_time_in_millis": 0
+                    },
+                    "search": {
+                      "fetch_total": 0,
+                      "query_total": 0,
+                      "scroll_total": 0,
+                      "fetch_current": 0,
+                      "fetch_failure": 0,
+                      "open_contexts": 0,
+                      "query_current": 0,
+                      "query_failure": 0,
+                      "suggest_total": 0,
+                      "scroll_current": 0,
+                      "suggest_current": 0,
+                      "fetch_time_in_millis": 0,
+                      "query_time_in_millis": 0,
+                      "scroll_time_in_millis": 0,
+                      "suggest_time_in_millis": 0
+                    },
+                    "refresh": {
+                      "total": 15,
+                      "listeners": 0,
+                      "external_total": 15,
+                      "total_time_in_millis": 5,
+                      "external_total_time_in_millis": 5
+                    },
+                    "indexing": {
+                      "write_load": 7.147195684673614e-06,
+                      "index_total": 1,
+                      "delete_total": 0,
+                      "index_failed": 0,
+                      "is_throttled": false,
+                      "index_current": 0,
+                      "delete_current": 0,
+                      "noop_update_total": 0,
+                      "index_time_in_millis": 0,
+                      "delete_time_in_millis": 0,
+                      "throttle_time_in_millis": 0,
+                      "index_failed_due_to_version_conflict": 0
+                    },
+                    "segments": {
+                      "count": 1,
+                      "file_sizes": {},
+                      "memory_in_bytes": 0,
+                      "norms_memory_in_bytes": 0,
+                      "terms_memory_in_bytes": 0,
+                      "points_memory_in_bytes": 0,
+                      "doc_values_memory_in_bytes": 0,
+                      "version_map_memory_in_bytes": 0,
+                      "index_writer_memory_in_bytes": 0,
+                      "max_unsafe_auto_id_timestamp": -1,
+                      "term_vectors_memory_in_bytes": 0,
+                      "fixed_bit_set_memory_in_bytes": 0,
+                      "stored_fields_memory_in_bytes": 0
+                    }
+                  },
+                  "primaries": {
+                    "docs": {
+                      "count": 1,
+                      "deleted": 0,
+                      "total_size_in_bytes": 4554
+                    },
+                    "store": {
+                      "size_in_bytes": 6143,
+                      "reserved_in_bytes": 0,
+                      "total_data_set_size_in_bytes": 6143
+                    },
+                    "merges": {
+                      "total": 0,
+                      "current": 0,
+                      "total_docs": 0,
+                      "current_docs": 0,
+                      "total_size_in_bytes": 0,
+                      "total_time_in_millis": 0,
+                      "current_size_in_bytes": 0,
+                      "total_auto_throttle_in_bytes": 146800640,
+                      "total_stopped_time_in_millis": 0,
+                      "total_throttled_time_in_millis": 0
+                    },
+                    "search": {
+                      "fetch_total": 0,
+                      "query_total": 0,
+                      "scroll_total": 0,
+                      "fetch_current": 0,
+                      "fetch_failure": 0,
+                      "open_contexts": 0,
+                      "query_current": 0,
+                      "query_failure": 0,
+                      "suggest_total": 0,
+                      "scroll_current": 0,
+                      "suggest_current": 0,
+                      "fetch_time_in_millis": 0,
+                      "query_time_in_millis": 0,
+                      "scroll_time_in_millis": 0,
+                      "suggest_time_in_millis": 0
+                    },
+                    "refresh": {
+                      "total": 15,
+                      "listeners": 0,
+                      "external_total": 15,
+                      "total_time_in_millis": 5,
+                      "external_total_time_in_millis": 5
+                    },
+                    "indexing": {
+                      "write_load": 7.147195684673614e-06,
+                      "index_total": 1,
+                      "delete_total": 0,
+                      "index_failed": 0,
+                      "is_throttled": false,
+                      "index_current": 0,
+                      "delete_current": 0,
+                      "noop_update_total": 0,
+                      "index_time_in_millis": 0,
+                      "delete_time_in_millis": 0,
+                      "throttle_time_in_millis": 0,
+                      "index_failed_due_to_version_conflict": 0
+                    },
+                    "segments": {
+                      "count": 1,
+                      "file_sizes": {},
+                      "memory_in_bytes": 0,
+                      "norms_memory_in_bytes": 0,
+                      "terms_memory_in_bytes": 0,
+                      "points_memory_in_bytes": 0,
+                      "doc_values_memory_in_bytes": 0,
+                      "version_map_memory_in_bytes": 0,
+                      "index_writer_memory_in_bytes": 0,
+                      "max_unsafe_auto_id_timestamp": -1,
+                      "term_vectors_memory_in_bytes": 0,
+                      "fixed_bit_set_memory_in_bytes": 0,
+                      "stored_fields_memory_in_bytes": 0
+                    }
+                  }
+                },
+                "_shards": {
+                  "total": 7,
+                  "failed": 0,
+                  "successful": 7
+                },
+                "indices": {
+                  "app-186-shard-analytics": {
+                    "uuid": "AHuVX0FpTSW39_TAh15YAA",
+                    "total": {
+                      "docs": {
+                        "count": 1,
+                        "deleted": 0,
+                        "total_size_in_bytes": 4554
+                      },
+                      "store": {
+                        "size_in_bytes": 6143,
+                        "reserved_in_bytes": 0,
+                        "total_data_set_size_in_bytes": 6143
+                      },
+                      "merges": {
+                        "total": 0,
+                        "current": 0,
+                        "total_docs": 0,
+                        "current_docs": 0,
+                        "total_size_in_bytes": 0,
+                        "total_time_in_millis": 0,
+                        "current_size_in_bytes": 0,
+                        "total_auto_throttle_in_bytes": 146800640,
+                        "total_stopped_time_in_millis": 0,
+                        "total_throttled_time_in_millis": 0
+                      },
+                      "search": {
+                        "fetch_total": 0,
+                        "query_total": 0,
+                        "scroll_total": 0,
+                        "fetch_current": 0,
+                        "fetch_failure": 0,
+                        "open_contexts": 0,
+                        "query_current": 0,
+                        "query_failure": 0,
+                        "suggest_total": 0,
+                        "scroll_current": 0,
+                        "suggest_current": 0,
+                        "fetch_time_in_millis": 0,
+                        "query_time_in_millis": 0,
+                        "scroll_time_in_millis": 0,
+                        "suggest_time_in_millis": 0
+                      },
+                      "refresh": {
+                        "total": 15,
+                        "listeners": 0,
+                        "external_total": 15,
+                        "total_time_in_millis": 5,
+                        "external_total_time_in_millis": 5
+                      },
+                      "indexing": {
+                        "write_load": 7.147195684673614e-06,
+                        "index_total": 1,
+                        "delete_total": 0,
+                        "index_failed": 0,
+                        "is_throttled": false,
+                        "index_current": 0,
+                        "delete_current": 0,
+                        "noop_update_total": 0,
+                        "index_time_in_millis": 0,
+                        "delete_time_in_millis": 0,
+                        "throttle_time_in_millis": 0,
+                        "index_failed_due_to_version_conflict": 0
+                      },
+                      "segments": {
+                        "count": 1,
+                        "file_sizes": {},
+                        "memory_in_bytes": 0,
+                        "norms_memory_in_bytes": 0,
+                        "terms_memory_in_bytes": 0,
+                        "points_memory_in_bytes": 0,
+                        "doc_values_memory_in_bytes": 0,
+                        "version_map_memory_in_bytes": 0,
+                        "index_writer_memory_in_bytes": 0,
+                        "max_unsafe_auto_id_timestamp": -1,
+                        "term_vectors_memory_in_bytes": 0,
+                        "fixed_bit_set_memory_in_bytes": 0,
+                        "stored_fields_memory_in_bytes": 0
+                      }
+                    },
+                    "health": "green",
+                    "status": "open",
+                    "primaries": {
+                      "docs": {
+                        "count": 1,
+                        "deleted": 0,
+                        "total_size_in_bytes": 4554
+                      },
+                      "store": {
+                        "size_in_bytes": 6143,
+                        "reserved_in_bytes": 0,
+                        "total_data_set_size_in_bytes": 6143
+                      },
+                      "merges": {
+                        "total": 0,
+                        "current": 0,
+                        "total_docs": 0,
+                        "current_docs": 0,
+                        "total_size_in_bytes": 0,
+                        "total_time_in_millis": 0,
+                        "current_size_in_bytes": 0,
+                        "total_auto_throttle_in_bytes": 146800640,
+                        "total_stopped_time_in_millis": 0,
+                        "total_throttled_time_in_millis": 0
+                      },
+                      "search": {
+                        "fetch_total": 0,
+                        "query_total": 0,
+                        "scroll_total": 0,
+                        "fetch_current": 0,
+                        "fetch_failure": 0,
+                        "open_contexts": 0,
+                        "query_current": 0,
+                        "query_failure": 0,
+                        "suggest_total": 0,
+                        "scroll_current": 0,
+                        "suggest_current": 0,
+                        "fetch_time_in_millis": 0,
+                        "query_time_in_millis": 0,
+                        "scroll_time_in_millis": 0,
+                        "suggest_time_in_millis": 0
+                      },
+                      "refresh": {
+                        "total": 15,
+                        "listeners": 0,
+                        "external_total": 15,
+                        "total_time_in_millis": 5,
+                        "external_total_time_in_millis": 5
+                      },
+                      "indexing": {
+                        "write_load": 7.147195684673614e-06,
+                        "index_total": 1,
+                        "delete_total": 0,
+                        "index_failed": 0,
+                        "is_throttled": false,
+                        "index_current": 0,
+                        "delete_current": 0,
+                        "noop_update_total": 0,
+                        "index_time_in_millis": 0,
+                        "delete_time_in_millis": 0,
+                        "throttle_time_in_millis": 0,
+                        "index_failed_due_to_version_conflict": 0
+                      },
+                      "segments": {
+                        "count": 1,
+                        "file_sizes": {},
+                        "memory_in_bytes": 0,
+                        "norms_memory_in_bytes": 0,
+                        "terms_memory_in_bytes": 0,
+                        "points_memory_in_bytes": 0,
+                        "doc_values_memory_in_bytes": 0,
+                        "version_map_memory_in_bytes": 0,
+                        "index_writer_memory_in_bytes": 0,
+                        "max_unsafe_auto_id_timestamp": -1,
+                        "term_vectors_memory_in_bytes": 0,
+                        "fixed_bit_set_memory_in_bytes": 0,
+                        "stored_fields_memory_in_bytes": 0
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+            "observed_at": "2026-11-23T17:37:30.030011+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove what the cluster health, shard allocation, or node and index statistics were during the incident window. Statistics counters are cumulative since a node started or an index was created, not counts inside the window.",
+            "omitted_rows": 0,
+            "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:37:30.003946+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+        "resolvable": true,
+        "tool": "elasticsearch_nodes_stats",
+        "status": "ok",
+        "stored": {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "subject_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_nodes_stats",
+            "notes": [
+              "This tool has no time range: it shows the cluster's state at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "metrics": "jvm,os,thread_pool,fs,process"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:37:25+00:00",
+              "start": "2026-10-24T17:37:25+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "nodes": {
+                  "yxF_y55zS0q2BKHN3zahxw": {
+                    "fs": {
+                      "data": [
+                        {
+                          "path": "/usr/share/elasticsearch/data",
+                          "type": "overlay",
+                          "mount": "/ (overlay)",
+                          "free_in_bytes": 104036843520,
+                          "total_in_bytes": 160497381376,
+                          "available_in_bytes": 97103552512,
+                          "flood_stage_free_space_in_bytes": 8024869068,
+                          "low_watermark_free_space_in_bytes": 24074607206,
+                          "high_watermark_free_space_in_bytes": 16049738137
+                        }
+                      ],
+                      "total": {
+                        "free_in_bytes": 104036843520,
+                        "total_in_bytes": 160497381376,
+                        "available_in_bytes": 97103552512
+                      },
+                      "io_stats": {},
+                      "timestamp": 1795455453671
+                    },
+                    "ip": "172.17.0.2:9300",
+                    "os": {
+                      "cpu": {
+                        "percent": 12,
+                        "load_average": {
+                          "1m": 1.48,
+                          "5m": 2.05,
+                          "15m": 1.92
+                        }
+                      },
+                      "mem": {
+                        "free_percent": 1,
+                        "used_percent": 99,
+                        "free_in_bytes": 300249088,
+                        "used_in_bytes": 33348341760,
+                        "total_in_bytes": 33648590848,
+                        "adjusted_total_in_bytes": 33648590848
+                      },
+                      "swap": {
+                        "free_in_bytes": 8588869632,
+                        "used_in_bytes": 1060864,
+                        "total_in_bytes": 8589930496
+                      },
+                      "cgroup": {
+                        "cpu": {
+                          "stat": {
+                            "time_throttled_nanos": 0,
+                            "number_of_elapsed_periods": 0,
+                            "number_of_times_throttled": 0
+                          },
+                          "control_group": "/",
+                          "cfs_quota_micros": -1,
+                          "cfs_period_micros": 100000
+                        },
+                        "memory": {
+                          "control_group": "/",
+                          "limit_in_bytes": "max",
+                          "usage_in_bytes": "3831517184"
+                        },
+                        "cpuacct": {
+                          "usage_nanos": 1193079881000,
+                          "control_group": "/"
+                        }
+                      },
+                      "timestamp": 1795455453665
+                    },
+                    "jvm": {
+                      "gc": {
+                        "collectors": {
+                          "old": {
+                            "collection_count": 0,
+                            "collection_time_in_millis": 0
+                          },
+                          "young": {
+                            "collection_count": 177,
+                            "collection_time_in_millis": 4173
+                          },
+                          "G1 Concurrent GC": {
+                            "collection_count": 96,
+                            "collection_time_in_millis": 705
+                          }
+                        }
+                      },
+                      "mem": {
+                        "pools": {
+                          "old": {
+                            "max_in_bytes": 2147483648,
+                            "used_in_bytes": 357139000,
+                            "peak_max_in_bytes": 2147483648,
+                            "peak_used_in_bytes": 786432000
+                          },
+                          "young": {
+                            "max_in_bytes": 0,
+                            "used_in_bytes": 654311424,
+                            "peak_max_in_bytes": 0,
+                            "peak_used_in_bytes": 1254096896
+                          },
+                          "survivor": {
+                            "max_in_bytes": 0,
+                            "used_in_bytes": 45051840,
+                            "peak_max_in_bytes": 0,
+                            "peak_used_in_bytes": 163577856
+                          },
+                          "Metaspace": {
+                            "max_in_bytes": 0,
+                            "used_in_bytes": 176674848,
+                            "peak_max_in_bytes": 0,
+                            "peak_used_in_bytes": 176674848
+                          },
+                          "Compressed Class Space": {
+                            "max_in_bytes": 1073741824,
+                            "used_in_bytes": 37769440,
+                            "peak_max_in_bytes": 1073741824,
+                            "peak_used_in_bytes": 37769440
+                          },
+                          "CodeHeap 'non-nmethods'": {
+                            "max_in_bytes": 5840896,
+                            "used_in_bytes": 2734848,
+                            "peak_max_in_bytes": 5840896,
+                            "peak_used_in_bytes": 2956160
+                          },
+                          "CodeHeap 'profiled nmethods'": {
+                            "max_in_bytes": 122912768,
+                            "used_in_bytes": 10287104,
+                            "peak_max_in_bytes": 122912768,
+                            "peak_used_in_bytes": 48225280
+                          },
+                          "CodeHeap 'non-profiled nmethods'": {
+                            "max_in_bytes": 122912768,
+                            "used_in_bytes": 27546112,
+                            "peak_max_in_bytes": 122912768,
+                            "peak_used_in_bytes": 29421952
+                          }
+                        },
+                        "heap_max_in_bytes": 2147483648,
+                        "heap_used_percent": 49,
+                        "heap_used_in_bytes": 1056502264,
+                        "non_heap_used_in_bytes": 255012352,
+                        "heap_committed_in_bytes": 2147483648,
+                        "non_heap_committed_in_bytes": 300679168
+                      },
+                      "classes": {
+                        "total_loaded_count": 36953,
+                        "current_loaded_count": 35648,
+                        "total_unloaded_count": 1305
+                      },
+                      "threads": {
+                        "count": 133,
+                        "peak_count": 133
+                      },
+                      "timestamp": 1795455453671,
+                      "buffer_pools": {
+                        "direct": {
+                          "count": 24,
+                          "used_in_bytes": 9109521,
+                          "total_capacity_in_bytes": 9109515
+                        },
+                        "mapped": {
+                          "count": 7,
+                          "used_in_bytes": 78917,
+                          "total_capacity_in_bytes": 78917
+                        },
+                        "mapped - 'non-volatile memory'": {
+                          "count": 0,
+                          "used_in_bytes": 0,
+                          "total_capacity_in_bytes": 0
+                        }
+                      },
+                      "uptime_in_millis": 8634396
+                    },
+                    "host": "172.17.0.2",
+                    "name": "bea971fdc0c6",
+                    "roles": [
+                      "data",
+                      "data_cold",
+                      "data_content",
+                      "data_frozen",
+                      "data_hot",
+                      "data_warm",
+                      "ingest",
+                      "master",
+                      "ml",
+                      "remote_cluster_client",
+                      "transform"
+                    ],
+                    "process": {
+                      "cpu": {
+                        "percent": 6,
+                        "total_in_millis": 1179250
+                      },
+                      "mem": {
+                        "total_virtual_in_bytes": 8500928512
+                      },
+                      "timestamp": 1795455453666,
+                      "max_file_descriptors": 524288,
+                      "open_file_descriptors": 2135
+                    },
+                    "timestamp": 1795455453662,
+                    "attributes": {
+                      "ml.max_jvm_size": "2147483648",
+                      "xpack.installed": "true",
+                      "ml.config_version": "12.0.0",
+                      "ml.machine_memory": "33648590848",
+                      "ml.allocated_processors": "8",
+                      "transform.config_version": "10.0.0",
+                      "ml.allocated_processors_double": "8.0"
+                    },
+                    "thread_pool": {
+                      "ccr": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "get": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 13,
+                        "threads": 13,
+                        "rejected": 0,
+                        "completed": 23
+                      },
+                      "flush": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 2,
+                        "threads": 1,
+                        "rejected": 0,
+                        "completed": 5
+                      },
+                      "merge": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 1,
+                        "threads": 1,
+                        "rejected": 0,
+                        "completed": 11028
+                      },
+                      "write": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 8,
+                        "threads": 8,
+                        "rejected": 0,
+                        "completed": 58967
+                      },
+                      "search": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 13,
+                        "threads": 13,
+                        "rejected": 0,
+                        "completed": 71317
+                      },
+                      "warmer": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 3,
+                        "threads": 1,
+                        "rejected": 0,
+                        "completed": 9
+                      },
+                      "analyze": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "generic": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 27,
+                        "threads": 27,
+                        "rejected": 0,
+                        "completed": 201195
+                      },
+                      "refresh": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 4,
+                        "threads": 4,
+                        "rejected": 0,
+                        "completed": 1705686
+                      },
+                      "watcher": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "snapshot": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "profiling": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "management": {
+                        "queue": 0,
+                        "active": 1,
+                        "largest": 5,
+                        "threads": 5,
+                        "rejected": 0,
+                        "completed": 127405
+                      },
+                      "ml_utility": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 2,
+                        "threads": 2,
+                        "rejected": 0,
+                        "completed": 17239
+                      },
+                      "esql_worker": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "force_merge": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 1,
+                        "threads": 1,
+                        "rejected": 0,
+                        "completed": 11896
+                      },
+                      "ml_datafeed": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "system_read": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "ml_job_comms": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "system_write": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 3,
+                        "threads": 3,
+                        "rejected": 0,
+                        "completed": 3
+                      },
+                      "auto_complete": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "snapshot_meta": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "model_download": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "rollup_indexing": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "security-crypto": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 2,
+                        "threads": 2,
+                        "rejected": 0,
+                        "completed": 2
+                      },
+                      "azure_event_loop": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "repository_azure": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "search_throttled": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "fetch_shard_store": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "inference_utility": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 4,
+                        "threads": 4,
+                        "rejected": 0,
+                        "completed": 171851
+                      },
+                      "security-token-key": "[REDACTED_CREDENTIAL]",
+                      "downsample_indexing": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "fetch_shard_started": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "search_coordination": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 4,
+                        "threads": 4,
+                        "rejected": 0,
+                        "completed": 378
+                      },
+                      "cluster_coordination": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 1,
+                        "threads": 1,
+                        "rejected": 0,
+                        "completed": 34285
+                      },
+                      "system_critical_read": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 4,
+                        "threads": 4,
+                        "rejected": 0,
+                        "completed": 23
+                      },
+                      "system_critical_write": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 3,
+                        "threads": 3,
+                        "rejected": 0,
+                        "completed": 3
+                      },
+                      "ml_native_inference_comms": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "searchable_snapshots_cache_prewarming": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      },
+                      "searchable_snapshots_cache_fetch_async": {
+                        "queue": 0,
+                        "active": 0,
+                        "largest": 0,
+                        "threads": 0,
+                        "rejected": 0,
+                        "completed": 0
+                      }
+                    },
+                    "transport_address": "172.17.0.2:9300"
+                  }
+                },
+                "_nodes": {
+                  "total": 1,
+                  "failed": 0,
+                  "successful": 1
+                },
+                "cluster_name": "docker-cluster"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+            "observed_at": "2026-11-23T17:37:33.674567+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove what the cluster health, shard allocation, or node and index statistics were during the incident window. Statistics counters are cumulative since a node started or an index was created, not counts inside the window.",
+            "omitted_rows": 0,
+            "operation_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "results_shown": 1,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "results_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:37:33.653083+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_results_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+        "resolvable": true,
+        "tool": "elasticsearch_list_indices",
+        "status": "ok",
+        "stored": {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "subject_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_list_indices",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "columns": "index,health,status,pri,rep,docs.count,store.size",
+              "pattern": "app-186-shard-analytics"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:37:25+00:00",
+              "start": "2026-10-24T17:37:25+00:00"
+            },
+            "adopted": true,
+            "columns": [
+              "index",
+              "health",
+              "status",
+              "pri",
+              "rep",
+              "docs.count",
+              "store.size"
+            ],
+            "content": [
+              {
+                "pri": "7",
+                "rep": "0",
+                "index": "app-186-shard-analytics",
+                "health": "green",
+                "status": "open",
+                "docs.count": "1",
+                "store.size": "1.5kb"
+              }
+            ],
+            "pattern": "app-186-shard-analytics",
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+            "observed_at": "2026-11-23T17:37:27.543485+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "indices_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:37:27.526665+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+        "resolvable": true,
+        "tool": "elasticsearch_cat",
+        "status": "ok",
+        "stored": {
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "subject_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_cat",
+            "notes": [
+              "This tool has no time range: it shows the cluster's state at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "api": "shards",
+              "index": "app-186-shard-analytics"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:37:25+00:00",
+              "start": "2026-10-24T17:37:25+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "ip": "172.17.0.2",
+                "docs": "1",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "0",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "1",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "2",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "3",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "4",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "5",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              },
+              {
+                "ip": "172.17.0.2",
+                "docs": "0",
+                "node": "bea971fdc0c6",
+                "index": "app-186-shard-analytics",
+                "shard": "6",
+                "state": "STARTED",
+                "store": "227b",
+                "prirep": "p",
+                "dataset": "227b"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "rows_shown": 7,
+            "evidence_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+            "observed_at": "2026-11-23T17:37:27.548367+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove what the cluster health, shard allocation, or node and index statistics were during the incident window. Statistics counters are cumulative since a node started or an index was created, not counts inside the window.",
+            "omitted_rows": 0,
+            "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1",
+            "result_count": 7,
+            "rows_omitted": 0,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 7,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "f812a80559f7a00abdce32ac86d13cfc947ac5da4d18cf87fabf237167297f49",
+            "dispatch_started_at": "2026-11-23T17:37:27.533206+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "backend_rows_returned": 7,
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f"
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T17:37:25.738830+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:25.738830+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:1",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:25.994455+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.517591+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:5829e99c-3055-4e08-aeae-ef83eb78f48f",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.521323+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.569572+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.569572+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.569572+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.576060+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "6042b8eb-d2f1-430e-8741-36655c9db1ad",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "operation_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_cat",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.576060+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:27.576060+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:29.989918+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:1ef0044e-c9ab-47a5-9739-8c25a7fcb832",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:29.992879+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.078475+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_cluster_health",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.078475+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.078475+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.086884+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "operation_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_index_stats",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.086884+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:30.086884+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:33.645033+00:00",
+          "sequence": 19,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:3d547257-8e8a-4d1e-b8b4-8239abc1e1fb",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:33.647936+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:33.705856+00:00",
+          "sequence": 21,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "be75be97-4a35-4047-ac17-4bd67a798745",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "operation_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_nodes_stats",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:33.705856+00:00",
+          "sequence": 22,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:33.705856+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:53.698150+00:00",
+          "sequence": 24,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:083b74bd-38c4-4652-ad70-a10c01d4de83",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:53.701305+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:53.710959+00:00",
+          "sequence": 26,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:37:53.710959+00:00",
+          "sequence": 27,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a:12",
+          "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 12
+          }
+        }
+      ],
+      "counts": {
+        "input": 4,
+        "query": 5,
+        "evidence": 5,
+        "state_change": 14,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "5829e99c-3055-4e08-aeae-ef83eb78f48f-t0:014d6f6c-b8a0-45d0-917e-d9cfcdec18e3",
+        "5829e99c-3055-4e08-aeae-ef83eb78f48f-t1:6042b8eb-d2f1-430e-8741-36655c9db1ad",
+        "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t0:d7f05b0f-7e0b-4c5e-9376-d83bbfe76b80",
+        "1ef0044e-c9ab-47a5-9739-8c25a7fcb832-t1:ab848049-38c3-4da0-ad0a-f6d52b40dd7d",
+        "3d547257-8e8a-4d1e-b8b4-8239abc1e1fb-t0:be75be97-4a35-4047-ac17-4bd67a798745"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T17:37:56.024057+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-b1a",
+    "project_id": "39f11e69-f040-4972-aa82-f1f41cf8a17d",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-498b-3c58cfc99c9c",
+        "start_time": "2026-11-23T17:37:25.995205+00:00",
+        "end_time": "2026-11-23T17:37:53.711616+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/39f11e69-f040-4972-aa82-f1f41cf8a17d/r/00000000-0000-0000-498b-3c58cfc99c9c?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-b1a",
+    "qid": "186_elasticsearch_shard_explosion",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 2,
+    "chance": 1,
+    "git": {
+      "commit": "51257e79a6eba6872b5435c23086f6ea7aec1f33",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 30010,
+      "web": 30080,
+      "es": 30092,
+      "prometheus": 30090,
+      "jaeger_query": 30086,
+      "k8s": 30043
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:37:08.037349+00:00",
+        "ended_at": "2026-11-23T17:37:08.069852+00:00",
+        "seconds": 0.033,
+        "log_sha256": "928e652cf1d901909b36f187b741c9146bf72ed95f6a180f37e3fc9595a2783b",
+        "skipped": false
+      },
+      "purged": {
+        "before": [],
+        "after": [
+          "app-186-shard-analytics",
+          "app-186-shard-data-001",
+          "app-186-shard-data-002",
+          "app-186-shard-data-003",
+          "app-186-shard-data-004",
+          "app-186-shard-data-005",
+          "app-186-shard-data-006",
+          "app-186-shard-data-007",
+          "app-186-shard-data-008",
+          "app-186-shard-data-009",
+          "app-186-shard-data-010",
+          "app-186-shard-data-011",
+          "app-186-shard-data-012",
+          "app-186-shard-data-013",
+          "app-186-shard-data-014",
+          "app-186-shard-data-015",
+          "app-186-shard-data-016",
+          "app-186-shard-data-017",
+          "app-186-shard-data-018",
+          "app-186-shard-data-019",
+          "app-186-shard-data-020",
+          "app-186-shard-data-021",
+          "app-186-shard-data-022",
+          "app-186-shard-data-023",
+          "app-186-shard-data-024",
+          "app-186-shard-data-025",
+          "app-186-shard-data-026",
+          "app-186-shard-data-027",
+          "app-186-shard-data-028",
+          "app-186-shard-data-029",
+          "app-186-shard-data-030",
+          "app-186-shard-data-031",
+          "app-186-shard-data-032",
+          "app-186-shard-data-033",
+          "app-186-shard-data-034",
+          "app-186-shard-data-035",
+          "app-186-shard-data-036",
+          "app-186-shard-data-037",
+          "app-186-shard-data-038",
+          "app-186-shard-data-039",
+          "app-186-shard-data-040",
+          "app-186-shard-data-041",
+          "app-186-shard-data-042",
+          "app-186-shard-data-043",
+          "app-186-shard-data-044",
+          "app-186-shard-data-045",
+          "app-186-shard-data-046",
+          "app-186-shard-data-047",
+          "app-186-shard-data-048",
+          "app-186-shard-data-049",
+          "app-186-shard-data-050",
+          "app-186-shard-data-051",
+          "app-186-shard-data-052",
+          "app-186-shard-data-053",
+          "app-186-shard-data-054",
+          "app-186-shard-data-055",
+          "app-186-shard-data-056",
+          "app-186-shard-data-057",
+          "app-186-shard-data-058",
+          "app-186-shard-data-059",
+          "app-186-shard-data-060",
+          "app-186-shard-data-061",
+          "app-186-shard-data-062",
+          "app-186-shard-data-063",
+          "app-186-shard-data-064",
+          "app-186-shard-data-065",
+          "app-186-shard-data-066",
+          "app-186-shard-data-067",
+          "app-186-shard-data-068",
+          "app-186-shard-data-069",
+          "app-186-shard-data-070",
+          "app-186-shard-data-071",
+          "app-186-shard-data-072",
+          "app-186-shard-data-073",
+          "app-186-shard-data-074",
+          "app-186-shard-data-075",
+          "app-186-shard-data-076",
+          "app-186-shard-data-077",
+          "app-186-shard-data-078",
+          "app-186-shard-data-079",
+          "app-186-shard-data-080",
+          "app-186-shard-data-081",
+          "app-186-shard-data-082",
+          "app-186-shard-data-083",
+          "app-186-shard-data-084",
+          "app-186-shard-data-085",
+          "app-186-shard-data-086",
+          "app-186-shard-data-087",
+          "app-186-shard-data-088",
+          "app-186-shard-data-089",
+          "app-186-shard-data-090",
+          "app-186-shard-data-091",
+          "app-186-shard-data-092",
+          "app-186-shard-data-093",
+          "app-186-shard-data-094",
+          "app-186-shard-data-095",
+          "app-186-shard-data-096",
+          "app-186-shard-data-097",
+          "app-186-shard-data-098",
+          "app-186-shard-data-099",
+          "app-186-shard-data-100"
+        ]
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:37:08.073520+00:00",
+        "ended_at": "2026-11-23T17:37:18.117275+00:00",
+        "seconds": 10.044,
+        "log_sha256": "5b7bc9e91a7b906eb69604f9079f8e6e887cb90e53c5bbc8baeccd78561c467d",
+        "skipped": false
+      },
+      "ended_at": "2026-11-23T17:37:18.117495+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:37:56.069020+00:00",
+        "ended_at": "2026-11-23T17:37:56.133500+00:00",
+        "seconds": 0.065,
+        "log_sha256": "38c92c86979ea3badc0bea7002ab012684156649c54cae8d3c8f55bce6a36fa1",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": false,
+      "reason": "RELATIVE_TIME",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "indices": [],
+      "store_size_before": {},
+      "store_size_after": {},
+      "question_rewrites": [],
+      "time_only_phrases": 0
+    },
+    "shift_timing": {
+      "started_at": "2026-11-23T17:37:18.117495+00:00",
+      "ended_at": "2026-11-23T17:37:18.117550+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "ef059d133f775b8fd7fa05675c8998283655aac5903c1b8381038f25513182ef",
+      "sha256_delivered": "ef059d133f775b8fd7fa05675c8998283655aac5903c1b8381038f25513182ef",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM"
+    ],
+    "data_plane": {
+      "backend": "elasticsearch",
+      "mode": "external",
+      "product_url": "http://127.0.0.1:30920",
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-23T17:37:25.662019+00:00",
+      "setup_to_delivery_seconds": 7.544,
+      "status": 201,
+      "code": null,
+      "incident_id": "eeafdf45-15a2-5a43-a2b3-ef8c455875a3",
+      "run_id": "dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a",
+      "idempotency_label": "holmes-full-o-b1a-186_elasticsearch_shard_explosion-t2-c1",
+      "responded_at": "2026-11-23T17:37:25.741707+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 30.062
+    },
+    "conversion": {
+      "with_tool_calls": false,
+      "tool_calls": null,
+      "deshift_count": 0,
+      "reason": null,
+      "text_sha256": "06e235be962c260f47f150f24dc2da965ce5fbf1ec6884e9881c33f925a4bc64"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "A",
+      "passed": true,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 7113
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "9eb32c0abdc5e398363902ce2758114922d34580985c19df9536eb42c18822cb",
+    "bytes": 223818,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-b1a/dbcbef8e-923a-5ab4-a7bd-ecee6fb1aa9a/ledger.json",
+    "in_repository": false
+  }
+}
