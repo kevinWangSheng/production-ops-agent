@@ -56,6 +56,7 @@ is expected red there and is not weakened.
 # ruff: noqa: F811 - pytest fixtures imported from sibling acceptance modules
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import socket
@@ -86,6 +87,7 @@ from opspilot.observation import ObservationStore
 from opspilot.observation.releases import ReleaseStore
 from opspilot.persistence import DurableStore
 from opspilot.tools import TransportResponse
+from opspilot.tools import otel_demo as otel_demo_module
 from opspilot.tools.executor import TransportRequest
 from opspilot.tools.fixture import (
     FIXTURE_TOOL,
@@ -117,7 +119,7 @@ from opspilot.web import (
 from opspilot.web.store import MappingTargetRegistry
 from opspilot.worker import Worker
 from scripts.m0.postgres_lab import DSN
-from tests.acceptance.test_343_alert_after_release_incident import (
+from tests.acceptance.issue343_alert_after_release_incident_support import (
     CONTROL_COLUMNS,
     RELEASE_PRIORITY,
     identities,
@@ -153,10 +155,12 @@ from tests.integration.f2_b1_support import (
     run_rows,
     wait_until,
 )
-from tests.integration.test_f2_b2_backpressure_postgres import _app as storm_app
-from tests.integration.test_f2_b2_backpressure_postgres import _firing as storm_firing
-from tests.integration.test_f11_pr3_impl_target_txn_postgres import Env as ReleaseEnv
-from tests.integration.test_f11_pr4b_consume_postgres import (  # noqa: F401 - fixtures
+from tests.integration.f2_b2_backpressure_postgres_support import _app as storm_app
+from tests.integration.f2_b2_backpressure_postgres_support import (
+    _firing as storm_firing,
+)
+from tests.integration.f11_pr3_impl_target_txn_postgres_support import Env as ReleaseEnv
+from tests.integration.f11_pr4b_consume_postgres_support import (  # noqa: F401 - fixtures
     _by_intake,
     _events,
     _incident,
@@ -165,7 +169,7 @@ from tests.integration.test_f11_pr4b_consume_postgres import (  # noqa: F401 - f
     _runs,
     bench,
 )
-from tests.integration.test_f11_release_observation_postgres import (  # noqa: F401 - fixtures
+from tests.integration.f11_release_observation_postgres_support import (  # noqa: F401 - fixtures
     Catalog,
     catalog,
     observer,
@@ -175,11 +179,11 @@ from tests.integration.test_f11_release_observation_postgres import (  # noqa: F
     web_dsn,
     worker_dsn,
 )
-from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
     REGISTRY as ALERT_REGISTRY,
 )
-from tests.integration.test_m1_04_alert_intake_impl_postgres import _alert, _webhook
-from tests.integration.test_m1_web_worker_postgres import _tool_round, _worker
+from tests.integration.m1_04_alert_intake_impl_postgres_support import _alert, _webhook
+from tests.integration.m1_web_worker_postgres_support import _tool_round, _worker
 from tests.m1_investigation_support import (
     ScriptedModel,
     reply,
@@ -623,7 +627,9 @@ def test_step1_alert_after_a_release_incident_joins_it_and_claims_it(
 
 
 def resolve_on(app, alert_body, starts_at):
-    from tests.acceptance.test_343_alert_after_release_incident import resolve as r343
+    from tests.acceptance.issue343_alert_after_release_incident_support import (
+        resolve as r343,
+    )
 
     return r343(app, alert_body, starts_at)
 
@@ -687,45 +693,6 @@ def test_step1_follow_up_after_an_attachment_to_a_concluded_incident_sees_the_ev
     intake = intake_outcome(env.store, "1", "attach-concluded-follow-up", subject)
     assert intake.run_ids == (str(first_run), str(successor))
     assert_read_only(outcome)
-
-
-def test_step1_follow_up_after_an_attachment_to_a_handed_off_run_requeues_it():
-    """C4-A assertion 2 / #304: the forced-final REPORT_INVALID handoff."""
-    env = lab()
-    fingerprint = uuid4().hex[:16]
-    t0 = db_now()
-    first = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=10)))
-    subject, run_id = UUID(first["incident_id"]), UUID(first["run_id"])
-    handed, _ = poll(env, subject, [_tool_round(), bad_report, bad_report])
-    ((_, handoff),) = handed
-    assert handoff.status == "handed_off" and handoff.reason == "REPORT_INVALID", (
-        handoff
-    )
-    joined = fire_alert(env, fingerprint, zulu(t0 - timedelta(minutes=2)))
-    assert joined["outcome"] == "attached"
-    (event,) = alert_events(env.store, subject)
-    input_before = env.store.rebuild(subject)["run"]["input"]
-
-    response = act(env, subject, "follow_up", FOLLOW_UP)
-    assert response.status == 200, response.text
-    requeued = env.store.rebuild(subject)
-    assert requeued["run"]["run_id"] == run_id  # same Run (W2-A)
-    assert requeued["run"]["state"] == "queued"
-    assert requeued["run"]["input"] == input_before  # window unchanged
-
-    second, model = poll(env, subject, [report_from_transcript])
-
-    ((_, resumed),) = second
-    assert resumed.status == "published", resumed  # not blocked(INCOMPATIBLE_STATE)
-    assert resumed.reason != "INCOMPATIBLE_STATE"
-    assert len(model.calls) >= 1
-    assert event["content"]["text"] in json.dumps(model.calls[0].messages)
-    outcome, snapshot = durable_outcome(
-        env.store, env.events, "1", "attach-handoff-follow-up", subject
-    )
-    assert snapshot["run"]["run_id"] == run_id
-    assert outcome.final_state == "completed" and outcome.report_available
-    assert "worker_resumed" in outcome.actions
 
 
 def test_step1_successor_run_after_attached_episode_reframes_on_new_episode():
@@ -1183,7 +1150,26 @@ def _tool_results(snapshot) -> list[dict[str, Any]]:
     ]
 
 
-def test_step3_stalled_query_times_out_keeps_the_sibling_and_the_run_completes():
+def _short_tool_timeout(monkeypatch, seconds: float = 2.0) -> None:
+    """Give every otel-demo registration a short request timeout, so the
+    bounded-timeout assertions below wait seconds, not the shipped 30 s
+    (test-suite slim 2026-11-18). Set before the Run is accepted, so the
+    Run's frozen versions and the worker's versions agree."""
+    shipped = otel_demo_module._registrations
+
+    def shortened():
+        return tuple(
+            dataclasses.replace(item, request_timeout_seconds=seconds)
+            for item in shipped()
+        )
+
+    monkeypatch.setattr(otel_demo_module, "_registrations", shortened)
+
+
+def test_step3_stalled_query_times_out_keeps_the_sibling_and_the_run_completes(
+    monkeypatch,
+):
+    _short_tool_timeout(monkeypatch)
     source = StallSource(_prometheus(db_now() - timedelta(seconds=120)))
     env = otel_incident(run_seconds=300)
     worker = otel_runner(
@@ -1412,7 +1398,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
         assert outcome.human_interaction == "handoff"
         assert outcome.report_available is False and outcome.evidence_ids == ()
 
-        # A human follow_up re-queues a parked Run; it is never parked again.
+        # A human resume re-queues a parked Run; it is never parked again
+        # (workbench contract D7b: a parked Run without a validated report
+        # takes no message).
         revived = parked[0]
         generation = storm_conn.execute(
             "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s",
@@ -1423,10 +1411,9 @@ def test_step4_alert_storm_is_kept_whole_and_bounded_by_priority_capacity_and_ba
             app,
             f"/incidents/{revived}/control",
             {
-                "action": "follow_up",
+                "action": "resume",
                 "expected_generation": str(generation),
                 "idempotency_key": uuid4().hex,
-                "text": "Please look at this one now.",
             },
             headers={**basic(), **same_origin(), "accept": "application/json"},
         )

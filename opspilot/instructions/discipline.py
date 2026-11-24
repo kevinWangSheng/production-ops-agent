@@ -10,7 +10,7 @@ L2 报告契约 / L3a 工具模板 / L3b 实例快照，并要求各层「各有
 本模块把那些句子按**复用边界**收敛成一组只声明一次的 segment，
 再把每个历史变体表述为 segment 的有序序列。收敛的硬约束是**字节不变**。
 
-冻结证据的覆盖面要说准确：3 个变体里**只有 ``replay-candidate`` 有冻结哈希背书**
+冻结证据的覆盖面要说准确：历史 3 个变体里**只有 ``replay-candidate`` 有冻结哈希背书**
 （``9648c6de…``，M0 证据里两个 Run 记录的 ``prompt_sha256``），``render()`` 对它
 逐字节重建出当初送进模型的完整 system 消息。两个 baseline 变体**结构上不可能**有：
 ``holmes_baseline.py:1206`` 哈希的是 ``build_system_prompt(...)`` 的返回值，即
@@ -32,6 +32,10 @@ baseline 两变体靠的是漂移断言——逐字节锚定 ``holmes_baseline.p
 
 ``replay-candidate`` 另有两段非历史段落 ``INVESTIGATION_METHOD`` 与 ``IMPACT_SCOPE``
 （#310，2026-10-22 用户裁决），没有冻结哈希，只受句数普查与 revision 变化约束。
+``replay-candidate-k8s``（A7，#559）= ``replay-candidate`` 全部段落加一段
+``KUBERNETES_GUIDANCE``，只供扩展档位 ``otel-demo-ext`` 使用。
+``replay-candidate-k8s-cluster``（#722）= ``replay-candidate-k8s`` 再加多集群提醒
+``CLUSTER_AWARENESS`` 与集群名 L1b 槽位，扩展档位在运维设了本地集群名时使用。
 
 本模块不发起调用、不读环境变量、不依赖 ``scripts/``。L2 报告契约的文本由调用方传入，
 以免产品包反向依赖 M0 实验脚手架。
@@ -41,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from types import MappingProxyType
 from typing import Final, Literal, Mapping, NamedTuple
 
@@ -88,13 +93,16 @@ INVESTIGATION_METHOD: Final = (
     " Report the specific identities the evidence shows, such as exact service, operation, metric and label names, not generic examples."
     " If a named service, operation or metric returns nothing, compare the name with the names the tools list or have returned before treating it as absent; never query outside the authorized targets."
     " When the exact entity named has no data but a similarly named one does, report both facts: that nothing was found under the exact name, and what was found for the related entity, labeled as a different entity."
+    " Before you call something unobservable, list the metric and label names that could show it and check them; a signal you did not look for is unchecked, not unobservable."
+    " A time range with no samples is unknown, not zero; state the sampled times you rely on."
     " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
     " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
     " A service that is up or ready can still be failing; check its own error and latency signals before calling it healthy."
 )
-"""调查方法（8 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
+"""调查方法（10 句；#690 加第 6、7 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
-不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。"""
+不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。
+（#676 r1 曾在此加「告警是入口不是范围」一句，r2 D13 移入 ``KUBERNETES_GUIDANCE``。）"""
 
 IMPACT_SCOPE: Final = (
     " Name an entity as affected only when you observed evidence for that entity itself, such as its own error spans, error-rate reading or failed operations, and cite that evidence."
@@ -111,6 +119,84 @@ IMPACT_SCOPE: Final = (
 四组（受影响、已查且健康、因别的原因变化、未检查）只在提示里映射到现有报告类别与
 gaps，报告 schema 与校验不变；用普通词而不内联 L2 字段名。仅 ``replay-candidate``
 含此段。"""
+
+KUBERNETES_GUIDANCE: Final = (
+    " When investigating Kubernetes workloads, walk the ownership chain, such as deployment to replica set to pod, and check both the objects' status and the application logs."
+    " When a pod crashed or an application reports errors, read that pod's status, its containers' last termination reason and exit code, and its events, and read its logs, including the previous container's logs after a restart."
+    " Do not stop at a surface state such as pending or not ready: say why, naming the resource that is short or the label or setting that does not match, and give the fix as a recommendation."
+    " When many pods are affected, checking representative pods, up to three per workload, is enough to conclude about the workload; report the finding against the workload and name an individual pod only when you looked at that pod."
+    " Eviction and OOM leave marks on the pod: an Evicted event from the kubelet, or OOMKilled as a container's last termination reason."
+    " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it."
+    " A startup readiness-probe miss on such a pod is part of starting, not impact."
+    " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors; when connections between services are refused while their pods are healthy, also check networkpolicies, services, endpoints, resourcequotas."
+    " An alert is where the investigation starts, not its scope: find when the alerting signal began to deviate, and treat errors stable before the signal deviated as background, neither affected nor the cause."
+    " Read events across all namespaces first and do not filter by type, since the events that explain a fault are often Normal events recorded in another namespace."
+    " Group events by involved object kind, namespace and reason, then look into the groups that matter."
+    " Take each event's object kind from the event itself; an object of another kind can share a pod's name."
+    " When an event names an object you cannot read, the event is still evidence; record the unread object as a gap."
+    " Name as the root cause the object that applied the change or fault to the affected objects, with its kind and name exactly as the evidence writes them."
+    " When a restart leaves the pod template unchanged, the restart is a mechanism, not the cause; read the workload's and its dependencies' ConfigMaps for what triggered it."
+    " List as candidates the settings whose names or values show that they inject faults, errors, delays or failures."
+    " When such a setting is switched on, meaning its value in effect is not off, zero or false, and its name or description refers to the workload or service that was restarted with an unchanged pod template or is failing, and no other object is seen applying a change or fault to that workload, name the object that holds the setting as the root cause, write each such setting you read as its own fact, and write the restart and errors as its mechanism and consequences."
+    " When you did not see the declared fault itself happen, or cannot tell when the setting was changed, set the conclusion to partial and record both as gaps; a setting that is still on while the errors have stopped is not a reason to reject it."
+    " A workload restarted with an unchanged pod template is not itself the root cause; when you cannot find what triggered the restart, name no root cause and record that as a gap."
+    " When the investigation is complete and events are the only evidence for the cause, set the conclusion to partial."
+    " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
+    " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
+    " A running or ready pod can still be failing; read its application logs before calling it healthy."
+    " When a tool reports RESULT_TOO_LARGE, retry it narrower, with a shorter window, a specific service or operation, tags or a lower limit, or page through the stored result as the response suggests; do not drop that evidence."
+    " When events are too many to list, group and count them first; do not narrow them by namespace or type."
+)
+"""Kubernetes 调查指导（12 句，K1–K9 加 #628），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
+``generic_ask.jinja2`` :56/:58/:69/:73-78：去掉上游依赖命令行 describe 的措辞，不点工具名、
+参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。
+末句（#628）：工具报 RESULT_TOO_LARGE 后收窄重试或分页读取，不放弃该类证据；
+RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数名。
+#676（D1–D7、D9）增至 22 句，r2 D13 把「告警是入口不是范围」一句从调查方法段移来，共 23 句：事件先全集群、不按 type 过滤、按对象种类/命名空间/原因
+分组，对象种类以事件为准，读不了的对象记缺口；原因对象是施加变更或故障者，模板未变的
+重启是机制，转读工作负载及其依赖的 ConfigMap，配置声明的故障与观测失败路径吻合才作
+原因；只有事件支撑时 partial；连接被拒且 Pod 健康时查网络策略等（扩写 K6 句，保留
+services…ingresses…logs 语序）；事件太大先分组计数（#628 句不动，另加一句）。
+#695 把「配置声明的故障与观测失败路径吻合才作原因」一句换成按取值指认持有设置的对象，
+另加结论强度句与「模板未变的重启对象不作根因」句，共 25 句。
+字面投影字段名与分组示例在 L3 工具描述里。"""
+
+CLUSTER_AWARENESS: Final = (
+    " Your Kubernetes access reads only the cluster `{cluster_name}`; other data sources, such as metrics, traces and log search, may also hold data from other clusters, so check what the data itself contains rather than assuming."
+    " When the question is about a cluster, region or environment other than `{cluster_name}`, still investigate it with those other data sources; do not refuse because your Kubernetes access is on a different cluster."
+    " Check that the data you find belongs to the cluster the question names, using the data's own cluster, region or environment fields, index or source names, or other tags; a search that returns plausible results is not that check."
+    " If the data matches, investigate normally and name that cluster in your findings."
+    " If it belongs to a different cluster, often `{cluster_name}` itself, you have no data for the cluster the question names: say so first in the summary, record it as a gap, do not name anything from that data as the root cause of this incident, and name its real cluster wherever you describe it."
+    " Never relabel data from one cluster as another: every fact drawn from those other data sources names the cluster its data came from."
+)
+"""多集群提醒（6 句），#722（r10 H-U1，2026-11-18 用户裁决）新增，改写自 HolmesGPT
+``generic_ask.jinja2:7-17``：不点工具名与命令行客户端名，删去产品专有的「改指数据源或
+Holmes agent」建议，「top of your answer」改为 summary 开头，「finding」改为 fact。
+``{cluster_name}`` 是 L1b 占位符（运维配置的本地集群名，记在 Run 输入里），出现 3 次，
+取值不进 revision。仅 ``replay-candidate-k8s-cluster`` 及其 ``-todo`` 组合变体含此段。"""
+
+CLUSTER_NAME_PATTERN: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,127}")
+"""本地集群名的字符集（#722 CN-9）：1–128 字符，容得下 EKS ARN、
+``gke_<项目>_<区>_<名>``、``user@cluster`` 这类 kube context 名；不含空白、换行、
+反引号、引号、``=`` 与花括号，值打不破提示词里的反引号分隔，也不会长成「名=值」形式。"""
+
+
+def valid_cluster_name(value: object) -> bool:
+    """``value`` 是否是一个合规的本地集群名（完整匹配 :data:`CLUSTER_NAME_PATTERN`）。"""
+    return isinstance(value, str) and CLUSTER_NAME_PATTERN.fullmatch(value) is not None
+
+
+TODO_GUIDANCE: Final = (
+    " For an investigation that needs three or more distinct steps, or a question that lists several tasks, use the TodoWrite tool to plan and track the work: send the initial task list before gathering data, and in that same turn mark the tasks you start as in_progress and issue their queries alongside it."
+    " Work on independent tasks at the same time and only serialize a task that needs another task's result; send status updates in one TodoWrite call together with the turn's queries, not in a turn of their own."
+    " Mark a task completed as soon as it is done; when a task is blocked, keep it in_progress and add a task for what must be resolved, and add follow-up tasks you discover."
+    " When every task is done, check whether you can answer the question completely and have reached the actual cause; if not, add tasks for the next phase, such as an upstream service or dependency your findings implicate, and continue."
+    " The task list is your plan, not evidence: cite only evidence_id values from tool results, and before the final report trace each claim to a tool result and state anything you could not verify as a hypothesis."
+)
+"""任务清单指导（5 句），C1（#565，r11 C1-U1/C1-U2，预审 C1-4）新增，改写自 HolmesGPT
+``generic_ask.jinja2:36-42`` 与 ``investigator_instructions.jinja2:2-6``；不搬「问题不清先问用户」、
+``<system-reminder>``、带 ``priority`` 的片段与「五个为什么」字样，也不搬上游追加在用户问题后的提醒。
+点名工具 ``TodoWrite``，标 ``tool_specific``。只在 ``-todo`` 后缀的变体里，紧接报告契约槽位之前。"""
 
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
@@ -145,6 +231,7 @@ class Segment(NamedTuple):
 
 _STEPS_SLOT: Final = Segment("model_request_budget", LAYER_INSTANCE, "")
 _SERVICES_SLOT: Final = Segment("authorized_services", LAYER_INSTANCE, "", scoped=True)
+_CLUSTER_SLOT: Final = Segment("cluster_name", LAYER_INSTANCE, "")
 _REPORT_SLOT: Final = Segment("report_contract", LAYER_REPORT, "")
 
 _OPENING_MULTI: Final = Segment("read_only_opening", LAYER_TEMPLATE, READ_ONLY_OPENING)
@@ -160,6 +247,9 @@ _MISSING: Final = Segment("missing_series", LAYER_TEMPLATE, MISSING_SERIES)
 _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
 _METHOD: Final = Segment("investigation_method", LAYER_TEMPLATE, INVESTIGATION_METHOD)
 _IMPACT: Final = Segment("impact_scope", LAYER_TEMPLATE, IMPACT_SCOPE)
+_KUBERNETES: Final = Segment("kubernetes_guidance", LAYER_TEMPLATE, KUBERNETES_GUIDANCE)
+_CLUSTER: Final = Segment("cluster_awareness", LAYER_TEMPLATE, CLUSTER_AWARENESS)
+_TODO: Final = Segment("todo_guidance", LAYER_TEMPLATE, TODO_GUIDANCE, True)
 # 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
 _WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
@@ -215,7 +305,62 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _IMPACT,
         _REPORT_SLOT,
     ),
+    # A7（#559，r7 A7-1/A7-2）：扩展档位（otel-demo-ext）专用，= replay-candidate 的
+    # 全部段落，在影响面段与报告契约槽位之间加 Kubernetes 调查指导。replay-candidate
+    # 本身与 otel-demo 档位不变。
+    "replay-candidate-k8s": (
+        _OPENING_REPLAY,
+        _EVIDENCE,
+        _MISSING,
+        _METHOD,
+        _IMPACT,
+        _KUBERNETES,
+        _REPORT_SLOT,
+    ),
+    # #722（r10 H-U1）：扩展档位在运维设了 OPSPILOT_CLUSTER_NAME 时用，=
+    # replay-candidate-k8s 的全部段落，在 Kubernetes 指导段与报告契约槽位之间加
+    # 多集群提醒及其集群名槽位。没设时扩展档位仍用 replay-candidate-k8s，字节与
+    # revision 不变；用新变体而不在原序列里加条件段，是因为 template_projection
+    # 哈希全部段落，条件段即使不出现也会改变原变体的 revision。
+    "replay-candidate-k8s-cluster": (
+        _OPENING_REPLAY,
+        _EVIDENCE,
+        _MISSING,
+        _METHOD,
+        _IMPACT,
+        _KUBERNETES,
+        _CLUSTER,
+        _CLUSTER_SLOT,
+        _REPORT_SLOT,
+    ),
 }
+
+TODO_SUFFIX: Final = "-todo"
+#: C1（#565，接口 §4）：扩展档位开了 ``OPSPILOT_TODO_WRITE`` 时，变体名加 ``-todo`` 后缀，
+#: 段落 = 基础变体全部段落，在报告契约槽位之前插入 ``TODO_GUIDANCE``。按后缀组合而不是手写
+#: 变体：基础变体（K8s、以后的集群段）在前，任务清单段在后，报告契约最后。
+TODO_BASE_VARIANTS: Final = (
+    "replay-candidate-k8s",
+    "replay-candidate-k8s-cluster",
+)
+
+
+def _with_todo(segments: tuple[Segment, ...]) -> tuple[Segment, ...]:
+    at = segments.index(_REPORT_SLOT)
+    return (*segments[:at], _TODO, *segments[at:])
+
+
+for _base in TODO_BASE_VARIANTS:
+    _VARIANTS[_base + TODO_SUFFIX] = _with_todo(_VARIANTS[_base])
+del _base
+
+
+def todo_variant(variant_id: str) -> str:
+    """``variant_id`` with the task-list guidance (C1); unknown bases fail."""
+    if variant_id not in TODO_BASE_VARIANTS:
+        raise UnknownVariantError(variant_id + TODO_SUFFIX)
+    return variant_id + TODO_SUFFIX
+
 
 VARIANTS: Final[Mapping[str, tuple[Segment, ...]]] = MappingProxyType(_VARIANTS)
 
@@ -231,12 +376,19 @@ def _variant(variant_id: str) -> tuple[Segment, ...]:
         raise UnknownVariantError(variant_id) from None
 
 
+def has_cluster_slot(variant_id: str) -> bool:
+    """变体是否带本地集群名槽位（#722）。未登记的变体返回 ``False``。"""
+    segments = VARIANTS.get(variant_id)
+    return segments is not None and any(s.key == "cluster_name" for s in segments)
+
+
 def render(
     variant_id: str,
     *,
     model_requests: int,
     report_contract: str,
     authorized_services: tuple[str, ...] = (),
+    cluster_name: str | None = None,
 ) -> str:
     """把一个变体渲染成当初送进模型的那串字节。
 
@@ -251,6 +403,10 @@ def render(
       默默丢掉它会让调用方以为查询范围已被限定，而模型拿到的是未限定的纪律——
       查询范围属 Controller 权限，不能悄悄落空（PRODUCT-CONSTRAINTS「Runtime and
       human control requirements」）。
+
+    ``cluster_name``（#722）同理两头都拒：变体有集群名槽位而没给合规的名字，或者
+    变体没有槽位却给了名字，都是 ``ValueError``——「以为告诉了模型集群名，实际
+    没送进去」与「送进去一段没有名字的提醒」都是静默的错误字节。
     """
     segments = _variant(variant_id)
     if type(model_requests) is not int or model_requests < 1:
@@ -286,6 +442,11 @@ def render(
         s.key == "authorized_services" for s in segments
     ):
         raise ValueError(f"variant {variant_id!r} carries no authorized service list")
+    if any(s.key == "cluster_name" for s in segments):
+        if not valid_cluster_name(cluster_name):
+            raise ValueError(f"variant {variant_id!r} needs a valid cluster_name")
+    elif cluster_name is not None:
+        raise ValueError(f"variant {variant_id!r} carries no cluster name")
 
     parts: list[str] = []
     for segment in segments:
@@ -305,6 +466,14 @@ def render(
             parts[-1] = parts[-1].format(steps=model_requests)
         elif segment.key == "authorized_services":
             parts.append(", ".join(authorized_services))
+        elif segment.key == "cluster_name":
+            # 与预算槽位同一规则：名字回填进前一段模板里的占位符。
+            if not parts or "{cluster_name}" not in parts[-1]:
+                raise ValueError(
+                    f"variant {variant_id!r}: the cluster name slot must follow a "
+                    "template segment containing the {cluster_name} placeholder"
+                )
+            parts[-1] = parts[-1].format(cluster_name=cluster_name)
         elif segment.key == "report_contract":
             parts.append(" " + report_contract)
         else:
@@ -367,6 +536,7 @@ def prompt_revision(
     alert_context_template: str = "",
     knowledge_template: str = "",
     release_context_template: str = "",
+    runbook_catalog_template: str | None = None,
 ) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
@@ -379,21 +549,23 @@ def prompt_revision(
     传入知识提示与发布事实（F11 P4-05）的不可信数据边界措辞，都由调用方从其单一来源取得。实例值（具体失败原因、具体 evidence_id）不参与，只有模板
     本身参与；这样仅预算、授权范围或具体失败内容不同的两个 Run 得到相同
     取值。
+
+    ``runbook_catalog_template``（C2b，#566）只在 runbook 目录开关打开时由
+    调用方传入；为 ``None`` 时哈希字典里没有这个键（不是空串），开关关闭的
+    部署取值逐字节不变（照 #722「未设时字节不变」）。
     """
-    return "prompt-{}-{}".format(
-        variant_id,
-        _short(
-            {
-                "discipline": template_projection(variant_id),
-                "report_contract": report_contract,
-                "run_coverage_template": run_coverage_template,
-                "report_retry_template": report_retry_template,
-                "alert_context_template": alert_context_template,
-                "knowledge_template": knowledge_template,
-                "release_context_template": release_context_template,
-            }
-        ),
-    )
+    hashed: dict[str, object] = {
+        "discipline": template_projection(variant_id),
+        "report_contract": report_contract,
+        "run_coverage_template": run_coverage_template,
+        "report_retry_template": report_retry_template,
+        "alert_context_template": alert_context_template,
+        "knowledge_template": knowledge_template,
+        "release_context_template": release_context_template,
+    }
+    if runbook_catalog_template is not None:
+        hashed["runbook_catalog_template"] = runbook_catalog_template
+    return "prompt-{}-{}".format(variant_id, _short(hashed))
 
 
 def prompt_face_sha256(
@@ -402,6 +574,7 @@ def prompt_face_sha256(
     model_requests: int,
     report_contract: str,
     authorized_services: tuple[str, ...] = (),
+    cluster_name: str | None = None,
 ) -> str:
     """本 Run 实际送进模型的 L1 面的完整 sha256（C3 第 5 节 L1b 行）。
 
@@ -421,5 +594,6 @@ def prompt_face_sha256(
             model_requests=model_requests,
             report_contract=report_contract,
             authorized_services=authorized_services,
+            cluster_name=cluster_name,
         ).encode("utf-8")
     ).hexdigest()

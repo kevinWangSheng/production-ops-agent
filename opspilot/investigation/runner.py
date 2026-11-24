@@ -42,6 +42,7 @@ from uuid import UUID
 from opspilot.investigation.context import (
     ContextError,
     InvestigationInput,
+    conclusion_answered,
     conclusion_publishable,
     pending_conclusion,
     rebuild_transcript,
@@ -51,6 +52,7 @@ from opspilot.investigation.loop import (
     InvestigationLoop,
     LoopOutcome,
     ModelClient,
+    todo_view,
     tool_request_for,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
@@ -59,6 +61,7 @@ from opspilot.investigation.progress import (
     EmittingCommitter,
     EvidenceProjection,
     ProgressLog,
+    announce_answered,
     announce_claim_refused,
     announce_claimed,
     announce_completed,
@@ -71,6 +74,7 @@ from opspilot.investigation.store import (
     StepCommitter,
     StepStoreError,
 )
+from opspilot.investigation.todo import is_todo_write_call, offers_todo_write
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.tools.executor import Clock, ReadOnlyToolExecutor
 from opspilot.tools.registry import ToolContractError
@@ -79,6 +83,7 @@ from opspilot.worker import DEFAULT_LEASE_SECONDS, RecoverySession, Worker
 
 RunnerStatus = Literal[
     "published",  # a qualified conclusion step was committed and published
+    "answered",  # the Run replied and completed; the conclusion is unchanged
     "handed_off",  # the Run is parked for a human (this attempt, or already)
     "unpublished",  # a publishable conclusion was refused (late result)
     "already_completed",
@@ -161,10 +166,11 @@ class InvestigationRunner:
             if str(exc) != "INCONSISTENT_STATE":
                 raise
             return self._block_undecodable(incident_id)
-        if snapshot["conclusion"] is not None or snapshot["run"]["state"] in {
-            "completed",
-            "cancelled",
-        }:
+        # Only the current Run's own row says it is done. A published
+        # conclusion beside it belongs to an earlier Run when the current one
+        # is a continuation answering a message (contract A1): that Run runs,
+        # or is reported handed off / swept like any other (review r7).
+        if snapshot["run"]["state"] in {"completed", "cancelled"}:
             return RunnerOutcome("already_completed")
         if snapshot["run"]["run_id"] in swept:
             return RunnerOutcome("handed_off", reason=DEADLINE_EXCEEDED)
@@ -301,7 +307,15 @@ class InvestigationRunner:
             target_ref = next(iter(executor.scope.target_ids))
         window = executor.scope.window.as_json()
 
+        offers_todo = offers_todo_write(input.tool_schemas)
+
         def execute(item: Mapping[str, Any]) -> Mapping[str, Any]:
+            if offers_todo and is_todo_write_call(item["tool_call"]):
+                # C1 (#565): the same pure view the live loop committed would
+                # have been; the gateway is never asked.
+                return todo_view(
+                    item["step_id"], int(item["ordinal"]), item["tool_call"]
+                )
             outcome = executor.execute(
                 tool_request_for(
                     item["step_id"],
@@ -433,6 +447,10 @@ class InvestigationRunner:
         lease = session.lease
         body = conclusion.get("conclusion")
         body = body if isinstance(body, Mapping) else {}
+        if conclusion_answered(conclusion):
+            return self._settle_answered(
+                session, step_id, body, loop=loop, replayed=replayed
+            )
         if not conclusion_publishable(conclusion):
             reasons = tuple(
                 str(item) for item in (body.get("handoff_reasons") or ()) if item
@@ -478,6 +496,44 @@ class InvestigationRunner:
             )
         return RunnerOutcome(
             "published", loop=loop, epoch=lease.epoch, replayed_tools=replayed
+        )
+
+    def _settle_answered(
+        self,
+        session: RecoverySession,
+        step_id: UUID,
+        body: Mapping[str, Any],
+        *,
+        loop: LoopOutcome | None,
+        replayed: int,
+    ) -> RunnerOutcome:
+        """Contract A4: complete the Run on an ``answered`` step, publishing
+        nothing; refused like ``publish`` when human control moved on."""
+        lease = session.lease
+        try:
+            settled = session.settle_answered(step_id=step_id)
+        except PersistenceError:
+            settled = False
+        if not settled:
+            return RunnerOutcome(
+                "unpublished",
+                reason="PUBLISH_REFUSED",
+                loop=loop,
+                epoch=lease.epoch,
+                replayed_tools=replayed,
+            )
+        if self.events is not None:
+            announce_answered(
+                self.events,
+                lease.incident_id,
+                lease.run_id,
+                replies=body.get("replies") or [],
+                report_rejected_reason=body.get("report_rejected_reason"),
+                model_requests_used=body.get("model_requests_used"),
+                prompt_revision=body.get("prompt_revision"),
+            )
+        return RunnerOutcome(
+            "answered", loop=loop, epoch=lease.epoch, replayed_tools=replayed
         )
 
     def _hand_off(

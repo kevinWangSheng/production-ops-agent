@@ -1,0 +1,169 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "689b6e3f-ec3a-4567-8b62-bc6699771968",
+  "frozen_at": "2026-11-22T19:44:45.872022+00:00",
+  "incident_id": "fed8438b-c075-4c3c-9369-39dca339828b",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-22T19:44:26.996709+00:00",
+  "ended": "2026-11-22T19:44:39.859273+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "fixture",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "INCOMPLETE_INVESTIGATION",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 2,
+    "http_count": 2,
+    "prompt_tokens": 4806,
+    "completion_tokens": 2220,
+    "run_usage": {
+      "budget_limit": 2,
+      "model_requests_used": 2,
+      "model_seconds_used": 12.650875289924443,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "current_run_id": "689b6e3f-ec3a-4567-8b62-bc6699771968",
+    "current_run_usage": {
+      "budget_limit": 2,
+      "model_requests_used": 2,
+      "model_seconds_used": 12.650875289924443,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "bd57e329-5d14-4781-9b3c-72b947002a20-t0:e8381b00-8af7-4f30-907a-798cbefa48df"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.029973
+  },
+  "report": {
+    "schema_version": "m0-report-v3",
+    "assessment_status": "incomplete",
+    "conclusion": "inconclusive",
+    "summary": "Only Prometheus metrics were available in this Run, and only one query was delivered before collection closed. A range query for rate(http_errors[5m]) against target checkout-prod over the authorized window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z returned a single series labeled http_errors_rate with value 0.042. That is the entire observed evidence: one aggregate reading, no baseline period, no per-status-code or per-operation breakdown, and no time series points beyond a data_as_of timestamp at the window start. Because no comparable baseline was supplied, the report cannot confirm that this value represents elevated HTTP errors for Checkout; the premise of the question therefore remains unverified rather than confirmed or refuted. The single value also cannot be attributed to any service, operation, deployment or node, and traces, kubernetes_state, pod_logs and change_history were not integrated in this Run, so no root-cause object can be named. No entity is reported as affected, because no entity's own error or latency evidence was observed beyond this one unlabeled aggregate.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "A Prometheus range query for rate(http_errors[5m]) on target checkout-prod, scoped to the authorized window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z, returned exactly one result (result_count 1, not truncated, not incomplete): metric name http_errors_rate with value 0.042.",
+        "evidence_ids": [
+          "bd57e329-5d14-4781-9b3c-72b947002a20-t0:e8381b00-8af7-4f30-907a-798cbefa48df"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The same returned view carries data_as_of 2026-09-14T00:00:00+00:00 (the window start) with observed_at 2026-11-22T19:44:28.454394+00:00 and freshness_seconds 6032668.45, and it supplies no timestamps, labels or points covering the remainder of the 00:00-01:00 window; the reading is therefore anchored at the window start and the rest of the window is not evidenced.",
+        "evidence_ids": [
+          "bd57e329-5d14-4781-9b3c-72b947002a20-t0:e8381b00-8af7-4f30-907a-798cbefa48df"
+        ],
+        "target_refs": [
+          "checkout-prod"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "No baseline period was provided or queried, so the observed http_errors_rate value of 0.042 cannot be classified as elevated or normal; a pre-window or long-run comparison series is missing.",
+      "The returned series has no status-code, operation, route, pod or instance labels, so the error rate cannot be localized to any specific operation or workload.",
+      "Only one query result was delivered before collection closed; label-level breakdowns (by status code, operation, method), error-count/counter series, total-request rate for computing an error ratio, and latency metrics were not checked.",
+      "The traces integration is not integrated in this Run, so span-level error status, error messages and parent-child call edges could not be examined.",
+      "The kubernetes_state integration is not integrated, so pod/workload readiness, restart and resource signals could not be examined.",
+      "The pod_logs integration is not integrated, so application error text could not be examined.",
+      "The change_history integration is not integrated, so deployments or config changes during the window could not be correlated.",
+      "No source supplied information on which service, deployment or node the checkout-prod target maps to, so no root-cause object can be named."
+    ],
+    "next_steps": [
+      "Query the same http error metrics over a comparable pre-window baseline (for example the preceding 24 hours) to determine whether 0.042 is actually elevated.",
+      "Re-run the error-rate query with status-code and operation label breakdowns, plus a total request rate, to compute an error ratio and localize which operation is failing.",
+      "Integrate traces, kubernetes_state, pod_logs and change_history for the 2026-09-14T00:00-01:00 window so span errors, pod health and any concurrent change can be tied to the metric reading."
+    ],
+    "root_cause": null
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "conclusion:g0:ctx0:round-2"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 2,
+    "next_round": 3,
+    "evidence_ids": [
+      "bd57e329-5d14-4781-9b3c-72b947002a20-t0:e8381b00-8af7-4f30-907a-798cbefa48df"
+    ]
+  },
+  "citations": {
+    "cited": [
+      {
+        "evidence_id": "bd57e329-5d14-4781-9b3c-72b947002a20-t0:e8381b00-8af7-4f30-907a-798cbefa48df",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      }
+    ],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "94149ecd3dff4d1b411742589cf17bcd3e692cfa1c7fcba0ecbac71a07370a74",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "0ddeb45699296eeef6ef931c57358fce",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-444-dns",
+    "project_id": "72071430-0d42-40e4-a9d3-7cfcd7986fb3",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-42c1-a5a502db2664",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/72071430-0d42-40e4-a9d3-7cfcd7986fb3/r/00000000-0000-0000-42c1-a5a502db2664?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "f0598e6783f543ab921faffaa0bccdc80e38619e6c532f9c39828de9967351c9",
+    "bytes": 6169,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/689b6e3f-ec3a-4567-8b62-bc6699771968/ledger.json",
+    "in_repository": false
+  }
+}

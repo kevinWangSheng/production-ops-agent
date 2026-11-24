@@ -249,8 +249,11 @@ class EvidenceReadTransport:
 
     ``run_id`` and ``target_ids`` are the scope's (the Controller's), never
     the model's; ``result_paths`` maps each readable parent tool to its
-    registration's ``result_path``. ``store`` may be ``None`` (a sink that
-    cannot read back): every read is then not readable.
+    registration's ``result_path``, and ``citable`` maps it to that
+    registration's ``citable_as_fact`` (#742: a slice is citable only when
+    its parent tool is; a tool missing from ``citable`` counts as not
+    citable). ``store`` may be ``None`` (a sink that cannot read back):
+    every read is then not readable.
     """
 
     def __init__(
@@ -260,11 +263,13 @@ class EvidenceReadTransport:
         run_id: str,
         target_ids: frozenset[str],
         result_paths: Mapping[str, tuple[str, ...]],
+        citable: Mapping[str, bool],
     ) -> None:
         self._store = store
         self._run_id = run_id
         self._target_ids = frozenset(target_ids)
         self._result_paths = dict(result_paths)
+        self._citable = dict(citable)
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         params = request.params
@@ -350,6 +355,10 @@ class EvidenceReadTransport:
                 "observed_at": observed,
                 "dispatch_started_at": _moment(view.get("dispatch_started_at")),
                 "incomplete": view.get("incomplete") is True,
+                # #742: the parent tool's registered value, not the stored
+                # view's flag (that also folds in status and adoption, which
+                # the executor decides for this read itself).
+                "citable_as_fact": self._citable.get(tool) is True,
                 "omitted_rows": len(omitted),
                 "omitted_bytes": sum(
                     len(canonical(row).encode("utf-8")) for row in omitted
@@ -371,16 +380,40 @@ def _rows(raw: bytes, path: Sequence[str]) -> list[object] | None:
 
 
 class RoutedTransport:
-    """``read_evidence`` to the evidence transport, every other tool to the
-    profile's own transport (the request's gateway-resolved ``tool``)."""
+    """``read_evidence`` to the evidence transport, the cluster query tools to
+    ``kubernetes``, a tool named in ``routes`` to its own transport, every other tool to the profile's own transport
+    (the request's gateway-resolved ``tool``).
+
+    ``routes`` dispatches on exact tool names, never on a name prefix (tool
+    expansion A2, r3): a later tool without the prefix of its backend must
+    not fall through to another backend's transport.
+    """
 
     def __init__(
-        self, *, evidence: ReadOnlyTransport, sources: ReadOnlyTransport
+        self,
+        *,
+        evidence: ReadOnlyTransport,
+        sources: ReadOnlyTransport,
+        kubernetes: ReadOnlyTransport | None = None,
+        routes: Mapping[str, ReadOnlyTransport] | None = None,
     ) -> None:
         self._evidence = evidence
         self._sources = sources
+        self._routes: dict[str, ReadOnlyTransport] = {}
+        if kubernetes is not None:
+            # Imported here: kubernetes_core imports otel_demo, which imports
+            # this module.
+            from .kubernetes_core import K8S_TOOLS
+
+            self._routes.update(dict.fromkeys(K8S_TOOLS, kubernetes))
+        self._routes.update(routes or {})
+        if EVIDENCE_TOOL in self._routes:
+            raise ValueError("ROUTE_SHADOWS_EVIDENCE_TOOL")
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.tool == EVIDENCE_TOOL:
             return self._evidence.fetch(request)
+        routed = self._routes.get(request.tool)
+        if routed is not None:
+            return routed.fetch(request)
         return self._sources.fetch(request)

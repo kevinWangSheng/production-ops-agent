@@ -9,6 +9,11 @@ Configuration comes from the environment only, and only as hashes:
 * ``OPSPILOT_EVENT_TOKENS``   ``<sha256 hex>=<actor id>`` entries separated by ``,``.
 * ``OPSPILOT_AUTH_REVISION``  identifier recorded on every principal.
 * ``OPSPILOT_ALLOWED_ORIGINS`` origins accepted for browser form posts.
+* ``OPSPILOT_SESSION_SECRET`` HMAC key of the login form's session cookie
+  (at least 16 bytes; #682). Optional: unset, a random key is generated in
+  this process (one warning at start) and every browser signs in again
+  after a restart. Changing it, or the credential set behind
+  ``OPSPILOT_AUTH_REVISION``, signs every browser out.
 * ``OPSPILOT_BIND``           ``host:port``; defaults to ``127.0.0.1:8080``.
 * ``OPSPILOT_RUN_SECONDS``    Run wall for new Runs (default: the frozen
   ``RUN_WALL_SECONDS``); a dev knob to exercise the deadline sweep, never
@@ -43,6 +48,13 @@ Configuration comes from the environment only, and only as hashes:
   three off: no release is then observed (it stays pending until its
   deadline sweep ends it ``unknown``), and ending records are durable, so
   a stopped anomaly pass loses nothing and the next one consumes them.
+* ``OPSPILOT_RELAY_INTERVAL_SECONDS`` seconds between two message relay
+  passes (``Workbench.relay_pass``, workbench contract R2): a thread of its
+  own, independent of the automatic-observation setting, opens the
+  continuation Run for unread messages on idle incidents (the fallback for
+  the relay the message request runs itself). Default ``30``; ``0`` turns
+  it off (logged at start); anything but ``0`` or a positive finite number
+  refuses to start.
 * ``OPSPILOT_HEALTH_BIND``     the health listener's ``host:port``
   (``opspilot.health``, separate from the app on ``OPSPILOT_BIND``; default
   ``127.0.0.1:9464``, empty turns it off;
@@ -65,6 +77,7 @@ import getpass
 import logging
 import math
 import os
+import secrets
 import sys
 import threading
 from pathlib import Path
@@ -72,6 +85,7 @@ from pathlib import Path
 from opspilot import health, logs, schema
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
+from opspilot.knowledge.runbooks import RunbookStore
 from opspilot.observer.health_profile import (
     PROFILE_DIRECTORY,
     HealthProfile,
@@ -99,6 +113,8 @@ _log = logging.getLogger(__name__)
 #: the automatic authorization as the system's. ``0`` in the environment
 #: turns the loop off.
 SELF_HEAL_INTERVAL_SECONDS = 30.0
+#: Workbench contract R2: the background message relay, its own thread.
+RELAY_INTERVAL_SECONDS = 30.0
 
 
 def _pairs(raw: str) -> dict[str, str]:
@@ -124,19 +140,40 @@ def _run_seconds() -> float:
     return value
 
 
-def _self_heal_interval() -> float:
-    raw = os.environ.get("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS")
+def _session_secret() -> bytes:
+    # Only unset or exactly empty is absent; any other value is the key,
+    # byte for byte (no stripping), so a short one is refused, not ignored.
+    raw = os.environ.get("OPSPILOT_SESSION_SECRET", "")
+    if raw == "":
+        _log.warning(
+            "OPSPILOT_SESSION_SECRET not set; sessions end when the web restarts"
+        )
+        return secrets.token_bytes(32)
+    secret = raw.encode("utf-8")
+    if len(secret) < 16:
+        raise SystemExit("OPSPILOT_SESSION_SECRET must be at least 16 bytes")
+    return secret
+
+
+def _interval(name: str, default: float) -> float:
+    raw = os.environ.get(name)
     if raw is None:
-        return SELF_HEAL_INTERVAL_SECONDS
+        return default
     try:
         value = float(raw)
     except ValueError:
-        raise SystemExit(
-            "OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be a number"
-        ) from None
+        raise SystemExit(f"{name} must be a number") from None
     if not math.isfinite(value) or value < 0:
-        raise SystemExit("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be 0 or positive")
+        raise SystemExit(f"{name} must be 0 or positive")
     return value
+
+
+def _self_heal_interval() -> float:
+    return _interval("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS", SELF_HEAL_INTERVAL_SECONDS)
+
+
+def _relay_interval() -> float:
+    return _interval("OPSPILOT_RELAY_INTERVAL_SECONDS", RELAY_INTERVAL_SECONDS)
 
 
 def self_heal_loop(
@@ -161,6 +198,25 @@ def self_heal_loop(
             workbench.release_anomaly_pass()
         except Exception:
             _log.exception("release anomaly pass failed")
+
+
+def relay_loop(workbench: Workbench, interval: float, stop: threading.Event) -> None:
+    """Run ``workbench.relay_pass()`` every ``interval`` seconds until
+    ``stop`` is set (workbench contract R2: the fallback that opens a
+    continuation Run for unread messages on an idle incident; the message
+    request relays first). A failed pass is logged and the next one runs on
+    time: the relay is keyed and re-checked under the incident lock. Then
+    the Chat forward backup (workbench P7-9 b): answered ``steer`` turns
+    the page did not forward, keyed ``chat:{turn_id}``."""
+    while not stop.wait(interval):
+        try:
+            workbench.relay_pass()
+        except Exception:
+            _log.exception("relay pass failed")
+        try:
+            workbench.chat_forward_pass()
+        except Exception:
+            _log.exception("chat forward pass failed")
 
 
 def _target_registry() -> MappingTargetRegistry | None:
@@ -252,6 +308,7 @@ def _serve() -> int:
         raise SystemExit("OPSPILOT_WEB_DSN is required")
     bind = os.environ.get("OPSPILOT_BIND", "127.0.0.1:8080")
     interval = _self_heal_interval()
+    relay_interval = _relay_interval()
     # Browsers send Origin on every form POST, so an empty allow-list would
     # refuse the dev UI itself; default to the bind address over plain http.
     origins = os.environ.get("OPSPILOT_ALLOWED_ORIGINS") or f"http://{bind}"
@@ -260,6 +317,7 @@ def _serve() -> int:
         event_tokens=_pairs(os.environ.get("OPSPILOT_EVENT_TOKENS", "")),
         auth_revision=os.environ.get("OPSPILOT_AUTH_REVISION", "dev"),
         allowed_origins=frozenset(filter(None, origins.split(","))),
+        session_secret=_session_secret(),
     )
     store = DurableStore(dsn)
     store.install()
@@ -292,6 +350,8 @@ def _serve() -> int:
         if os.environ.get("OPSPILOT_KNOWLEDGE_HINTS") == "off"
         else knowledge,
         knowledge_max_age_seconds=knowledge_max_age,
+        # C2b: only ``otel-demo-ext`` with ``OPSPILOT_KNOWLEDGE_TOOL=1``
+        runbook_catalog=RunbookStore(dsn) if profile.runbook_catalog else None,
         health_profile=_health_profile(),
         # The same versions and tool face ``python -m opspilot.worker_main``
         # claims and runs with: a Run recorded under other versions is
@@ -305,6 +365,7 @@ def _serve() -> int:
         Authenticator(config),
         clock,
         review=PostmortemReview(knowledge=knowledge, events=events),
+        runbooks=RunbookStore(dsn),
     )
     host, _, port = bind.rpartition(":")
     # Before any thread: a bind that cannot be served refuses to start.
@@ -319,6 +380,20 @@ def _serve() -> int:
             daemon=True,
         )
         healer.start()
+    relayer = None
+    if relay_interval > 0:
+        relayer = threading.Thread(
+            target=relay_loop,
+            args=(workbench, relay_interval, stop),
+            name="opspilot-message-relay",
+            daemon=True,
+        )
+        relayer.start()
+    else:
+        _log.warning(
+            "message relay pass disabled (OPSPILOT_RELAY_INTERVAL_SECONDS=0): "
+            "unread messages wait for the next message request to relay them"
+        )
     try:
         # log_config=None: uvicorn's loggers propagate to the root handler
         # ``logs.configure()`` installed, one format per process (F8L-R6).
@@ -338,6 +413,8 @@ def _serve() -> int:
             # transactions; a pass still running after this is abandoned
             # with the process (daemon thread), its transaction rolled back.
             healer.join(timeout=10)
+        if relayer is not None:
+            relayer.join(timeout=10)
         knowledge.close()
         store.close()
     return 0

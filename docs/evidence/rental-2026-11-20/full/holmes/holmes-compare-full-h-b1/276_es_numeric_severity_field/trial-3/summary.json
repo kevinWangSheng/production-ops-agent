@@ -1,0 +1,120 @@
+{
+ "holmes_compare": {
+  "category": "ok",
+  "chance": 1,
+  "code": null,
+  "conversion": {
+   "deshift_count": 1,
+   "text_sha256": "413860a4f74fa786fa55edd1a85e6c357f87e5d9578ebff3aafb3e863eaf7694"
+  },
+  "data_plane": {
+   "backend": "elasticsearch",
+   "mode": "upstream-direct",
+   "product_url": "http://localhost:30920",
+   "victorialogs_image": null
+  },
+  "disclosures": [
+   "TOOL_FACE_UPSTREAM_DEFAULT",
+   "UPSTREAM_HARNESS_JUDGE_TEXT",
+   "QUESTION_TIME_REWRITTEN",
+   "DESHIFT_TIME_ONLY_UNCHANGED",
+   "DESHIFT_DATE_MIDPOINT",
+   "SKILL_ASSERTION_DROPPED",
+   "JUDGE_DIFFERS_FROM_UPSTREAM"
+  ],
+  "history": [
+   {
+    "category": "ok",
+    "chance": 1,
+    "code": null
+   }
+  ],
+  "judge": {
+   "attempts": 1,
+   "choice": "A",
+   "error_code": null,
+   "model": "glm-5.3-flashx",
+   "passed": true,
+   "path": "opspilot",
+   "prompt": "scripts.holmes_evals.judge (#666)",
+   "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+   "receiver": "zai"
+  },
+  "llm_calls": 6,
+  "model": "deepseek/deepseek-flash",
+  "model_env": {
+   "ENABLE_TELEMETRY": "false",
+   "LLM_REQUEST_TIMEOUT": "360",
+   "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+   "OVERRIDE_MAX_OUTPUT_TOKEN": "65536",
+   "REASONING_EFFORT": "high",
+   "TEMPERATURE": "none",
+   "THINKING": "{\"type\": \"enabled\"}"
+  },
+  "purged": {
+   "after": [],
+   "before": []
+  },
+  "pytest": {
+   "errors": {},
+   "exit": 0,
+   "phases": {
+    "call": "passed",
+    "setup": "passed",
+    "teardown": "passed"
+   },
+   "timed_out": false
+  },
+  "qid": "276_es_numeric_severity_field",
+  "question": {
+   "sha256_delivered": "74c9dca234ef8a58323bb852121461e43ee3db3c4c160b5c54edbd51deaa41cf",
+   "sha256_original": "74c9dca234ef8a58323bb852121461e43ee3db3c4c160b5c54edbd51deaa41cf"
+  },
+  "round": "full-h-b1",
+  "seconds": 21.560425519943237,
+  "shift": {
+   "anchor": "2026-06-03T08:03:10+00:00",
+   "applied": true,
+   "indices": [
+    {
+     "documents": 23,
+     "fields": [
+      "@timestamp"
+     ],
+     "index": "app-276-logs-9j2k4p7m",
+     "rewritten": 23,
+     "unparsed": 0
+    }
+   ],
+   "original_max": "2026-06-03T08:03:10+00:00",
+   "original_min": "2026-06-03T08:00:01+00:00",
+   "question_rewrites": [],
+   "reason": null,
+   "seconds": 14775600,
+   "shifted_max": "2026-11-21T08:23:10+00:00",
+   "shifted_min": "2026-11-21T08:20:01+00:00",
+   "store_size_after": {
+    "app-276-logs-9j2k4p7m": 6992
+   },
+   "store_size_before": {
+    "app-276-logs-9j2k4p7m": 6992
+   },
+   "time_only_phrases": 0
+  },
+  "shift_day_wait_seconds": 0.0,
+  "todo": {
+   "enabled": false,
+   "mode": "question",
+   "source": "question"
+  },
+  "tool_calls": 8,
+  "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具",
+  "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+  "trial": 3,
+  "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+  "wall_seconds": 51.425
+ },
+ "schema": "holmes-compare-trial-1",
+ "status": "completed",
+ "written_at": "2026-11-21T08:24:50.155567+00:00"
+}

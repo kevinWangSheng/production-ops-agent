@@ -21,25 +21,34 @@ from uuid import UUID, uuid4
 from opspilot.instructions.discipline import prompt_revision
 from opspilot.investigation.context import (
     ALERT_CONTEXT_BOUNDARY,
+    CLUSTER_NAME,
     COMPACTION_INSTRUCTION,
     COMPACTION_KIND,
     CONCLUSION_KIND,
     CONTEXT_POLICY,
     INITIAL_SEGMENT,
     KNOWLEDGE_BOUNDARY,
+    PRIOR_REPLIES,
     RELEASE_CONTEXT_BOUNDARY,
+    RUNBOOK_CATALOG,
+    RUNBOOK_CATALOG_BOUNDARY,
     InvestigationInput,
     Transcript,
     calibrated,
     compaction_message,
     context_policy_versions,
+    conversation_of,
     delivered_view,
     estimate_tokens,
     fold_digest,
     initial_messages,
     input_watermark,
     inputs_message,
+    message_sequences,
     messages_hash,
+    new_messages,
+    prior_replies_of,
+    reply_instruction_message,
     step_key,
     visible_view,
 )
@@ -55,21 +64,33 @@ from opspilot.investigation.messages import (
     validate_tool_calls,
 )
 from opspilot.investigation.reports import (
+    CONVERSATION,
     FINAL_REPORT_INSTRUCTION,
+    REPLY_ONLY,
     REPORT_CONTRACT,
     REPORT_RETRY_TEMPLATE,
+    RESPONSE_INVALID,
     RUN_COVERAGE_TEMPLATE,
     DeliveredView,
     ReportV2,
     delivered_from_context,
     evidence_context_projection,
     run_coverage_message,
+    split_response,
+    tool_round_visible,
+    validated_replies,
     validated_report,
 )
 from opspilot.investigation.store import (
     StepCommitter,
     StepStoreError,
     reservation_id_for,
+)
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
+from opspilot.investigation.todo import (
+    is_todo_write_call,
+    offers_todo_write,
+    todo_write_view,
 )
 from opspilot.tools.executor import Clock, QueryScope, ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.outcomes import ToolOutcome
@@ -82,11 +103,19 @@ ACCEPTED_RESPONSE_MODEL = "deepseek-flash"
 # HolmesGPT's pool size). The default stays C3 §13's 2, set by the worker.
 MAX_TOOL_PARALLELISM = 16
 
-LoopExecution = Literal["completed", "failed", "blocked", "budget_exhausted"]
+# ``answered`` (workbench redesign contract A3): the Run replied to the human
+# messages it read and leaves the incident's conclusion as it was -- no
+# report was published (ADR-0005 item 1), and it is not a handoff.
+LoopExecution = Literal[
+    "completed", "failed", "blocked", "budget_exhausted", "answered"
+]
 
 
 def prompt_revision_versions(
-    variant_id: str = DISCIPLINE_VARIANT, *, report_contract: str = REPORT_CONTRACT
+    variant_id: str = DISCIPLINE_VARIANT,
+    *,
+    report_contract: str = REPORT_CONTRACT,
+    knowledge_tool: bool = False,
 ) -> dict[str, str]:
     """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
     ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
@@ -123,6 +152,9 @@ def prompt_revision_versions(
             alert_context_template=ALERT_CONTEXT_BOUNDARY,
             knowledge_template=KNOWLEDGE_BOUNDARY,
             release_context_template=RELEASE_CONTEXT_BOUNDARY,
+            runbook_catalog_template=RUNBOOK_CATALOG_BOUNDARY
+            if knowledge_tool
+            else None,
         )
     }
 
@@ -137,9 +169,14 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
     resumed attempt sends these same messages) and the rebuild's hash check
     (``context._check_snapshot_hash``, after the forced final row was
     committed, #304)."""
-    messages: list[dict[str, Any]] = [
-        {"role": "user", "content": FINAL_REPORT_INSTRUCTION},
-    ]
+    # Contract r8 (C4/A6): a reply_only Run gives no report, so its one
+    # final round carries no final report instruction; the reply instruction
+    # already states the output format.
+    messages: list[dict[str, Any]] = (
+        []
+        if state.mode == "reply_only"
+        else [{"role": "user", "content": FINAL_REPORT_INSTRUCTION}]
+    )
     if state.retry_feedback:
         messages.append({"role": "user", "content": state.retry_feedback})
     messages.append({"role": "user", "content": run_coverage_message(state.delivered)})
@@ -148,14 +185,19 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
 
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
-def investigation_versions(variant_id: str = DISCIPLINE_VARIANT) -> dict[str, str]:
+def investigation_versions(
+    variant_id: str = DISCIPLINE_VARIANT, *, knowledge_tool: bool = False
+) -> dict[str, str]:
     """Every ``versions`` key the loop's behaviour depends on (C3 §5).
 
     ``prompt_revision`` (L1a + L2) and ``context_policy_revision`` (the
     compaction path). ``tool_schema_revision`` belongs to the tool registry and
     is merged in by the caller that builds the Run's ``versions``.
     """
-    return {**prompt_revision_versions(variant_id), **context_policy_versions()}
+    return {
+        **prompt_revision_versions(variant_id, knowledge_tool=knowledge_tool),
+        **context_policy_versions(),
+    }
 
 
 _STORE_REFUSALS = frozenset(
@@ -245,9 +287,31 @@ class InvestigationRequest:
     # pass a smaller or (in tests) larger one -- the product boundary that
     # admits a Run enforces ``limits.within(M1_FROZEN_LIMITS)``.
     limits: RunLimits = M1_FROZEN_LIMITS
+    # Contract B4: ``{"floor": int, "mode": str}`` (the Run's
+    # ``scope_facts["conversation"]``); ``None`` means floor 0 and
+    # ``report_required``, i.e. every Run created before the fact existed.
+    conversation: Mapping[str, Any] | None = None
+    # Contract B8: the Run's ``scope_facts["prior_replies"]`` (validated
+    # replies earlier Runs gave), rendered beside the messages they answer.
+    prior_replies: Mapping[str, Any] | None = None
+    # #722: the Run's ``scope_facts["cluster_name"]`` (the operator's local
+    # cluster name, rendered into the multi-cluster paragraph of a variant
+    # with that slot); ``None`` for every other Run.
+    cluster_name: str | None = None
 
     def as_input(self) -> InvestigationInput:
         """The persistable snapshot a later attempt rebuilds this request from."""
+        facts: dict[str, Any] = {
+            "target_ids": sorted(self.scope.target_ids),
+            "window": self.scope.window.as_json(),
+            "deadline": self.scope.deadline.isoformat(),
+        }
+        if self.conversation is not None:
+            facts[CONVERSATION] = dict(self.conversation)
+        if self.prior_replies is not None:
+            facts[PRIOR_REPLIES] = dict(self.prior_replies)
+        if self.cluster_name is not None:
+            facts[CLUSTER_NAME] = self.cluster_name
         return InvestigationInput(
             question=self.question,
             model_requests=self.model_requests,
@@ -259,11 +323,7 @@ class InvestigationRequest:
             ),
             variant_id=self.variant_id,
             bound_target_id=self.bound_target_id,
-            scope_facts={
-                "target_ids": sorted(self.scope.target_ids),
-                "window": self.scope.window.as_json(),
-                "deadline": self.scope.deadline.isoformat(),
-            },
+            scope_facts=facts,
         )
 
 
@@ -289,6 +349,22 @@ class LoopOutcome:
     final_step_id: UUID | None = None
     conclusion: Mapping[str, Any] | None = None
     model_seconds_used: float = 0.0
+    # Contract C2/C6: the validated replies of the final output, and why a
+    # report that came with them was not accepted (``None`` when none was).
+    replies: tuple[Mapping[str, Any], ...] = ()
+    report_rejected_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class _Verdict:
+    """How one round settles the attempt (``_round_verdict``)."""
+
+    execution: LoopExecution
+    reasons: tuple[str, ...]
+    report: ReportV2 | None
+    content: str | None
+    replies: tuple[dict[str, Any], ...] = ()
+    rejected: str | None = None
 
 
 @dataclass
@@ -346,6 +422,24 @@ class _State:
     # resume/compaction (a documented, bounded limitation -- see the task
     # record -- not a correctness claim about cross-restart dedup).
     seen_tool_calls: dict[str, str] = field(default_factory=dict)
+    # Contract B4/C1/C2 (workbench redesign P1): the Run's ``(floor, mode)``,
+    # the ``message`` inputs seen so far, the ones a committed tool step
+    # already answered, and whether any round was sent the reply instruction.
+    floor: int = 0
+    mode: str = "report_required"
+    message_sequences: set[int] = field(default_factory=set)
+    replied: set[int] = field(default_factory=set)
+    instruction_sent: bool = False
+
+    @property
+    def planned_requests(self) -> int:
+        """Logical requests this Run plans: one for ``reply_only`` (A6)."""
+        return 1 if self.mode == "reply_only" else self.request.model_requests
+
+    @property
+    def physical_requests(self) -> int:
+        """Physical ceiling incl. provider retries: one for ``reply_only``."""
+        return 1 if self.mode == "reply_only" else self.request.limits.model_requests
 
 
 @dataclass
@@ -410,9 +504,17 @@ class InvestigationLoop:
         folded_since: Sequence[UUID] = (),
         compactions: int = 0,
         compaction_attempts: int = 0,
+        runbook_catalog: bool = False,
     ) -> _State:
         usage = self.store.usage()
+        floor, mode = conversation_of(
+            None
+            if request.conversation is None
+            else {CONVERSATION: request.conversation}
+        )
         return _State(
+            floor=floor,
+            mode=mode,
             request=request,
             messages=messages,
             delivered=delivered,
@@ -427,7 +529,11 @@ class InvestigationLoop:
             prior_model_seconds=usage.model_seconds_used,
             tool_seconds_at_open=self.executor.tool_seconds_used,
             attempt_started=self.clock.monotonic(),
-            revision=prompt_revision_versions(request.variant_id)["prompt_revision"],
+            # C2b: a Run whose input carries the runbook list was created
+            # with the switch on, so its revision includes that wording.
+            revision=prompt_revision_versions(
+                request.variant_id, knowledge_tool=runbook_catalog
+            )["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
             prefix_len=prefix_len,
@@ -488,6 +594,9 @@ class InvestigationLoop:
             bound_target_id=input.bound_target_id,
             variant_id=input.variant_id,
             limits=input.limits,
+            conversation=input.scope_facts.get(CONVERSATION),
+            prior_replies=prior_replies_of(input.scope_facts),
+            cluster_name=input.scope_facts.get(CLUSTER_NAME),
         )
         self._check_identity(request)
         system = transcript.messages[0]["content"] if transcript.messages else ""
@@ -506,8 +615,12 @@ class InvestigationLoop:
             folded_since=transcript.folded_since,
             compactions=transcript.compactions,
             compaction_attempts=transcript.compaction_attempts,
+            runbook_catalog=RUNBOOK_CATALOG in input.scope_facts,
         )
         state.last_step_id = transcript.last_step_id
+        state.message_sequences = set(transcript.message_sequences)
+        state.replied = set(transcript.replied_sequences)
+        state.instruction_sent = transcript.reply_instruction_sent
         last = transcript.last_round
         if last is not None and not last.concluded:
             # C3 §7 row 5: the last committed round already settles how this
@@ -522,15 +635,10 @@ class InvestigationLoop:
                 finish_reason=last.finish_reason,
                 final=last.final,
                 rejection=last.rejection,
+                watermark=last.input_watermark,
             )
             if verdict is not None:
-                return self._finish(
-                    state,
-                    execution=verdict[0],
-                    reasons=verdict[1],
-                    report=verdict[2],
-                    content=verdict[3],
-                )
+                return self._finish(state, verdict)
             if not last.tool_round and not last.final:
                 # L1a: ``verdict`` is ``None`` here for exactly one reason --
                 # the committed round was non-final, proposed no tool calls
@@ -556,30 +664,89 @@ class InvestigationLoop:
         finish_reason: str | None,
         final: bool,
         rejection: str | None,
-    ) -> tuple[
-        tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None, str
-    ]:
+        watermark: int = 0,
+    ) -> tuple[_Verdict | None, str]:
         """What one committed round settles for the attempt (``None`` when the
         loop goes on), paired with the B3 retry feedback for that round's
         failure ("" when the round did not fail validation). The single rule
-        for the live round and for a resume over that round's row."""
+        for the live round and for a resume over that round's row.
+
+        A tool-free reply is split per contract C6: an ``m0-response-v1``
+        wrapper yields replies and an optional report, a bare reply is the
+        report as before. ``report_required`` (every Run without the
+        conversation fact) keeps the report rules unchanged and only records
+        the replies. ``report_optional`` and ``reply_only`` follow contract
+        A3/A6: an acceptable report publishes; otherwise a valid reply ends
+        the Run as ``answered`` (the rejected report's reason kept); with
+        neither the Run hands off ``RESPONSE_INVALID`` -- no forced retry.
+        """
         if rejection is not None:
-            return ("failed", (rejection,), None, None), ""
+            return _Verdict("failed", (rejection,), None, None), ""
         if tool_round:
             return None, ""
+        split = split_response(content)
         report, reason, retry_feedback = self._validated_report(
-            state, content or "", finish_reason=finish_reason
+            state, split.report_content or "", finish_reason=finish_reason
         )
-        if report is not None:
-            reasons: tuple[str, ...] = (
-                ("INCOMPLETE_INVESTIGATION",)
-                if report.assessment_status == "incomplete"
-                else ()
+        replies = tuple(
+            validated_replies(
+                split.replies,
+                floor=state.floor,
+                watermark=watermark,
+                message_sequences=state.message_sequences,
+                evidence_ids=[view.evidence_id for view in state.delivered],
             )
-            return ("completed", reasons, report, content or ""), ""
-        if final:
-            return ("failed", (reason,), None, content), ""
-        return None, retry_feedback
+            if split.wrapped
+            else ()
+        )
+        incomplete = report is not None and report.assessment_status == "incomplete"
+        if state.mode == "report_required":
+            if report is not None:
+                return (
+                    _Verdict(
+                        "completed",
+                        ("INCOMPLETE_INVESTIGATION",) if incomplete else (),
+                        report,
+                        split.report_content or "",
+                        replies,
+                    ),
+                    "",
+                )
+            if final:
+                return _Verdict("failed", (reason,), None, content, replies), ""
+            return None, retry_feedback
+        answered = bool(replies) or bool(state.replied)
+        if state.mode == "reply_only":
+            rejected = None if split.report_content is None else REPLY_ONLY
+            if answered:
+                return _Verdict("answered", (), None, None, replies, rejected), ""
+            return _Verdict("failed", (RESPONSE_INVALID,), None, content, replies), ""
+        if report is not None and not incomplete:
+            return (
+                _Verdict("completed", (), report, split.report_content or "", replies),
+                "",
+            )
+        if answered:
+            rejected = (
+                "INCOMPLETE_INVESTIGATION"
+                if incomplete
+                else (None if split.report_content is None else reason)
+            )
+            return _Verdict("answered", (), None, None, replies, rejected), ""
+        if report is not None:
+            # A valid but self-declared incomplete report with nothing that
+            # answers the message: the existing incomplete handoff (D7a).
+            return (
+                _Verdict(
+                    "completed",
+                    ("INCOMPLETE_INVESTIGATION",),
+                    report,
+                    split.report_content or "",
+                    replies,
+                ),
+                "",
+            )
+        return _Verdict("failed", (RESPONSE_INVALID,), None, content, replies), ""
 
     def _validated_report(
         self, state: _State, content: str, *, finish_reason: str | None
@@ -597,33 +764,47 @@ class InvestigationLoop:
         )
 
     def _drive(self, state: _State) -> LoopOutcome:
-        request = state.request
         try:
             while True:
-                remaining = request.model_requests - state.used
+                remaining = state.planned_requests - state.used
                 if remaining <= 0:
                     raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
-                outcome = self._round(state, final=remaining <= 1 or state.force_final)
+                outcome = self._round(
+                    state,
+                    # reply_only (contract A6): one tool-free request.
+                    final=remaining <= 1
+                    or state.force_final
+                    or state.mode == "reply_only",
+                )
                 if outcome is not None:
-                    return self._finish(
-                        state,
-                        execution=outcome[0],
-                        reasons=outcome[1],
-                        report=outcome[2],
-                        content=outcome[3],
-                    )
+                    return self._finish(state, outcome)
         except _LoopHalt as halt:
             return self._finish(
-                state,
-                execution=halt.execution,
-                reasons=halt.reasons,
-                report=None,
-                content=None,
+                state, _Verdict(halt.execution, halt.reasons, None, None)
             )
 
-    def _round(
-        self, state: _State, *, final: bool
-    ) -> tuple[LoopExecution, tuple[str, ...], ReportV2 | None, str | None] | None:
+    def _trailing(
+        self, state: _State, inputs: Sequence[Mapping[str, Any]]
+    ) -> tuple[dict[str, Any], ...]:
+        """The round's trailing input messages, in send order: the inputs
+        message (when the round saw any input), then the reply instruction
+        when one of them is a new ``message`` (contract C4)."""
+        state.message_sequences.update(message_sequences(inputs))
+        found = (
+            inputs_message(
+                inputs,
+                floor=state.floor,
+                prior_replies=prior_replies_of(
+                    None
+                    if state.request.prior_replies is None
+                    else {PRIOR_REPLIES: state.request.prior_replies}
+                ),
+            ),
+            reply_instruction_message(inputs, floor=state.floor, mode=state.mode),
+        )
+        return tuple(message for message in found if message is not None)
+
+    def _round(self, state: _State, *, final: bool) -> _Verdict | None:
         request = state.request
         tools = None if final else tuple(request.tool_schemas)
         extra = _final_messages(state) if final else ()
@@ -634,7 +815,7 @@ class InvestigationLoop:
         # recorded on the step row so the rebuild re-inserts the same
         # message and reproduces the recorded hash.
         logical_key, inputs = self._begin_round(state)
-        trailing = inputs_message(inputs)
+        trailing = self._trailing(state, inputs)
         # The inputs message is part of the request, so it counts toward the
         # context estimate that decides whether to compact (codex review,
         # PR #31): a large or long-accumulated set of inputs must trigger a
@@ -649,7 +830,7 @@ class InvestigationLoop:
             # ``_RoundAborted``).
             before = input_watermark(inputs)
             logical_key, inputs = self._begin_round(state)
-            trailing = inputs_message(inputs)
+            trailing = self._trailing(state, inputs)
             if input_watermark(inputs) != before:
                 # An ``event`` landed during the compaction request (a
                 # follow_up/correct would have fenced this lease instead):
@@ -660,7 +841,7 @@ class InvestigationLoop:
                 self._require_fit(
                     state, tools=tools, extra=_with_trailing(trailing, extra)
                 )
-        if not final and request.model_requests - state.used <= 1:
+        if not final and state.planned_requests - state.used <= 1:
             # The compaction took a slot: what is left is the reserved
             # final-report request, so this round becomes it.
             final = True
@@ -668,11 +849,20 @@ class InvestigationLoop:
             extra = _final_messages(state)
         timeout = self._remaining_timeout(state)
         watermark = input_watermark(inputs)
+        # Contract C4/C5: present exactly when ``_trailing`` added it; its
+        # hash goes on the step row that sent it, never into the versions.
+        instruction = (
+            trailing[-1]["content"] if new_messages(inputs, floor=state.floor) else None
+        )
+        if instruction is not None:
+            state.instruction_sent = True
         outbound = [*state.messages, *_with_trailing(trailing, extra)]
         call = ModelCall(
             messages=tuple(outbound),
             tools=tools,
-            json_mode=final,
+            # #686 U7/R1/R2: every investigation round (tool rounds included)
+            # asks for JSON mode; only the compaction request keeps it off.
+            json_mode=True,
             max_tokens=request.limits.output_tokens,
             timeout_seconds=timeout,
             model=self.accepted_response_model,
@@ -727,6 +917,22 @@ class InvestigationLoop:
                 "reason": rejection,
                 "tool_calls": assistant.pop("tool_calls", None),
             }
+        visible: dict[str, Any] | None = None
+        if instruction is not None and calls and rejection is None:
+            # Contract C1-C3: a tool round answers in its visible content.
+            # Validated before commit, against the views delivered *before*
+            # this round's tools run, and stored beside -- never inside --
+            # ``assistant``, whose bytes the replay hashes.
+            note, raw = tool_round_visible(reply.content)
+            replies = validated_replies(
+                raw,
+                floor=state.floor,
+                watermark=watermark,
+                message_sequences=state.message_sequences,
+                evidence_ids=[view.evidence_id for view in state.delivered],
+            )
+            visible = {"note": note, "replies": replies}
+            state.replied.update(item["to_input_seq"] for item in replies)
         step_id = self._commit_step(
             state,
             logical_key,
@@ -736,6 +942,8 @@ class InvestigationLoop:
             final=final,
             rejected_plan=rejected_plan,
             input_watermark=watermark,
+            reply_instruction=instruction,
+            visible=visible,
         )
         state.folded_since.append(step_id)
         state.next_round += 1
@@ -746,6 +954,7 @@ class InvestigationLoop:
             finish_reason=reply.finish_reason,
             final=final,
             rejection=rejection,
+            watermark=watermark,
         )
         if verdict is not None:
             return verdict
@@ -784,6 +993,12 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
+            if self._answers_locally(state, call):
+                # C1 (#565): the task list never reaches the gateway.
+                self._renew_before_dispatch()
+                view = todo_view(step_id, index, call)
+                self._deliver(state, step_id, index, call, view, results)
+                continue
             fingerprint = _fingerprint_of(call, target_id)
             duplicate_of = state.seen_tool_calls.get(fingerprint)
             if duplicate_of is not None:
@@ -865,6 +1080,9 @@ class InvestigationLoop:
             previous.append(last.get(fingerprint))
             last[fingerprint] = index
         dispatched: dict[int, Future[ToolOutcome]] = {}
+        # C1 (#565): ``TodoWrite`` views, built on this thread at their
+        # dispatch turn; they take no pool slot and commit at their own turn.
+        local: dict[int, dict[str, Any]] = {}
         stop: Exception | None = None
         next_dispatch = 0  # dispatch is strictly in index order
         next_commit = 0
@@ -887,6 +1105,15 @@ class InvestigationLoop:
                 earlier = previous[index]
                 if earlier is not None and earlier >= next_commit:
                     return  # undecided until the earlier same call commits
+                if self._answers_locally(state, calls[index]):
+                    try:
+                        self._renew_before_dispatch()
+                    except Exception as exc:  # raised at this call's turn
+                        stop = exc
+                        return
+                    local[index] = todo_view(step_id, index, calls[index])
+                    next_dispatch += 1
+                    continue
                 if fingerprints[index] in state.seen_tool_calls:
                     next_dispatch += 1  # a duplicate view at its turn
                     continue
@@ -940,6 +1167,9 @@ class InvestigationLoop:
                 next_commit = index
                 fill(pool)
                 fingerprint = fingerprints[index]
+                if index in local:
+                    self._deliver(state, step_id, index, call, local[index], results)
+                    continue
                 if index not in dispatched and index < next_dispatch:
                     view = _duplicate_call_view(
                         f"{step_id}-t{index}",
@@ -961,6 +1191,15 @@ class InvestigationLoop:
                 else:
                     self._deliver(state, step_id, index, call, view, results)
         return results
+
+    @staticmethod
+    def _answers_locally(state: _State, call: Mapping[str, Any]) -> bool:
+        """C1 (#565): a ``TodoWrite`` call of a Run whose recorded tools offer
+        it. Decided from the Run input, never the environment; without the
+        schema the name goes to the gateway like any unregistered tool."""
+        return is_todo_write_call(call) and offers_todo_write(
+            state.request.tool_schemas
+        )
 
     def _renew_before_dispatch(self) -> None:
         try:
@@ -1063,6 +1302,12 @@ class InvestigationLoop:
         )
         if projected <= budget * CONTEXT_POLICY.compaction_pct:
             return False
+        if state.mode == "reply_only":
+            # Contract A6: the only request is the answer, never a
+            # compaction. Send it if it fits the window, else hand off.
+            if projected > budget:
+                raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
+            return False
         if state.request.model_requests - state.used < 2:
             raise _LoopHalt("failed", ("CONTEXT_EXHAUSTED",))
         self._compact(state)
@@ -1107,6 +1352,7 @@ class InvestigationLoop:
         call = ModelCall(
             messages=tuple(outbound),
             tools=None,
+            # #686 R1: the summary is plain text, never JSON mode.
             json_mode=False,
             max_tokens=request.limits.output_tokens,
             timeout_seconds=self._remaining_timeout(state),
@@ -1234,6 +1480,8 @@ class InvestigationLoop:
         final: bool,
         rejected_plan: Mapping[str, Any] | None = None,
         input_watermark: int = 0,
+        reply_instruction: str | None = None,
+        visible: Mapping[str, Any] | None = None,
     ) -> UUID:
         response_id = reply.raw.get("id")
         estimated = estimate_tokens(dispatched.messages, dispatched.tools)
@@ -1242,7 +1490,7 @@ class InvestigationLoop:
         state.calibration = calibrated(
             state.calibration, estimated, reply.usage.get("prompt_tokens")
         )
-        payload = {
+        payload: dict[str, Any] = {
             "assistant": dict(assistant),
             "finish_reason": reply.finish_reason,
             "response_model": reply.response_model,
@@ -1266,6 +1514,12 @@ class InvestigationLoop:
                 "calibration": state.calibration,
             },
         }
+        if reply_instruction is not None:
+            payload["context"]["reply_instruction_sha256"] = hashlib.sha256(
+                reply_instruction.encode("utf-8")
+            ).hexdigest()
+        if visible is not None:
+            payload.update(visible)
         if rejected_plan is not None:
             payload["rejected_plan"] = dict(rejected_plan)
         try:
@@ -1290,7 +1544,7 @@ class InvestigationLoop:
             # ``request.model_requests`` bounds the logical rounds this Run
             # plans; ``limits.model_requests`` is the physical ceiling a
             # provider retry may still use (the frozen 4 on the product path).
-            if state.used >= request.limits.model_requests:
+            if state.used >= state.physical_requests:
                 raise _LoopHalt("budget_exhausted", ("BUDGET_EXHAUSTED",))
             timed = replace(call, timeout_seconds=self._remaining_timeout(state))
             reservation = f"{logical_key}#a{attempt}"
@@ -1313,14 +1567,14 @@ class InvestigationLoop:
                 self._settle(request.run_id, reservation, "unknown", seconds=None)
                 state.seconds_used += timed.timeout_seconds
                 last_error = exc
-                slots_left = request.model_requests - state.used
+                slots_left = state.planned_requests - state.used
                 preserve_final = not final and slots_left <= 1
                 if preserve_final:
                     raise _RoundAborted() from exc
                 if (
                     exc.code != "MODEL_UNAVAILABLE"
                     or attempt == 2
-                    or state.used >= request.limits.model_requests
+                    or state.used >= state.physical_requests
                 ):
                     execution: LoopExecution = (
                         "budget_exhausted"
@@ -1370,18 +1624,15 @@ class InvestigationLoop:
         if len(serialized_request(call)) > limits.request_bytes:
             raise _LoopHalt("failed", ("REQUEST_TOO_LARGE",))
 
-    def _finish(
-        self,
-        state: _State,
-        *,
-        execution: LoopExecution,
-        reasons: tuple[str, ...],
-        report: ReportV2 | None,
-        content: str | None,
-    ) -> LoopOutcome:
+    def _finish(self, state: _State, verdict: _Verdict) -> LoopOutcome:
+        execution = verdict.execution
+        reasons = verdict.reasons
+        report = verdict.report
+        content = verdict.content
         # Completed + incomplete finding still handoffs. Budget/pairing
-        # failures never look like a completed investigation.
-        handoff = execution != "completed" or bool(reasons)
+        # failures never look like a completed investigation. ``answered``
+        # (contract A3) is a settled ending, not a handoff.
+        handoff = execution not in {"completed", "answered"} or bool(reasons)
         digest = (
             None
             if content is None
@@ -1418,6 +1669,12 @@ class InvestigationLoop:
                 "calibration": state.calibration,
             },
         }
+        if state.instruction_sent or state.mode != "report_required":
+            # Contract C6: only a Run that had to answer carries these, so a
+            # Run without messages commits the same conclusion bytes as
+            # before.
+            conclusion["conclusion"]["replies"] = [dict(r) for r in verdict.replies]
+            conclusion["conclusion"]["report_rejected_reason"] = verdict.rejected
         final_step_id: UUID | None = None
         if not set(reasons) & _STORE_REFUSALS:
             # The key carries the control generation: after a follow-up
@@ -1451,6 +1708,8 @@ class InvestigationLoop:
             final_step_id=final_step_id,
             conclusion=conclusion if final_step_id is not None else None,
             model_seconds_used=state.prior_model_seconds + state.seconds_used,
+            replies=tuple(verdict.replies),
+            report_rejected_reason=verdict.rejected,
         )
 
 
@@ -1496,11 +1755,12 @@ def _halt_from_store(exc: StepStoreError) -> _LoopHalt:
 
 
 def _with_trailing(
-    trailing: Mapping[str, Any] | None, extra: Sequence[Mapping[str, Any]]
+    trailing: Sequence[Mapping[str, Any]], extra: Sequence[Mapping[str, Any]]
 ) -> tuple[Mapping[str, Any], ...]:
     """The messages appended after the transcript, in send order: the inputs
-    message (when the round saw any input), then the round's instruction."""
-    return (*(() if trailing is None else (trailing,)), *extra)
+    message (when the round saw any input) and the reply instruction (when
+    one of them is new), then the round's instruction."""
+    return (*trailing, *extra)
 
 
 def _bound_target(request: InvestigationRequest) -> str | None:
@@ -1554,6 +1814,17 @@ def _call_fingerprint(name: object, arguments: object, target_ref: str | None) -
         # ``canonical()`` call refuses it properly a moment later as an
         # ordinary INVALID_PARAMS.
         return f"__unfingerprintable__:{uuid4()}"
+
+
+def todo_view(
+    step_id: UUID | str, index: int, call: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The loop's own answer to one ``TodoWrite`` call (C1, #565): the same
+    operation id and parsed arguments the gateway request would carry, one
+    tool span naming the tool (parameter names only, never their values)."""
+    request = tool_request_for(step_id, index, call, target_ref=None, window={})
+    with tracer().tool_call(request, tool_name=TODO_TOOL_NAME, counted=False):
+        return todo_write_view(request.operation_id, request.params)
 
 
 def _duplicate_call_view(operation_id: str, *, evidence_id: str) -> dict[str, Any]:

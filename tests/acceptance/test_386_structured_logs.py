@@ -423,8 +423,8 @@ def test_postmortem_and_observer_sentinels_are_stopped_at_public_boundaries():
     except Exception:
         pass
     from opspilot.observer.loop import ObserverLoop
-    from tests.test_m1_observer import PROFILE
-    from tests.test_m1_observer import lease as observer_lease
+    from tests.m1_observer_support import PROFILE
+    from tests.m1_observer_support import lease as observer_lease
 
     lease = observer_lease()
 

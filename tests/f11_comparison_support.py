@@ -39,6 +39,7 @@ from uuid import UUID, uuid5
 
 from opspilot.observation.release_types import ReleaseQueryResult
 from opspilot.observer.prometheus import InstantResult
+from tests.f11_pr2b_acceptance_support import SENT_AT, _vector_result
 from tests.f11_release_support import (
     AFTER_HASH,
     BEFORE_HASH,
@@ -49,7 +50,6 @@ from tests.f11_release_support import (
     Pod,
     sha256_hex,
 )
-from tests.test_f11_pr2b_acceptance import SENT_AT, _vector_result
 
 OLD_RS = f"{SERVICE}-{BEFORE_HASH}"
 NEW_RS = f"{SERVICE}-{AFTER_HASH}"

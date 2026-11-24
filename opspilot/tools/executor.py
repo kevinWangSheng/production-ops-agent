@@ -67,9 +67,7 @@ from .tokens import TokenCounter, default_counter
 __all__ = [
     "EVIDENCE_SOURCE",
     "EVIDENCE_TOOL",
-    "MAX_OPERATIONS_PER_RUN",
     "MAX_SOURCE_ERROR_CHARS",
-    "MAX_TOOL_SECONDS_PER_RUN",
     "ControlAuthority",
     "OverflowSummary",
     "ControlSnapshot",
@@ -89,12 +87,6 @@ __all__ = [
     "TransportTimeout",
     "TransportUnavailable",
 ]
-
-# Frozen M1-01 per-Run ceilings (acceptance packet
-# docs/testing/first-investigation-v4-2026-09-10.md, user approved 2026-09-13):
-# at most 20 tool calls per Run and 240 s of cumulative tool wall time.
-MAX_OPERATIONS_PER_RUN = 20
-MAX_TOOL_SECONDS_PER_RUN = 240.0
 
 # #308 contract r1, U2: an over-limit view's redacted raw body is kept as
 # un-adopted evidence, at most 16 records or 16 MiB of raw per Run, whichever
@@ -216,7 +208,7 @@ class ControlSnapshot:
     # 解除暂停后「新尝试使用当前所有控制版本」，旧授权不自动恢复（bot review 发现）。
     # 必填，不给默认值：默认 0 会让一个尚未填这两个字段的 controller 适配器在
     # 「全局/目标暂停后又解除」时与旧 scope 恰好相等而悄悄放行——正是这两个字段
-    # 要挡住的那条路径。与 max_operations / dispatch_id 同一理由：不完整的接线
+    # 要挡住的那条路径。与 dispatch_id 同一理由：不完整的接线
     # 必须 fail closed（bot review 发现）。
     global_suspension_generation: int
     target_suspension_generation: int
@@ -259,8 +251,6 @@ class QueryScope:
     tool_names: frozenset[str]
     window: Window
     deadline: datetime
-    max_operations: int = MAX_OPERATIONS_PER_RUN
-    max_tool_seconds: float = MAX_TOOL_SECONDS_PER_RUN
     # M1-04 J4: the query window a call that names none reads, inside
     # ``window`` (an alert Run's anchored hour onward). ``None`` leaves the
     # transport's own default. A default, never an authorization.
@@ -301,23 +291,6 @@ class QueryScope:
             or self.deadline.utcoffset() is None
         ):
             raise ToolContractError("INVALID_DEADLINE")
-        # M1-01 (2026-09-28 user decision, L2): these two fields are no
-        # longer a ceiling the executor or the durable ledger enforces (see
-        # ``ReadOnlyToolExecutor._reserve()`` and
-        # ``opspilot.persistence.DurableStore.charge_tool``) -- only basic
-        # positivity is worth checking here now, not an upper bound tied to
-        # the old frozen constants, which would otherwise fail-closed refuse
-        # a value that is not actually a ceiling violation of anything.
-        if type(self.max_operations) is not int or self.max_operations < 1:
-            raise ToolContractError("OPERATION_BUDGET_OUT_OF_RANGE")
-        seconds = self.max_tool_seconds
-        if (
-            type(seconds) not in (int, float)
-            or seconds != seconds  # NaN
-            or seconds in (float("inf"), float("-inf"))
-            or seconds <= 0
-        ):
-            raise ToolContractError("TIME_BUDGET_OUT_OF_RANGE")
         for names in (self.target_ids, self.tool_names):
             if not isinstance(names, frozenset) or any(
                 not isinstance(name, str) or not name for name in names
@@ -467,6 +440,26 @@ class TransportResponse:
     strings the adapter decoded from an error envelope it allows echoing
     (#311 U1: Prometheus 400/422); the executor validates, redacts and bounds
     them (R1/R2). All three stay ``None`` for any other response.
+
+    On a response with ``source_status``, ``view_fields`` is read for one key
+    only: a ``notes`` list of the adapter's fixed text (tool expansion B1-6:
+    the refusal code and what to change), carried redacted and bounded onto
+    the refusal view; every other key is ignored there.
+
+    ``incomplete`` is the adapter's own finding that the source may hold more
+    rows than it returned (tool expansion A5-4: a discovery answer of exactly
+    the fixed limit), for a signal the exact source bytes cannot carry in the
+    registration's ``incomplete_marker``. It is OR-ed with that marker; it
+    never clears it. Anything but a ``bool`` is MALFORMED_RESULT.
+
+    ``empty_answer`` is the adapter's finding that a result with no rows is
+    still a complete answer (#679, B4-13): only the Kubernetes list transport
+    sets it, when the API server answered 200, every page was read to the end,
+    zero objects came back and the kind is not ``events``. The view is then
+    ``ok`` instead of ``no_data``. Every other adapter leaves it ``False``, so
+    their empty results stay ``no_data``. Ignored on a response with
+    ``source_status`` (a refusal); anything but a ``bool``, or ``True`` beside
+    ``carried``, is MALFORMED_RESULT.
     """
 
     body: bytes
@@ -484,6 +477,8 @@ class TransportResponse:
     http_status: int | None = None
     source_error_type: str | None = None
     source_error_text: str | None = None
+    incomplete: bool = False
+    empty_answer: bool = False
 
 
 @runtime_checkable
@@ -835,10 +830,8 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", decision)
         # M1-01 (2026-09-28 user decision, docs/tasks/2026-09-28-m1-01-loop-limits.md
         # L2): no per-Run ceiling on operation count or cumulative tool time --
-        # the loop's single anti-loop ceiling is the model-request count (L1).
-        # ``scope.max_operations``/``scope.max_tool_seconds`` still bound what a
-        # ``QueryScope`` may declare (__post_init__), but this method no longer
-        # refuses a dispatch on either one. The per-call timeout, result-byte
+        # the loop's single anti-loop ceiling is the model-request count (L1);
+        # the ledger only accumulates both. The per-call timeout, result-byte
         # ceiling and view truncation are untouched (they guard one call, not
         # investigation length).
         #
@@ -1195,8 +1188,12 @@ class ReadOnlyToolExecutor:
         # Narrowing for the type checker: _inspect() returns no problem only
         # after it has established this.
         assert isinstance(response, TransportResponse)
-        status: ToolStatus = "ok" if rows else "no_data"
-        reason: str | None = None if rows else "NO_DATA"
+        # #679: an adapter-verified complete empty answer (only the K8s list
+        # transport sets ``empty_answer``) is ``ok``; any other empty result
+        # stays ``no_data``.
+        answered = bool(rows) or response.empty_answer
+        status: ToolStatus = "ok" if answered else "no_data"
+        reason: str | None = None if answered else "NO_DATA"
         # Re-check the control state and the authorization deadline: a
         # suspension or an expiry that took effect while the request was in
         # flight invalidates the result, which then survives as history only
@@ -1417,10 +1414,16 @@ class ReadOnlyToolExecutor:
             # The one source-named denial (#308 R3, ``EVIDENCE_NOT_READABLE``)
             # is reported as one; every other mapped reason is an error.
             source_error = _source_error(response)
+            detail: dict[str, object] = {}
+            if source_error is not None:
+                detail["source_error"] = source_error
+            notes = _refusal_notes(response)
+            if notes is not None:
+                detail["notes"] = notes
             return _problem(
                 "denied" if source_reason in DENIED_REASONS else "error",
                 source_reason,
-                None if source_error is None else {"source_error": source_error},
+                detail or None,
             )
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
@@ -1469,6 +1472,14 @@ class ReadOnlyToolExecutor:
             # not start inside that window).
             return _problem("error", "MALFORMED_RESULT")
         if _unit_fields_problem(response, len(rows)):
+            return _problem("error", "MALFORMED_RESULT")
+        if type(response.incomplete) is not bool or (
+            response.incomplete and response.carried is not None
+        ):
+            return _problem("error", "MALFORMED_RESULT")
+        if type(response.empty_answer) is not bool or (
+            response.empty_answer and response.carried is not None
+        ):
             return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if response.carried is not None and _carried_problem(
@@ -1797,7 +1808,7 @@ class ReadOnlyToolExecutor:
         incomplete = (
             bool(carried["incomplete"])
             if carried is not None
-            else _incomplete(registration, payload)
+            else _incomplete(registration, payload) or response.incomplete
         )
         dispatch_started_at = (
             cast("datetime | None", carried["dispatch_started_at"])
@@ -1842,7 +1853,12 @@ class ReadOnlyToolExecutor:
             # rule ("fact-like claims cite ok views only") was invisible to
             # the model while ``adopted: true`` on a ``no_data`` view looked
             # like an invitation to cite it (v4 packet, normal-2 / fault-1).
-            "citable_as_fact": adopted and status == "ok",
+            # #742: a slice of kept evidence is citable only when its parent
+            # tool's registration is, not on ``read_evidence``'s own.
+            "citable_as_fact": adopted
+            and status == "ok"
+            and registration.citable_as_fact
+            and (carried is None or carried["citable_as_fact"] is True),
             "tool": registration.name,
             "tool_version": registration.version,
             "source": registration.source if carried is None else carried["source"],
@@ -2044,6 +2060,39 @@ def _source_error(response: TransportResponse) -> dict[str, object] | None:
         "error": text,
         "error_truncated": truncated,
     }
+
+
+#: Tool expansion B1-6: at most this many adapter notes on a refusal view.
+MAX_REFUSAL_NOTES = 4
+
+
+def _refusal_notes(response: TransportResponse) -> list[str] | None:
+    """The adapter's own ``notes`` on a fixed-code refusal (B1-6: the fixed
+    code and what to change), or ``None``.
+
+    Opt-in: only a source-status response whose ``view_fields`` hold a
+    ``notes`` list of strings gets them; anything else -- every transport
+    before B1 -- keeps its refusal view unchanged. The notes are the
+    adapter's fixed text, not source bytes; each is credential-redacted and
+    bounded like ``source_error`` text, and an ill-formed list is dropped
+    whole.
+    """
+    fields = response.view_fields
+    if not isinstance(fields, Mapping):
+        return None
+    notes = fields.get("notes")
+    if not isinstance(notes, list) or not notes:
+        return None
+    kept: list[str] = []
+    for note in notes[:MAX_REFUSAL_NOTES]:
+        if not isinstance(note, str):
+            return None
+        try:
+            note.encode("utf-8")
+        except UnicodeEncodeError:
+            return None
+        kept.append(redact_credentials(note)[:MAX_SOURCE_ERROR_CHARS])
+    return kept
 
 
 def _status_for(problem: str) -> ToolStatus:
@@ -2280,6 +2329,7 @@ _CARRIED_KEYS = frozenset(
         "observed_at",
         "dispatch_started_at",
         "incomplete",
+        "citable_as_fact",
         "omitted_rows",
         "omitted_bytes",
     }
@@ -2330,6 +2380,8 @@ def _carried_problem(
     if response.source_end_at is not None and response.source_end_at > observed:
         return True
     if type(carried["incomplete"]) is not bool:
+        return True
+    if type(carried["citable_as_fact"]) is not bool:
         return True
     counts = (carried["omitted_rows"], carried["omitted_bytes"])
     return any(type(count) is not int or count < 0 for count in counts)

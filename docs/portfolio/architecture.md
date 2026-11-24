@@ -42,6 +42,6 @@ Everything was developed and measured against one target: the OpenTelemetry Demo
 
 ## Where the code differs from C3
 
-- **No separate Controller and Tool Gateway (C3 §3).** The worker process holds both the model key and the target read credentials and runs the tool executor in-process. C3 requires these roles to be isolated by credentials, database rights and network reachability. Tracked in [#197](https://github.com/kevinWangSheng/production-ops-agent/issues/197).
+- **No separate Controller and Tool Gateway (C3 §3).** The worker process holds both the model key and the target read credentials and runs the tool executor in-process. C3 requires these roles to be isolated by credentials, database rights and network reachability; only the database rights are separated per runtime. Closed as a known limitation ([#197](https://github.com/kevinWangSheng/production-ops-agent/issues/197), C3 §3).
 - **No TLS proxy (C3 §9).** C3 specifies Caddy TLS in front of the Basic Auth workbench. The Compose install publishes the workbench on `127.0.0.1` only and remote access goes through an SSH tunnel; no TLS proxy ships.
 - **Tools cover Prometheus and Jaeger only.** Kubernetes read-only and log tools are not implemented ([#307](https://github.com/kevinWangSheng/production-ops-agent/issues/307)).

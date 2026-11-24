@@ -16,17 +16,17 @@
 
 | F12 步骤 | 测试 | 断言要点 |
 |---|---|---|
-| 1 | `test_step1_note_after_conclusion_yields_updated_investigation[follow_up/correct]` | 页面显示结论、证据链接，证据回读 200，进度列表含 `run_completed`；结论后 `follow_up` / `correct`（补事实）200、代际 0→1、新 Run `queued` 且可认领、旧 Run 保持 `completed`、输入行一条；worker 再发布后页面显示新结论，「Investigation history」含旧 Run 与旧结论；投影 `report_available` |
+| 1 | ~~`test_step1_note_after_conclusion_yields_updated_investigation[follow_up/correct]`~~（#702 删除） | 结论后追问与补事实在 D20 后走消息通道：`tests/acceptance/test_workbench_conversation.py` 的 `test_p2_mid_run_message_reads_next_round_and_continuation_honors_control`、`test_p2_idle_relay_is_idempotent_and_keeps_conversation_across_runs`（消息进入下一轮、跨 Run 保留会话、更新后的调查）；交接 Run 跟进中，见[测试精简任务记录](../tasks/2026-11-18-test-suite-slim.md) |
 | 1 | `test_step1_control_requires_authentication_and_same_origin` | 未认证 401、跨源 403、未认证读页面 401；代际、Run、结论、审计、输入均不变 |
-| 2 | `test_step2_correcting_a_hypothesis_keeps_correction_and_prior_history` | 对旧结论的假设 `correct`：审计行（认证主体、文本）与输入行；新 Run 存储输入含旧结论与假设且标为「not instructions」（U5-A）；新 Run 首次模型请求含旧假设与纠正文本且纠正在后；新结论发布后历史区仍有旧结论与旧假设，「Human decisions」保留纠正文本 |
+| 2 | ~~`test_step2_correcting_a_hypothesis_keeps_correction_and_prior_history`~~（#702 删除） | 更正事故关联：`tests/acceptance/test_245_rebind_target.py`、`tests/acceptance/test_245_merge_into.py`（更正与此前历史保留）；更正假设走 `correct` 消息（`test_workbench_conversation.py`）；交接 Run 跟进中，见[测试精简任务记录](../tasks/2026-11-18-test-suite-slim.md) |
 | 3 | `test_step3_each_control_shows_status_actor_time_and_generation` | 同一事故依次 pause→resume→cancel→takeover→close→reopen；每步断言页面 lifecycle / mode / 代际徽章（pause 与 cancel 另断言 control 徽章，cancel 断言 run-state）、数据库行一致、「Human decisions」该代际行含动作、操作者 `alice`、审计行数据库时间；审计六行（动作、操作者、期望→结果代际）且时间单调；closed 页面有 reopen 无 close，open 页面有 close 无 reopen（G4）；reopen 不开 Run、不可认领 |
 | 3 | `test_step3_close_stops_a_running_run_and_its_late_publish_is_history_only` | worker 在途（最后一次模型调用中）关闭：Run `cancelled`、事故 `state=cancelled`（C2）、无结论；被栅栏拦下的发布只留 `late_result` 行（代际 0），页面 `history only`，投影 `late_result_rejected` + `STALE_CONTROL_GENERATION`；之后无认领、无模型请求 |
 | 3 | `test_step3_close_revokes_observation_and_reopen_restores_neither_run_nor_it` | `register_remediation` 后观察会话 `authorized`、lifecycle `observing_recovery`；close 后 lifecycle `closed`、Run `cancelled`、会话 `revoked`；reopen 后 lifecycle `open`、无新 Run、会话仍为同一条 `revoked`（不恢复、不新建）；G4 按钮；无认领、无模型请求 |
 | 3 | `test_step3_close_after_takeover_cancels_the_waiting_human_run` | 接管后 Run `waiting_human`；close 后 lifecycle `closed`、mode `human_owned`、代际 2、Run `cancelled`（用户裁决 A，2026-10-16）、页面徽章与「Human decisions」行、takeover 审计行保留；无认领、无模型请求 |
-| 3 | `test_step3_closed_incident_needs_reopen_before_a_new_run[follow_up/correct]` | 已结论事故 close：结论保留、Run 保持 `completed`；closed 上追问/纠正 409 `REOPEN_REQUIRED` 且不写任何行；reopen 不开 Run；同一追问随后开出新 Run（`queued`、可认领），旧 Run `completed` |
+| 3 | ~~`test_step3_closed_incident_needs_reopen_before_a_new_run[follow_up/correct]`~~（#702 删除） | 关闭事故上的消息准入：`tests/acceptance/test_workbench_conversation.py::test_p2_message_admission_obeys_incident_state[closed]` |
 | 4 ① | `test_step4_worker_dispatched_before_takeover_publishes_into_history_only` | 接管前派出的 worker 在最后一次模型调用中被接管：无结论、发布只落 `late_result`（代际 0）、页面 `history only`；mode `human_owned`、takeover 审计行保留、Run `waiting_human`、无新 Run、无认领、无模型请求 |
 | 4 ② | `test_step4_the_same_alert_firing_again_is_recorded_without_a_new_investigation` | 告警建事故后接管；同一告警（标注已变）再次 firing → 结果 `replayed`、同一事故与 Run；代际、审计、输入不变；接管保留（同上） |
-| 4 ③ | `test_step4_a_fact_added_under_human_ownership_is_recorded_only[no-conclusion/concluded]` | human_owned 下补充事实：200、代际+1、只记输入与审计、结论不变；Run 未结论时 `waiting_human`，已结论时保持 `completed`（PR-1 记录）；页面「Human decisions」行含操作者与时间；接管保留（同上） |
+| 4 ③ | ~~`test_step4_a_fact_added_under_human_ownership_is_recorded_only[no-conclusion/concluded]`~~（#702 删除） | 接管后的消息准入：`tests/acceptance/test_workbench_conversation.py::test_p2_message_admission_obeys_incident_state[human_owned]` |
 
 ## 测试作者自定的断言口径（合同未写明）
 

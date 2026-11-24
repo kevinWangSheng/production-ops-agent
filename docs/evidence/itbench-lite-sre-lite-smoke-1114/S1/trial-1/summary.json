@@ -1,0 +1,394 @@
+{
+  "schema": "itbench-lite-trial-1",
+  "experiment": "itbench-lite-lite-smoke-1114",
+  "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+  "frozen_at": "2026-11-14T18:33:49.966412+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+    "incident_id": "c7b453cb-138b-55c9-aee1-129f3bbfd50d",
+    "run": {
+      "state": "waiting_human",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 1,
+      "deadline": "2026-11-14T20:33:40.358985+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "Alertmanager alert RequestErrorRate (severity warning) is firing for service otel-demo/checkout since 2026-11-14T17:53:25Z.\nInvestigate why this alert is firing.",
+      "authorized_window": {
+        "end": "2026-11-14T18:33:40+00:00",
+        "start": "2026-11-13T18:33:40+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "c7b453cb-138b-55c9-aee1-129f3bbfd50d",
+      "target_id": "5b663712-ab64-45d2-86d6-7c98630f5667",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+      "created_at": "2026-11-14T18:33:40.380384+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+        "control_generation": 0,
+        "state": "waiting_human"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-dbc726eb5ae5",
+      "tool_schema_revision": "otel-demo-ext-d467c4b436b0",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": null,
+    "report_present": false,
+    "conclusion_step": {
+      "sequence": 0,
+      "logical_key": "conclusion:g0:ctx0:round-0",
+      "status": "response_committed",
+      "observed_at": "2026-11-14T18:33:41.241675+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "conclusion:g0:ctx0:round-0",
+        "status": "response_committed",
+        "observed_at": "2026-11-14T18:33:41.241675+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 0
+    },
+    "tool_requests": [],
+    "observations": [],
+    "investigation_evidence": {
+      "incident_id": "c7b453cb-138b-55c9-aee1-129f3bbfd50d",
+      "observations": [],
+      "refused_operations": [],
+      "reports": [],
+      "coverage": [
+        {
+          "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [],
+    "audit": {
+      "incident_id": "c7b453cb-138b-55c9-aee1-129f3bbfd50d",
+      "entries": [
+        {
+          "recorded_at": "2026-11-14T18:33:40.357079+00:00",
+          "sequence": 0,
+          "category": "input",
+          "source": "opspilot_alert_deliveries",
+          "record_id": "1",
+          "run_id": null,
+          "actor": "alertmanager",
+          "detail": {
+            "status": "firing",
+            "outcome": "created",
+            "annotation_revision": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-14T18:33:40.391746+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-14T18:33:40.391746+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e:1",
+          "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-14T18:33:40.923507+00:00",
+          "sequence": 3,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-14T18:33:41.251537+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+          "actor": null,
+          "detail": {
+            "kind": "run_handoff",
+            "sequence": 3
+          }
+        }
+      ],
+      "counts": {
+        "input": 1,
+        "query": 0,
+        "evidence": 0,
+        "state_change": 4,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "query",
+        "evidence",
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {
+      "opspilot_input_rounds": 1
+    },
+    "alert_delivery_outcomes": [
+      "created"
+    ],
+    "alert_deliveries": [
+      {
+        "delivery_id": 1,
+        "fingerprint": "635b2bc462c1ec57",
+        "status": "firing",
+        "outcome": "created",
+        "starts_at": "2026-11-14T17:53:25+00:00",
+        "received_at": "2026-11-14T18:33:40.357079+00:00"
+      }
+    ],
+    "outcome": {
+      "available": true,
+      "run_id": "1a8b4f2b-ac43-5b13-af0e-ac447534169e",
+      "scenario_id": "frozen-run",
+      "final_state": "failed",
+      "evidence_ids": [],
+      "decision": "handoff",
+      "actions": [],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": "handoff",
+      "handoff_reasons": [
+        "MODEL_REJECTED"
+      ],
+      "report_available": false
+    },
+    "collected_at_db": "2026-11-14T18:33:45.693482+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-itbench-lite-lite-smoke-1114",
+    "project_id": "3616dd32-cf9b-48fe-a8b2-79dc36344146",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-205d-e299b93ea80f",
+        "start_time": "2026-11-14T18:33:40.924256+00:00",
+        "end_time": "2026-11-14T18:33:41.252276+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/3616dd32-cf9b-48fe-a8b2-79dc36344146/r/00000000-0000-0000-205d-e299b93ea80f?poll=true"
+      }
+    ]
+  },
+  "itbench_lite": {
+    "round": "lite-smoke-1114",
+    "scenario": "1",
+    "scenario_dir": "Scenario-1",
+    "trial": 1,
+    "chance": 1,
+    "ports": {
+      "pg": 29110,
+      "prometheus": 29190,
+      "jaeger_query": 29186,
+      "jaeger_otlp": 29118,
+      "fake_k8s": 29143,
+      "web": 29180
+    },
+    "load_budget_seconds": 600.0,
+    "git": {
+      "commit": "748ecefa9504fb818d143368ce2059a77de1f4f9",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "copy": {
+      "reused": true
+    },
+    "ends": {
+      "metrics": "2025-12-15T18:03:00.680000+00:00",
+      "traces": "2025-12-15T17:39:49.570349+00:00",
+      "alerts": "2025-12-15T17:59:59.292565+00:00",
+      "objects": "2025-12-15T17:58:31.809729+00:00",
+      "events": "2025-12-15T17:58:59.861666+00:00",
+      "logs": "2025-12-15T18:00:16.021301+00:00"
+    },
+    "entry_alert": {
+      "alertname": "RequestErrorRate",
+      "match_labels": {
+        "service_name": "checkout"
+      },
+      "workload": "checkout",
+      "target_fallback": false
+    },
+    "target_fallback": false,
+    "load": {
+      "fake_k8s": {
+        "seconds": 24.065
+      },
+      "traces": {
+        "rows": 120000,
+        "spans": 120000,
+        "requests": 40,
+        "start_ns": 1794678310499417946,
+        "end_ns": 1794679675570349686,
+        "seconds": 82.43
+      },
+      "metrics": {
+        "rows": 862470,
+        "empty_values": 105,
+        "bad_rows": 0,
+        "duplicate_samples": 552356,
+        "conflicting_duplicates": 0,
+        "original_calls_series": 28,
+        "derived_calls_series": 106,
+        "derived_equal_to_original": 25,
+        "derived_differs_from_original": 3,
+        "original_calls_kept": 0,
+        "families": 63,
+        "series": 3523,
+        "samples": 315476,
+        "start_ms": 1794678737475,
+        "end_ms": 1794681066680,
+        "seconds": 87.162
+      }
+    },
+    "images": {
+      "jaeger": {
+        "image": "jaegertracing/all-in-one:1.53.0",
+        "digest": "jaegertracing/all-in-one@sha256:60e65bfffe1f66aee96d6fc8b6bf65afd42016be5dcc09d2e15d8462f7d9409c"
+      },
+      "prometheus": {
+        "image": "prom/prometheus:v3.5.0",
+        "digest": "prom/prometheus@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996"
+      }
+    },
+    "memory_before": {
+      "unit": "MiB",
+      "mem": {
+        "total": 32089,
+        "used": 2934,
+        "free": 633,
+        "shared": 43,
+        "buff/cache": 29031,
+        "available": 29155
+      },
+      "swap": {
+        "total": 8191,
+        "used": 0,
+        "free": 8191
+      }
+    },
+    "started_at": "2026-11-14T18:32:06.880094+00:00",
+    "offset_seconds": 28859286,
+    "loaded_at": "2026-11-14T18:33:35.348215+00:00",
+    "delivered_at": "2026-11-14T18:33:40.351936+00:00",
+    "load_seconds": 88.468121,
+    "gap_seconds": 5.003721,
+    "data_end_to_delivery_seconds": 153.671936,
+    "responded_at": "2026-11-14T18:33:40.394896+00:00",
+    "intake": {
+      "status": 200,
+      "outcome": "created",
+      "reason": null
+    },
+    "run_wait": {
+      "terminal_state": "waiting_human",
+      "timed_out": false,
+      "seconds": 5.017
+    },
+    "conversion": {
+      "method": "heuristic",
+      "rules": "r4 L1-L5",
+      "report_present": false,
+      "root_cause": "启发式",
+      "propagation_chain": "受转换限制",
+      "entity_count": 0,
+      "reason": null
+    },
+    "history": []
+  },
+  "raw_ledger": {
+    "sha256": "acf74e7f480a47a7cf85c590ce2996df30c5185614e13a86aa24e23e44836bd8",
+    "bytes": 57606,
+    "path": "tmp/lab-ledgers/itbench-lite-lite-smoke-1114/1a8b4f2b-ac43-5b13-af0e-ac447534169e/ledger.json",
+    "in_repository": false
+  }
+}

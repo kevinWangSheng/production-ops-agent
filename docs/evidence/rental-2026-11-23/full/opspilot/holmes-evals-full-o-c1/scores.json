@@ -1,0 +1,69 @@
+{
+  "track": "HolmesGPT 公开评测集（竞品自评集）",
+  "main": {
+    "passes": 2,
+    "denominator": 3,
+    "rate": 0.6666666666666666
+  },
+  "per_question": {
+    "283_todowrite_multistep_audit": {
+      "passes": 2,
+      "denominator": 3,
+      "rate": 0.6666666666666666,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": false,
+          "category": "ok"
+        }
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    }
+  },
+  "swing_questions": [
+    "283_todowrite_multistep_audit"
+  ],
+  "rerun": {
+    "questions": {},
+    "passes": 0,
+    "trials": 0,
+    "rate": null,
+    "in_main_score": false
+  },
+  "zero_scored": {
+    "no_report": [],
+    "judge_exhausted": [],
+    "env_broken": []
+  },
+  "missing_trials": [],
+  "multi_cluster": {
+    "questions": [],
+    "passes": 0,
+    "denominator": 0,
+    "rate": null
+  },
+  "time_box_limited": {
+    "questions": [],
+    "passes": 0,
+    "denominator": 0,
+    "rate": null
+  },
+  "excluding_env_broken": {
+    "questions": [
+      "283_todowrite_multistep_audit"
+    ],
+    "passes": 2,
+    "denominator": 3,
+    "rate": 0.6666666666666666,
+    "excluded": []
+  }
+}

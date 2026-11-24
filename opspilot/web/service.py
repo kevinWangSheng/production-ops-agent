@@ -46,6 +46,8 @@ from opspilot.alertmanager import (
 )
 from opspilot.domain.base import sanitized_errors
 from opspilot.intake import (
+    DEFAULT_LOOKBACK,
+    LOOKBACK_SECONDS,
     IntakeEnvelope,
     IntakeRequest,
     Principal,
@@ -60,9 +62,13 @@ from opspilot.investigation.context import (
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     KNOWLEDGE,
+    PRIOR_REPLIES,
     RELEASE_OBSERVATION,
+    RUNBOOK_CATALOG,
     ContextError,
+    conclusion_answered,
     conclusion_publishable,
+    prior_replies_fact,
 )
 from opspilot.investigation.coverage import (
     RunCoverage,
@@ -70,6 +76,7 @@ from opspilot.investigation.coverage import (
     run_coverage,
 )
 from opspilot.investigation.inputs import (
+    ALERT_FRAME_SECONDS,
     AlertAnchor,
     ReleaseAnchor,
     ToolFace,
@@ -84,14 +91,23 @@ from opspilot.investigation.limits import (
 from opspilot.investigation.loop import LoopOutcome
 from opspilot.investigation.progress import (
     EmittingCommitter,
+    announce_answered,
     announce_claim_refused,
     announce_claimed,
     announce_completed,
     announce_handoff,
     sweep_expired,
 )
-from opspilot.investigation.reports import ReportV2, parse_report
+from opspilot.investigation.reports import (
+    CONVERSATION,
+    DEFAULT_CONVERSATION_MODE,
+    ReportV2,
+    parse_report,
+)
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.investigation.todo import REFUSAL as TODO_REFUSAL
+from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
+from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.release_commands import (
     ReleaseCommandReceipt,
@@ -102,12 +118,16 @@ from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
 from opspilot.persistence import Lease, PersistenceError
+from opspilot.redaction import redact_credentials, redact_payload
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
 from opspilot.web.events import EventLog, SubjectEvent
 from opspilot.web.evidence import EvidenceStore, StoredEvidence
+from opspilot.web.incident_list import list_page, page_of_items, title_of
 from opspilot.web.store import (
+    LINKED_SHOWN,
     ControlAudit,
+    IncidentListItem,
     IncidentStore,
     IncidentSummary,
     TargetIdentity,
@@ -176,8 +196,10 @@ _MAX_TEXT = INPUT_CONTENT_FIELD_MAX_CHARS
 _EVENT_PAGE = 1000
 
 ControlAction = Literal[
+    "message",
     "follow_up",
     "correct",
+    "reinvestigate",
     "cancel",
     "pause",
     "resume",
@@ -207,10 +229,28 @@ REBIND_TARGET = "rebind_target"
 #: U3/U4): this one is closed with a pointer (generation steps, observation
 #: revoked, unfinished Runs cancelled); the survivor only takes one event.
 MERGE_INTO = "merge_into"
+#: A human message to the investigation (workbench contract B1): an input,
+#: not a decision -- no generation step, no fence, no control audit row.
+MESSAGE = "message"
+#: Contract O2: the old note actions are aliases of ``message`` for one
+#: version (same refusals); the store no longer knows them.
+MESSAGE_ALIASES = frozenset({"follow_up", "correct"})
+MESSAGE_ACTIONS = frozenset({MESSAGE, *MESSAGE_ALIASES})
+#: Contract D11: cancel, then a new Run, in one request (two store calls).
+REINVESTIGATE = "reinvestigate"
+#: The channel a message came in on (contract B1).
+MESSAGE_CHANNELS = frozenset({"investigation", "chat_forward"})
+#: P7-10: the message refusals a Chat forward records as ``refused`` (D6,
+#: D7b, D10; D9 has no panel). Anything else is transient and retried.
+_CHAT_FORWARD_REFUSALS = frozenset(
+    {"INVESTIGATION_NOT_AVAILABLE", "MERGED", "HANDOFF_ONLY"}
+)
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
+        MESSAGE,
         "follow_up",
         "correct",
+        REINVESTIGATE,
         "cancel",
         "pause",
         "resume",
@@ -231,10 +271,19 @@ CHART_CATEGORIES = (
     "rejected_hypotheses",
     "recommendations",
 )
-_TEXT_ACTIONS = frozenset({"follow_up", "correct"})
 
 
 _LOC_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+#: Candidates the relay pass reads before dropping no-op rows (R2); the
+#: pass then relays at most its ``limit`` of the rest.
+RELAY_SCAN = 1000
+
+
+def _relay_run_id(intake_key: str, max_unread: int) -> UUID:
+    """Contract R3: the continuation Run a message relays to."""
+    return uuid5(_INTAKE_NAMESPACE, f"{intake_key}:relay:{max_unread}")
 
 
 def _failure_code(exc: Exception) -> str:
@@ -277,10 +326,15 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     lifecycle = incident.lifecycle
     human_owned = incident.mode == "human_owned"
     control = incident.control
-    concluded = incident.concluded or incident.state in {"completed", "cancelled"}
     run_state = snapshot["run"]["state"]
     actions = {TAKEOVER}
     merged = getattr(incident, "merged_into_incident_id", None) is not None
+    # Contract A11: a published conclusion freezes pause/resume/cancel only
+    # while no continuation Run is active.
+    active = run_state in {"queued", "running", "paused"}
+    frozen = incident.state in {"completed", "cancelled"} or (
+        incident.concluded and not active
+    )
     if lifecycle in {"open", "observing_recovery", "resolved"}:
         actions.add("close")
     if lifecycle in {"resolved", "closed"} and not merged:
@@ -303,18 +357,34 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     if lifecycle != "closed":
         if control == "cancelled" and not human_owned:
             actions.add("new_run")
-        if not concluded:
+        if not frozen:
             actions.add("cancel")
             if run_state in {"queued", "running", "paused", "waiting_human"}:
                 actions.add("resume")
                 if control != "paused":
                     actions.add("pause")
-    if human_owned or (
-        lifecycle != "closed"
-        and not (lifecycle == "resolved" and concluded)
-        and (concluded or run_state in {"queued", "running", "paused", "waiting_human"})
+        if (
+            not human_owned
+            and not incident.concluded
+            and control not in {"cancelled", "paused"}
+            and not active
+        ):
+            # D11: the way out of an investigation that ended without a
+            # result (failed, timed out, handed off).
+            actions.add(REINVESTIGATE)
+    ended_without_result = (
+        not incident.concluded
+        and not active
+        and control != "paused"
+        and not snapshot.get("validated_report", True)
+    )
+    if not merged and (
+        human_owned or (control != "cancelled" and not ended_without_result)
     ):
-        actions.update(_TEXT_ACTIONS)
+        # Contract D1-D8: a message is taken in every other state; a failed or
+        # timed-out investigation without any validated report (D7b) is not.
+        # Scope suspension is the server's to decide (it admits the message).
+        actions.add(MESSAGE)
     return sorted(actions)
 
 
@@ -360,6 +430,22 @@ class ControlResult:
     replayed: bool
     sequence: int
     run_id: str | None = None
+    #: A ``message`` (contract B1): the input's sequence; ``sequence`` then
+    #: carries the same number, since a message announces no control event.
+    input_sequence: int | None = None
+
+
+@dataclass(frozen=True)
+class MessageResult:
+    """One human message taken in (contract B1, D1-D10)."""
+
+    incident_id: UUID
+    input_sequence: int
+    replayed: bool
+    #: The incident's generation, unchanged by the message.
+    generation: int
+    #: The continuation Run the relay opened in this request (R2), if any.
+    run_id: UUID | None
 
 
 @dataclass(frozen=True)
@@ -419,17 +505,46 @@ class Workbench:
     targets: TargetRegistry | None = None
     knowledge: Any = None
     knowledge_max_age_seconds: int = 2592000
+    #: C2b (#566): the ``RunbookStore`` new Runs read the approved-runbook
+    #: list from (input v7); ``None`` -- the switch off -- leaves every input
+    #: as before.
+    runbook_catalog: Any = None
     #: The ``ReleaseStore`` the anomaly consumption pass and release
     #: rebuilds use (F11 PR-4b); ``None`` derives one on first use from the
     #: durable incident store's DSN and pool settings, as the release intake
     #: route does, and a store without one (in-memory tests) has no releases.
     releases: Any = None
+    #: The ``ChatStore`` of the Chat panel (workbench P7); ``None`` derives
+    #: one on first use from the durable incident store's DSN and pool, as
+    #: ``releases`` does; a store without one (in-memory tests) has no Chat.
+    chat: Any = None
+    #: The ``FeedbackStore`` (workbench P5); ``None`` derives one on first
+    #: use from the durable incident store's DSN and pool, as ``chat`` does.
+    feedback_store: Any = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
 
+    def _max_lookback(self) -> int:
+        """#779: the deployment cap the tool face carries, in seconds."""
+        if self.tool_face is None:
+            return ALERT_FRAME_SECONDS
+        return self.tool_face.max_lookback_seconds
+
+    def lookback_choices(self) -> tuple[str, ...]:
+        """#779: the lookbacks the submit form offers, shortest first: every
+        one within the deployment cap."""
+        cap = self._max_lookback()
+        return tuple(
+            name for name, seconds in LOOKBACK_SECONDS.items() if seconds <= cap
+        )
+
     def submit(self, envelope: IntakeEnvelope) -> IntakeResult:
         envelope = IntakeEnvelope.model_validate(envelope)
+        if envelope.request.lookback not in self.lookback_choices():
+            # #779 B4-3: above the deployment cap; checked before the ledger,
+            # so nothing is recorded under the key.
+            raise WorkbenchError("LOOKBACK_NOT_ALLOWED")
         key = f"intake:{envelope.request.idempotency_key}"
         incident_id = uuid5(_INTAKE_NAMESPACE, key)
         run_id = uuid5(_INTAKE_NAMESPACE, f"{key}:run:0")
@@ -821,11 +936,13 @@ class Workbench:
         revision: str | None = None,
         to_target: str | None = None,
         into_incident_id: str | None = None,
+        retry_of: int | None = None,
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
-        ``text`` belongs to ``follow_up``/``correct`` and may annotate a
-        ``rebind_target``; ``revision`` belongs to ``register_remediation``
+        ``message`` (and its aliases ``follow_up``/``correct``, contract O2)
+        is not a decision: it goes to :meth:`message`. ``text`` may annotate
+        a ``rebind_target``; ``revision`` belongs to ``register_remediation``
         (M1-02 step 3): the target revision after the handling, recorded on
         the audit row and the observation session (not identity, user
         decision 2026-10-07). ``to_target`` belongs to ``rebind_target``
@@ -838,6 +955,42 @@ class Workbench:
         """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
+        if retry_of is not None and action not in MESSAGE_ACTIONS:
+            raise WorkbenchError("INVALID_INPUT")
+        if action in MESSAGE_ACTIONS:
+            # Contract B1/O2: a message (or its old alias) is an input; the
+            # expected generation is not a fence for it and is ignored.
+            if revision is not None:
+                raise WorkbenchError("REVISION_NOT_ALLOWED")
+            if to_target is not None:
+                raise WorkbenchError("TARGET_NOT_ALLOWED")
+            if into_incident_id is not None:
+                raise WorkbenchError("INTO_INCIDENT_NOT_ALLOWED")
+            if retry_of is not None:
+                # P3-11: Retry sends the stored text again; no text of its own.
+                if action != MESSAGE or text is not None:
+                    raise WorkbenchError("INVALID_INPUT")
+                taken = self.retry_message(
+                    incident_id, actor_id=actor_id, sequence=retry_of
+                )
+            else:
+                if text is None:
+                    raise WorkbenchError("TEXT_REQUIRED")
+                taken = self.message(
+                    incident_id,
+                    actor_id=actor_id,
+                    text=text,
+                    idempotency_key=idempotency_key,
+                )
+            return ControlResult(
+                incident_id,
+                MESSAGE,
+                taken.generation,
+                taken.replayed,
+                taken.input_sequence,
+                None if taken.run_id is None else str(taken.run_id),
+                input_sequence=taken.input_sequence,
+            )
         if type(expected_generation) is not int or expected_generation < 0:
             raise WorkbenchError("INVALID_INPUT")
         try:
@@ -854,12 +1007,7 @@ class Workbench:
                     raise ValueError
         except ValueError:
             raise WorkbenchError("INVALID_INPUT") from None
-        if action in _TEXT_ACTIONS and text is None:
-            raise WorkbenchError("TEXT_REQUIRED")
-        if (
-            action not in {*_TEXT_ACTIONS, REBIND_TARGET, MERGE_INTO}
-            and text is not None
-        ):
+        if action not in {REBIND_TARGET, MERGE_INTO} and text is not None:
             raise WorkbenchError("TEXT_NOT_ALLOWED")
         if action == REBIND_TARGET and to_target is None:
             raise WorkbenchError("TARGET_REQUIRED")
@@ -1041,20 +1189,14 @@ class Workbench:
                 payload={"channel": "web", "idempotency_key": key},
             )
             return generation, None
+        if action == REINVESTIGATE:
+            assert key is not None
+            return self._reinvestigate(summary, expected, actor_id, key)
         if action != "new_run":
-            # The note travels with the decision: DurableStore.control (PR #31)
-            # writes it to opspilot_controls.payload and opspilot_inputs, from
-            # where begin_round() hands it to the next model round. The web
-            # ledger keeps a copy for idempotency and display only. A note on
-            # a timed-out Run starts a fresh Run with the same id derivation
-            # and wall as new_run (user decision 2026-09-25); the store
-            # decides that from the row, and the changed pointer says so.
             # Every decision writes its ledger key into the audit row in the
             # store's transaction (#128, as register_remediation does), so a
             # crash before the confirm row can be reconciled only by the
-            # request that made it; an action without text used to leave the
-            # row anonymous. Inputs copy the payload, where the model-facing
-            # projection drops the key (INPUT_CONTENT_FIELDS).
+            # request that made it.
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
@@ -1071,37 +1213,10 @@ class Workbench:
                 # The store checks the survivor under both row locks.
                 assert into_incident_id is not None
                 payload["into_incident_id"] = into_incident_id
-            for attempt in range(3):
-                renewal: dict[str, Any] = {}
-                if action in _TEXT_ACTIONS:
-                    snapshot = self.incidents.rebuild(summary.incident_id)
-                    renewal = {
-                        "renew_run_id": run_id,
-                        "renew_deadline": deadline,
-                        "renew_input": self._successor_input(
-                            summary, run_id, deadline, snapshot=snapshot
-                        ),
-                        "renew_basis": {
-                            "run_id": str(snapshot["run"]["run_id"]),
-                            "concluded": snapshot.get("conclusion") is not None,
-                        },
-                    }
-                try:
-                    generation = self.incidents.control(
-                        summary.incident_id,
-                        expected,
-                        action,
-                        actor_id,
-                        payload,
-                        **renewal,
-                    )
-                    break
-                except PersistenceError as exc:
-                    if str(exc) != "RENEW_INPUT_STALE":
-                        raise
-                    if attempt == 2:
-                        raise PersistenceError("CONTROL_CONFLICT") from None
-            return generation, self._decision_run(summary, generation)
+            generation = self.incidents.control(
+                summary.incident_id, expected, action, actor_id, payload
+            )
+            return generation, None
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
         generation = self.incidents.new_run(
@@ -1116,6 +1231,572 @@ class Workbench:
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
+
+    def _reinvestigate(
+        self, summary: IncidentSummary, expected: int, actor_id: str, key: str
+    ) -> tuple[int, UUID | None]:
+        """Contract D11: Re-investigate is cancel then ``new_run``, two
+        existing store calls (the generation steps twice). An incident
+        already cancelled skips the first; when the second fails the
+        incident stays cancelled and the action can be taken again."""
+        payload = {"channel": "web", "idempotency_key": key}
+        generation = expected
+        current = self.incidents.find_incident(summary.incident_id)
+        if current is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        if current.state != "cancelled":
+            generation = self.incidents.control(
+                summary.incident_id, expected, "cancel", actor_id, payload
+            )
+        elif current.control_generation != expected:
+            raise PersistenceError("CONTROL_CONFLICT")
+        run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{generation + 1}")
+        deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        generation = self.incidents.new_run(
+            summary.incident_id,
+            run_id,
+            expected_generation=generation,
+            deadline=deadline,
+            budget_limit=self.budget_limit,
+            versions=dict(self.run_versions),
+            actor=actor_id,
+            input=self._successor_input(summary, run_id, deadline),
+            payload=payload,
+        )
+        return generation, run_id
+
+    # -- messages and the relay (workbench contract B1, D, R) ------------
+
+    def message(
+        self,
+        incident_id: UUID,
+        *,
+        actor_id: str,
+        text: str,
+        idempotency_key: str,
+        channel: str = "investigation",
+    ) -> MessageResult:
+        """Take one human message for the investigation (contract B1).
+
+        The message is an input row of kind ``message`` (content ``text``,
+        ``channel``, ``idempotency_key``; the actor column names the
+        signed-in user), keyed by the request key so a retry returns the same
+        row. It is not a control decision: the generation, the lease, the
+        lifecycle, the conclusion and the observation stay as they are, and
+        no control audit row is written (D20: not human handling for the
+        automatic recovery observation). The store admits it by the state
+        table (D1-D10); then the relay runs once (R2) and opens a
+        continuation Run when the incident is idle.
+        """
+        if channel not in MESSAGE_CHANNELS:
+            raise WorkbenchError("INVALID_INPUT")
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not (1 <= len(idempotency_key) <= 256):
+                raise ValueError
+            if not isinstance(text, str) or not text.strip() or len(text) > _MAX_TEXT:
+                raise ValueError
+            _reject_ambiguous_text(text)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            raise WorkbenchError("HANDOFF_ONLY")
+        key = f"{incident_id}:{idempotency_key}"
+        try:
+            sequence, replayed = self.incidents.append_message(
+                incident_id,
+                uuid5(_INTAKE_NAMESPACE, f"message:{key}"),
+                {"text": text, "channel": channel, "idempotency_key": key},
+                actor=actor_id,
+            )
+        except PersistenceError as exc:
+            code = str(exc)
+            raise WorkbenchError(
+                "CONTROL_KEY_CONFLICT" if code == "IDENTITY_CONFLICT" else code
+            ) from None
+        try:
+            # P3-17: tell open pages a message arrived; the text reaches them
+            # through the live view, never through the event.
+            self.events.append_once(
+                incident_id,
+                "message_received",
+                {"input_sequence": sequence},
+                key={"input_sequence": sequence},
+            )
+        except (PersistenceError, DatabaseError, OSError, ValueError) as exc:
+            _log.warning(
+                "message event failed incident=%s code=%s",
+                incident_id,
+                _failure_code(exc),
+            )
+        try:
+            run_id = self.relay(incident_id)
+        except (PersistenceError, ContextError, DatabaseError, OSError) as exc:
+            # The message is committed; the background pass relays it later
+            # (R2). The request reports what was admitted.
+            _log.warning(
+                "relay after message failed incident=%s code=%s",
+                incident_id,
+                _failure_code(exc),
+            )
+            run_id = None
+        current = self.incidents.find_incident(incident_id)
+        return MessageResult(
+            incident_id,
+            sequence,
+            replayed,
+            (current or summary).control_generation,
+            run_id,
+        )
+
+    def retry_message(
+        self, incident_id: UUID, *, actor_id: str, sequence: int
+    ) -> MessageResult:
+        """Send a not-answered message again (P3-11): a new ``message`` input
+        with the stored text of message ``sequence``, signed by whoever
+        retries. The key ``retry:{sequence}`` makes a second click a replay.
+        The admission rules are :meth:`message`'s."""
+        reader = getattr(self.incidents, "message_inputs", None)
+        rows = [] if reader is None else reader(incident_id)
+        original = next((r for r in rows if int(r["sequence"]) == sequence), None)
+        content = (
+            original["content"]
+            if original is not None and isinstance(original["content"], Mapping)
+            else None
+        )
+        if content is None or not isinstance(content.get("text"), str):
+            raise WorkbenchError("INVALID_INPUT")
+        channel = content.get("channel")
+        return self.message(
+            incident_id,
+            actor_id=actor_id,
+            text=content["text"],
+            idempotency_key=f"retry:{sequence}",
+            channel=channel if channel in MESSAGE_CHANNELS else "investigation",
+        )
+
+    def relay(self, incident_id: UUID) -> UUID | None:
+        """Open the continuation Run for an idle incident's unread messages
+        (contract R1-R5), or do nothing. Shared by the message request and
+        the background pass. The Run id is ``uuid5("{intake_key}:relay:
+        {highest unread sequence}")``, so a repeat opens nothing; its input
+        is the successor input with the conversation fact (floor, mode) and
+        the earlier replies (B4, B8). No control audit, observation revoke,
+        lifecycle change or conclusion change (R4)."""
+        for _attempt in range(3):
+            basis = self.incidents.relay_basis(incident_id)
+            if basis is None:
+                return None
+            summary = self.incidents.find_incident(incident_id)
+            if summary is None:
+                return None
+            run_id = _relay_run_id(summary.intake_key, basis["max_unread"])
+            if str(run_id) == basis["current_run_id"]:
+                # This very message already opened the current Run (R3): a
+                # repeat opens nothing, even when that Run was left paused.
+                return None
+            deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+            run_input = self._successor_input(
+                summary,
+                run_id,
+                deadline,
+                conversation={"floor": basis["floor"], "mode": basis["mode"]},
+            )
+            try:
+                opened = self.incidents.relay_continuation(
+                    incident_id,
+                    run_id,
+                    basis=basis,
+                    deadline=deadline,
+                    budget_limit=self.budget_limit,
+                    versions=dict(self.run_versions),
+                    input=run_input,
+                )
+            except PersistenceError as exc:
+                if str(exc) == "RENEW_INPUT_STALE":
+                    continue
+                raise
+            if not opened:
+                return None
+            self.events.append_once(
+                incident_id,
+                "run_resumed",
+                {
+                    "run_id": str(run_id),
+                    "mode": basis["mode"],
+                    "input_sequence": basis["max_unread"],
+                },
+                key={"run_id": str(run_id)},
+            )
+            return run_id
+        return None
+
+    def relay_pass(self, *, limit: int = 20) -> list[UUID]:
+        """The background relay step (R2): one :meth:`relay` per candidate;
+        a failure on one incident is logged and the others still run."""
+        opened: list[UUID] = []
+        candidates = [
+            row
+            for row in self.incidents.relay_candidates(limit=RELAY_SCAN)
+            # The current Run is already the relay Run of this very message
+            # (it ended before reading it, D12): relay() would open nothing,
+            # and such rows must not crowd out relayable incidents.
+            if row["max_unread"] is None
+            or _relay_run_id(str(row["intake_key"]), int(row["max_unread"]))
+            != row["current_run_id"]
+        ][:limit]
+        for row in candidates:
+            incident_id = row["incident_id"]
+            try:
+                run_id = self.relay(incident_id)
+            except (PersistenceError, ContextError) as exc:
+                _log.warning(
+                    "relay failed incident=%s code=%s",
+                    incident_id,
+                    _failure_code(exc),
+                )
+                continue
+            if run_id is not None:
+                opened.append(run_id)
+        return opened
+
+    # -- Chat panel (workbench P7, contract E1-E6 r10) --------------------
+
+    def _chat_store(self) -> Any:
+        if self.chat is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise WorkbenchError("CHAT_UNAVAILABLE")
+            from opspilot.chat import ChatStore
+
+            self.chat = ChatStore(dsn, pool=getattr(durable, "pool_config", None))
+        return self.chat
+
+    def _chat_incident(self, incident_id: UUID) -> IncidentSummary:
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.handoff_only:
+            # D9: the handoff-only page has no Chat panel.
+            raise WorkbenchError("HANDOFF_ONLY")
+        return summary
+
+    def chat_ask(
+        self,
+        incident_id: UUID,
+        *,
+        actor_id: str,
+        question: str,
+        idempotency_key: str,
+        session_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Take one Chat question (P7-4, P7-5, P7-11). The record the model
+        will read is built here from the page's own projection (E3) and
+        stored on the turn; the worker answers it later. Nothing about the
+        investigation changes. A new session starts when ``session_id`` is
+        ``None``."""
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not (1 <= len(idempotency_key) <= 256):
+                raise ValueError
+            if (
+                not isinstance(question, str)
+                or not question.strip()
+                or len(question) > _MAX_TEXT
+            ):
+                raise ValueError
+            # the same checks as a message, so a forward never fails on them
+            _reject_ambiguous_text(question)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        self._chat_incident(incident_id)
+        store = self._chat_store()
+        from opspilot.chat import build_context, context_sha256
+        from opspilot.web.incident_view import page_view
+
+        snapshot = self.snapshot(incident_id)
+        context = build_context(
+            page_view(
+                snapshot, None, available_actions(snapshot), message_available=True
+            )
+        )
+        try:
+            turn, replayed = store.ask(
+                incident_id,
+                session_id=session_id,
+                author=actor_id,
+                question=question,
+                idempotency_key=idempotency_key,
+                context=context,
+                context_sha256=context_sha256(context),
+            )
+        except PersistenceError as exc:
+            code = str(exc)
+            # the one-pending-turn index lost a race with a second tab
+            raise WorkbenchError(
+                "CHAT_BUSY" if code == "IDENTITY_CONFLICT" else code
+            ) from None
+        return {
+            "incident_id": str(incident_id),
+            "session_id": str(turn["session_id"]),
+            "replayed": replayed,
+            "turn": self._chat_turn_view(turn, None),
+        }
+
+    def chat_sessions(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The History tab: this incident's newest 50 sessions (P7-12)."""
+        self._chat_incident(incident_id)
+        return [
+            {
+                "session_id": str(row["session_id"]),
+                "created_by": row["created_by"],
+                "created_at": _iso(row["created_at"]),
+                "title": redact_credentials(row["title"]),
+                "turns": int(row["turns"]),
+                "last_asked_at": _iso(row["last_asked_at"]),
+            }
+            for row in self._chat_store().sessions(incident_id)
+        ]
+
+    def chat_session(self, incident_id: UUID, session_id: UUID) -> dict[str, Any]:
+        summary = self._chat_incident(incident_id)
+        found = self._chat_store().session(incident_id, session_id)
+        if found is None:
+            raise WorkbenchError("CHAT_UNKNOWN_SESSION")
+        turns = [self._chat_turn_view(t, summary) for t in found["turns"]]
+        return {
+            "incident_id": str(incident_id),
+            "session_id": str(found["session_id"]),
+            "created_by": found["created_by"],
+            "created_at": _iso(found["created_at"]),
+            "title": redact_credentials(found["title"]),
+            "turns": turns,
+            "pending": any(t["status"] == "pending" for t in turns),
+        }
+
+    def chat_forward(self, incident_id: UUID, turn_id: UUID) -> dict[str, Any]:
+        """Forward a ``steer`` answer's question (contract E5, P7-9): the
+        person's stored question, verbatim, as their own ``chat_forward``
+        message with the key ``chat:{turn_id}`` -- so a repeat adds nothing.
+        The model's text never enters the investigation's inputs. A state
+        the investigation cannot take records ``refused`` with the code."""
+        summary = self._chat_incident(incident_id)
+        store = self._chat_store()
+        turn = store.turn(incident_id, turn_id)
+        if turn is None:
+            raise WorkbenchError("CHAT_UNKNOWN_TURN")
+        if turn["forward_state"] is None:
+            if not (turn["steer"] and turn["status"] == "answered"):
+                raise WorkbenchError("CHAT_NOT_STEER")
+            try:
+                result = self.message(
+                    incident_id,
+                    actor_id=turn["author"],
+                    text=turn["question"],
+                    idempotency_key=f"chat:{turn_id}",
+                    channel="chat_forward",
+                )
+            except WorkbenchError as exc:
+                if exc.code not in _CHAT_FORWARD_REFUSALS:
+                    raise
+                store.record_forward(
+                    turn_id, state="refused", code=exc.code, input_sequence=None
+                )
+            else:
+                current = self.incidents.find_incident(incident_id) or summary
+                code = (
+                    "RECORDED_AS_NOTE"
+                    if current.mode == "human_owned"
+                    else "READ_AFTER_RESUME"
+                    if current.state == "paused"
+                    else None
+                )
+                store.record_forward(
+                    turn_id,
+                    state="sent",
+                    code=code,
+                    input_sequence=result.input_sequence,
+                )
+            turn = store.turn(incident_id, turn_id) or turn
+        return {
+            "incident_id": str(incident_id),
+            "turn": self._chat_turn_view(
+                turn, self.incidents.find_incident(incident_id) or summary
+            ),
+        }
+
+    def chat_forward_pass(self, *, limit: int = 20) -> list[UUID]:
+        """The relay loop's backup for P7-9 (a): answered steers the page
+        never forwarded. A failure on one is logged; the others still run."""
+        try:
+            candidates = self._chat_store().forward_candidates(limit=limit)
+        except WorkbenchError:
+            return []
+        forwarded: list[UUID] = []
+        for row in candidates:
+            try:
+                self.chat_forward(row["incident_id"], row["turn_id"])
+            except (WorkbenchError, PersistenceError, DatabaseError, OSError) as exc:
+                _log.warning(
+                    "chat forward failed turn=%s code=%s",
+                    row["turn_id"],
+                    _failure_code(exc),
+                )
+                continue
+            forwarded.append(row["turn_id"])
+        return forwarded
+
+    @staticmethod
+    def _chat_turn_view(
+        turn: Mapping[str, Any], summary: IncidentSummary | None
+    ) -> dict[str, Any]:
+        forward: dict[str, Any] | None = None
+        words: str | None = None
+        state = turn.get("forward_state")
+        code = turn.get("forward_code")
+        if state == "sent":
+            words = {
+                "RECORDED_AS_NOTE": "Recorded as a note — the agent is not investigating",
+                "READ_AFTER_RESUME": "Sent to investigation · read after resume",
+            }.get(str(code), "Sent to investigation")
+        elif state == "refused":
+            merged = getattr(summary, "merged_into_incident_id", None)
+            words = (
+                f"Not sent — merged into {str(merged)[:8]}"
+                if code == "MERGED" and merged is not None
+                else "Not sent — use Re-investigate"
+            )
+        elif turn.get("steer") and turn.get("status") == "answered":
+            state, words = "pending", "Sending to investigation…"
+        if state is not None:
+            sequence = turn.get("forwarded_input_sequence")
+            forward = {
+                "state": state,
+                "code": code,
+                "words": words,
+                "input_sequence": sequence,
+                "anchor": None if sequence is None else f"msg-{sequence}",
+                "merged_into": None
+                if summary is None or summary.merged_into_incident_id is None
+                else str(summary.merged_into_incident_id),
+            }
+        refs = turn.get("refs")
+        return {
+            "turn_id": str(turn["turn_id"]),
+            "seq": int(turn["seq"]),
+            "author": turn["author"],
+            "question": redact_credentials(str(turn["question"])),
+            "status": turn["status"],
+            "answer": turn.get("answer"),
+            "steer": bool(turn.get("steer")),
+            "refs": list(refs) if isinstance(refs, list) else [],
+            "error_code": turn.get("error_code"),
+            "asked_at": _iso(turn.get("asked_at")),
+            "answered_at": _iso(turn.get("answered_at")),
+            "elapsed_ms": turn.get("elapsed_ms"),
+            "forward": forward,
+        }
+
+    # -- feedback (workbench P5, contract r12) ----------------------------
+
+    def _feedback(self) -> Any:
+        if self.feedback_store is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise WorkbenchError("FEEDBACK_UNAVAILABLE")
+            from opspilot.web.feedback import FeedbackStore
+
+            self.feedback_store = FeedbackStore(
+                dsn, pool=getattr(durable, "pool_config", None)
+            )
+        return self.feedback_store
+
+    def submit_feedback(
+        self, incident_id: UUID, *, actor_id: str, fields: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Save the incident's one feedback row, replacing any earlier one
+        (F6). Not a control action (F3): no generation, audit row, input,
+        Run, lifecycle or observation changes, and nothing the
+        investigation, Chat or the postmortem model reads sees it (F4, F11
+        A). Offered and accepted only while the page shows a parsed report
+        and the incident is not merged (F8); the rating records that
+        report's Run and sha256 (F9)."""
+        clean = _feedback_fields(fields)
+        summary = self.incidents.find_incident(incident_id)
+        if summary is None:
+            raise WorkbenchError("UNKNOWN_INCIDENT")
+        if summary.merged_into_incident_id is not None:
+            raise WorkbenchError("MERGED")
+        if summary.handoff_only:
+            raise WorkbenchError("NO_REPORT")
+        from opspilot.web.incident_view import shown_report_ref
+
+        ref = shown_report_ref(self.snapshot(incident_id))
+        if ref is None:
+            raise WorkbenchError("NO_REPORT")
+        # F9 (r12): the page's form names the report the person rated; a
+        # report revised since then is refused, never silently retargeted.
+        # A caller naming no report rates the one shown now.
+        claimed = _rated_ref(fields)
+        if claimed is not None and claimed != ref:
+            raise WorkbenchError("REPORT_CHANGED")
+        try:
+            row = self._feedback().save(
+                incident_id,
+                fields=clean,
+                rated_run_id=UUID(ref[0]),
+                rated_report_sha256=ref[1],
+                updated_by=actor_id,
+            )
+        except PersistenceError as exc:
+            raise WorkbenchError(str(exc)) from None
+        return {"incident_id": str(incident_id), "feedback": _feedback_view(row, ref)}
+
+    def feedback_for(
+        self, incident_id: UUID, snapshot: Mapping[str, Any] | None = None
+    ) -> dict[str, Any] | None:
+        """The incident's feedback as the pages show it (redacted), with
+        ``earlier_report`` when the shown report is no longer the rated one
+        (F9). ``None`` without a row, or without a durable store."""
+        try:
+            store = self._feedback()
+        except WorkbenchError:
+            return None
+        try:
+            row = store.get(incident_id)
+        except PersistenceError as exc:
+            # The card is optional: a failed read hides it rather than
+            # failing the incident page, /live or the review page.
+            _log.warning("feedback read failed incident=%s code=%s", incident_id, exc)
+            return None
+        if row is None:
+            return None
+        ref = None
+        if snapshot is not None:
+            from opspilot.web.incident_view import shown_report_ref
+
+            ref = shown_report_ref(snapshot)
+        return _feedback_view(row, ref)
+
+    def feedback_export(self) -> list[dict[str, Any]]:
+        """F13: every feedback row for evaluation, redacted, with the rated
+        Run's model and prompt revision. Read by a signed-in user only."""
+        rows = self._feedback().export()
+        out = []
+        for row in rows:
+            view = _feedback_view(row, None)
+            view.pop("earlier_report", None)
+            view.pop("verdict_words", None)
+            view.pop("next_steps_words", None)
+            view["model"] = row.get("model")
+            view["prompt_revision"] = row.get("prompt_revision")
+            out.append(view)
+        return out
 
     def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
         """Prove this decision's deterministic Run exists, even after another renewal."""
@@ -1277,6 +1958,11 @@ class Workbench:
         """
         if self.tool_face is None:
             return None
+        if LOOKBACK_SECONDS[request.lookback] > self._max_lookback():
+            # #779: an intake recorded under a longer cap than this
+            # deployment's (submit refuses it before this; a successor's
+            # fresh or rebound input fails closed like unreadable rows).
+            raise PersistenceError("INPUT_INVALID")
         fresh = self.tool_face.input_for(
             run_id=str(run_id),
             question=request.question,
@@ -1285,6 +1971,9 @@ class Workbench:
             model_requests=self.budget_limit,
             alert=alert,
             release=release,
+            # #779: a submitted Run's chosen frame; alert and release Runs
+            # keep their anchored 24 h frame (B4-4).
+            lookback_seconds=LOOKBACK_SECONDS[request.lookback],
         )
         if affected_service is not None:
             fresh = replace(
@@ -1312,7 +2001,29 @@ class Workbench:
                 fresh,
                 scope_facts={**fresh.scope_facts, KNOWLEDGE: self._knowledge(request)},
             )
+        if self.runbook_catalog is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={
+                    **fresh.scope_facts,
+                    RUNBOOK_CATALOG: self._runbook_catalog(request),
+                },
+            )
         return fresh.as_json()
+
+    def _runbook_catalog(self, request: IntakeRequest) -> dict[str, Any]:
+        """The approved-runbook list a new Run starts with (C2b, C2-5):
+        read per Run in its own snapshot; a storage failure records
+        ``unavailable`` instead of blocking the Run, as knowledge hints do."""
+        try:
+            return catalog_for_target(
+                self.runbook_catalog,
+                request.target_id,
+                max_age_seconds=self.knowledge_max_age_seconds,
+            )
+        except (PersistenceError, DatabaseError, OSError, TimeoutError):
+            _log.warning("runbook catalog retrieval unavailable")
+            return unavailable_catalog(self.knowledge_max_age_seconds)
 
     def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
         """The approved knowledge a new Run of ``request`` starts with (F13
@@ -1332,6 +2043,47 @@ class Workbench:
             return unavailable_fact(self.knowledge_max_age_seconds)
 
     def _successor_input(
+        self,
+        summary: IncidentSummary,
+        run_id: UUID,
+        deadline: datetime,
+        *,
+        snapshot: Mapping[str, Any] | None = None,
+        conversation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """:meth:`_successor_body` with the conversation facts every
+        successor carries (workbench contract B4, B8): ``conversation``
+        (``{floor, mode}``; a new Run that must report -- ``new_run``,
+        Re-investigate -- gets ``report_required`` over the incident's read
+        floor) and ``prior_replies``, both rewritten here because a
+        continuation copies the previous Run's scope facts whole and would
+        otherwise inherit its floor and answer old messages again."""
+        body = self._successor_body(summary, run_id, deadline, snapshot=snapshot)
+        if body is None:
+            return None
+        facts = dict(body.get("scope_facts") or {})
+        facts.pop(CONVERSATION, None)
+        if conversation is not None:
+            facts[CONVERSATION] = dict(conversation)
+        elif any(
+            row.get("kind") == MESSAGE
+            for row in self.incidents.rebuild(summary.incident_id).get("inputs") or ()
+        ):
+            # Only ``message`` rows read the floor: an incident without one
+            # keeps the successor's bytes as they were (the missing fact is
+            # floor 0, report_required).
+            facts[CONVERSATION] = {
+                "floor": self.incidents.conversation_floor(summary.incident_id),
+                "mode": DEFAULT_CONVERSATION_MODE,
+            }
+        prior = prior_replies_fact(self.incidents.prior_replies(summary.incident_id))
+        if prior is None:
+            facts.pop(PRIOR_REPLIES, None)
+        else:
+            facts[PRIOR_REPLIES] = prior
+        return {**body, "scope_facts": facts}
+
+    def _successor_body(
         self,
         summary: IncidentSummary,
         run_id: UUID,
@@ -1385,11 +2137,21 @@ class Workbench:
                 alert=self._attached_reframe(summary.incident_id, basis, created),
                 release=self._release_reframe(summary, basis, created),
             )
+            # #779: a frame carried from a Run recorded under a longer cap
+            # than this deployment's would have every call refused
+            # WINDOW_TOO_LARGE; refuse the successor instead.
+            if _frame_seconds(fresh.evidence_context) > self._max_lookback():
+                raise ContextError("INPUT_INVALID")
             facts = dict(fresh.scope_facts)
             self._check_release_fact(summary.incident_id, summary.intake_key, facts)
             facts.pop(KNOWLEDGE, None)
             if self.knowledge is not None:
                 facts[KNOWLEDGE] = self._knowledge(request)
+            # C2b: re-read like knowledge, never carried; with the switch off
+            # an earlier Run's list does not reach the successor.
+            facts.pop(RUNBOOK_CATALOG, None)
+            if self.runbook_catalog is not None:
+                facts[RUNBOOK_CATALOG] = self._runbook_catalog(request)
             return replace(fresh, scope_facts=facts).as_json()
         except ContextError as exc:
             if exc.code != "INPUT_MISSING":
@@ -2011,7 +2773,7 @@ class Workbench:
         summary = self.incidents.find_incident(incident_id)
         run_id = (
             self._decision_run(summary, audit.resulting_generation)
-            if summary is not None and audit.action in {*_TEXT_ACTIONS, "new_run"}
+            if summary is not None and audit.action == "new_run"
             else None
         )
         run_fields = {} if run_id is None else {"run_id": str(run_id)}
@@ -2150,6 +2912,66 @@ class Workbench:
     def list_incidents(self) -> tuple[IncidentSummary, ...]:
         return self.incidents.list_incidents()
 
+    def registry_keys(self) -> tuple[str, ...]:
+        """The configured target keys the list page's intake form offers
+        (UI redesign U6); empty without a registry that lists keys."""
+        return self._registry_keys()
+
+    def incident_list(
+        self,
+        *,
+        tab: str = "needs_human",
+        service: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+    ) -> dict[str, Any]:
+        """The list page (web UX spec 3.7): one page of one tab with the
+        whole-database tab counts, all from the store's ``list_page`` (three
+        queries in one snapshot). A store without it (an older test double)
+        has its rows filtered here with the same rules."""
+        reader = getattr(self.incidents, "list_page", None)
+        if reader is not None:
+            result = reader(tab=tab, service=service, q=q, page=page)
+        else:
+            items_reader = getattr(self.incidents, "list_incident_items", None)
+            items = (
+                items_reader(limit=None)
+                if items_reader is not None
+                else tuple(
+                    IncidentListItem(s)
+                    for s in self.incidents.list_incidents(limit=10_000)
+                )
+            )
+            result = page_of_items(items, tab=tab, service=service, q=q, page=page)
+        return list_page(result, q=q, targets=self.registry_keys())
+
+    def incident_subject(self, incident_id: UUID) -> dict[str, Any] | None:
+        """What an incident is about, read like its list row (UI redesign
+        3.3, the postmortem page's heading): alert name, service, question
+        and target from one single-row read; ``None`` when the incident is
+        unknown. A store without that read (the in-memory test store) gives
+        the target alone."""
+        reader = getattr(self.incidents, "incident_item", None)
+        if reader is not None:
+            item = reader(incident_id)
+        else:
+            summary = self.incidents.find_incident(incident_id)
+            item = None if summary is None else IncidentListItem(summary)
+        if item is None:
+            return None
+        service = None
+        if item.alert_namespace and item.alert_workload:
+            service = f"{item.alert_namespace}/{item.alert_workload}"
+        return {
+            "alert_name": item.alert_name,
+            "service": service,
+            "question": None
+            if item.question is None
+            else " ".join(item.question.split()),
+            "target": item.summary.target_uid,
+            "lifecycle": item.summary.lifecycle,
+        }
+
     def reconcile(self, incident_id: UUID) -> None:
         """Repair projections from the authoritative rows (idempotent).
 
@@ -2229,6 +3051,13 @@ class Workbench:
             return
         if run["state"] != "completed":
             return
+        if not any(
+            step.get("response") == rebuilt.get("conclusion")
+            for step in rebuilt["steps"]
+        ):
+            # The conclusion is an earlier Run's: this completed Run settled
+            # ``answered`` (contract A4) and published nothing to announce.
+            return
         # This stub can be the retained record: a page load that races the
         # worker between its publish and its append wins the run_id key, so
         # readers must not rely on the worker-only fields (evidence_ids,
@@ -2291,43 +3120,201 @@ class Workbench:
         rows.sort(key=lambda item: item["generation"])
         return rows
 
-    def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
-        rows = self.incidents.investigation_history(incident_id)
-        # Scan all retained pages: an old Run's completion may precede the
-        # page of recent progress displayed on the incident screen.
-        cursor = max(0, self.events.floor(incident_id) - 1)
-        hashes = {}
-        while True:
-            page = self.events.read_after(incident_id, cursor, limit=_EVENT_PAGE)
-            if not page:
-                break
-            for event in page:
-                if event.kind == "run_completed" and event.payload.get("report_sha256"):
-                    hashes[str(event.payload.get("run_id"))] = event.payload[
-                        "report_sha256"
-                    ]
-            cursor = page[-1].sequence
-        return [
-            {
-                "run_id": str(row["run_id"]),
-                "state": row["state"],
-                "control_generation": int(row["control_generation"]),
-                **{
-                    field: row[field].astimezone(timezone.utc).isoformat()
-                    if row[field] is not None
-                    else None
-                    for field in ("started_at", "concluded_at")
-                },
-                "report": _report_view(row["report"]),
-                "verified": (
-                    hashes[str(row["run_id"])] == _content_sha256(row["report"])
-                    if str(row["run_id"]) in hashes
-                    else None
+    def _decision_log(
+        self, incident_id: UUID, controls: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """The latest ``_DECISION_LOG`` committed control rows with their
+        database time (#572 decision log): the human decisions above, with
+        their text and actor, plus the rows no human made. Bounded like the
+        page's event list; ``decision_log_truncated`` says older rows exist.
+        A store without ``control_log`` shows the human decisions only,
+        under the same bound."""
+        reader = getattr(self.incidents, "control_log", None)
+        human = [dict(row, system=False) for row in controls]
+        if reader is None:
+            return {
+                "decision_log": human[-_DECISION_LOG:],
+                "decision_log_truncated": len(human) > _DECISION_LOG,
+            }
+        rows = reader(incident_id, _DECISION_LOG + 1)
+        truncated = len(rows) > _DECISION_LOG
+        rows = rows[-_DECISION_LOG:]
+        by_key = {(row.get("action"), row["generation"]): row for row in human}
+        log = []
+        for row in rows:
+            key = (row["action"], int(row["resulting_generation"]))
+            decided_at = (
+                None
+                if row["created_at"] is None
+                else row["created_at"].astimezone(timezone.utc).isoformat()
+            )
+            if key in by_key:
+                log.append(dict(by_key.pop(key), decided_at=decided_at))
+                continue
+            log.append(
+                {
+                    "action": row["action"],
+                    "actor_id": row["actor"],
+                    "expected_generation": int(row["expected_generation"]),
+                    "generation": int(row["resulting_generation"]),
+                    "decided_at": decided_at,
+                    "text": None,
+                    "system": row["actor"] == "system",
+                }
+            )
+        if not truncated:
+            # Ledger rows the table does not hold (not expected) stay visible.
+            log.extend(by_key.values())
+        return {"decision_log": log, "decision_log_truncated": truncated}
+
+    def _runs(
+        self,
+        summary: IncidentSummary,
+        current: Mapping[str, Any],
+        current_steps: list[dict[str, Any]],
+        inline: Mapping[str, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
+        """Every Run of the incident for the one investigation log (P3-1),
+        oldest first (P3-3), each with its origin (P3-2), read range (C8),
+        report and steps. The current Run keeps its rebuilt steps (late
+        results included); ``inline`` holds the steps, with raw results, of
+        the earlier Run whose report the page shows (P3-6); every other
+        earlier Run's tool results come without raw content. A store without
+        the read (the in-memory double) yields the current Run only."""
+        run_id = str(current["run_id"])
+        intake_run = str(uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:0"))
+        reader = getattr(self.incidents, "incident_runs", None)
+        data: Mapping[str, Any] = (
+            {"runs": [], "steps": [], "events": [], "new_runs": []}
+            if reader is None
+            else reader(summary.incident_id)
+        )
+        rows = {str(row["run_id"]): row for row in data["runs"]}
+        if run_id not in rows:
+            rows[run_id] = {
+                "run_id": run_id,
+                "state": current["state"],
+                "control_generation": current["control_generation"],
+                "input_watermark": current.get("input_watermark") or 0,
+                "budget_limit": current.get("budget_limit"),
+                "conversation": (
+                    ((current.get("input") or {}).get("scope_facts") or {}).get(
+                        "conversation"
+                    )
                 ),
             }
-            for row in rows
-            if row["run_id"] != current_run_id
-        ]
+        raw_steps: dict[str, list[Mapping[str, Any]]] = {}
+        for step in data["steps"]:
+            raw_steps.setdefault(str(step["run_id"]), []).append(step)
+        hashes: dict[str, str] = {}
+        resumed: dict[str, datetime] = {}
+        for event in data["events"]:
+            rid = str(event["run_id"])
+            if event["kind"] == "run_completed" and event["report_sha256"]:
+                hashes[rid] = event["report_sha256"]
+            elif event["kind"] == "run_resumed" and event["recorded_at"] is not None:
+                resumed.setdefault(rid, event["recorded_at"])
+        opened_by: dict[str, Mapping[str, Any]] = {}
+        by_generation = {int(r["resulting_generation"]): r for r in data["new_runs"]}
+        for row in data["new_runs"]:
+            derived = uuid5(
+                _INTAKE_NAMESPACE,
+                f"{summary.intake_key}:run:{int(row['resulting_generation'])}",
+            )
+            opened_by[str(derived)] = row
+        out = []
+        for rid, row in rows.items():
+            current_run = rid == run_id
+            if current_run:
+                steps = current_steps
+            elif rid in inline:
+                steps = [s for s in inline[rid] if not s["history_only"]]
+            else:
+                steps = [_step_view(s) for s in raw_steps.get(rid, [])]
+                for step in steps:
+                    for tool in step["tools"]:
+                        tool["elided"] = True
+            conversation = row.get("conversation")
+            if not isinstance(conversation, Mapping):
+                conversation = {}
+            mode = conversation.get("mode")
+            audit = opened_by.get(rid) or (
+                None
+                if rid == intake_run or mode in ("report_optional", "reply_only")
+                else by_generation.get(int(row["control_generation"]))
+            )
+            if rid == intake_run:
+                origin = {"kind": "started"}
+            elif mode in ("report_optional", "reply_only"):
+                origin = {"kind": "resumed", "mode": mode}
+            elif audit is not None:
+                origin = {"kind": "reinvestigated", "actor": audit["actor"]}
+            else:
+                origin = {"kind": "continued"}
+            opened_at = resumed.get(rid) or (
+                None if audit is None else audit["created_at"]
+            )
+            first = next((s["observed_at"] for s in steps if s["observed_at"]), None)
+            report = None
+            verified = None
+            concluded_at = None
+            if row["state"] == "completed":
+                final = next(
+                    (
+                        s
+                        for s in reversed(raw_steps.get(rid, []))
+                        if isinstance(s["response"], Mapping)
+                        and s["response"].get("kind") == CONCLUSION_KIND
+                    ),
+                    None,
+                )
+                if final is not None:
+                    report = _report_view(final["response"])
+                    concluded_at = _observed_at(final["observed_at"])
+                    if rid in hashes:
+                        verified = hashes[rid] == _content_sha256(final["response"])
+            floor = conversation.get("floor")
+            out.append(
+                {
+                    "run_id": rid,
+                    "state": row["state"],
+                    "control_generation": int(row["control_generation"]),
+                    "current": current_run,
+                    "origin": origin,
+                    "opened_at": None
+                    if opened_at is None
+                    else _utc(opened_at).isoformat(),
+                    "started_at": first,
+                    "concluded_at": concluded_at,
+                    "floor": floor if type(floor) is int else 0,
+                    "watermark": int(row.get("input_watermark") or 0),
+                    "budget_limit": row.get("budget_limit"),
+                    "steps": steps,
+                    # P3-6: raw results drawn inline for this Run.
+                    "inline": current_run or rid in inline,
+                    "report": report,
+                    "verified": verified,
+                }
+            )
+
+        def order(item: dict[str, Any]) -> tuple[Any, ...]:
+            at = item["started_at"] or item["opened_at"]
+            if (
+                at is None
+                and item["origin"]["kind"] == "started"
+                and summary.created_at is not None
+            ):
+                at = _utc(summary.created_at).isoformat()
+            moment = _instant(at)
+            return (
+                moment is None,
+                moment or datetime.min.replace(tzinfo=timezone.utc),
+                item["control_generation"],
+                item["run_id"],
+            )
+
+        out.sort(key=order)
+        return out
 
     def snapshot(self, incident_id: UUID) -> dict[str, Any]:
         """Everything the incident page renders, read from committed rows."""
@@ -2366,6 +3353,7 @@ class Workbench:
             events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
+        controls = self._controls(incident_id)
         knowledge_view = None
         input_snapshot = run.get("input") or {}
         not_integrated = _not_integrated(input_snapshot)
@@ -2385,9 +3373,56 @@ class Workbench:
         if report is None and outcome is not None and outcome.kind == "run_handoff":
             shown_conclusion = _last_live_response(rebuilt["steps"])
             handoff_report = _report_view(shown_conclusion)
+        # Redesign A9: after a continuation Run became current, the shown
+        # report and its evidence are an earlier Run's.
+        report_steps: list[dict[str, Any]] = []
+        report_run_id: str | None = None
+        report_coverage = None
+        reader_run = getattr(self.incidents, "report_run", None)
+        if report is not None and reader_run is not None:
+            found_run = reader_run(incident_id)
+            if found_run is not None:
+                report_steps = [_step_view(step) for step in found_run["steps"]]
+                report_run_id = str(found_run["run_id"])
+                earlier = run_coverage(
+                    found_run["run_id"], found_run["input"], found_run["steps"]
+                )
+                report_coverage = _coverage_view(earlier)
+        # Redesign A8/D7a: with no published report, the newest validated
+        # report any Run of this incident marked incomplete, looked up across
+        # Runs (a later continuation Run may end with none of its own).
+        incomplete_report = None
+        reader = getattr(self.incidents, "latest_incomplete_report", None)
+        if report is None and reader is not None:
+            found = reader(incident_id)
+            if found is not None:
+                view = _report_view(found[1])
+                if view is not None and view.get("parsed"):
+                    incomplete_report = {"run_id": str(found[0]), "report": view}
+                    # A9: an earlier Run's incomplete report keeps that Run's
+                    # evidence and coverage on the page.
+                    record_of = getattr(self.incidents, "run_record", None)
+                    if record_of is not None and str(found[0]) != str(run["run_id"]):
+                        record = record_of(incident_id, found[0])
+                        if record is not None:
+                            report_steps = [
+                                _step_view(step) for step in record["steps"]
+                            ]
+                            report_run_id = str(record["run_id"])
+                            report_coverage = _coverage_view(
+                                run_coverage(
+                                    record["run_id"], record["input"], record["steps"]
+                                )
+                            )
         # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
         # never shown to the model.
         coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
+        runs = self._runs(
+            summary,
+            run,
+            steps,
+            {} if report_run_id is None else {report_run_id: report_steps},
+        )
         shown = report or handoff_report
         truncated = (
             collection_truncated(input_snapshot, rebuilt["steps"], shown_conclusion)
@@ -2408,8 +3443,17 @@ class Workbench:
                 "budget_spent": int(run["budget_spent"]),
                 "budget_unknown": int(run["budget_unknown"]),
                 "deadline": run["deadline"],
+                # Contract B4: a continuation Run's conversation mode.
+                "conversation": (input_snapshot.get("scope_facts") or {}).get(
+                    "conversation"
+                ),
             },
             "steps": steps,
+            "report_steps": report_steps,
+            # A9/P5 F9: the earlier Run the shown report is from (``None``:
+            # the current Run's).
+            "report_run_id": report_run_id,
+            "report_coverage": report_coverage,
             "not_integrated": not_integrated,
             "coverage": _coverage_view(coverage)
             if rebuilt["steps"] or coverage.sources_recorded
@@ -2419,10 +3463,22 @@ class Workbench:
             "report": report,
             "knowledge": knowledge_view,
             "handoff_report": handoff_report,
+            "incomplete_report": incomplete_report,
+            # Redesign B7/U3 (P4 page): people's messages, the read
+            # watermark that says which are still queued, and every validated
+            # reply any Run of the incident gave. Empty for a store without
+            # these reads (the in-memory test double).
+            **self._conversation(incident_id),
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
-            "controls": self._controls(incident_id),
-            "history": self._history(incident_id, run["run_id"]),
+            "controls": controls,
+            # #572: human decisions and system rows (``actor`` ``system``,
+            # e.g. ``auto_authorize_observation``) in commit order.
+            **self._decision_log(incident_id, controls),
+            # P3-1: every Run of the incident, oldest first, for the one log;
+            # ``history`` (the raw-records table) is the earlier ones.
+            "runs": runs,
+            "history": [item for item in runs if not item["current"]],
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
             # offline replay's agreement with it (step 5, #87).
@@ -2444,12 +3500,27 @@ class Workbench:
             if events
             else self.events.latest(incident_id),
             "handoff_only": False,
+            # Contract D7a/D7b: whether any Run ended on a validated report.
+            # A store without the query (the in-memory test double) keeps
+            # the composer offered; the server's admission decides.
+            "validated_report": (
+                getattr(self.incidents, "has_validated_report", lambda _: True)(
+                    incident_id
+                )
+            ),
             "alert": self._alert_view(incident_id),
             # #245 G8: the bound target now, every rebind with its database
             # time, and the registry keys a rebind may name.
             # #245 G8: incidents merged into this one (the other way is
             # ``incident.merged_into_incident_id``).
             "merged_from": self._merged_from(incident_id),
+            # Workbench P6: the merged sources with titles and reasons (L1/L2),
+            # the incidents opened after this closed one (L6), and the
+            # system events the log draws (L3).
+            "linked": self._linked(incident_id),
+            "followed_by": self._followed_by(incident_id),
+            "refires": self._refires(incident_id),
+            "release_links": self.release_links_for(incident_id),
             "current_target": self._target_uid(summary),
             "rebinds": self._rebinds(incident_id),
             "rebind_targets": [
@@ -2457,9 +3528,109 @@ class Workbench:
             ],
         }
 
+    def _conversation(self, incident_id: UUID) -> dict[str, Any]:
+        """People's messages (B7 unread above the floor). A message sent
+        again with Retry (P3-11) carries the key ``retry:{seq}``; both rows
+        are marked so the page offers Retry once."""
+        reader = getattr(self.incidents, "message_inputs", None)
+        rows = [] if reader is None else reader(incident_id)
+        floor_of = getattr(self.incidents, "conversation_floor", None)
+        floor = 0 if floor_of is None else int(floor_of(incident_id))
+        retry_prefix = f"{incident_id}:retry:"
+        messages = []
+        for row in rows:
+            content = row["content"] if isinstance(row["content"], Mapping) else {}
+            text = content.get("text")
+            key = content.get("idempotency_key")
+            retry_of = None
+            if isinstance(key, str) and key.startswith(retry_prefix):
+                tail = key[len(retry_prefix) :]
+                retry_of = int(tail) if tail.isdigit() else None
+            messages.append(
+                {
+                    "sequence": int(row["sequence"]),
+                    "author": row["actor"],
+                    "text": redact_credentials(text) if isinstance(text, str) else "",
+                    "channel": content.get("channel"),
+                    "received_at": None
+                    if row["received_at"] is None
+                    else _utc(row["received_at"]).isoformat(),
+                    "unread": int(row["sequence"]) > floor,
+                    "retry_of": retry_of,
+                }
+            )
+        retried = {m["retry_of"] for m in messages if m["retry_of"] is not None}
+        for message in messages:
+            message["retried"] = message["sequence"] in retried
+        return {"messages": messages, "read_floor": floor}
+
     def _merged_from(self, incident_id: UUID) -> list[str]:
         reader = getattr(self.incidents, "merged_from", None)
         return [] if reader is None else [str(i) for i in reader(incident_id)]
+
+    def _linked(self, incident_id: UUID) -> dict[str, Any]:
+        """Workbench P6 L1/L2: each incident merged into this one, in merge
+        order: title, lifecycle at the merge, opening time, who merged it,
+        when and the redacted reason. ``rows`` keeps the first
+        ``LINKED_SHOWN`` for the Linked incidents block; ``merges`` holds
+        every one for the log's "merged into this" events (#715)."""
+        reader = getattr(self.incidents, "linked_incidents", None)
+        rows = () if reader is None else reader(incident_id, limit=None)
+        items = []
+        for item, merge in rows:
+            reason = merge.get("reason")
+            items.append(
+                {
+                    "incident_id": str(item.summary.incident_id),
+                    "title": title_of(item),
+                    "lifecycle_at_merge": merge.get("lifecycle_at_merge"),
+                    "created_at": item.summary.created_at,
+                    "actor": merge.get("actor"),
+                    "merged_at": merge.get("merged_at"),
+                    "reason": redact_credentials(reason)
+                    if isinstance(reason, str) and reason.strip()
+                    else None,
+                }
+            )
+        return {
+            "rows": items[:LINKED_SHOWN],
+            "truncated": len(items) > LINKED_SHOWN,
+            "merges": items,
+        }
+
+    def _followed_by(self, incident_id: UUID) -> dict[str, Any]:
+        """Workbench P6 L6: incidents opened after this closed one."""
+        reader = getattr(self.incidents, "followed_by", None)
+        rows = () if reader is None else reader(incident_id)
+        return {
+            "rows": [
+                {
+                    "incident_id": str(item.summary.incident_id),
+                    "title": title_of(item),
+                    "created_at": item.summary.created_at,
+                }
+                for item in rows[:LINKED_SHOWN]
+            ],
+            "truncated": len(rows) > LINKED_SHOWN,
+        }
+
+    def _refires(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Workbench P6 L3: each re-fired alert episode attached to this
+        incident (first firing delivery per delivery key), system fields
+        only -- the alert text stays in "Alert as received"."""
+        reader = getattr(self.incidents, "attached_alert_deliveries", None)
+        first: dict[str, Mapping[str, Any]] = {}
+        for row in () if reader is None else reader(incident_id):
+            if row["outcome"] == "attached" and row["status"] == "firing":
+                first.setdefault(row["delivery_key"], row)
+        return [
+            {
+                "delivery_key": key,
+                "received_at": row["received_at"],
+                "starts_at": row.get("starts_at_raw"),
+            }
+            for key, row in first.items()
+        ]
 
     def _rebound(self, incident_id: UUID) -> bool:
         """Whether a ``rebind_target`` decision was ever committed."""
@@ -2835,6 +4006,32 @@ class Workbench:
             budget_limit=int(rebuilt["run"]["budget_limit"]),
         )
         outcome = investigator.investigate(context, committer, self.evidence)
+        if (
+            outcome.final_step_id is not None
+            and outcome.conclusion is not None
+            and conclusion_answered(outcome.conclusion)
+        ):
+            # Contract A4: replied, nothing published; the Run completes.
+            if not self.incidents.settle_answered(lease, step_id=outcome.final_step_id):
+                self._handoff(
+                    incident_id,
+                    lease,
+                    run_id,
+                    outcome.execution,
+                    ("LATE_RESULT",),
+                )
+                return outcome
+            body = outcome.conclusion.get("conclusion") or {}
+            announce_answered(
+                self.events,
+                incident_id,
+                run_id,
+                replies=body.get("replies") or [],
+                report_rejected_reason=body.get("report_rejected_reason"),
+                model_requests_used=outcome.model_requests_used,
+                prompt_revision=outcome.prompt_revision,
+            )
+            return outcome
         # A handoff (incomplete finding, budget, pairing failure) is never
         # published as the conclusion (ADR-0005): publishing would freeze
         # human control (DurableStore.control refuses once a conclusion
@@ -2930,6 +4127,118 @@ class Workbench:
 # -- views ----------------------------------------------------------------
 
 
+_FEEDBACK_TEXTS = ("actual_root_cause", "correct_next_steps", "notes")
+_YES_NO = {"yes": True, "true": True, "no": False, "false": False}
+
+
+def _feedback_fields(fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate one feedback submission (F5). The actual root cause is kept
+    only with an ``incorrect`` verdict and the correct next steps only with
+    ``incorrect`` next steps; otherwise they are dropped, as AWS does. Each
+    text has a message's limits and checks; blank means none."""
+    from opspilot.web.feedback import NEXT_STEPS_VERDICTS, VERDICTS
+
+    verdict = fields.get("verdict")
+    if verdict not in VERDICTS:
+        raise WorkbenchError("INVALID_INPUT")
+    steering = fields.get("steering_needed")
+    if isinstance(steering, str):
+        if steering.strip() == "":
+            steering = None
+        elif steering.strip().lower() in _YES_NO:
+            steering = _YES_NO[steering.strip().lower()]
+        else:
+            raise WorkbenchError("INVALID_INPUT")
+    elif steering is not None and not isinstance(steering, bool):
+        raise WorkbenchError("INVALID_INPUT")
+    next_steps = fields.get("next_steps_verdict")
+    if next_steps == "":
+        next_steps = None
+    if next_steps is not None and next_steps not in NEXT_STEPS_VERDICTS:
+        raise WorkbenchError("INVALID_INPUT")
+    clean: dict[str, Any] = {
+        "verdict": verdict,
+        "steering_needed": steering,
+        "next_steps_verdict": next_steps,
+    }
+    for name in _FEEDBACK_TEXTS:
+        value = fields.get(name)
+        if value is None:
+            clean[name] = None
+            continue
+        if not isinstance(value, str) or len(value) > _MAX_TEXT:
+            raise WorkbenchError("INVALID_INPUT")
+        if not value.strip():
+            clean[name] = None
+            continue
+        try:
+            _reject_ambiguous_text(value)
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        clean[name] = value
+    if verdict != "incorrect":
+        clean["actual_root_cause"] = None
+    if next_steps != "incorrect":
+        clean["correct_next_steps"] = None
+    return clean
+
+
+def _rated_ref(fields: Mapping[str, Any]) -> tuple[str, str | None] | None:
+    """The ``(run_id, sha256)`` a submission says it rates (F9 r12), or
+    ``None`` when it names none. Malformed values are ``INVALID_INPUT``."""
+    run = fields.get("rated_run_id")
+    sha = fields.get("rated_report_sha256")
+    if run in (None, "") and sha in (None, ""):
+        return None
+    if not isinstance(run, str) or not isinstance(sha, (str, type(None))):
+        raise WorkbenchError("INVALID_INPUT")
+    try:
+        run = str(UUID(run))
+    except ValueError:
+        raise WorkbenchError("INVALID_INPUT") from None
+    if sha == "":
+        sha = None
+    if sha is not None and not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise WorkbenchError("INVALID_INPUT")
+    return run, sha
+
+
+def _feedback_view(
+    row: Mapping[str, Any], shown: tuple[str, str | None] | None
+) -> dict[str, Any]:
+    def text(name: str) -> str | None:
+        value = row.get(name)
+        return redact_credentials(value) if isinstance(value, str) else None
+
+    rated_run = str(row["rated_run_id"])
+    rated_sha = row.get("rated_report_sha256")
+    # F9: the shown report was revised after this rating.
+    earlier = shown is not None and (shown[0], shown[1]) != (rated_run, rated_sha)
+    return {
+        "incident_id": str(row["incident_id"]),
+        "verdict": row["verdict"],
+        "verdict_words": {
+            "correct": "Root cause correct",
+            "incorrect": "Root cause incorrect",
+        }.get(row["verdict"], row["verdict"]),
+        "actual_root_cause": text("actual_root_cause"),
+        "steering_needed": row.get("steering_needed"),
+        "next_steps_verdict": row.get("next_steps_verdict"),
+        "next_steps_words": {
+            "correct": "Next steps correct",
+            "incorrect": "Next steps incorrect",
+            "not_applicable": "Next steps not applicable",
+        }.get(str(row.get("next_steps_verdict")), None),
+        "correct_next_steps": text("correct_next_steps"),
+        "notes": text("notes"),
+        "rated_run_id": rated_run,
+        "rated_report_sha256": rated_sha,
+        "updated_by": row["updated_by"],
+        "updated_at": _iso(row.get("updated_at")),
+        "earlier_report": earlier,
+    }
+
+
 def _invalid_alert(item: object, code: str) -> AlertResult:
     """R2: an alert that cannot be identified; nothing is recorded for it.
     Echoes the identity fields only when they are well-formed strings."""
@@ -2960,18 +4269,28 @@ def _stored_alert(row: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "annotations": None,
             "ends_at": None,
+            "alertname": None,
             "record_text": None,
             "cleaned": row.get("payload_state") == "cleaned",
         }
     try:
         stored = json.loads(alert_json)
     except ValueError:
-        return {"annotations": None, "ends_at": None, "record_text": alert_json}
+        return {
+            "annotations": None,
+            "ends_at": None,
+            "alertname": None,
+            "record_text": alert_json,
+        }
     annotations = stored.get("annotations") if isinstance(stored, dict) else None
     ends_at = stored.get("endsAt") if isinstance(stored, dict) else None
+    labels = stored.get("labels") if isinstance(stored, dict) else None
+    alertname = labels.get("alertname") if isinstance(labels, dict) else None
     return {
         "annotations": annotations if isinstance(annotations, dict) else None,
         "ends_at": ends_at if isinstance(ends_at, str) else None,
+        # #572: the page subtitle; untrusted alert text like the annotations.
+        "alertname": alertname if isinstance(alertname, str) else None,
         "record_text": None,
     }
 
@@ -3187,13 +4506,40 @@ def _envelope_json(envelope: IntakeEnvelope) -> dict[str, Any]:
             "channel": envelope.principal.channel,
             "auth_revision": envelope.principal.auth_revision,
         },
-        "request": {
-            "target_id": envelope.request.target_id,
-            "question": envelope.request.question,
-            "idempotency_key": envelope.request.idempotency_key,
-        },
+        "request": _request_json(envelope.request),
         "received_at": envelope.received_at.isoformat(),
     }
+
+
+def _frame_seconds(context: Mapping[str, Any] | None) -> int:
+    """#779: the length of a Run input's authorized frame (its first time
+    policy's window); 0 for an input without one, which nothing bounds."""
+    policies = context.get("time_policies") if isinstance(context, Mapping) else None
+    if not isinstance(policies, list) or not policies:
+        return 0
+    window = policies[0].get("window") if isinstance(policies[0], Mapping) else None
+    if not isinstance(window, Mapping):
+        return 0
+    try:
+        start = datetime.fromisoformat(window["start"])
+        end = datetime.fromisoformat(window["end"])
+    except (KeyError, TypeError, ValueError):
+        raise ContextError("INPUT_INVALID") from None
+    return int((end - start).total_seconds())
+
+
+def _request_json(request: IntakeRequest) -> dict[str, Any]:
+    """The stored request; ``lookback`` only when it is not the default, so
+    a default submission's ledger row stays as before #779 and a row written
+    before it rebuilds with the default."""
+    stored: dict[str, Any] = {
+        "target_id": request.target_id,
+        "question": request.question,
+        "idempotency_key": request.idempotency_key,
+    }
+    if request.lookback != DEFAULT_LOOKBACK:
+        stored["lookback"] = request.lookback
+    return stored
 
 
 def _same_text(peers: Iterable[Mapping[str, Any]], intent: Mapping[str, Any]) -> int:
@@ -3250,47 +4596,241 @@ def _coverage_view(coverage: RunCoverage) -> dict[str, Any]:
     }
 
 
+#: The longest visible model note a log step shows (contract C1: 500).
+_NOTE_CHARS = 500
+
+
 def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     response = step.get("response") or {}
+    if not isinstance(response, Mapping):
+        response = {}
+    assistant = response.get("assistant")
+    if not isinstance(assistant, Mapping):
+        assistant = {}
+    planned = assistant.get("tool_calls")
+    planned = planned if isinstance(planned, list) else []
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
+        if _is_task_list(result):
+            # C1 (#565): the loop's own task list, not a query; the page
+            # draws it as the plan (content was redacted before storing).
+            tools.append(
+                {
+                    "ordinal": item.get("ordinal"),
+                    "tool": TODO_TOOL_NAME,
+                    "status": result.get("status"),
+                    "reason": result.get("reason"),
+                    "task_list": True,
+                    "todos": [
+                        {
+                            "id": str(t.get("id")),
+                            "content": redact_credentials(str(t.get("content"))),
+                            "status": str(t.get("status")),
+                        }
+                        for t in result.get("todos") or []
+                        if isinstance(t, Mapping)
+                    ],
+                }
+            )
+            continue
         # #311 U6: the source's own 4xx answer -- status, and the redacted,
         # bounded envelope text the executor already put on the view.
         source_error = result.get("source_error")
         if not isinstance(source_error, Mapping):
             source_error = {}
         error = source_error.get("error")
+        ordinal = item.get("ordinal")
         tools.append(
             {
-                "ordinal": item.get("ordinal"),
+                "ordinal": ordinal,
                 "evidence_id": result.get("evidence_id"),
                 "status": result.get("status"),
                 "reason": result.get("reason"),
                 "adopted": result.get("adopted"),
                 "source_contact": result.get("source_contact"),
-                "tool": result.get("tool"),
+                "tool": result.get("tool") or _planned_name(planned, ordinal),
                 "target_id": result.get("target_id"),
                 "http_status": source_error.get("http_status"),
                 "source_error": error if isinstance(error, str) else None,
                 "source_error_truncated": source_error.get("error_truncated") is True,
+                # Workbench redesign (prototype v2): what one tool call ran
+                # and returned, read from the committed tool result. The
+                # model's arguments are its own query text; the result view
+                # is redacted for display like the evidence page's.
+                "arguments": _planned_arguments(planned, ordinal),
+                "query": redact_payload(result.get("query")),
+                "source": result.get("source"),
+                "window": result.get("window")
+                if isinstance(result.get("window"), Mapping)
+                else None,
+                "data_as_of": result.get("data_as_of"),
+                "freshness_seconds": result.get("freshness_seconds"),
+                "dispatch_started_at": result.get("dispatch_started_at"),
+                "result_observed_at": result.get("observed_at"),
+                "duration_ms": _duration_ms(
+                    result.get("dispatch_started_at"), result.get("observed_at")
+                ),
+                "content": redact_payload(result.get("content")),
+                "message": redact_payload(result.get("message"))
+                if isinstance(result.get("message"), str)
+                else None,
+                "truncated": result.get("truncated") is True,
+                "incomplete": result.get("incomplete") is True,
+                "returned_count": result.get("returned_count"),
+                "result_count": result.get("result_count"),
+                "omitted_rows": result.get("omitted_rows"),
+                "duplicate_of_evidence_id": result.get("duplicate_of_evidence_id"),
             }
         )
-    assistant = response.get("assistant") if isinstance(response, Mapping) else None
-    planned = assistant.get("tool_calls") if isinstance(assistant, Mapping) else None
+    conclusion = None
+    if response.get("kind") == CONCLUSION_KIND and isinstance(
+        response.get("conclusion"), Mapping
+    ):
+        inner = response["conclusion"]
+        reasons = inner.get("handoff_reasons")
+        conclusion = {
+            "execution": inner.get("execution"),
+            "handoff": inner.get("handoff") is True,
+            "reasons": [str(r) for r in reasons] if isinstance(reasons, list) else [],
+            "model_requests_used": inner.get("model_requests_used"),
+            # A3: why a continuation Run's report was not taken (P3-7).
+            "report_rejected": inner.get("report_rejected_reason")
+            if isinstance(inner.get("report_rejected_reason"), str)
+            else None,
+        }
+    content = assistant.get("content")
+    # The visible text of a tool round is the model's note; a round without
+    # tool calls carries the final report, which the page shows elsewhere.
+    # A note the loop stored on the row (contract C1) wins.
+    stored_note = response.get("note")
+    if isinstance(stored_note, str) and stored_note.strip():
+        note: str | None = stored_note
+    elif planned and isinstance(content, str) and content.strip():
+        note = content
+    else:
+        note = None
+    if note is not None:
+        note = redact_credentials(" ".join(note.split()))
+        if len(note) > _NOTE_CHARS:
+            note = note[: _NOTE_CHARS - 1].rstrip() + "…"
+    replies = response.get("replies")
+    if conclusion is not None:
+        # Contract C6/C7: the final output's replies sit on the conclusion.
+        replies = response["conclusion"].get("replies")
     return {
         "step_id": str(step["step_id"]),
         "sequence": int(step.get("sequence", 0)),
         "logical_key": step["logical_key"],
         "status": step["status"],
         "control_generation": int(step["control_generation"]),
-        "finish_reason": response.get("finish_reason")
-        if isinstance(response, Mapping)
-        else None,
-        "planned_tools": len(planned) if isinstance(planned, list) else 0,
+        "finish_reason": response.get("finish_reason"),
+        "planned_tools": len(planned),
         "tools": tools,
         "history_only": step["status"] == "late_result",
+        # #572 U1 6: when the round's model reply was committed (column
+        # default ``clock_timestamp()``), UTC ISO text; ``None`` if absent.
+        "observed_at": _observed_at(step.get("observed_at")),
+        "note": note,
+        "final_round": not planned and conclusion is None,
+        "conclusion": conclusion,
+        "input_watermark": _input_watermark(response),
+        # Contract C1/C2: validated replies the loop stores on the step row
+        # (P1). Absent on rows written before it.
+        "replies": [_reply_view(r) for r in replies if isinstance(r, Mapping)]
+        if isinstance(replies, list)
+        else [],
     }
+
+
+def _is_task_list(result: Mapping[str, Any]) -> bool:
+    """C1 (#565): a committed ``TodoWrite`` view the loop answered itself --
+    never a gateway result (an unregistered ``TodoWrite`` refused by the
+    gateway stays a query row)."""
+    return (
+        result.get("tool") == TODO_TOOL_NAME
+        and "evidence_id" not in result
+        and (
+            isinstance(result.get("todos"), list)
+            or result.get("reason") == TODO_REFUSAL
+        )
+    )
+
+
+def _planned_name(planned: list[Any], ordinal: Any) -> str | None:
+    call = _planned_call(planned, ordinal)
+    name = call.get("name") if call else None
+    return name if isinstance(name, str) else None
+
+
+def _planned_call(planned: list[Any], ordinal: Any) -> Mapping[str, Any] | None:
+    if not isinstance(ordinal, int) or not 0 <= ordinal < len(planned):
+        return None
+    entry = planned[ordinal]
+    function = entry.get("function") if isinstance(entry, Mapping) else None
+    return function if isinstance(function, Mapping) else None
+
+
+def _planned_arguments(planned: list[Any], ordinal: Any) -> Any:
+    """The tool call's arguments as the model wrote them: parsed JSON when
+    it parses, else the text; redacted for display."""
+    call = _planned_call(planned, ordinal)
+    raw = call.get("arguments") if call else None
+    if not isinstance(raw, str):
+        return None
+    try:
+        return redact_payload(json.loads(raw))
+    except ValueError:
+        return redact_credentials(raw)
+
+
+def _duration_ms(start: Any, end: Any) -> int | None:
+    begin, finish = _instant(start), _instant(end)
+    if begin is None or finish is None or finish < begin:
+        return None
+    return int((finish - begin).total_seconds() * 1000)
+
+
+def _instant(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return _utc(value)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _input_watermark(response: Mapping[str, Any]) -> int | None:
+    context = response.get("context")
+    if not isinstance(context, Mapping):
+        return None
+    mark = context.get("input_watermark")
+    return mark if isinstance(mark, int) else None
+
+
+def _reply_view(reply: Mapping[str, Any]) -> dict[str, Any]:
+    text = reply.get("text")
+    ids = reply.get("evidence_ids")
+    seq = reply.get("to_input_seq")
+    return {
+        "to_input_seq": seq if isinstance(seq, int) else None,
+        "text": redact_credentials(text) if isinstance(text, str) else "",
+        "evidence_ids": [str(i) for i in ids] if isinstance(ids, list) else [],
+        "unsupported": reply.get("unsupported") is True,
+    }
+
+
+#: Decision-log rows read for one page (#572): the same bound as the page's
+#: event list (``events[-50:]``).
+_DECISION_LOG = 50
+
+
+def _observed_at(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return _utc(value).isoformat()
+    return value if isinstance(value, str) else None
 
 
 def _recovery_basis_only(history: Mapping[str, Any]) -> dict[str, Any]:
@@ -3574,4 +5114,19 @@ def categorize_report(report: ReportV2) -> dict[str, Any]:
         "unknown": list(report.gaps),
         "next_steps": list(report.next_steps),
         "incomplete": report.assessment_status == "incomplete",
+        "root_cause": _root_cause(report),
+    }
+
+
+def _root_cause(report: ReportV2) -> dict[str, Any] | None:
+    """#652 B2-R1: the v3 root cause as the report wrote it (kind verbatim,
+    never normalised); an empty namespace means cluster-scoped (None)."""
+    rc = report.root_cause
+    if rc is None:
+        return None
+    return {
+        "kind": rc.kind,
+        "namespace": rc.namespace or None,
+        "name": rc.name,
+        "evidence_ids": list(rc.evidence_ids),
     }

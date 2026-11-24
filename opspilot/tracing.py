@@ -83,7 +83,9 @@ _T = TypeVar("_T")
 TRACE_ENV = "OPSPILOT_TRACE"
 TraceMode = Literal["off", "lab", "outbox"]
 LAB_PROJECT_PREFIX = "opspilot-lab-"
-LAB_TOOL_PROFILES = frozenset({"fixture", "otel-demo"})
+LAB_TOOL_PROFILES = frozenset({"fixture", "otel-demo", "otel-demo-ext"})
+# Profiles that read a Kubernetes API server (tool expansion A2-13).
+_KUBERNETES_PROFILES = frozenset({"otel-demo-ext"})
 # LangSmith SaaS regions (docs: trace-with-opentelemetry). A self-hosted or
 # unknown host is refused: the lab exports to the account's own SaaS project.
 _LANGSMITH_HOSTS = frozenset(
@@ -195,6 +197,46 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
         failures.append("PROMETHEUS_NOT_LAB")
     if not _is_lab_host(env.get("OPSPILOT_OTEL_JAEGER_URL") or "http://127.0.0.1"):
         failures.append("JAEGER_NOT_LAB")
+    # A2-13: the cluster API address too, when the profile reads one or the
+    # address is set at all; an extended profile without one fails closed.
+    kubernetes_url = env.get("OPSPILOT_K8S_API_URL") or ""
+    if (profile in _KUBERNETES_PROFILES or kubernetes_url) and not _is_lab_host(
+        kubernetes_url
+    ):
+        failures.append("KUBERNETES_NOT_LAB")
+    # B1-10: the Elasticsearch/OpenSearch address, whenever it is set (the
+    # tools exist only then, B1-U2).
+    elasticsearch_url = env.get("OPSPILOT_ES_URL") or ""
+    if elasticsearch_url and not _is_lab_host(elasticsearch_url):
+        failures.append("ELASTICSEARCH_NOT_LAB")
+    # C5-5: the Loki address, whenever it is set (the tool exists only then).
+    loki_url = env.get("OPSPILOT_LOKI_URL") or ""
+    if loki_url and not _is_lab_host(loki_url):
+        failures.append("LOKI_NOT_LAB")
+    # C5-5: likewise the VictoriaLogs address.
+    victorialogs_url = env.get("OPSPILOT_VICTORIALOGS_URL") or ""
+    if victorialogs_url and not _is_lab_host(victorialogs_url):
+        failures.append("VICTORIALOGS_NOT_LAB")
+    # C6-9: the SQL database address, whenever it is set.
+    sql_url = env.get("OPSPILOT_SQL_URL") or ""
+    if sql_url and not _is_lab_host(sql_url):
+        failures.append("SQL_NOT_LAB")
+    # C3-6: every Kafka bootstrap address, whenever any is set (the tools
+    # exist only then). Brokers the client is redirected to by metadata are
+    # outside this check (a known limit, listed in the C3 task record).
+    # C6c: the MongoDB address, whenever it is set.
+    mongodb_url = env.get("OPSPILOT_MONGODB_URL") or ""
+    if mongodb_url and not _is_lab_host(mongodb_url):
+        failures.append("MONGODB_NOT_LAB")
+    # #773: the Redis/Valkey address, whenever it is set.
+    redis_url = env.get("OPSPILOT_REDIS_URL") or ""
+    if redis_url and not _is_lab_host(redis_url):
+        failures.append("REDIS_NOT_LAB")
+    kafka_servers = env.get("OPSPILOT_KAFKA_BOOTSTRAP_SERVERS") or ""
+    if kafka_servers and not all(
+        _is_lab_host(f"kafka://{server}") for server in kafka_servers.split(",")
+    ):
+        failures.append("KAFKA_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")
@@ -756,7 +798,13 @@ class _RunSpan(_LiveSpan):
         self._owner = owner
         self._previous: _RunSpan | None = None
         self.model_calls = 0
+        # ``tool_calls`` counts data-source calls (those reaching the gateway
+        # executor), the same count ``summary.json`` reports; task-list calls
+        # are counted apart (C1-9, #744). ``tool_spans`` orders every tool
+        # span for ``tool_call_seq``.
         self.tool_calls = 0
+        self.task_list_calls = 0
+        self.tool_spans = 0
 
     def __enter__(self) -> _RunSpan:
         self._previous = getattr(self._owner._current, "run", None)
@@ -772,6 +820,7 @@ class _RunSpan(_LiveSpan):
         self._owner._current.run = self._previous
         _write(self._span, "opspilot.run.model_calls", self.model_calls)
         _write(self._span, "opspilot.run.tool_calls", self.tool_calls)
+        _write(self._span, "opspilot.run.task_list_calls", self.task_list_calls)
         super().__exit__(exc_type, exc, tb)
 
 
@@ -802,6 +851,7 @@ class NullTracer:
         *,
         tool_name: str | None = None,
         target_id: str | None = None,
+        counted: bool = True,
     ) -> _NullSpan:
         return _NULL_SPAN
 
@@ -920,15 +970,22 @@ class Tracer:
         *,
         tool_name: str | None = None,
         target_id: str | None = None,
+        counted: bool = True,
     ) -> _LiveSpan | _NullSpan:
         """``tool_name``/``target_id``: the registry-resolved identities, or
-        ``None``; the span never names an unregistered tool or target."""
+        ``None``; the span never names an unregistered tool or target.
+        ``counted=False`` marks the loop's own task-list call, which adds to
+        ``task_list_calls`` instead of ``tool_calls`` (#744)."""
         parent = getattr(self._current, "run", None)
         if parent is None:
             return _NULL_SPAN
         with self._seq_lock:
-            parent.tool_calls += 1
-            seq = parent.tool_calls
+            if counted:
+                parent.tool_calls += 1
+            else:
+                parent.task_list_calls += 1
+            parent.tool_spans += 1
+            seq = parent.tool_spans
         return self._child(
             f"tool:{'unknown' if tool_name is None else _bounded(tool_name)[:80]}",
             _tool_request_attributes(

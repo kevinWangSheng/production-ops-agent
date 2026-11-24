@@ -1,345 +1,235 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% import "_incident_regions.html" as r with context %}
+{% set nav = "incidents" %}
 {% set inc = snapshot.incident %}
 {% set run = snapshot.run %}
-{% block title %}Incident {{ inc.incident_id }}{% endblock %}
-{% block body %}
-<h1>Incident <code>{{ inc.incident_id }}</code></h1>
-<p>
-  {% if inc.control %}control <span class="badge" id="incident-control">{{ inc.control }}</span>
-  · {% endif %}lifecycle <span class="badge" id="incident-lifecycle">{{ inc.lifecycle }}</span>
-  · mode <span class="badge" id="incident-mode">{{ inc.mode }}</span>
-  · <span class="badge" id="concluded">{{ "concluded" if inc.concluded else "no conclusion" }}</span>
-  · control generation <strong id="control-generation">{{ inc.control_generation }}</strong>
-  · run <code>{{ run.run_id }}</code> <span class="badge" id="run-state">{{ run.state }}</span>
-  · epoch {{ run.epoch }}
-  · budget {{ run.budget_spent }} spent / {{ run.budget_reserved }} reserved / {{ run.budget_unknown }} unknown of {{ run.budget_limit }}
-  · deadline {{ run.deadline }}
-</p>
-{% if inc.related_incident_id %}
-<p>Opened after closed incident <a id="related-incident" href="/incidents/{{ inc.related_incident_id }}"><code>{{ inc.related_incident_id }}</code></a>
-  <span class="muted">(same alert on the same target; the closed incident was not reopened)</span></p>
-{% endif %}
-{% for link in release_links or [] %}
-<p class="release-link">Linked from version change observation <a href="/version-changes/{{ link.observation_id }}"><code>{{ link.observation_id }}</code></a> <span class="badge">{{ link.disposition }}</span> <span class="muted">(its health verdict is advisory; causal findings are this incident's)</span></p>
-{% endfor %}
-{% if inc.merged_into_incident_id %}
-<p>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}"><code>{{ inc.merged_into_incident_id }}</code></a>
-  <span class="muted">(closed by a human merge; its records stay here)</span></p>
-{% endif %}
-{% if snapshot.merged_from %}
-<p>Merged from{% for source in snapshot.merged_from %} <a class="merged-from" href="/incidents/{{ source }}"><code>{{ source }}</code></a>{% endfor %}</p>
-{% endif %}
-{% if snapshot.current_target %}
-<p>Current target: <code id="current-target">{{ snapshot.current_target }}</code></p>
-{% endif %}
-{% for rebind in snapshot.rebinds or [] %}
-<p class="rebind">Rebound from <code>{{ rebind.from_target }}</code> to <code>{{ rebind.to_target }}</code> at {{ rebind.decided_at or "unknown time" }} by {{ rebind.actor }}</p>
-{% endfor %}
-{% if snapshot.target_id %}
-<p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
-{% endif %}
-{% if snapshot.question %}
-<h2>Question</h2>
-<pre>{{ snapshot.question }}</pre>
-{% endif %}
-{% include "_alert.html" %}
+{% set st = view.status %}
+{% set hd = view.header %}
+{% set rep = view.report %}
+{% set rec = view.recovery %}
+{% set log = view.log %}
+{% block title %}{{ hd.title }} · OpsPilot{% endblock %}
+{% block body_attrs %} class="wb"{% endblock %}
+{% block head %}
+{% include "_wb_css.html" %}
+{% include "_incident_page_css.html" %}
+{% endblock %}
+{% block top_extra %}<button class="chatbtn" id="openChat" type="button" aria-controls="chat" aria-expanded="false">Chat</button>{% endblock %}
 
-<h2>Human control</h2>
-{% if inc.lifecycle == "closed" %}
-<p class="muted">Automatic work stopped; reopen to continue.</p>
-{% endif %}
-<p class="muted">Every action is a conditional update against generation {{ inc.control_generation }}. A stale form is refused, never applied.</p>
-{% for action in actions %}
-<form class="inline" method="post" action="/incidents/{{ inc.incident_id }}/control">
-  <input type="hidden" name="action" value="{{ action }}">
-  <input type="hidden" name="expected_generation" value="{{ inc.control_generation }}">
-  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ inc.control_generation }}-{{ form_nonce }}">
-  {% if action in ("follow_up", "correct") %}
-    <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
-  {% elif action == "register_remediation" %}
-    <input name="revision" placeholder="target revision after handling" required maxlength="256">
-  {% elif action == "rebind_target" %}
-    <select name="to_target" required>
-      {% for uid in snapshot.rebind_targets %}<option value="{{ uid }}">{{ uid }}</option>{% endfor %}
-    </select>
-    <input name="text" placeholder="why (optional)" maxlength="8192">
-  {% elif action == "merge_into" %}
-    <input name="into_incident_id" placeholder="surviving incident id (same target)" required maxlength="36">
-    <input name="text" placeholder="why (optional)" maxlength="8192">
-  {% endif %}
-  <button type="submit">{{ action }}</button>
-</form>
-{% endfor %}
-<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation{% if snapshot.health_profile_revision %} under HealthProfile <code>{{ snapshot.health_profile_revision }}</code>{% else %} (no HealthProfile configured: refused){% endif %}. It does not touch the investigated system.</p>
 
-<h2>Recovery observation</h2>
-{% if snapshot.observation_sessions %}
-<table id="observation-sessions">
-  <thead><tr><th>Session</th><th>Source</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
-  <tbody>
-  {% for s in snapshot.observation_sessions %}
-  <tr>
-    <td><code>{{ s.session_id }}</code></td>
-    <td><span class="badge authorization-source">{{ s.authorization_source or "none" }}</span></td>
-    <td><span class="badge">{{ s.state }}</span>{% if s.ended_reason %} <span class="muted">{{ s.ended_reason }}</span>{% endif %}</td>
-    <td>control {{ s.subject_control_generation }} · observation {{ s.observation_generation }}</td>
-    <td><code>{{ s.health_profile_revision or "none" }}</code></td>
-    <td><code>{{ s.target_revision if s.target_revision is not none else "unknown" }}</code></td>
-    <td>{{ s.authorized_at }} by <code>{{ s.authorized_by }}</code></td>
-    <td>{{ s.deadline_at }}</td>
-    <td>{{ s.adopted_count }} / {{ s.max_samples }} adopted{% if s.active_sample_due_at %}, next due {{ s.active_sample_due_at }}{% endif %}</td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-<p class="muted">Independent deterministic checks own the recovery verdict; the investigation report below does not certify recovery.</p>
+{% block main %}
+<div class="shell" id="shell">
+<main class="main" id="main"><div class="col">
 
-<section id="recovery-verdict">
-<h3>Recovery verdict <span class="muted">(independent observation; not the investigation's conclusion)</span></h3>
-{% for r in snapshot.recovery %}
-<div class="recovery-session">
-  <p>
-    session <code>{{ r.session_id }}</code> · source <span class="badge authorization-source">{{ r.authorization_source or "none" }}</span> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
-    {% if r.recovery_statement %}· <strong class="recovery-statement" data-status="{{ r.recovery_status }}">{{ r.recovery_statement }}</strong>{% endif %}
-    · verdict <span class="badge">{{ r.replay.recovery_verdict }}</span>
-    {% if r.replay.recovery_confirmed %}<strong>recovery confirmed</strong>{% else %}<span class="muted">not confirmed</span>{% endif %}
-    · healthy window {{ r.replay.healthy_window_seconds }} s
-    · profile <code>{{ r.health_profile_revision or "none" }}</code>
-    · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
-    · offline replay:
-    {% if "STORED_OBSERVATION_DATA_CLEANED" in r.replay.integrity %}<strong class="recovery-data-cleaned">raw data cleaned, cannot be re-verified</strong> <code>STORED_OBSERVATION_DATA_CLEANED</code> <span class="muted">(removed by the retention cleanup after the incident closed; the stored verdict is not repeated)</span>{% endif %}
-    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% elif r.replay.integrity | reject("equalto", "STORED_OBSERVATION_DATA_CLEANED") | list %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
-    {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
-    {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
-  </p>
-  {% if r.samples %}
-  <table class="recovery-basis"{% if loop.first %} id="recovery-basis"{% endif %}>
-    <thead><tr><th>#</th><th>Window</th><th>Outcome stored → replayed</th><th>Decision stored</th><th>Replay</th></tr></thead>
-    <tbody>
-    {% for s in r.samples %}
-    <tr>
-      <td>{{ s.sequence }}</td>
-      <td>{{ s.window_start }} → {{ s.window_end }}{% if s.submitted_at %}<br><span class="muted">submitted {{ s.submitted_at }}</span>{% endif %}</td>
-      <td><span class="badge">{{ s.stored_outcome }}</span>{% if s.stored_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}
-        → {% if s.replayed_outcome %}<span class="badge">{{ s.replayed_outcome }}</span>{% if s.replayed_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}{% else %}<span class="muted">not recomputed ({{ s.recompute_skipped }})</span>{% endif %}
-        {% if s.replayed_reason %}<br><span class="muted">{{ s.replayed_reason }}</span>{% endif %}</td>
-      <td><code>{{ s.disposition }}</code> · {{ s.reason }} · {% if s.confirms_health %}<strong>confirms health</strong>{% else %}no health{% endif %} <span class="muted">({{ s.health_basis }})</span>{% if s.transition %}<br>transition <code>{{ s.transition }}</code>{% endif %}</td>
-      <td>{% if s.consistent %}<span class="badge">consistent</span>{% elif s.raw_cleaned_only %}<span class="muted">raw cleaned, not recomputed</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
-    </tr>
-    <tr>
-      <td></td>
-      <td colspan="4">
-        <table class="recovery-readings">
-          <thead><tr><th>Signal</th><th>Status / value / points stored → replayed</th><th>Verdict</th><th>Query</th><th>Window</th><th>Source</th><th>Raw sha256</th></tr></thead>
-          <tbody>
-          {% for rd in s.readings %}
-          <tr>
-            <td><code>{{ rd.signal_name }}</code></td>
-            <td>{{ rd.stored[0] }} / {{ rd.stored[1] if rd.stored[1] is not none else "–" }} / {{ rd.stored[2] if rd.stored[2] is not none else "–" }}
-              → {% if rd.replayed %}{{ rd.replayed[0] }} / {{ rd.replayed[1] if rd.replayed[1] is not none else "–" }} / {{ rd.replayed[2] if rd.replayed[2] is not none else "–" }}{% else %}<span class="muted">not recomputed</span>{% endif %}</td>
-            <td>{% if rd.verdict %}<span class="badge">{{ rd.verdict }}</span> <span class="muted">{{ rd.reason }}</span>{% endif %}</td>
-            <td><code>{{ rd.query }}</code></td>
-            <td>{{ rd.window_start }} → {{ rd.window_end }}</td>
-            <td><code>{{ rd.source }}</code></td>
-            <td><code>{{ rd.raw_sha256 or "none" }}</code>{% if rd.raw_verified is sameas true %} <span class="muted">verified</span>{% elif rd.raw_verified is sameas false %} <strong>hash mismatch</strong>{% else %} <span class="muted">no bundle</span>{% endif %}</td>
-          </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}<p class="muted">no samples stored yet</p>{% endif %}
-</div>
-{% endfor %}
-</section>
-{% else %}<p class="muted" id="observation-none">No recovery observation authorized.</p>{% endif %}
+  <div>
+    <div class="crumb"><a href="/" data-list-crumb>Incidents</a> / <span class="mono">{{ (inc.incident_id|string)[:8] }}</span></div>
+    <div class="head">
+      <div class="ttl">
+        <h1>{{ hd.title }}</h1>
+        <div id="identity">{{ r.identity() }}</div>
+      </div>
+      <div class="actions" id="actions">
+        {{ r.actions() }}
+      </div>
+    </div>
+  </div>
 
-{% if postmortem %}
-<section id="postmortem">
-<h2>Postmortem <span class="muted">(draft until a human approves it; only approved versions become knowledge)</span></h2>
-<p>
-  status <span class="badge" id="postmortem-status">{{ postmortem.status }}</span>
-  {% if postmortem.postmortem_id %}· postmortem generation <strong id="postmortem-generation">{{ postmortem.generation }}</strong>{% endif %}
-  {% set latest = postmortem.latest %}
-  {% if latest %}· latest <a id="postmortem-latest" href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ latest.version }}">version {{ latest.version }}</a>
-    <span class="badge">{{ latest.state }}</span>
-    {% if latest.stale_reason %} stale: <code class="stale-reason">{{ latest.stale_reason }}</code>{% endif %}
-    {% if latest.citation_failures %} · <strong class="citation-failures">citations failed: {{ latest.citation_failures | join(", ") }}</strong>{% endif %}
-    {% if latest.disputes %} · <strong class="disputed">disputed ({{ latest.disputes | length }})</strong>{% endif %}
-    {% if latest.uncertain %} · {{ latest.uncertain }} uncertain{% endif %}
-  {% endif %}
-</p>
-{% if postmortem.status == "not_generated" %}<p class="muted">No postmortem generated yet: one is drafted after the recovery observation has ended.</p>
-{% elif postmortem.status == "generation_failed" %}<p><strong>The latest generation attempt failed before writing a version</strong>{% if postmortem.attempts %} (<code>{{ postmortem.attempts[0].error_code or "unknown" }}</code>){% endif %}.</p>
-{% elif postmortem.status == "citations_failed" %}<p><strong>The latest draft failed its citation check</strong>; it cannot be reviewed.</p>
-{% endif %}
-{% set sch = postmortem.schedule %}
-{% if postmortem.status in ("generation_failed", "citations_failed") and sch %}
-  {% if sch.lease_active or sch.next_attempt_at %}<p class="muted" id="postmortem-retry">The worker retries at this watermark ({{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }} so far{% if sch.next_attempt_at %}, next at {{ sch.next_attempt_at }}{% endif %}).</p>
-  {% else %}<p id="postmortem-exhausted"><strong>Generation stopped at this watermark after {{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }}</strong>; a new version is generated only when the incident moves past it or a version is returned.</p>{% endif %}
-{% endif %}
-{% if postmortem.status == "under_review" %}<p>Version {{ latest.version }} waits for review.</p>
-{% elif postmortem.status in ("returned", "stale") %}<p class="muted">The worker regenerates a new version{% if postmortem.status == "stale" %}: the incident moved past this version's watermark{% endif %}.</p>
-{% endif %}
-{% set schedule = postmortem.schedule %}
-{% if schedule %}
-<p class="muted" id="postmortem-schedule">
-  {% if schedule.lease_active %}generating now · {% endif %}
-  {% if schedule.pending_regeneration_version %}regeneration pending for returned version {{ schedule.pending_regeneration_version }} · {% endif %}
-  consecutive failures {{ schedule.consecutive_failures }}
-  {% if schedule.last_error_code %}· last error <code>{{ schedule.last_error_code }}</code>{% endif %}
-  {% if schedule.next_attempt_at %}· next attempt {{ schedule.next_attempt_at }}{% endif %}
-</p>
-{% endif %}
-{% if postmortem.versions %}
-<table id="postmortem-versions">
-  <thead><tr><th>Version</th><th>State</th><th>Revises</th><th>Conclusions</th><th>Disputes</th><th>Proposals</th><th>Generated</th></tr></thead>
-  <tbody>
-  {% for v in postmortem.versions %}
-  <tr>
-    <td><a href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ v.version }}">{{ v.version }}</a></td>
-    <td><span class="badge">{{ v.state }}</span>{% if v.stale_reason %} <code>{{ v.stale_reason }}</code>{% endif %}</td>
-    <td>{{ v.revises_version or "" }}</td>
-    <td>{{ v.conclusions }}{% if v.uncertain %} ({{ v.uncertain }} uncertain){% endif %}{% if v.citation_failures %} <strong>citations failed</strong>{% endif %}</td>
-    <td>{% if v.disputes %}<strong>{{ v.disputes | length }}</strong>{% else %}0{% endif %}</td>
-    <td>{{ v.proposals }}{% if v.replaces %} ({{ v.replaces }} replace existing){% endif %}</td>
-    <td>{{ v.created_at }} by <code>{{ v.generated_by }}</code> ({{ v.generated_by_kind }})</td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-{% if postmortem.attempts %}
-<table id="postmortem-attempts">
-  <thead><tr><th>Attempt</th><th>Status</th><th>Error</th><th>Version</th><th>Model requests</th><th>Started → finished</th><th>Per request: finish · tokens · outcome · problems</th></tr></thead>
-  <tbody>
-  {% for a in postmortem.attempts %}
-  <tr><td><code>{{ a.attempt_id }}</code></td><td><span class="badge">{{ a.status }}</span></td><td><code>{{ a.error_code or "" }}</code></td>
-      <td>{{ a.version or "" }}{% if a.revises_version %} <span class="muted">revises {{ a.revises_version }}</span>{% endif %}</td>
-      <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td><td>{{ a.started_at }} → {{ a.finished_at or "" }}</td>
-      <td class="model-calls">{% if a.model_calls %}<ol>{% for c in a.model_calls %}
-        <li data-seq="{{ c.seq }}">{{ c.purpose }} · finish <code class="finish-reason">{{ c.finish_reason if c.finish_reason is not none else "unknown" }}</code>
-          · prompt <span class="prompt-tokens">{{ c.prompt_tokens if c.prompt_tokens is not none else "unknown" }}</span>
-          · completion <span class="completion-tokens">{{ c.completion_tokens if c.completion_tokens is not none else "unknown" }}</span>
-          (reasoning <span class="reasoning-tokens">{{ c.reasoning_tokens if c.reasoning_tokens is not none else "unknown" }}</span>,
-          visible <span class="visible-completion-tokens">{{ c.visible_completion_tokens if c.visible_completion_tokens is not none else "unknown" }}</span>)
-          · <span class="badge outcome">{{ c.outcome }}</span>{% if c.problems %} · <span class="problems">{% for p in c.problems %}<code>{{ p }}</code>{% if not loop.last %} {% endif %}{% endfor %}</span>{% endif %}</li>
-      {% endfor %}</ol>{% else %}<span class="muted">unknown</span>{% endif %}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endif %}
-{% if postmortem.knowledge %}
-<h3>Knowledge revisions published from this postmortem <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
-<ul id="postmortem-knowledge">
-  {% for k in postmortem.knowledge %}
-  <li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %} <span class="muted">from version {{ k.source_version }}</span></li>
-  {% endfor %}
-</ul>
-{% endif %}
-</section>
-{% endif %}
+  <div class="status" id="status">
+    {{ r.status() }}
+  </div>
 
-<section id="knowledge-hints">
-<h2>Historical knowledge hints</h2>
-{% set knowledge = snapshot.knowledge %}
-{% if knowledge %}
-<p>Status: {{ knowledge.status }} · retrieved at {{ knowledge.retrieved_at }} · freshness threshold {{ knowledge.max_age_seconds }} seconds · omitted for size {{ knowledge.omitted_for_size }}</p>
-<ul>{% for entry in knowledge.entries %}
-<li><a href="/knowledge/{{ entry.entry_id }}">{{ entry.name }}</a> r{{ entry.revision }}
-· {{ entry.freshness }} · age {{ entry.age_seconds }} seconds
-· <a href="/incidents/{{ entry.source_incident_id }}">source incident</a>
-· truncated: {{ entry.truncated }}
-· check: {{ knowledge.checks[loop.index0].verdict }}</li>
-{% endfor %}</ul>
-{% else %}<p>No knowledge input was recorded for this Run.</p>{% endif %}
-</section>
+  {#- ---------------- result ---------------- #}
+  <div id="results">
+  {{ r.results() }}
+  </div>
+  <div id="feedback-wrap">{{ r.feedback_card() }}</div>
 
-<h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
-{% set report = snapshot.report %}
-{% if report is none %}
-  <p class="muted" id="report-missing">No published conclusion yet.
-  {% if snapshot.outcome %}Last attempt: <code>{{ snapshot.outcome.execution }}</code>
-    {% if snapshot.outcome.reasons %}
-      handoff <code>{{ snapshot.outcome.reasons | join(", ") }}</code>
+  {#- ---------------- investigation log ---------------- #}
+  <section id="log-sec" aria-labelledby="h-log">
+    <h2 id="h-log">Investigation log <span class="sub" id="log-sum">{{ r.log_summary() }}</span></h2>
+    <div class="logtools" role="group" aria-label="Show in the log">
+      <span class="muted">Show</span>
+      <button type="button" data-f="all" aria-pressed="true">Everything</button>
+      <button type="button" data-f="problems" aria-pressed="false">Problems only</button>
+      <button type="button" data-f="messages" aria-pressed="false">Messages</button>
+      <span class="sp"></span>
+      <button type="button" id="expandAll" aria-pressed="false">Expand all</button>
+    </div>
+    <div class="log" id="log">
+      {{ r.log_entries() }}
+      <div class="ev empty" id="log-empty" hidden><span></span><span class="muted">Nothing matches this filter.</span></div>
+    </div>
+    <button type="button" class="newchip" id="log-new" hidden>0 new ↓</button>
+    <div id="queue-wrap">{{ r.queue() }}</div>
+    <div id="composer-wrap">{{ r.composer() }}</div>
+  </section>
+
+  {#- ---------------- recovery ---------------- #}
+  <section id="recovery-verdict" aria-labelledby="h-rec">
+    {{ r.recovery() }}
+  </section>
+
+  {#- ---------------- raw records ---------------- #}
+  <section id="raw" aria-labelledby="h-raw">
+    <h2 id="h-raw">Raw records</h2>
+    <div class="rows">
+      {%- if snapshot.alert %}
+      <details class="crow"><summary><span class="n" aria-hidden="true">·</span><span>Alert as received <span class="muted">(untrusted text)</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">{% include "_alert.html" %}</div></div></details>
+      {%- endif %}
+      {%- if snapshot.question %}
+      <details class="crow"><summary><span class="n" aria-hidden="true">·</span><span>Question given to the Agent <span class="muted">(untrusted text)</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw"><pre class="raw-pre wrap">{{ snapshot.question }}</pre>{% if snapshot.target_id %}<p class="small">Target requested: <span class="mono">{{ snapshot.target_id }}</span></p>{% endif %}</div></div></details>
+      {%- endif %}
+      {%- set dlog = snapshot.decision_log or [] %}
+      <details class="crow"><summary><span class="n" aria-hidden="true">·</span><span>Human decisions <span class="muted">· human control history ({{ dlog | length }}{% if snapshot.decision_log_truncated %}, latest only{% endif %})</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">
+        {%- if dlog %}
+        <div class="tblwrap"><table class="res"><thead><tr><th>Time (UTC)</th><th>Action</th><th>By</th><th>Generation</th><th>Text</th></tr></thead><tbody>
+        {%- for item in dlog %}<tr><td>{{ view.stamp(item.decided_at) or "unknown" }}</td><td><code>{{ item.action }}</code></td><td><code>{{ item.actor_id }}</code>{% if item.system %} (system rule){% endif %}</td><td>{{ item.expected_generation }} → {{ item.generation }}</td><td class="wrapcell">{{ item.text or "" }}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {%- else %}<p class="small">No pause, take-over or close so far.</p>{% endif %}
+        <p class="small">Every action is a conditional update against generation {{ inc.control_generation }}; a stale form is refused, never applied.</p>
+      </div></div></details>
+      {%- if snapshot.observation_sessions %}
+      <details class="crow" id="recwatch"><summary><span class="n" aria-hidden="true">·</span><span>Recovery watch records <span class="muted">({{ snapshot.observation_sessions | length }} session{{ "" if snapshot.observation_sessions | length == 1 else "s" }}, every sample and reading)</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">
+        <div class="tblwrap"><table class="res" id="observation-sessions"><thead><tr><th>Session</th><th>Source</th><th>State</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Samples</th></tr></thead><tbody>
+        {%- for s in snapshot.observation_sessions %}
+        <tr><td>{{ s.session_id[:8] }}</td><td class="authorization-source">{{ s.authorization_source or "none" }}</td><td>{{ s.state }}{% if s.ended_reason %} · {{ s.ended_reason }}{% endif %}</td><td>{{ s.health_profile_revision or "none" }}</td><td>{{ s.target_revision if s.target_revision is not none else "unknown" }}</td><td>{{ view.clock(s.authorized_at) }} by {{ s.authorized_by }}</td><td>{{ s.adopted_count }} / {{ s.max_samples }}</td></tr>
+        {%- endfor %}
+        </tbody></table></div>
+        {%- for r in snapshot.recovery %}
+        <p class="small">Session <span class="mono">{{ r.session_id[:8] }}</span> · verdict {{ r.replay.recovery_verdict }} · {% if r.replay.consistent %}offline replay consistent{% elif r.replay.integrity %}<b>integrity mismatch</b> <span class="mono">{{ r.replay.integrity | join(", ") }}</span>{% else %}not recomputed{% endif %}{% if r.recovery_statement %} · <span class="recovery-statement" data-status="{{ r.recovery_status }}">{{ r.recovery_statement }}</span>{% endif %}</p>
+        {%- if r.samples %}
+        <div class="tblwrap"><table class="res recovery-basis"><thead><tr><th>#</th><th>Window (UTC)</th><th>Stored → replayed</th><th>Decision</th><th>Readings</th></tr></thead><tbody>
+        {%- for s in r.samples %}
+        <tr><td>{{ s.sequence }}</td><td>{{ view.clock(s.window_start) }} – {{ view.clock(s.window_end) }}</td><td>{{ s.stored_outcome }} → {{ s.replayed_outcome or ("not recomputed (" ~ s.recompute_skipped ~ ")") }}{% if not s.consistent and not s.raw_cleaned_only %} · <b>mismatch</b>{% endif %}</td><td>{{ s.disposition }} · {{ s.reason }}{% if s.transition %} · {{ s.transition }}{% endif %}</td><td>{{ s.readings | length }}</td></tr>
+        {%- endfor %}
+        </tbody></table></div>
+        {%- set readings_n = r.samples | map(attribute="readings") | map("length") | sum %}
+        {%- if readings_n %}
+        <div class="tblwrap"><table class="res recovery-readings"><thead><tr><th>#</th><th>Signal</th><th>Check</th><th>Status / value / count stored → replayed</th><th>Verdict</th><th>Query</th><th>Window (UTC)</th><th>Source</th><th>Raw sha256</th></tr></thead><tbody>
+        {%- for s in r.samples %}{% for rd in s.readings %}
+        {%- set differs = rd.replayed is not none and (rd.replayed | list) != (rd.stored | list) %}
+        {%- set cleaned = ("RAW_CLEANED:" ~ rd.signal_name) in (s.integrity or []) %}
+        <tr><td>{{ s.sequence }}</td><td class="sig">{{ rd.signal_name }}</td><td>{% if rd.raw_verified is sameas true %}<span class="muted">verified</span>{% elif rd.raw_verified is sameas false %}<b class="rd-bad">✗ hash mismatch</b>{% else %}<span class="muted">no bundle{% if cleaned %} · raw data cleaned{% endif %}</span>{% endif %}{% if differs %} <b class="rd-bad">✗ replay differs</b>{% endif %}</td><td>{{ rd.stored[0] }} / {{ rd.stored[1] if rd.stored[1] is not none else "–" }} / {{ rd.stored[2] if rd.stored[2] is not none else "–" }} → {% if rd.replayed is not none %}{{ rd.replayed[0] }} / {{ rd.replayed[1] if rd.replayed[1] is not none else "–" }} / {{ rd.replayed[2] if rd.replayed[2] is not none else "–" }}{% else %}<span class="muted">not recomputed</span>{% endif %}</td><td>{% if rd.verdict %}{{ rd.verdict }}{% if rd.reason %} <span class="muted brk">{{ rd.reason }}</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td><td class="brk">{{ rd.query }}</td><td>{{ view.clock(rd.window_start) }} – {{ view.clock(rd.window_end) }}</td><td>{{ rd.source }}</td><td class="shacell">{{ rd.raw_sha256 or "none" }}</td></tr>
+        {%- endfor %}{% endfor %}
+        </tbody></table></div>
+        {%- endif %}
+        {%- endif %}
+        {%- endfor %}
+      </div></div></details>
+      {%- endif %}
+      {%- if postmortem %}
+      {%- set latest = postmortem.latest %}
+      <details class="crow" id="postmortem-rail"><summary><span class="n" aria-hidden="true">·</span><span>Postmortem <span class="muted">· {{ postmortem.status | replace("_", " ") }}{% if postmortem.status == "under_review" and latest %} · waits for review{% endif %}</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw pm">
+        <p class="small">Drafted by a model after the recovery watch ends; timeline, numbers and citations are filled by code. Not knowledge until a person approves it.{% if postmortem.status == "under_review" and latest %} <a href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ latest.version }}">Review postmortem</a>{% endif %}</p>
+    <section id="postmortem">
+    <p class="small">
+      status <span class="badge" id="postmortem-status">{{ postmortem.status }}</span>
+      {% if postmortem.postmortem_id %}· postmortem generation <strong id="postmortem-generation">{{ postmortem.generation }}</strong>{% endif %}
+      {% if latest %}· latest <a id="postmortem-latest" href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ latest.version }}">version {{ latest.version }}</a>
+        <span class="badge">{{ latest.state }}</span>
+        {% if latest.stale_reason %} stale: <code class="stale-reason">{{ latest.stale_reason }}</code>{% endif %}
+        {% if latest.citation_failures %} · <strong class="citation-failures">citations failed: {{ latest.citation_failures | join(", ") }}</strong>{% endif %}
+        {% if latest.disputes %} · <strong class="disputed">disputed ({{ latest.disputes | length }})</strong>{% endif %}
+        {% if latest.uncertain %} · {{ latest.uncertain }} uncertain{% endif %}
+      {% endif %}
+    </p>
+    {% if postmortem.status == "not_generated" %}<p class="small">No postmortem generated yet: one is drafted after the recovery observation has ended.</p>
+    {% elif postmortem.status == "generation_failed" %}<p class="small"><strong>The latest generation attempt failed before writing a version</strong>{% if postmortem.attempts %} (<code>{{ postmortem.attempts[0].error_code or "unknown" }}</code>){% endif %}.</p>
+    {% elif postmortem.status == "citations_failed" %}<p class="small"><strong>The latest draft failed its citation check</strong>; it cannot be reviewed.</p>
     {% endif %}
-  {% endif %}</p>
-  {% if snapshot.handoff_report and snapshot.handoff_report.parsed %}
-    {% set report = snapshot.handoff_report %}
-    <p id="handoff-report"><strong>Unpublished handoff report</strong> (not the incident conclusion; human follow-up remains open).</p>
-  {% endif %}
-{% endif %}
-{% if report is none %}
-{% elif not report.parsed %}
-  <p id="report-unparseable">Published conclusion could not be parsed as <code>m0-report-v2</code> (<code>{{ report.reason }}</code>); content sha256 <code>{{ report.content_sha256 }}</code>.</p>
-{% else %}
-  <p id="report-status">
-    Assessment <span class="badge">{{ report.assessment_status }}</span>
-    · conclusion <span class="badge">{{ report.conclusion }}</span>
-    {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
-    · content sha256 <code>{{ report.content_sha256 }}</code>
-  </p>
-  {% if snapshot.collection_truncated %}
-  <p id="collection-truncated"><strong>Collection was truncated at the model-request limit</strong>: the investigator was made to report on its last request, so evidence it might still have gathered is missing.</p>
-  {% endif %}
-  <p>{{ report.summary }}</p>
-  {% macro claims(title, items, css) %}
-    <section class="{{ css }}">
-      <h3>{{ title }} ({{ items | length }})</h3>
-      {% if items %}
-      <ul>
-        {% for claim in items %}
-        <li>{{ claim.text }}
-          {% if claim.evidence_ids %}<br><span class="muted">evidence:</span>
-            {% for eid in claim.evidence_ids %}
-              <a href="/incidents/{{ inc.incident_id }}/evidence/{{ eid }}"><code>{{ eid }}</code></a>
-            {% endfor %}
-          {% endif %}
-          {% if claim.target_refs %}<span class="muted">targets:</span> {% for t in claim.target_refs %}<code>{{ t }}</code> {% endfor %}{% endif %}
-          {% if claim.time_scope_ref %}<span class="muted">time scope:</span> <code>{{ claim.time_scope_ref }}</code>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}<p class="muted">none</p>{% endif %}
+    {% set sch = postmortem.schedule %}
+    {% if postmortem.status in ("generation_failed", "citations_failed") and sch %}
+      {% if sch.lease_active or sch.next_attempt_at %}<p class="small" id="postmortem-retry">The worker retries at this watermark ({{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }} so far{% if sch.next_attempt_at %}, next at {{ sch.next_attempt_at }}{% endif %}).</p>
+      {% else %}<p class="small" id="postmortem-exhausted"><strong>Generation stopped at this watermark after {{ sch.consecutive_failures }} failed attempt{{ "" if sch.consecutive_failures == 1 else "s" }}</strong>; a new version is generated only when the incident moves past it or a version is returned.</p>{% endif %}
+    {% endif %}
+    {% if postmortem.status == "under_review" %}<p class="small">Version {{ latest.version }} waits for review.</p>
+    {% elif postmortem.status in ("returned", "stale") %}<p class="small">The worker regenerates a new version{% if postmortem.status == "stale" %}: the incident moved past this version's watermark{% endif %}.</p>
+    {% endif %}
+    {% set schedule = postmortem.schedule %}
+    {% if schedule %}
+    <p class="small" id="postmortem-schedule">
+      {% if schedule.lease_active %}generating now · {% endif %}
+      {% if schedule.pending_regeneration_version %}regeneration pending for returned version {{ schedule.pending_regeneration_version }} · {% endif %}
+      consecutive failures {{ schedule.consecutive_failures }}
+      {% if schedule.last_error_code %}· last error <code>{{ schedule.last_error_code }}</code>{% endif %}
+      {% if schedule.next_attempt_at %}· next attempt {{ schedule.next_attempt_at }}{% endif %}
+    </p>
+    {% endif %}
+    {% if postmortem.versions %}
+    <div class="tblwrap"><table class="res" id="postmortem-versions">
+      <thead><tr><th>Version</th><th>State</th><th>Revises</th><th>Conclusions</th><th>Disputes</th><th>Proposals</th><th>Generated</th></tr></thead>
+      <tbody>
+      {% for v in postmortem.versions %}
+      <tr>
+        <td><a href="/postmortems/{{ postmortem.postmortem_id }}/versions/{{ v.version }}">{{ v.version }}</a></td>
+        <td><span class="badge">{{ v.state }}</span>{% if v.stale_reason %} <code>{{ v.stale_reason }}</code>{% endif %}</td>
+        <td>{{ v.revises_version or "" }}</td>
+        <td>{{ v.conclusions }}{% if v.uncertain %} ({{ v.uncertain }} uncertain){% endif %}{% if v.citation_failures %} <strong>citations failed</strong>{% endif %}</td>
+        <td>{% if v.disputes %}<strong>{{ v.disputes | length }}</strong>{% else %}0{% endif %}</td>
+        <td>{{ v.proposals }}{% if v.replaces %} ({{ v.replaces }} replace existing){% endif %}</td>
+        <td>{{ v.created_at }} by <code>{{ v.generated_by }}</code> ({{ v.generated_by_kind }})</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% endif %}
+    {% if postmortem.attempts %}
+    <div class="tblwrap"><table class="res" id="postmortem-attempts">
+      <thead><tr><th>Attempt</th><th>Status</th><th>Error</th><th>Version</th><th>Model requests</th><th>Started → finished</th><th>Per request: finish · tokens · outcome · problems</th></tr></thead>
+      <tbody>
+      {% for a in postmortem.attempts %}
+      <tr><td><code>{{ a.attempt_id }}</code></td><td><span class="badge">{{ a.status }}</span></td><td><code>{{ a.error_code or "" }}</code></td>
+          <td>{{ a.version or "" }}{% if a.revises_version %} <span class="muted">revises {{ a.revises_version }}</span>{% endif %}</td>
+          <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td><td>{{ a.started_at }} → {{ a.finished_at or "" }}</td>
+          <td class="model-calls">{% if a.model_calls %}<ol>{% for c in a.model_calls %}
+            <li data-seq="{{ c.seq }}">{{ c.purpose }} · finish <code class="finish-reason">{{ c.finish_reason if c.finish_reason is not none else "unknown" }}</code>
+              · prompt <span class="prompt-tokens">{{ c.prompt_tokens if c.prompt_tokens is not none else "unknown" }}</span>
+              · completion <span class="completion-tokens">{{ c.completion_tokens if c.completion_tokens is not none else "unknown" }}</span>
+              (reasoning <span class="reasoning-tokens">{{ c.reasoning_tokens if c.reasoning_tokens is not none else "unknown" }}</span>,
+              visible <span class="visible-completion-tokens">{{ c.visible_completion_tokens if c.visible_completion_tokens is not none else "unknown" }}</span>)
+              · <span class="badge outcome">{{ c.outcome }}</span>{% if c.problems %} · <span class="problems">{% for p in c.problems %}<code>{{ p }}</code>{% if not loop.last %} {% endif %}{% endfor %}</span>{% endif %}</li>
+          {% endfor %}</ol>{% else %}<span class="muted">unknown</span>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% endif %}
+    {% if postmortem.knowledge %}
+    <h3>Knowledge revisions published from this postmortem <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
+    <ul id="postmortem-knowledge">
+      {% for k in postmortem.knowledge %}
+      <li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %} <span class="muted">from version {{ k.source_version }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
     </section>
-  {% endmacro %}
-  {{ claims("Facts", report.facts, "facts") }}
-  {{ claims("Hypotheses", report.hypotheses, "hypotheses") }}
-  {{ claims("Counter-evidence", report.counter_evidence, "counter") }}
-  {{ claims("Rejected hypotheses", report.rejected_hypotheses, "rejected") }}
-  <section class="unknown">
-    <h3>Unknown / gaps ({{ report.unknown | length }})</h3>
-    {% if report.unknown %}<ul>{% for gap in report.unknown %}<li>{{ gap }}</li>{% endfor %}</ul>{% else %}<p class="muted">none declared</p>{% endif %}
-  </section>
-  {{ claims("Recommendations", report.recommendations, "recommend") }}
-  <section>
-    <h3>Advisory next steps</h3>
-    {% if report.next_steps %}<ul>{% for step in report.next_steps %}<li>{{ step }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
-  </section>
-{% endif %}
-
-{% if snapshot.coverage %}
-{% set labels = {
-  "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
-  "partial_failure": "some queries did not succeed",
-  "failed": "no query succeeded",
-  "no_data_only": "returned no data (not evidence of health)",
-  "not_queried": "not queried this Run",
-  "not_authorized": "not authorized for this Run",
-  "not_integrated": "not integrated (cannot be queried)",
-  "internal": "internal evidence store, not a data source",
-} %}
-<section id="coverage-gaps">
-  <h2>Coverage gaps <span class="muted">(counted from this Run's committed tool results, not written by the investigator)</span></h2>
-  {% if not snapshot.coverage.sources_recorded %}<p class="muted" id="coverage-sources-unrecorded">Source list not recorded for this Run; counted per tool.</p>{% endif %}
+      </div></div></details>
+      {%- endif %}
+      <details class="crow" id="coverage"><summary><span class="n" aria-hidden="true">·</span><span>What the Agent could and could not see <span class="muted">(per source, counted from this Run's tool results)</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw" id="coverage-gaps">
+  {% if snapshot.not_integrated %}
+  <p class="small" id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if snapshot.coverage %}
+  {% if snapshot.coverage.duplicates_skipped %}<p class="small" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
+  {% endif %}
+  {% if snapshot.coverage %}
+  {% set labels = {
+    "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
+    "partial_failure": "some queries did not succeed",
+    "failed": "no query succeeded",
+    "no_data_only": "returned no data (not evidence of health)",
+    "not_queried": "not queried this Run",
+    "not_authorized": "not authorized for this Run",
+    "not_integrated": "not integrated (cannot be queried)",
+    "internal": "internal evidence store, not a data source",
+  } %}
+  {% if not snapshot.coverage.sources_recorded %}<p class="small" id="coverage-sources-unrecorded">Source list not recorded for this Run; counted per tool.</p>{% endif %}
   {% if snapshot.coverage.sources %}
-  <table>
+    <div class="tblwrap"><table class="res cov">
     <thead><tr><th>Source</th><th>State</th><th>ok</th><th>no data</th><th>not ok</th><th>Reasons</th></tr></thead>
     <tbody>
     {% for row in snapshot.coverage.sources %}
+    {% set n = row.ok + row.no_data + row.non_ok %}
     <tr class="coverage-source{% if row.gap %} coverage-gap{% endif %}" data-source="{{ row.name }}" data-state="{{ row.state }}">
       <td><code>{{ row.name }}</code></td>
       <td><span class="badge">{{ row.state }}</span> {% if row.gap %}<strong>gap</strong>: {% endif %}<span class="muted">{{ labels[row.state] }}</span></td>
@@ -350,121 +240,515 @@
     </tr>
     {% endfor %}
     </tbody>
-  </table>
-  {% else %}<p class="muted">No tool results committed yet.</p>{% endif %}
-  {% if snapshot.coverage.duplicates_skipped %}<p class="muted" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
-</section>
-{% endif %}
+  </table></div>
+  {% else %}<p class="small">No tool results committed yet.</p>{% endif %}
+  {% else %}<p class="small">No tool results are recorded for this Run.</p>{% endif %}
+      </div></div></details>
+      <details class="crow" id="runs"><summary><span class="n" aria-hidden="true">·</span><span>Investigation history and knowledge hints <span class="muted">({{ (snapshot.history | length) + 1 }} Run{{ "" if not snapshot.history else "s" }})</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">
+        <div class="tblwrap"><table class="res"><thead><tr><th>Run</th><th>State</th><th>Generation</th><th>Concluded (UTC)</th><th>Report</th></tr></thead><tbody>
+        <tr><td class="mono">{{ run.run_id }}</td><td>{{ run.state }} · epoch {{ run.epoch }}</td><td>{{ run.control_generation }}</td><td>—</td><td>this page</td></tr>
+        {%- for entry in snapshot.history %}<tr class="investigation-history"><td class="mono">{{ entry.run_id }}</td><td>{{ entry.state }}</td><td>{{ entry.control_generation }}</td><td>{{ view.clock(entry.concluded_at) or "—" }}</td><td class="wrapcell">{% if entry.report and entry.report.parsed %}{{ entry.report.summary }}{% if entry.verified is sameas false %} <b>hash mismatch</b>{% endif %}{% for kind, key in (("fact", "facts"), ("hypothesis", "hypotheses"), ("counter-evidence", "counter_evidence"), ("ruled out", "rejected_hypotheses"), ("recommendation", "recommendations")) %}{% for f in entry.report[key] %}<br><span class="muted">{{ kind }}:</span> {{ f.text }}{% for eid in f.evidence_ids %} <a href="/incidents/{{ inc.incident_id }}/evidence/{{ eid }}">evidence</a>{% endfor %}{% endfor %}{% endfor %}{% elif entry.report %}could not be read{% else %}none{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>
+        <section id="knowledge-hints">
+        {%- set knowledge = snapshot.knowledge %}
+        {%- if knowledge %}
+        <p class="small">Historical knowledge given to this Run: {{ knowledge.status }} · retrieved {{ knowledge.retrieved_at }} · {{ knowledge.entries | length }} entr{{ "y" if knowledge.entries | length == 1 else "ies" }}.</p>
+        {%- if knowledge.entries %}<ul>{% for entry in knowledge.entries %}<li><a href="/knowledge/{{ entry.entry_id }}">{{ entry.name }}</a> r{{ entry.revision }} · {{ entry.freshness }} · age {{ entry.age_seconds }} seconds · from <a href="/incidents/{{ entry.source_incident_id }}">incident {{ (entry.source_incident_id|string)[:8] }}</a> · check: {{ knowledge.checks[loop.index0].verdict }}</li>{% endfor %}</ul>{% endif %}
+        {%- else %}<p class="small">No knowledge input was recorded for this Run.</p>{% endif %}
+        </section>
+      </div></div></details>
+      <details class="crow"><summary><span class="n" aria-hidden="true">·</span><span>Identifiers and integrity</span><span class="chev" aria-hidden="true">›</span></summary><div class="detail">
+        <dl>
+          <dt>Incident</dt><dd class="mono">{{ inc.incident_id }}</dd>
+          <dt>Run</dt><dd class="mono">{{ run.run_id }} · {{ run.state }} · epoch {{ run.epoch }}</dd>
+          <dt>Model requests</dt><dd>{{ run.budget_spent }} spent / {{ run.budget_reserved }} reserved / {{ run.budget_unknown }} unknown of {{ run.budget_limit }}</dd>
+          <dt>Deadline</dt><dd class="mono">{{ run.deadline }}</dd>
+          <dt>Stored record</dt><dd class="mono">lifecycle <span id="incident-lifecycle">{{ inc.lifecycle }}</span> · mode <span id="incident-mode">{{ inc.mode }}</span> · generation <span id="control-generation">{{ inc.control_generation }}</span>{% if inc.control %} · control <span id="incident-control">{{ inc.control }}</span>{% endif %} · Run <span id="run-state">{{ run.state }}</span> · <span id="concluded">{{ "concluded" if inc.concluded else "no conclusion" }}</span></dd>
+          {%- if rep and rep.sha256 %}<dt>Report sha256</dt><dd class="mono">{{ rep.sha256 }}</dd>{% endif %}
+        </dl></div></details>
+      <details class="crow"><summary><span class="n" aria-hidden="true">·</span><span>Event log <span class="muted">(latest {{ snapshot.events | length }})</span></span><span class="chev" aria-hidden="true">›</span></summary><div class="detail"><div class="raw">
+        <div class="tblwrap">{% include "_incident_progress.html" %}</div>
+      </div></div></details>
+    </div>
+  </section>
 
-{% if snapshot.charts %}
-<section id="evidence-charts">
-  <h2>Evidence charts</h2>
-  <p class="muted">Drawn from the stored view of metrics evidence the report cites; gaps are left as gaps.</p>
-  {% for item in snapshot.charts["items"] %}{{ item }}{% endfor %}
-  {% if snapshot.charts["overflow"] %}<p class="muted">{{ snapshot.charts["overflow"] }} more cited metrics evidence not charted; see the evidence links above.</p>{% endif %}
-</section>
-{% endif %}
+</div></main>
 
-<h2>Steps</h2>
-{% if snapshot.steps %}
-<table>
-  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
-  <tbody>
-  {% for step in snapshot.steps %}
-  <tr>
-    <td>{{ step.sequence }}</td>
-    <td><code>{{ step.logical_key }}</code></td>
-    <td><span class="badge">{{ step.status }}</span>{% if step.history_only %} <span class="muted">history only</span>{% endif %}</td>
-    <td>{{ step.control_generation }}</td>
-    <td>{{ step.finish_reason or "" }}</td>
-    <td>
-      {{ step.tools | length }} / {{ step.planned_tools }}
-      {% for tool in step.tools %}
-        <br><code>{{ tool.tool }}</code> → <span class="badge">{{ tool.status }}</span>
-        {% if tool.status == "timeout" and tool.source_contact == "possible" %}<span class="muted">source may have received the request</span>{% endif %}
-        {% if tool.status != "ok" and tool.reason %}<code>{{ tool.reason }}</code>{% endif %}
-        {% if tool.http_status %}<span class="muted">HTTP {{ tool.http_status }}</span>{% endif %}
-        {% if tool.source_error %}<br><span class="muted">source said (untrusted):</span> <code class="source-error">{{ tool.source_error }}</code>{% if tool.source_error_truncated %} <span class="muted">(truncated)</span>{% endif %}{% endif %}
-        {% if tool.evidence_id %}<a href="/incidents/{{ inc.incident_id }}/evidence/{{ tool.evidence_id }}"><code>{{ tool.evidence_id }}</code></a>{% endif %}
-        {% if tool.adopted is sameas false %}<span class="muted">(not adopted)</span>{% endif %}
-      {% endfor %}
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% if snapshot.pending_tools %}<p class="muted">{{ snapshot.pending_tools }} planned tool operation(s) not yet committed.</p>{% endif %}
-{% else %}
-<p class="muted">No committed steps.</p>
-{% endif %}
-{% if snapshot.not_integrated %}
-<p id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-{% endif %}
+<aside class="panel" id="chat" aria-label="Chat">
+  <div class="ph"><b>Chat</b>
+    <div class="ctabs" role="tablist" aria-label="Chat views">
+      <button type="button" role="tab" id="chatTabChat" aria-selected="true" aria-controls="chatMsgs">Current</button>
+      <button type="button" role="tab" id="chatTabHist" aria-selected="false" aria-controls="chatHist">History</button>
+    </div>
+    <span class="phr"><button type="button" class="chatnew" id="chatNew">New chat</button><button class="x" id="closeChat" type="button" aria-label="Close chat">×</button></span></div>
+  <div class="ctx">About: <b>{{ (inc.incident_id|string)[:8] }}</b> · {{ hd.title | truncate(60) }}</div>
+  <div class="msgs" id="chatMsgs" role="tabpanel" aria-labelledby="chatTabChat" aria-live="polite">
+    <p class="small" id="chatEmpty">Ask about this incident. Answers come from its record only and never change the investigation. If you ask the investigation to look into something, your own words are passed to it as your message.</p>
+    <div id="chatTurns"></div>
+  </div>
+  <div class="msgs" id="chatHist" role="tabpanel" aria-labelledby="chatTabHist" hidden>
+    <p class="small" id="chatHistEmpty">No chats on this incident yet.</p>
+    <ul class="chist" id="chatHistList"></ul>
+  </div>
+  <div class="pf"><form class="composer" id="chatForm" novalidate>
+    <label for="chatIn" class="vh">Ask about this incident</label>
+    <textarea id="chatIn" rows="2" placeholder="Ask about this incident"></textarea>
+    <div class="bar"><span id="chatNote">Answers from the record · Enter to send</span><button class="primary" type="submit" id="chatSend">Send</button></div>
+  </form></div>
+</aside>
+</div>
+<div class="scrim" id="scrim" hidden></div>
 
-<h2>Investigation history</h2>
-{% for entry in snapshot.history %}
-<section class="investigation-history">
-  <h3>Run <code>{{ entry.run_id }}</code></h3>
-  <p>State <code>{{ entry.state }}</code> · generation {{ entry.control_generation }}
-    · Concluded at (UTC) {{ entry.concluded_at or "—" }} · verified {{ entry.verified }}</p>
-  {% if entry.report and entry.report.parsed %}
-    <p>Conclusion <strong>{{ entry.report.conclusion }}</strong></p>
-    <p>{{ entry.report.summary }}</p>
-    {% for kind, key in [("fact", "facts"), ("hypothesis", "hypotheses"), ("counter_evidence", "counter_evidence"), ("rejected_hypothesis", "rejected_hypotheses"), ("recommendation", "recommendations")] %}
-    <ul>
-      {% for claim in entry.report[key] %}
-      <li><code>{{ kind }}</code>: {{ claim.text }}
-        {% for eid in claim.evidence_ids %}
-        <a href="/incidents/{{ inc.incident_id }}/evidence/{{ eid }}"><code>{{ eid }}</code></a>
-        {% endfor %}
-      </li>
-      {% endfor %}
-    </ul>
-    {% endfor %}
-  {% elif entry.report %}
-    <p>Report could not be parsed: {{ entry.report.reason }}</p>
-  {% else %}<p class="muted">No published conclusion retained.</p>{% endif %}
-</section>
-{% else %}<p class="muted">No earlier Runs.</p>{% endfor %}
-
-<h2>Human decisions</h2>
-{% if snapshot.controls %}
-<table>
-  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Time (UTC)</th><th>Expected → new</th><th>Text</th></tr></thead>
-  <tbody>
-  {% for item in snapshot.controls %}
-  <tr><td>{{ item.sequence }}</td><td><code>{{ item.action }}</code></td><td><code>{{ item.actor_id }}</code></td>
-      <td>{{ item.decided_at or "unknown" }}</td><td>{{ item.expected_generation }} → {{ item.generation }}</td><td>{{ item.text or "" }}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% else %}<p class="muted">None recorded.</p>{% endif %}
-
-<h2>Live progress <span class="muted">(persistent sequence, resumes from {{ snapshot.latest_sequence }})</span></h2>
-<ul id="progress">
-  {% for event in snapshot.events %}
-  <li data-sequence="{{ event.sequence }}"><code>{{ event.sequence }}</code> <strong>{{ event.kind }}</strong> <span class="muted">{{ event.payload | tojson }}</span></li>
-  {% endfor %}
-</ul>
 <script>
 (function () {
-  var cursor = {{ snapshot.latest_sequence }};
-  var list = document.getElementById("progress");
-  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
-  var postmortemKinds = {{ postmortem_kinds | list | tojson }};
-  postmortemKinds.forEach(function (kind) { reloadKinds[kind] = 1; });
-  var source = new EventSource("/incidents/{{ inc.incident_id }}/events?cursor=" + cursor);
-  source.onmessage = function () {};
-  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
-   "run_completed", "run_handoff", "control_applied", "reload"].concat(postmortemKinds).forEach(function (kind) {
-    source.addEventListener(kind, function (event) {
-      var item = document.createElement("li");
-      var seq = event.lastEventId || "";
-      item.textContent = seq + " " + kind + " " + event.data;
-      list.appendChild(item);
-      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var incident = "{{ inc.incident_id }}";
+  var key = "opspilot-open-" + incident;
+  /* keep what was open across the page's own reloads */
+  try {
+    var saved = JSON.parse(sessionStorage.getItem(key) || "[]");
+    sessionStorage.removeItem(key);
+    saved.forEach(function (id) { var d = document.getElementById(id); if (d) d.open = true; });
+  } catch (e) {}
+  function reload() {
+    try { sessionStorage.setItem(key, JSON.stringify($$("details[open][id]").map(function (d) { return d.id; }))); } catch (e) {}
+    window.location.reload();
+  }
+
+  /* log filters and Expand all */
+  var filter = "all";
+  function apply() {
+    var shown = 0;
+    $$("#log > [data-k]").forEach(function (el) {
+      var k = el.getAttribute("data-k"), p = el.getAttribute("data-p") === "1";
+      var on = filter === "all" || (filter === "problems" && p) || (filter === "messages" && k === "msg");
+      el.hidden = !on; if (on) shown++;
+    });
+    $("#log-empty").hidden = shown > 0;
+  }
+  $$(".logtools [data-f]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      filter = b.getAttribute("data-f");
+      $$(".logtools [data-f]").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      apply();
     });
   });
+  var expand = $("#expandAll");
+  function expanded() { return expand.getAttribute("aria-pressed") === "true"; }
+  expand.addEventListener("click", function () {
+    var open = !expanded();
+    $$("#log details").forEach(function (d) { d.open = open; });
+    expand.setAttribute("aria-pressed", String(open));
+    expand.textContent = open ? "Collapse all" : "Expand all";
+  });
+  document.addEventListener("click", function (e) {
+    var s = e.target.closest("[data-open-step]");
+    if (s) { var d = document.getElementById(s.getAttribute("data-open-step")); if (d) { d.open = true; } }
+    var c = e.target.closest("[data-copy]");
+    if (c) {
+      var text = (c.parentNode.querySelector(".cptext") || {}).textContent || "";
+      var done = function () { c.textContent = "Copied"; setTimeout(function () { c.textContent = "Copy"; }, 1200); };
+      try { navigator.clipboard.writeText(text).then(done, function () {}); } catch (err) {}
+    }
+  });
+  /* close the More menu on outside click or Escape */
+  document.addEventListener("click", function (e) { $$("details.more[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; }); });
+
+  /* message box: Enter sends, Shift+Enter adds a line */
+  document.addEventListener("keydown", function (e) {
+    var box = e.target;
+    if (!box || box.id !== "invIn" || box.disabled) return;
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (box.value.trim()) { box.form.requestSubmit ? box.form.requestSubmit() : box.form.submit(); }
+    }
+  });
+
+  /* elapsed time */
+  function tick() {
+    $$("[data-since]").forEach(function (el) {
+      var at = Date.parse(el.getAttribute("data-since")); if (isNaN(at)) return;
+      var s = Math.max(0, Math.round((Date.now() - at) / 1000));
+      el.textContent = (s >= 3600 ? Math.floor(s / 3600) + "h " : "") + Math.floor(s % 3600 / 60) + "m " + (s % 60) + "s elapsed";
+    });
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* chat panel shell (contract E7): open and close, a drawer on narrow screens */
+  var shell = $("#shell"), panel = $("#chat"), openBtn = $("#openChat"), scrim = $("#scrim");
+  var narrow = window.matchMedia("(max-width: 960px)");
+  function setChat(open, remember) {
+    shell.classList.toggle("chat-closed", !open);
+    panel.classList.toggle("open", open);
+    openBtn.setAttribute("aria-expanded", String(open));
+    scrim.hidden = !(open && narrow.matches);
+    if (remember && !narrow.matches) { try { localStorage.setItem("opspilot-chat", open ? "open" : "closed"); } catch (e) {} }
+    if (open && narrow.matches) { var x = $("#closeChat"); if (x) x.focus(); }
+  }
+  var pref = "open";
+  try { pref = localStorage.getItem("opspilot-chat") || "open"; } catch (e) {}
+  setChat(!narrow.matches && pref !== "closed", false);
+  openBtn.addEventListener("click", function () { setChat(!panel.classList.contains("open"), true); });
+  $("#closeChat").addEventListener("click", function () { setChat(false, true); openBtn.focus(); });
+  scrim.addEventListener("click", function () { setChat(false, false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (narrow.matches && panel.classList.contains("open")) { setChat(false, false); openBtn.focus(); }
+    $$("details.more[open]").forEach(function (m) { m.open = false; });
+  });
+  narrow.addEventListener("change", function () { setChat(!narrow.matches && pref !== "closed", false); });
+
+  /* Chat (workbench P7): answers come from the record; a steer forwards the
+     person's own words. Text is always set with textContent (P7-8). */
+  var chatBase = "/incidents/" + incident + "/chat";
+  var chatSession = null, chatPoll = null, chatBusy = false, chatData = null;
+  var chatIn = $("#chatIn"), chatSend = $("#chatSend"), chatNote = $("#chatNote");
+  var chatTurns = $("#chatTurns"), chatEmpty = $("#chatEmpty");
+  function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function hhmm(iso) { var d = new Date(iso); return isNaN(d) ? "" : d.toISOString().slice(11, 16) + " UTC"; }
+  function secs(ms) { var s = Math.max(0, Math.round((ms || 0) / 1000)); return s >= 60 ? Math.floor(s / 60) + "m " + (s % 60) + "s" : s + "s"; }
+  function jsonReq(method, url, body) {
+    var opts = { method: method, credentials: "same-origin", cache: "no-store", headers: { "Accept": "application/json" } };
+    if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    return fetch(url, opts).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j._status = r.status; return j; }); });
+  }
+  var chatErrors = {
+    CHAT_RATE_LIMITED: "Too many questions in the last 10 minutes. Try again in a few minutes.",
+    CHAT_BUSY: "Wait for the answer to the previous question.",
+    INVALID_INPUT: "That question cannot be sent. Check its length and characters.",
+    HANDOFF_ONLY: "This incident has no investigation to chat about."
+  };
+  var failWords = {
+    CHAT_TIMEOUT: "No answer in time.",
+    CHAT_REPLY_INVALID: "The answer could not be read.",
+    MODEL_UNAVAILABLE: "The model is unavailable.",
+    MODEL_REJECTED: "The model refused the request."
+  };
+  function logStatus(seq) {
+    var row = document.querySelector('#log [data-key="msg-' + seq + '"] .msg-status');
+    return row ? row.textContent.trim() : "";
+  }
+  function renderTurn(t) {
+    var box = el("div", "cturn"); box.setAttribute("data-turn", t.turn_id); box.setAttribute("data-status", t.status);
+    var q = el("div", "cq");
+    q.appendChild(el("span", "who", t.author + " · " + hhmm(t.asked_at)));
+    q.appendChild(el("p", "ctext", t.question));
+    box.appendChild(q);
+    var a = el("div", "ca");
+    a.appendChild(el("span", "who", "Chat"));
+    if (t.status === "pending") {
+      var w = el("p", "cwait"); w.appendChild(el("span", "dot pulse")); w.appendChild(document.createTextNode(" Reading the record… "));
+      var since = el("span"); since.setAttribute("data-since", t.asked_at); w.appendChild(since);
+      a.appendChild(w);
+    } else if (t.status === "failed") {
+      a.appendChild(el("p", "cfail", "Couldn't answer. " + (failWords[t.error_code] || "") + " (" + t.error_code + ")"));
+      var retry = el("button", "chip", "Retry"); retry.type = "button"; retry.setAttribute("data-retry", t.question);
+      a.appendChild(retry);
+    } else {
+      a.appendChild(el("p", "ctext", t.answer));
+      if (t.refs && t.refs.length) {
+        var refs = el("p", "crefs", "Evidence: ");
+        t.refs.forEach(function (eid, i) {
+          var link = el("a", "mono", eid); link.href = "/incidents/" + incident + "/evidence/" + encodeURIComponent(eid);
+          if (i) refs.appendChild(document.createTextNode(" · "));
+          refs.appendChild(link);
+        });
+        a.appendChild(refs);
+      }
+      a.appendChild(el("span", "small", "Answered in " + secs(t.elapsed_ms) + " · from the record"));
+    }
+    var f = t.forward;
+    if (f) {
+      var chip = el("p", "cfwd " + (f.state === "refused" ? "no" : f.state === "pending" ? "wait" : "yes"));
+      chip.setAttribute("data-forward", f.state);
+      if (f.state === "sent" && f.input_sequence != null) {
+        var go = el("a", null, f.words); go.href = "#log"; go.setAttribute("data-msg", f.input_sequence);
+        chip.appendChild(go);
+        var st = logStatus(f.input_sequence);
+        if (st) chip.appendChild(el("span", "small", " · " + st));
+      } else if (f.state === "refused" && f.merged_into) {
+        var m = el("a", null, f.words); m.href = "/incidents/" + f.merged_into; chip.appendChild(m);
+      } else {
+        chip.textContent = f.words;
+      }
+      a.appendChild(chip);
+    }
+    box.appendChild(a);
+    return box;
+  }
+  var chatShape = "";
+  function renderSession(data) {
+    chatData = data;
+    chatTurns.textContent = "";
+    var turns = (data && data.turns) || [];
+    turns.forEach(function (t) { chatTurns.appendChild(renderTurn(t)); });
+    chatEmpty.hidden = turns.length > 0;
+    tick();
+    /* follow new turns and answers; a log refresh alone keeps the scroll */
+    var shape = (data && data.session_id || "") + turns.map(function (t) { return t.turn_id + t.status; }).join();
+    if (shape !== chatShape) { chatShape = shape; var box = $("#chatMsgs"); box.scrollTop = box.scrollHeight; }
+    var waiting = turns.some(function (t) { return t.status === "pending"; });
+    setComposer(!waiting);
+    turns.forEach(function (t) {
+      if (t.forward && t.forward.state === "pending") { forward(t.turn_id); }
+    });
+    if (waiting) schedulePoll(); else stopPoll();
+  }
+  function setComposer(ready) {
+    chatBusy = !ready;
+    chatSend.disabled = !ready;
+    chatNote.textContent = ready ? "Answers from the record · Enter to send" : "Waiting for the answer…";
+  }
+  function stopPoll() { if (chatPoll) { clearTimeout(chatPoll); chatPoll = null; } }
+  function schedulePoll() { stopPoll(); chatPoll = setTimeout(loadSession, 1500); }
+  function loadSession() {
+    chatPoll = null;
+    if (!chatSession) return;
+    jsonReq("GET", chatBase + "/sessions/" + chatSession).then(function (j) {
+      if (j._status === 200) renderSession(j); else schedulePoll();
+    }, schedulePoll);
+  }
+  var forwarding = {};
+  function forward(turnId) {
+    if (forwarding[turnId]) return;
+    forwarding[turnId] = true;
+    jsonReq("POST", chatBase + "/turns/" + turnId + "/forward").then(function (j) {
+      if (j._status === 200 && j.turn) { loadSession(); }
+      else { setTimeout(function () { forwarding[turnId] = false; loadSession(); }, 3000); }
+    }, function () { setTimeout(function () { forwarding[turnId] = false; }, 3000); });
+  }
+  function ask(text) {
+    if (chatBusy || !text.trim()) return;
+    setComposer(false);
+    var body = { question: text, idempotency_key: "chat-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) };
+    if (chatSession) body.session_id = chatSession;
+    jsonReq("POST", chatBase, body).then(function (j) {
+      if (j._status === 200 || j._status === 201) {
+        chatSession = j.session_id; chatIn.value = "";
+        try { sessionStorage.setItem("opspilot-chat-" + incident, chatSession); } catch (e) {}
+        loadSession();
+      } else {
+        setComposer(true);
+        chatNote.textContent = chatErrors[j.code] || ("Not sent (" + (j.code || j._status) + ")");
+      }
+    }, function () { setComposer(true); chatNote.textContent = "Not sent — check the connection and try again."; });
+  }
+  $("#chatForm").addEventListener("submit", function (e) { e.preventDefault(); ask(chatIn.value); });
+  chatIn.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(chatIn.value); }
+  });
+  chatTurns.addEventListener("click", function (e) {
+    var r = e.target.closest("[data-retry]");
+    if (r) { ask(r.getAttribute("data-retry")); return; }
+    var m = e.target.closest("[data-msg]");
+    if (m) {
+      var row = document.querySelector('#log [data-key="msg-' + m.getAttribute("data-msg") + '"]');
+      if (row) { e.preventDefault(); if (narrow.matches) setChat(false, false); row.scrollIntoView({ block: "center" }); row.classList.add("flash"); setTimeout(function () { row.classList.remove("flash"); }, 1600); }
+    }
+  });
+  function showTab(hist) {
+    $("#chatTabChat").setAttribute("aria-selected", String(!hist));
+    $("#chatTabHist").setAttribute("aria-selected", String(hist));
+    $("#chatMsgs").hidden = hist; $("#chatHist").hidden = !hist;
+    if (hist) loadHistory();
+  }
+  $("#chatTabChat").addEventListener("click", function () { showTab(false); });
+  $("#chatTabHist").addEventListener("click", function () { showTab(true); });
+  $("#chatNew").addEventListener("click", function () {
+    chatSession = null; stopPoll();
+    try { sessionStorage.removeItem("opspilot-chat-" + incident); } catch (e) {}
+    renderSession({ turns: [] }); showTab(false); chatIn.focus();
+  });
+  function loadHistory() {
+    var list = $("#chatHistList");
+    jsonReq("GET", chatBase + "/sessions").then(function (j) {
+      list.textContent = "";
+      var items = (j && j.sessions) || [];
+      $("#chatHistEmpty").hidden = items.length > 0;
+      items.forEach(function (s) {
+        var li = el("li"), b = el("button", "chist-item"); b.type = "button"; b.setAttribute("data-session", s.session_id);
+        b.appendChild(el("span", "chist-title", s.title));
+        b.appendChild(el("span", "small", s.created_by + " · " + hhmm(s.created_at) + " · " + s.turns + (s.turns === 1 ? " question" : " questions")));
+        li.appendChild(b); list.appendChild(li);
+      });
+    });
+  }
+  $("#chatHistList").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-session]"); if (!b) return;
+    chatSession = b.getAttribute("data-session");
+    try { sessionStorage.setItem("opspilot-chat-" + incident, chatSession); } catch (e2) {}
+    showTab(false); loadSession();
+  });
+  /* reopen the chat this tab was in; else the incident's newest session */
+  try { chatSession = sessionStorage.getItem("opspilot-chat-" + incident); } catch (e) {}
+  if (chatSession) { loadSession(); }
+  else {
+    jsonReq("GET", chatBase + "/sessions").then(function (j) {
+      var first = j && j.sessions && j.sessions[0];
+      if (first && !chatSession) { chatSession = first.session_id; loadSession(); }
+    });
+  }
+
+  /* live view (P3-14..16): every event only says "something changed"; the
+     page then reads /live and swaps its regions in place, keeping what is
+     open, the filter, Expand all, the scroll position and the draft. New log
+     entries join the end; a reader at the end of the log follows them,
+     anyone else gets an "N new" chip. */
+  var log = $("#log"), empty = $("#log-empty"), chip = $("#log-new");
+  var unseen = 0, firstUnseen = null;
+  function logEndVisible() { return log.getBoundingClientRect().bottom <= window.innerHeight + 48; }
+  function openIds(root) { return $$("details[open][id]", root).map(function (d) { return d.id; }); }
+  function reopen(root, ids) { $$("details[id]", root).forEach(function (d) { if (ids.indexOf(d.id) >= 0) d.open = true; }); }
+  function swap(id, doc) {
+    var old = document.getElementById(id), nw = doc.getElementById(id);
+    if (!old || !nw) return;
+    var ids = openIds(old);
+    old.innerHTML = nw.innerHTML;
+    reopen(old, ids);
+  }
+  function plain(node) {
+    var c = node.cloneNode(true);
+    [c].concat($$("*", c)).forEach(function (x) { x.removeAttribute("open"); x.removeAttribute("hidden"); });
+    $$("[data-since]", c).forEach(function (x) { x.textContent = ""; });
+    return c.outerHTML;
+  }
+  function mergeLog(fresh) {
+    var follow = logEndVisible();
+    var old = {};
+    $$("#log > [data-key]").forEach(function (el) { old[el.getAttribute("data-key")] = el; });
+    var added = [];
+    $$(":scope > [data-key]", fresh).forEach(function (el) {
+      var k = el.getAttribute("data-key"), prev = old[k], node;
+      if (prev && plain(prev) === plain(el)) {
+        node = prev;
+      } else {
+        node = document.importNode(el, true);
+        if (prev) {
+          if (prev.open) node.open = true;
+          reopen(node, openIds(prev));
+          prev.remove();
+        } else if (k !== "live" && k.indexOf("plan-") !== 0) {
+          /* #744: the plan card sits at its Run's start and updates in
+             place; it is never "new" nor the chip's scroll target */
+          added.push(node);
+        }
+        if (expanded()) { if (node.tagName === "DETAILS") node.open = true; $$("details", node).forEach(function (d) { d.open = true; }); }
+      }
+      delete old[k];
+      log.insertBefore(node, empty);
+    });
+    Object.keys(old).forEach(function (k) { old[k].remove(); });
+    if (!added.length) return;
+    if (follow) {
+      var over = log.getBoundingClientRect().bottom - window.innerHeight + 24;
+      if (over > 0) window.scrollBy(0, over);
+    } else {
+      unseen += added.length;
+      firstUnseen = firstUnseen || added[0];
+      chip.textContent = unseen + " new ↓";
+      chip.hidden = false;
+    }
+  }
+  function clearChip() { unseen = 0; firstUnseen = null; chip.hidden = true; }
+  chip.addEventListener("click", function () {
+    var target = firstUnseen; clearChip();
+    if (target && target.isConnected) target.scrollIntoView({ block: "start" });
+  });
+  window.addEventListener("scroll", function () { if (!chip.hidden && logEndVisible()) clearChip(); }, { passive: true });
+
+  function swapComposer(doc) {
+    var nw = doc.getElementById("composer-wrap"), wrap = $("#composer-wrap");
+    if (!nw || !wrap) return;
+    var box = $("#invIn"), draft = box ? box.value : "", focused = box && document.activeElement === box;
+    var start = box ? box.selectionStart : 0, end = box ? box.selectionEnd : 0;
+    wrap.innerHTML = nw.innerHTML;
+    var fresh = $("#invIn");
+    if (fresh && draft) { fresh.value = draft; }
+    if (fresh && focused && !fresh.disabled) { fresh.focus(); try { fresh.setSelectionRange(start, end); } catch (e) {} }
+  }
+
+  var cursor = {{ snapshot.latest_sequence }};
+  var list = document.getElementById("progress");
+  var kinds = {{ live_kinds | list | tojson }};
+  var postmortemKinds = {{ postmortem_kinds | list | tojson }};
+  var source = null, timer = null, busy = false, again = false, reopenStream = false;
+  /* a failing /live backs off: 2 s doubling to 60 s, reset by a success */
+  var failures = 0, notBefore = 0;
+  function applyLive(html) {
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    var live = doc.getElementById("live");
+    if (!live) return;
+    if (live.getAttribute("data-reload")) { reload(); return; }
+    var seq = parseInt(live.getAttribute("data-sequence"), 10);
+    if (!isNaN(seq) && seq > cursor) cursor = seq;
+    swap("identity", doc);
+    swap("status", doc);
+    var actions = $("#actions");
+    if (!actions.contains(document.activeElement) && !$$("details[open]", actions).length) swap("actions", doc);
+    swap("results", doc);
+    /* the feedback form keeps what is being typed: swapped only while closed */
+    var fbw = $("#feedback-wrap");
+    if (fbw && !fbw.contains(document.activeElement) && !$$("details[open]", fbw).length) swap("feedback-wrap", doc);
+    swap("log-sum", doc);
+    mergeLog(doc.getElementById("log"));
+    swap("queue-wrap", doc);
+    swapComposer(doc);
+    swap("recovery-verdict", doc);
+    apply(); tick();
+    if (chatData && chatData.turns && chatData.turns.some(function (t) { return t.forward && t.forward.state === "sent"; })) renderSession(chatData);
+  }
+  function refresh() {
+    if (busy) { again = true; return; }
+    busy = true;
+    var ok = false;
+    fetch("/incidents/" + incident + "/live", { credentials: "same-origin", headers: { "Accept": "text/html" }, cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+      .then(function (html) { applyLive(html); ok = true; })
+      .catch(function () { /* keep the page as it is */ })
+      .then(function () {
+        busy = false;
+        if (ok) {
+          failures = 0; notBefore = 0;
+          if (reopenStream) { reopenStream = false; listen(); }
+        } else {
+          failures += 1;
+          notBefore = Date.now() + Math.min(2000 * Math.pow(2, failures - 1), 60000);
+          /* a closed stream (after reload) is only reopened by a refresh that worked */
+          if (reopenStream) again = true;
+        }
+        if (again) { again = false; schedule(); }
+      });
+  }
+  /* events within 500 ms make one fetch; never sooner than the backoff allows */
+  function schedule() {
+    if (timer) return;
+    var wait = Math.max(500, notBefore - Date.now());
+    timer = setTimeout(function () { timer = null; refresh(); }, wait);
+  }
+  function listen() {
+    if (!window.EventSource) return;
+    source = new EventSource("/incidents/" + incident + "/events?cursor=" + cursor);
+    source.onmessage = function () {};
+    kinds.concat(postmortemKinds).forEach(function (kind) {
+      source.addEventListener(kind, function (event) {
+        var id = parseInt(event.lastEventId, 10);
+        if (!isNaN(id) && id > cursor) cursor = id;
+        if (list) { var item = document.createElement("li"); item.textContent = (event.lastEventId || "") + " " + kind + " " + event.data; list.appendChild(item); }
+        if (postmortemKinds.indexOf(kind) >= 0) { source.close(); reload(); return; }
+        if (kind === "reload") {
+          /* the cursor fell behind the retained events: refresh, then follow from the page's sequence */
+          source.close(); source = null; reopenStream = true;
+          if (timer) { clearTimeout(timer); timer = null; }
+          refresh();
+          return;
+        }
+        schedule();
+      });
+    });
+  }
+  listen();
 })();
 </script>
+{{ ui.list_crumb_script() }}
 {% endblock %}

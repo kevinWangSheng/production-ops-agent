@@ -1,0 +1,21 @@
+{
+  "check": "workbench P7 Chat panel, bounded real-model check (~/.agent/p7run.sh)",
+  "date": "2026-11-18",
+  "branch_head": "b896be6b",
+  "reconstructed": "from the run's printed JSON as relayed by the lead; answer texts and token counts were not carried over",
+  "database": "p7run_8542591238 (throwaway, dropped by the script)",
+  "provider": "DeepSeek (product DeepSeekClient, deepseek-flash)",
+  "trace": "none by design (contract E4: Chat is not exported)",
+  "model_calls": {"calls": {"ok": 2}},
+  "turns": [
+    {"kind": "ask", "status": "answered", "steer": false, "refs_to_record_evidence": true},
+    {"kind": "steer", "status": "answered", "steer": true}
+  ],
+  "ask_left_investigation_unchanged": true,
+  "forward": {"state": "sent", "input_sequence": 1},
+  "chat_forward_messages": [
+    {"actor": "workbench-oncall", "channel": "chat_forward", "text_is_question": true}
+  ],
+  "model_text_in_inputs": false,
+  "word_reasoning_in_turn_rows": false
+}

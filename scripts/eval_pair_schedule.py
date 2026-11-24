@@ -70,6 +70,13 @@ VOID_ACTIONS = {
     "PROVIDER_5XX_STORM": "rerun_slot",
 }
 VOID_CLASSES = tuple(VOID_ACTIONS)
+#: The registered values of the rules file; ``load_rules`` refuses a file
+#: that states others, so the preregistration cannot drift silently (#514).
+REPETITIONS = 3
+HOLMES_ENTRIES = frozenset({"question"})
+SAME_SCENARIO_GAP_SECONDS = 3600
+WASH_MIN_SECONDS = 600
+MAX_RERUNS_PER_WINDOW = 1
 #: r0.1-3: the shared-vCPU thresholds of the HOST_NOISE class.
 STEAL_LIMIT_PERCENT = 5.0
 BASELINE_P95_LIMIT_RATIO = 2.0
@@ -124,6 +131,11 @@ def load_rules(path: Path = RULES_PATH) -> Rules:
             spacing["one_window_per_lab"] is True,
             [(c["code"], c["action"]) for c in void["classes"]]
             == list(VOID_ACTIONS.items()),
+            data["repetitions"] == REPETITIONS,
+            frozenset(data["holmes_entries"]) == HOLMES_ENTRIES,
+            spacing["same_scenario_min_gap_seconds"] == SAME_SCENARIO_GAP_SECONDS,
+            spacing["wash_min_seconds"] == WASH_MIN_SECONDS,
+            void["max_reruns_per_window"] == MAX_RERUNS_PER_WINDOW,
         )
         if not all(checks):
             raise ScheduleError("RULES_UNSUPPORTED")
@@ -817,8 +829,10 @@ def check(
       ``same_scenario_gap``;
     * ``ORDER_MISMATCH:<window>``: the slots ran in another order than planned;
     * ``UNPLANNED:<window>``: a window that is neither planned nor a rerun;
-    * ``RERUN_UNJUSTIFIED:<window>``: a rerun without a voided original, or a
-      second rerun;
+    * ``RULES_MISMATCH:plan`` / ``RULES_MISMATCH:log``: the plan or the log
+      names another ``rules_sha256`` than the loaded rules file;
+    * ``RERUN_UNJUSTIFIED:<window>``: a rerun whose original ``decide`` does
+      not void (whatever the original record says), or a second rerun;
     * ``MISSING:<window>``: a planned window that never ran (its slots count
       as failures)."""
     if log.get("schema") != LOG_SCHEMA:
@@ -826,6 +840,9 @@ def check(
     planned = {w["window_id"]: w for w in plan_json["windows"]}
     records = [r for r in log.get("windows") or [] if isinstance(r, Mapping)]
     violations: list[str] = []
+    for name, document in (("plan", plan_json), ("log", log)):
+        if document.get("rules_sha256") != rules.sha256:
+            violations.append(f"RULES_MISMATCH:{name}")
     by_lab: dict[str, list[Mapping[str, Any]]] = {}
     for record in records:
         by_lab.setdefault(str(record.get("lab")), []).append(record)
@@ -913,10 +930,13 @@ def check(
             violations.append(f"RERUN_UNJUSTIFIED:{wid}")
         elif wid != base:
             original = seen.get(base)
-            if original is None or original.get("void") is None:
+            # the original's own void label is not the basis: its slots
+            # are re-decided under the rules (#512)
+            decision = None if original is None else decide(original, rules)
+            if decision is None or decision["void"] is None:
                 violations.append(f"RERUN_UNJUSTIFIED:{wid}")
-            elif (original.get("decision") or {}).get("action") == "rerun_slot":
-                chosen = set(original["decision"].get("systems") or ())
+            elif decision["action"] == "rerun_slot":
+                chosen = set(decision["systems"])
                 expected = [s for s in expected if s in chosen]
         if order != expected:
             violations.append(f"ORDER_MISMATCH:{wid}")
@@ -1674,7 +1694,12 @@ def execute_plan(
         rejoin=read_rejoin(log_path),
     )
     if not booked:
-        write_empty = {"schema": LOG_SCHEMA, "rules_id": rules.rules_id, "windows": []}
+        write_empty = {
+            "schema": LOG_SCHEMA,
+            "rules_id": rules.rules_id,
+            "rules_sha256": rules.sha256,
+            "windows": [],
+        }
         log_path.write_text(json.dumps(write_empty) + "\n")
     return check(plan_json, json.loads(log_path.read_text()), rules)
 

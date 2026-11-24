@@ -1,0 +1,160 @@
+{
+  "item": "rules",
+  "tool": "list_prometheus_rules",
+  "params": {},
+  "window": {
+    "start": "2026-11-14T19:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "status": "ok",
+  "reason": null,
+  "source_contact": "confirmed",
+  "dispatched": true,
+  "adopted": true,
+  "model_view_keys": [
+    "adopted",
+    "citable_as_fact",
+    "content",
+    "data_as_of",
+    "dispatch_started_at",
+    "evidence_id",
+    "freshness_seconds",
+    "incomplete",
+    "incomplete_reason",
+    "lookback_seconds",
+    "lookback_start_at",
+    "notes",
+    "observed_at",
+    "omitted_bytes",
+    "omitted_rows",
+    "operation_id",
+    "projection_revision",
+    "query",
+    "registry_revision",
+    "result_count",
+    "returned_count",
+    "source",
+    "source_end_at",
+    "source_start_at",
+    "status",
+    "target_id",
+    "tool",
+    "tool_registry_revision",
+    "tool_version",
+    "truncated",
+    "trust",
+    "window"
+  ],
+  "model_view": {
+    "evidence_id": "tool-sample-t5:3669e741-9341-4adc-b4ae-892399c74602",
+    "operation_id": "tool-sample-t5",
+    "trust": "untrusted-evidence",
+    "status": "ok",
+    "adopted": true,
+    "citable_as_fact": true,
+    "tool": "list_prometheus_rules",
+    "tool_version": "v1",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "registry_revision": "3f1e18d57f89d2985579d84de2bec7af0e29379bf7112cb6f65b5008e211bf9b",
+    "tool_registry_revision": "bc4db9a58a8b30802563c58a93963c43c5ae4392e7329a22e8c0bb4713d4915c",
+    "projection_revision": "m1-01-tool-view-v11",
+    "query": {},
+    "window": {
+      "start": "2026-11-14T19:38:50+00:00",
+      "end": "2026-11-14T20:38:50+00:00"
+    },
+    "observed_at": "2026-11-14T20:38:53.188828+00:00",
+    "dispatch_started_at": "2026-11-14T20:38:52.090868+00:00",
+    "data_as_of": null,
+    "source_start_at": null,
+    "source_end_at": null,
+    "freshness_seconds": null,
+    "lookback_seconds": null,
+    "lookback_start_at": null,
+    "result_count": 2,
+    "incomplete": false,
+    "incomplete_reason": null,
+    "notes": [
+      "This tool has no time range: it shows Prometheus's state at the moment of the query, which can be after the authorized window; it cannot show the state when the incident happened."
+    ],
+    "returned_count": 2,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "content_summary": {
+    "type": "list",
+    "length": 2,
+    "first_row_keys": [
+      [
+        "evaluationTime",
+        "file",
+        "interval",
+        "lastEvaluation",
+        "limit",
+        "name",
+        "rules"
+      ],
+      [
+        "evaluationTime",
+        "file",
+        "interval",
+        "lastEvaluation",
+        "limit",
+        "name",
+        "rules"
+      ]
+    ]
+  },
+  "evidence": {
+    "evidence_id": "tool-sample-t5:3669e741-9341-4adc-b4ae-892399c74602",
+    "status": "ok",
+    "adopted": true,
+    "raw_bytes": 3799,
+    "raw_sha256": "951a8dd5b23af5a84c161c5a64f9dc2bc83787e588e412dfb129cdcab9942150",
+    "view_sha256": "9c1d3986642872a4ba053828f22052de4dbcec004e6fe3a02302515d9f9d7bcf",
+    "projection_revision": "m1-01-tool-view-v11",
+    "observed_at": "2026-11-14T20:38:53.188828+00:00",
+    "data_as_of": null,
+    "source_start_at": null,
+    "source_end_at": null,
+    "result_count": 2,
+    "incomplete": false,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "ledger_charges": [
+    {
+      "operation_id": "tool-sample-t5",
+      "dispatch_id": "3669e741-9341-4adc-b4ae-892399c74602",
+      "reserved_seconds": 30.0,
+      "seconds": 1.098,
+      "settled": true
+    }
+  ],
+  "checks": [
+    {
+      "check": "status == ok",
+      "ok": true,
+      "observed": "ok"
+    },
+    {
+      "check": "result_count >= 1",
+      "ok": true,
+      "observed": 2
+    },
+    {
+      "check": "source_contact == confirmed",
+      "ok": true,
+      "observed": "confirmed"
+    },
+    {
+      "check": "evidence adopted",
+      "ok": true,
+      "observed": true
+    }
+  ],
+  "verdict": "pass"
+}

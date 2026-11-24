@@ -33,6 +33,7 @@ from uuid import UUID
 from opspilot.intake import _reject_ambiguous_identifier, _reject_ambiguous_text
 from opspilot.investigation.context import INPUT_CONTENT_FIELD_MAX_CHARS
 from opspilot.knowledge.contract import (
+    ATTEMPTS_SHOWN,
     CODE_SECTIONS,
     MODEL_SECTIONS,
     REVIEW_ERROR_CLASSES,
@@ -40,7 +41,7 @@ from opspilot.knowledge.contract import (
 )
 from opspilot.knowledge.store import ActionResult, Actor
 from opspilot.persistence import PersistenceError
-from opspilot.web.events import EventLog
+from opspilot.web.events import CursorTooOld, EventLog
 
 #: Prefix of every web idempotency key in the store's (global) request
 #: table, so a workbench key can never occupy a worker's key.
@@ -55,12 +56,22 @@ EVENT_KINDS = (
     "postmortem_reviewed",
     "knowledge_changed",
 )
+#: UI redesign 3.3 (r2-M5): the version page lists the incident's postmortem
+#: events from at most this many of its latest events, newest first, and
+#: shows at most ``EVENTS_SHOWN`` of them; the versions table shows at most
+#: ``VERSIONS_SHOWN`` versions. Attempts are bounded by the store
+#: (``ATTEMPTS_SHOWN``).
+EVENTS_WINDOW = 200
+EVENTS_SHOWN = 20
+VERSIONS_SHOWN = 20
 
 
 class KnowledgeReview(Protocol):
     """The ``KnowledgeStore`` surface the workbench uses."""
 
     def incident_postmortem(self, incident_id: UUID) -> dict[str, Any]: ...
+
+    def generation_attempts(self, incident_id: UUID) -> dict[str, Any]: ...
 
     def postmortem(self, postmortem_id: UUID) -> dict[str, Any]: ...
 
@@ -242,12 +253,11 @@ class PostmortemReview:
             )
             if item.get("version") == version
         ]
+        from_postmortem = self._read(
+            self.knowledge.knowledge_from_postmortem, postmortem_id
+        )
         published = [
-            item
-            for item in self._read(
-                self.knowledge.knowledge_from_postmortem, postmortem_id
-            )
-            if item["source_version"] == version
+            item for item in from_postmortem if item["source_version"] == version
         ]
         sections = []
         for name in (*CODE_SECTIONS, *MODEL_SECTIONS):
@@ -258,8 +268,20 @@ class PostmortemReview:
         other = [c for c in row["conclusions"] if c["section"] not in known]
         if other:
             sections.append({"section": "other", "conclusions": other})
+        incident_id = snapshot["incident_id"]
+        # schedule and the bounded attempts only: the snapshot above already
+        # holds every version, so the full incident view is not read again
+        overview = self._read(self.knowledge.generation_attempts, incident_id)
+        versions = [_version_summary(v) for v in reversed(snapshot["versions"])]
+        latest_sequence = self.events.latest(incident_id)
+        events, events_more = self._postmortem_events(
+            incident_id,
+            postmortem_id,
+            {(str(item["entry_id"]), item["revision"]) for item in from_postmortem},
+            latest_sequence,
+        )
         return {
-            "incident_id": snapshot["incident_id"],
+            "incident_id": incident_id,
             "postmortem_id": snapshot["postmortem_id"],
             "generation": snapshot["generation"],
             "latest_version": snapshot["latest_version"],
@@ -270,11 +292,73 @@ class PostmortemReview:
             if isinstance(document.get("generation"), Mapping)
             else None,
             "citation_errors": _citation_errors(document, row),
+            "catalog_entries": len(document["evidence_catalog"])
+            if isinstance(document.get("evidence_catalog"), list)
+            else None,
             "targets": targets,
             "published": published,
             "audit": audit,
-            "latest_sequence": self.events.latest(snapshot["incident_id"]),
+            "versions": versions[:VERSIONS_SHOWN],
+            "versions_total": len(versions),
+            "attempts": list(overview.get("attempts") or ()),
+            "attempts_cap": ATTEMPTS_SHOWN,
+            "schedule": overview.get("schedule"),
+            "events": events,
+            "events_more": events_more,
+            "events_window": EVENTS_WINDOW if latest_sequence > EVENTS_WINDOW else None,
+            "latest_sequence": latest_sequence,
         }
+
+    def _postmortem_events(
+        self,
+        incident_id: UUID,
+        postmortem_id: UUID,
+        revisions: set[tuple[str, Any]],
+        latest: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """This postmortem's events among the incident's latest
+        ``EVENTS_WINDOW`` events, newest first, at most ``EVENTS_SHOWN``;
+        the flag says more matched than are shown. An event belongs here
+        only by an explicit link: its ``postmortem_id``, or (knowledge
+        changes) an entry revision published from this postmortem. A generation
+        failure names no postmortem and is left to the attempts table."""
+        cursor = max(0, latest - EVENTS_WINDOW)
+        try:
+            rows = self.events.read_after(incident_id, cursor, limit=EVENTS_WINDOW)
+        except CursorTooOld:
+            floor = self.events.floor(incident_id)
+            rows = self.events.read_after(
+                incident_id, max(0, floor - 1), limit=EVENTS_WINDOW
+            )
+        mine = str(postmortem_id)
+        matched = [
+            {
+                "sequence": e.sequence,
+                "kind": e.kind,
+                "recorded_at": e.recorded_at,
+                **{
+                    key: e.payload.get(key)
+                    for key in (
+                        "version",
+                        "state",
+                        "generation",
+                        "reason",
+                        "attempt_id",
+                        "entry_id",
+                        "revision",
+                    )
+                },
+            }
+            for e in rows
+            if e.kind in EVENT_KINDS
+            and (
+                str(e.payload.get("postmortem_id")) == mine
+                or (str(e.payload.get("entry_id")), e.payload.get("revision"))
+                in revisions
+            )
+        ]
+        matched.reverse()
+        return matched[:EVENTS_SHOWN], len(matched) > EVENTS_SHOWN
 
     def entry_page(self, entry_id: UUID) -> dict[str, Any]:
         """A knowledge entry's revision history with tombstones (R2)."""

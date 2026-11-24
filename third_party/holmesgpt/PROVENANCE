@@ -12,4 +12,6 @@ LICENSE   sha256 4e8d756a1bc4796e15973df082cf72b91f5e61fec4ec68d6799104670c108d0
 Covers the excerpts listed in docs/portfolio/upstream-attribution.md:
 opspilot/evaluation/binary_judge.py (strict correctness prompt),
 opspilot/tools/otel_demo.py (topk suggestion text),
-opspilot/instructions/discipline.py (adapted investigation-method paragraph).
+opspilot/instructions/discipline.py (adapted investigation-method paragraph;
+adapted Kubernetes investigation paragraph, from generic_ask.jinja2
+:56/:58/:69/:73-78).

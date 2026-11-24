@@ -57,14 +57,14 @@ from opspilot.web import (
 )
 from opspilot.web.store import MappingTargetRegistry
 from scripts.m0.postgres_lab import DSN
-from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
     REGISTRY as ALERT_REGISTRY,
 )
-from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+from tests.integration.m1_04_alert_intake_impl_postgres_support import (
     _alert,
     _webhook,
 )
-from tests.integration.test_m1_web_worker_postgres import _tool_round, _worker
+from tests.integration.m1_web_worker_postgres_support import _tool_round, _worker
 from tests.m1_investigation_support import reply, report_from_transcript
 from tests.m1_web_support import (
     EVENT_TOKEN,
@@ -419,69 +419,6 @@ def _late_rows(snapshot):
 # ==========================================================================
 
 
-@pytest.mark.parametrize(
-    "action,text",
-    [
-        ("follow_up", "Check the payments dependency as well."),
-        ("correct", "Added fact: payments was redeployed at 10:02."),
-    ],
-)
-def test_step1_note_after_conclusion_yields_updated_investigation(action, text):
-    env = _concluded(f"s1-{action}")
-    scenario = _scenario(env, "1", f"f12-s1-{action}-after-conclusion")
-
-    # Inspect progress and evidence through the authenticated page.
-    page = _page(env)
-    assert env.old_summary in page
-    evidence_ids = _evidence_ids(env.store.rebuild(env.subject))
-    assert evidence_ids
-    assert f"/incidents/{env.subject}/evidence/{evidence_ids[0]}" in page
-    read_back = call(
-        env.app,
-        "GET",
-        f"/incidents/{env.subject}/evidence/{evidence_ids[0]}",
-        headers=basic(),
-    )
-    assert read_back.status == 200
-    assert read_back.json()["evidence_id"] == evidence_ids[0]
-    assert 'id="progress"' in page and "run_completed" in page
-
-    # Ask / add a fact: 200, generation +1, a new queued Run, old Run completed.
-    _ok(_act(env, action, 0, text), 1)
-    rebuilt = env.store.rebuild(env.subject)
-    new_run = rebuilt["run"]["run_id"]
-    assert new_run != env.old_run
-    assert rebuilt["run"]["state"] == "queued"
-    assert rebuilt["control_generation"] == 1
-    runs = _runs(env)
-    assert set(runs) == {env.old_run, new_run}
-    assert runs[env.old_run]["state"] == "completed"
-    assert env.subject in env.store.claimable_incidents(limit=1000)
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"])
-        for i in env.store.read_inputs(env.subject)
-    ] == [(action, text, 1)]
-
-    # The worker publishes again: the page shows the new conclusion and the
-    # investigation history keeps the old one.
-    new_summary = f"Updated assessment after the human note {uuid4().hex[:10]}."
-    _publish(env, new_summary, "Payments redeploy is the more likely cause.")
-    rebuilt = env.store.rebuild(env.subject)
-    assert rebuilt["run"]["run_id"] == new_run
-    assert rebuilt["run"]["state"] == "completed"
-    assert _runs(env)[env.old_run]["state"] == "completed"
-    page = _page(env)
-    assert env.workbench.snapshot(env.subject)["report"]["summary"] == new_summary
-    assert new_summary in page
-    history = _section(page, "Investigation history")
-    assert str(env.old_run) in history and env.old_summary in history
-
-    outcome = _project(env, scenario)
-    assert outcome.final_state == "completed"
-    assert outcome.report_available is True
-    assert outcome.decision == "report_available"
-
-
 def test_step1_control_requires_authentication_and_same_origin():
     env = _concluded("s1-auth")
     text = "Check the payments dependency as well."
@@ -508,71 +445,6 @@ def test_step1_control_requires_authentication_and_same_origin():
 # Step 2: correct a hypothesis; correction and prior history retained
 # (U6-A: incident-association correction is a known limitation)
 # ==========================================================================
-
-
-def test_step2_correcting_a_hypothesis_keeps_correction_and_prior_history():
-    env = _concluded("s2-hypothesis")
-    scenario = _scenario(env, "2", "f12-s2-correct-hypothesis")
-    text = (
-        "Correction: the payments latency hypothesis is wrong; payments p99 was "
-        "flat. Added fact: a checkout config push landed at 10:01."
-    )
-    _ok(_act(env, "correct", 0, text), 1)
-
-    # Audit row and input row.
-    audit = _controls(env)
-    assert [(r["action"], r["actor"], r["resulting_generation"]) for r in audit] == [
-        ("correct", UI_USER, 1)
-    ]
-    assert (audit[0]["payload"] or {}).get("text") == text
-    assert [
-        (i["kind"], i["content"].get("text"))
-        for i in env.store.read_inputs(env.subject)
-    ] == [("correct", text)]
-
-    # The successor Run's stored input carries the prior conclusion labelled
-    # as earlier context, not instructions (U5-A).
-    rebuilt = env.store.rebuild(env.subject)
-    new_run = rebuilt["run"]["run_id"]
-    assert new_run != env.old_run
-    question = rebuilt["run"]["input"]["question"]
-    assert env.old_summary in question and env.old_hypothesis in question
-    assert _NOT_INSTRUCTIONS.search(question), question
-
-    # What the successor Run actually sends to the model: its first request
-    # contains the prior hypothesis and, after it, the correction (U5-A "人的
-    # 纠正排在其后").
-    new_summary = f"Config push is the likely cause {uuid4().hex[:10]}."
-    results, model = _poll(
-        env,
-        [
-            _tool_round(),
-            _reporter(new_summary, "The 10:01 checkout config push broke PlaceOrder."),
-        ],
-    )
-    assert results == [(env.subject, "published")], results
-    first_request = "\n".join(
-        str(m.get("content") or "") for m in model.calls[0].messages
-    )
-    assert env.old_hypothesis in first_request
-    assert text in first_request
-    assert first_request.index(env.old_hypothesis) < first_request.index(text)
-
-    # The old conclusion and its hypothesis stay readable in the history; the
-    # correction stays in the human decisions with its text.
-    page = _page(env)
-    assert new_summary in page
-    history = _section(page, "Investigation history")
-    assert str(env.old_run) in history
-    assert env.old_summary in history
-    assert env.old_hypothesis in history
-    decisions = _section(page, "Human decisions")
-    assert "<code>correct</code>" in decisions
-    assert "the payments latency hypothesis is wrong" in decisions
-    assert _runs(env)[env.old_run]["state"] == "completed"
-
-    outcome = _project(env, scenario)
-    assert outcome.report_available is True
 
 
 # ==========================================================================
@@ -775,36 +647,6 @@ def test_step3_close_after_takeover_cancels_the_waiting_human_run():
     _assert_no_automatic_work(env, env.old_run)
 
 
-@pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_step3_closed_incident_needs_reopen_before_a_new_run(action):
-    env = _concluded(f"s3-reopen-required-{action}")
-    _ok(_act(env, "close", 0), 1)
-    row = _incident(env)
-    assert row["lifecycle"] == "closed"
-    assert row["conclusion"] is not None  # C2: the conclusion is kept
-    assert _runs(env)[env.old_run]["state"] == "completed"
-
-    text = "Is checkout still erroring after the rollback?"
-    _refused(_act(env, action, 1, text), "REOPEN_REQUIRED")
-    assert _incident(env)["control_generation"] == 1
-    assert set(_runs(env)) == {env.old_run}
-    assert [r["action"] for r in _controls(env)] == ["close"]
-    assert env.store.read_inputs(env.subject) == []
-
-    _ok(_act(env, "reopen", 1), 2)
-    assert _incident(env)["lifecycle"] == "open"
-    assert set(_runs(env)) == {env.old_run}  # reopen opens no Run
-    assert env.subject not in env.store.claimable_incidents(limit=1000)
-
-    _ok(_act(env, action, 2, text), 3)
-    rebuilt = env.store.rebuild(env.subject)
-    new_run = rebuilt["run"]["run_id"]
-    assert new_run != env.old_run and rebuilt["run"]["state"] == "queued"
-    assert _runs(env)[env.old_run]["state"] == "completed"
-    assert env.subject in env.store.claimable_incidents(limit=1000)
-    assert [r["action"] for r in _controls(env)] == ["close", "reopen", action]
-
-
 # ==========================================================================
 # Step 4: new evidence after a takeover respects the incident state and
 # keeps the handoff (U7-A, three stimuli)
@@ -894,33 +736,3 @@ def test_step4_the_same_alert_firing_again_is_recorded_without_a_new_investigati
     assert env.store.read_inputs(env.subject) == inputs_before
     assert _project(env, scenario).report_available is False
     _assert_handoff_kept(env, 1, "waiting_human")
-
-
-@pytest.mark.parametrize("concluded", [False, True], ids=["no-conclusion", "concluded"])
-def test_step4_a_fact_added_under_human_ownership_is_recorded_only(concluded):
-    tag = f"s4-fact-{'concluded' if concluded else 'open'}"
-    env = _concluded(tag) if concluded else _submitted(tag)
-    scenario = _scenario(env, "4", f"f12-{tag}")
-    conclusion_before = _incident(env)["conclusion"]
-    _ok(_act(env, "takeover", 0), 1)
-    # PR-1 record: a concluded Run stays completed on takeover.
-    run_state = "completed" if concluded else "waiting_human"
-    assert _runs(env)[env.old_run]["state"] == run_state
-
-    text = "Added fact: the payments pod restarted at 10:02."
-    _ok(_act(env, "correct", 1, text), 2)
-    row = _incident(env)
-    assert row["control_generation"] == 2
-    assert row["conclusion"] == conclusion_before
-    assert [
-        (i["kind"], i["content"].get("text"), i["control_generation"])
-        for i in env.store.read_inputs(env.subject)
-    ] == [("correct", text, 2)]
-    assert [(r["action"], r["resulting_generation"]) for r in _controls(env)] == [
-        ("takeover", 1),
-        ("correct", 2),
-    ]
-    _assert_decision_shown(env, _page(env), "correct", 2)
-    outcome = _project(env, scenario)
-    assert outcome.report_available is concluded
-    _assert_handoff_kept(env, 1, run_state)

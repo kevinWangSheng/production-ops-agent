@@ -337,7 +337,7 @@ def test_item5_an_expired_release_is_not_authorized_and_the_sweep_ends_it_unknow
     env: s.Env,
 ) -> None:
     case = s.deliver(env, released_ago=s.DEADLINE - 4.0)
-    env.wait_past(case.record.deadline_at)
+    env.expire_deadline(case.oid)
 
     env.authorize_pass()
 
@@ -362,7 +362,7 @@ def test_item5_a_suspension_refused_release_expires_unknown_after_lifting(
     env.authorize_pass()
     _assert_not_authorized(env, case, "SCOPE_SUSPENDED")
 
-    env.wait_past(case.record.deadline_at)
+    env.expire_deadline(case.oid)
     env.tick(s.ReleaseWorld())
 
     record = env.record(case.oid)

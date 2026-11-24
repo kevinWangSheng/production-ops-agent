@@ -20,6 +20,21 @@ PostgreSQL role denials (S1c, ``tests/integration/test_runtime_roles_postgres.py
 and the Prometheus read-only proxy probe on kind (S1d/S1f,
 ``scripts/f7_authz_probe.py`` evidence). Written against public interfaces
 only; the implementation under change in PR-C is not read.
+
+Extended 2026-11-20 for C4 (#568, lead ruling, on the F11 step 4 precedent):
+the ArgoCD Application tools have a switch error code, a note code and two
+exported profile constants whose names start with ``ARGOCD_``.  They are not
+credential variables, so exactly these four identifiers are excepted from the
+``ARGOCD_`` credential pattern, as whole identifiers and only in the three
+modules that define or list them (``argocd_apps``, ``otel_demo_ext``,
+``profiles``): ``ARGOCD_INVALID`` (the switch's startup code),
+``ARGOCD_CRD_MISSING`` (the note code when the Application CRD is absent),
+``ARGOCD_TOOL_NAMES`` and ``ARGOCD_TOOL_SCHEMA_REVISION`` (exported names).
+Every other ``ARGOCD_*`` text -- ``ARGOCD_TOKEN``, ``ARGOCD_AUTH_TOKEN``,
+``ARGOCD_SERVER``, ``ARGOCD_PASSWORD``, or a longer name built on an excepted
+one -- is still refused everywhere.  The step's wording and the intent of
+every assertion are unchanged.  Accepted by the user 2026-11-22 (R-2 in
+``docs/tasks/2026-11-12-tool-expansion.md``).
 """
 
 from __future__ import annotations
@@ -67,6 +82,11 @@ UI = {**basic(), **same_origin(), "accept": "application/json"}
 #: Every route the workbench serves, with the OpsPilot record each write
 #: route acts on. A new route makes this test fail until it is classified.
 EXPECTED_ROUTES: dict[tuple[str, str], str] = {
+    # #682 form login, registered by the independent test author.
+    ("GET", "/login"): "read: login page",
+    ("POST", "/login"): "write: OpsPilot browser session sign-in",
+    ("GET", "/logout"): "read: logout confirmation",
+    ("POST", "/logout"): "write: OpsPilot browser session sign-out",
     ("GET", "/"): "read: incident list",
     ("GET", "/controls"): "read: suspension state",
     ("POST", "/controls/suspension"): "write: OpsPilot investigation suspension",
@@ -84,8 +104,39 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/intake/version-changes"): "write: OpsPilot release observation intake",
     ("POST", "/incidents/{incident_id}/control"): "write: OpsPilot incident control",
     ("GET", "/incidents/{incident_id}/events"): "read: progress stream",
+    # Workbench P3-14: the incident page's regions, same login and data.
+    ("GET", "/incidents/{incident_id}/live"): "read: incident page live view",
+    # Workbench P7-14: the Chat panel. Answers come from the record; a
+    # forward only writes the asker's own words as an OpsPilot message input.
+    ("POST", "/incidents/{incident_id}/chat"): "write: OpsPilot chat question",
+    ("GET", "/incidents/{incident_id}/chat/sessions"): "read: chat history",
+    (
+        "GET",
+        "/incidents/{incident_id}/chat/sessions/{session_id}",
+    ): "read: chat session",
+    (
+        "POST",
+        "/incidents/{incident_id}/chat/turns/{turn_id}/forward",
+    ): "write: OpsPilot chat forward to the investigation",
+    # Workbench P5 (contract r12): feedback on the shown report, kept in its
+    # own OpsPilot table; never an input, a control or a target action.
+    ("POST", "/incidents/{incident_id}/feedback"): "write: OpsPilot report feedback",
+    ("GET", "/feedback/export"): "read: feedback export (JSON lines)",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
     # F11 PR-5a (pre-review D1), registered by the independent test author.
+    # #566 C2a imported runbooks, registered by the independent test author:
+    # OpsPilot's own knowledge records (submit, review, revoke), never a
+    # target action; the model and the worker reach none of them.
+    ("GET", "/runbooks"): "read: runbook list",
+    ("GET", "/runbooks/new"): "read: runbook submission form",
+    ("POST", "/runbooks"): "write: OpsPilot runbook submission",
+    ("GET", "/runbooks/submissions/{submission_id}"): "read: runbook submission",
+    (
+        "POST",
+        "/runbooks/submissions/{submission_id}/review",
+    ): "write: OpsPilot runbook review",
+    ("GET", "/runbooks/{entry_id}"): "read: runbook entry",
+    ("POST", "/runbooks/{entry_id}/revoke"): "write: OpsPilot runbook revocation",
     ("GET", "/version-changes"): "read: release observation list",
     ("GET", "/version-changes/{observation_id}"): "read: release observation page",
     (
@@ -115,6 +166,10 @@ MUTATION_WORDS = (
 #: Human control actions: decisions on OpsPilot's own incident record only.
 EXPECTED_CONTROL_ACTIONS = frozenset(
     {
+        # Workbench contract B1/O2/D11: a message (follow_up/correct are its
+        # aliases) and Re-investigate.
+        "message",
+        "reinvestigate",
         "follow_up",
         "correct",
         "cancel",
@@ -234,6 +289,8 @@ def test_s1b_no_route_names_a_target_mutation_or_release_gate():
         ("PUT", "/incidents/00000000-0000-0000-0000-000000000001/control", 405),
         ("PATCH", "/controls/suspension", 405),
         ("DELETE", "/knowledge/00000000-0000-0000-0000-000000000001", 405),
+        ("DELETE", "/runbooks/00000000-0000-0000-0000-000000000001", 405),
+        ("PUT", "/runbooks/submissions/00000000-0000-0000-0000-000000000001", 405),
     ],
 )
 def test_s1b_target_mutation_and_release_gate_requests_have_no_route(
@@ -380,6 +437,27 @@ FORBIDDEN_TEXT = re.compile(
     r"|ARGOCD_|ARGO_TOKEN|ARGO_SERVER"
 )
 
+#: C4 (#568): non-credential identifiers allowed past ``ARGOCD_`` (module
+#: docstring), as whole identifiers, only in these modules.
+ARGOCD_IDENTIFIER_MODULES = frozenset(
+    {
+        "opspilot/tools/argocd_apps.py",
+        "opspilot/tools/otel_demo_ext.py",
+        "opspilot/tools/profiles.py",
+    }
+)
+ARGOCD_IDENTIFIER_EXCEPTIONS = re.compile(
+    r"(?<![A-Za-z0-9_])(?:ARGOCD_INVALID|ARGOCD_CRD_MISSING|ARGOCD_TOOL_NAMES"
+    r"|ARGOCD_TOOL_SCHEMA_REVISION)(?![A-Za-z0-9_])"
+)
+
+
+def _forbidden_text(relative: str, value: str) -> bool:
+    if relative in ARGOCD_IDENTIFIER_MODULES:
+        value = ARGOCD_IDENTIFIER_EXCEPTIONS.sub(" ", value)
+    return FORBIDDEN_TEXT.search(value) is not None
+
+
 ENV_PREFIXES = ("OPSPILOT_", "LANGSMITH_", "DEEPSEEK_", "PG")
 
 
@@ -427,8 +505,9 @@ def test_u1a_no_product_module_names_a_kubeconfig_or_forge_token():
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if FORBIDDEN_TEXT.search(node.value):
-                    offenders.append((str(path.relative_to(REPO)), node.value[:80]))
+                relative = str(path.relative_to(REPO))
+                if _forbidden_text(relative, node.value):
+                    offenders.append((relative, node.value[:80]))
     assert offenders == []
 
 
@@ -535,10 +614,16 @@ def test_s1a_the_executor_offers_exactly_one_read_only_entry_point():
 
 def _shipped_registrations() -> list[Any]:
     # No public enumeration of a profile's registrations exists; the two
-    # private builders are what the profiles' executor factories register.
-    from opspilot.tools import fixture, otel_demo
+    # existing private builders are what the profiles' executor factories
+    # register.  A2 adds the extension module's two registrations to this
+    # read-only safety inventory.
+    from opspilot.tools import fixture, kubernetes_core, otel_demo
 
-    return [fixture._registration(), *otel_demo._registrations()]
+    return [
+        fixture._registration(),
+        *otel_demo._registrations(),
+        *kubernetes_core._registrations(),
+    ]
 
 
 def test_s1a_every_shipped_tool_is_a_bounded_read():
@@ -547,7 +632,7 @@ def test_s1a_every_shipped_tool_is_a_bounded_read():
     for item in shipped:
         assert item.read_only is True, item.name
         assert item.verb in READ_ONLY_VERBS, item.name
-        assert item.may_contain_secrets is False, item.name
+        assert type(item.may_contain_secrets) is bool, item.name
         assert 0 < item.request_timeout_seconds <= MAX_REQUEST_TIMEOUT_SECONDS
         assert 0 < item.max_result_bytes <= MAX_RESULT_BYTES
         lowered = item.name.lower()

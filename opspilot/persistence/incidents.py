@@ -189,7 +189,9 @@ class _IncidentOps(_StoreBase):
 
         A read-only hint for the polling worker, never an authority:
         ``claim()`` re-checks everything under row locks, so a stale row here
-        costs one refused claim and nothing else. Listed: an open incident
+        costs one refused claim and nothing else. Listed (a published
+        conclusion or not: a continuation Run answering a message keeps it,
+        workbench contract A2): an open incident
         whose current Run is ``queued``, or ``running`` with a lapsed lease
         (a killed worker's), and not yet overdue; parked and blocked rows are
         a human's, and an overdue row (``running`` or ``queued``) is the
@@ -205,7 +207,7 @@ class _IncidentOps(_StoreBase):
         with self.transaction(snapshot=True) as conn:
             rows = conn.execute(
                 "SELECT i.incident_id FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
-                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' AND i.conclusion IS NULL "
+                "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' "
                 "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
                 "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp()) "
                 "ORDER BY i.priority, r.deadline, i.incident_id LIMIT %s",

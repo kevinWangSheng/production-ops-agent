@@ -1,0 +1,183 @@
+{
+ "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+ "main": {
+  "passes": 18,
+  "denominator": 18,
+  "rate": 1.0
+ },
+ "per_question": {
+  "100a_loki_historical_logs": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "101_loki_historical_logs_pod_deleted": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "102_loki_label_discovery": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "102a_loki_logs_transparency": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "102b_loki_multiple_pods": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "282_loki_custom_stream_label": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  }
+ },
+ "swing_questions": [],
+ "rerun": {
+  "questions": {},
+  "passes": 0,
+  "trials": 0,
+  "rate": null,
+  "in_main_score": false
+ },
+ "zero_scored": {
+  "no_report": [],
+  "judge_exhausted": [],
+  "env_broken": []
+ },
+ "missing_trials": [],
+ "multi_cluster": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "time_box_limited": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "excluding_env_broken": {
+  "questions": [
+   "100a_loki_historical_logs",
+   "101_loki_historical_logs_pod_deleted",
+   "102_loki_label_discovery",
+   "102a_loki_logs_transparency",
+   "102b_loki_multiple_pods",
+   "282_loki_custom_stream_label"
+  ],
+  "passes": 18,
+  "denominator": 18,
+  "rate": 1.0,
+  "excluded": []
+ },
+ "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具"
+}

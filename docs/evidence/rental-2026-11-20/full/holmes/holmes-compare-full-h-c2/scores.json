@@ -1,0 +1,183 @@
+{
+ "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+ "main": {
+  "passes": 18,
+  "denominator": 18,
+  "rate": 1.0
+ },
+ "per_question": {
+  "89_skill_missing_cloudwatch": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "90_skill_basic_selection": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "94_skill_transparency": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "95_skill_memory_leak_detection": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "96_no_matching_skill": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "162_get_skills": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  }
+ },
+ "swing_questions": [],
+ "rerun": {
+  "questions": {},
+  "passes": 0,
+  "trials": 0,
+  "rate": null,
+  "in_main_score": false
+ },
+ "zero_scored": {
+  "no_report": [],
+  "judge_exhausted": [],
+  "env_broken": []
+ },
+ "missing_trials": [],
+ "multi_cluster": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "time_box_limited": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "excluding_env_broken": {
+  "questions": [
+   "162_get_skills",
+   "89_skill_missing_cloudwatch",
+   "90_skill_basic_selection",
+   "94_skill_transparency",
+   "95_skill_memory_leak_detection",
+   "96_no_matching_skill"
+  ],
+  "passes": 18,
+  "denominator": 18,
+  "rate": 1.0,
+  "excluded": []
+ },
+ "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具"
+}

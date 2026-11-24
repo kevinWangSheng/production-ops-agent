@@ -1,0 +1,1507 @@
+{
+  "S1": {
+    "directory": "S1/snapshot",
+    "fault_start": "2025-12-15T17:25:19.431042761Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:03:00.68Z",
+      "traces": "2025-12-15T17:39:49.570349686Z",
+      "objects": "2025-12-15T17:58:31.809729685Z",
+      "events": "2025-12-15T17:58:59.861666736Z",
+      "logs": "2025-12-15T18:00:16.021301Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 2261.248957239,
+      "traces": 870.139306925,
+      "objects": 1992.378686924,
+      "events": 2020.430623975,
+      "logs": 2096.590258239
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S2": {
+    "directory": "S2/snapshot",
+    "fault_start": "2025-12-15T17:43:50.488970782Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T17:58:32.949Z",
+      "traces": "2025-12-15T17:46:24.852153844Z",
+      "objects": "2025-12-15T17:53:29.563859842Z",
+      "events": "2025-12-15T17:56:23.561411022Z",
+      "logs": "2025-12-15T17:57:03.281607Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 882.460029218,
+      "traces": 154.363183062,
+      "objects": 579.07488906,
+      "events": 753.07244024,
+      "logs": 792.792636218
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S4": {
+    "directory": "S4/snapshot",
+    "fault_start": "2025-12-15T17:55:47.934820964Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:06:51.138Z",
+      "traces": "2025-12-15T17:51:30.853849782Z",
+      "objects": "2025-12-15T18:03:31.921621768Z",
+      "events": "2025-12-15T18:04:12.57566834Z",
+      "logs": "2025-12-15T18:04:51.598145796Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 663.203179036,
+      "traces": -257.080971182,
+      "objects": 463.986800804,
+      "events": 504.640847376,
+      "logs": 543.663324832
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S5": {
+    "directory": "S5/snapshot",
+    "fault_start": "2025-12-15T17:46:13.89496108Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:01:30.648Z",
+      "traces": "2025-12-15T17:59:59.173942Z",
+      "objects": "2025-12-15T17:54:03.077697411Z",
+      "events": "2025-12-15T17:57:46.094648833Z",
+      "logs": "2025-12-15T17:58:24.848028Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 916.75303892,
+      "traces": 825.27898092,
+      "objects": 469.182736331,
+      "events": 692.199687753,
+      "logs": 730.95306692
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S6": {
+    "directory": "S6/snapshot",
+    "fault_start": "2025-12-15T17:48:59.397582593Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:00:56.677Z",
+      "traces": "2025-12-15T17:53:20.328918734Z",
+      "objects": "2025-12-15T17:58:11.668698072Z",
+      "events": "2025-12-15T17:57:50.977384106Z",
+      "logs": "2025-12-15T17:53:14.9472162Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 717.279417407,
+      "traces": 260.931336141,
+      "objects": 552.271115479,
+      "events": 531.579801513,
+      "logs": 255.549633607
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "partial"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S7": {
+    "directory": "S7/snapshot",
+    "fault_start": "2025-12-15T17:48:10.555135172Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:00:11.366Z",
+      "traces": "2025-12-15T17:49:01.230646524Z",
+      "objects": "2025-12-15T17:53:55.94058986Z",
+      "events": "2025-12-15T17:58:03.790030459Z",
+      "logs": "2025-12-15T17:58:41.757570542Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 720.810864828,
+      "traces": 50.675511352,
+      "objects": 345.385454688,
+      "events": 593.234895287,
+      "logs": 631.20243537
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S8": {
+    "directory": "S8/snapshot",
+    "fault_start": "2025-12-15T17:57:29.800120215Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:15.902Z",
+      "traces": "2025-12-15T17:51:22.624329424Z",
+      "objects": "2025-12-15T17:59:42.654782805Z",
+      "events": "2025-12-15T18:01:11.211080949Z",
+      "logs": "2025-12-15T18:01:52.968353517Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 406.101879785,
+      "traces": -367.175790791,
+      "objects": 132.85466259,
+      "events": 221.410960734,
+      "logs": 263.168233302
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "partial",
+      "logs": "partial"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S9": {
+    "directory": "S9/snapshot",
+    "fault_start": "2025-12-15T17:56:33.356997339Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:02:45.937Z",
+      "traces": "2025-12-15T17:39:44.502138539Z",
+      "objects": "2025-12-15T17:58:50.438454871Z",
+      "events": "2025-12-15T18:00:40.846302384Z",
+      "logs": "2025-12-15T18:01:20.569658883Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 372.580002661,
+      "traces": -1008.8548588,
+      "objects": 137.081457532,
+      "events": 247.489305045,
+      "logs": 287.212661544
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "partial",
+      "logs": "partial"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S11": {
+    "directory": "S11/snapshot",
+    "fault_start": "2025-12-15T17:51:18.783473538Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:01:40.821Z",
+      "traces": "2025-12-15T18:00:01.164933Z",
+      "objects": "2025-12-15T17:54:26.15842005Z",
+      "events": "2025-12-15T17:57:53.848912093Z",
+      "logs": "2025-12-15T17:58:29.119629Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 622.037526462,
+      "traces": 522.381459462,
+      "objects": 187.374946512,
+      "events": 395.065438555,
+      "logs": 430.336155462
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S12": {
+    "directory": "S12/snapshot",
+    "fault_start": "2025-12-15T17:24:32.046804338Z",
+    "entry_alertname": "PrometheusNotConnectedToAlertmanagers",
+    "ends": {
+      "metrics": "2025-12-15T18:08:19.343Z",
+      "traces": "2025-12-15T17:51:43.177268522Z",
+      "objects": "2025-12-15T18:04:37.70210276Z",
+      "events": "2025-12-15T18:04:38.452629474Z",
+      "logs": "2025-12-15T18:05:28.163557888Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 2627.296195662,
+      "traces": 1631.130464184,
+      "objects": 2405.655298422,
+      "events": 2406.405825136,
+      "logs": 2456.11675355
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S13": {
+    "directory": "S13/snapshot",
+    "fault_start": "2025-12-15T17:47:32.812025962Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:00:39.646Z",
+      "traces": "2025-12-15T17:48:21.000738421Z",
+      "objects": "2025-12-15T17:54:56.777290492Z",
+      "events": "2025-12-15T17:58:05.128106452Z",
+      "logs": "2025-12-15T17:58:43.609595Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 786.833974038,
+      "traces": 48.188712459,
+      "objects": 443.96526453,
+      "events": 632.31608049,
+      "logs": 670.797569038
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S14": {
+    "directory": "S14/snapshot",
+    "fault_start": "2025-12-15T17:51:23.959248828Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:01:06.872Z",
+      "traces": "2025-12-15T18:00:06.967404931Z",
+      "objects": "2025-12-15T17:55:46.213590862Z",
+      "events": "2025-12-15T17:58:43.202758112Z",
+      "logs": "2025-12-15T17:59:19.246560971Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 582.912751172,
+      "traces": 523.008156103,
+      "objects": 262.254342034,
+      "events": 439.243509284,
+      "logs": 475.287312143
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S15": {
+    "directory": "S15/snapshot",
+    "fault_start": "2025-12-15T17:49:49.854879369Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T17:59:32.824Z",
+      "traces": "2025-12-15T17:49:20.264965538Z",
+      "objects": "2025-12-15T17:56:12.305667198Z",
+      "events": "2025-12-15T17:57:57.625215935Z",
+      "logs": "2025-12-15T17:58:33.779823986Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 582.969120631,
+      "traces": -29.589913831,
+      "objects": 382.450787829,
+      "events": 487.770336566,
+      "logs": 523.924944617
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S16": {
+    "directory": "S16/snapshot",
+    "fault_start": "2025-12-15T17:54:07.148307191Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:05:23.425Z",
+      "traces": "2025-12-15T18:03:34.340244Z",
+      "objects": "2025-12-15T18:00:45.304874696Z",
+      "events": "2025-12-15T18:01:11.223824746Z",
+      "logs": "2025-12-15T18:01:50.876118124Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 676.276692809,
+      "traces": 567.191936809,
+      "objects": 398.156567505,
+      "events": 424.075517555,
+      "logs": 463.727810933
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S17": {
+    "directory": "S17/snapshot",
+    "fault_start": "2025-12-15T17:54:01.200506512Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:02:55.129Z",
+      "traces": "2025-12-15T18:01:30.388316Z",
+      "objects": "2025-12-15T17:57:26.784945611Z",
+      "events": "2025-12-15T18:00:00.135065036Z",
+      "logs": "2025-12-15T18:00:22.6844497Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 533.928493488,
+      "traces": 449.187809488,
+      "objects": 205.584439099,
+      "events": 358.934558524,
+      "logs": 381.483943188
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S18": {
+    "directory": "S18/snapshot",
+    "fault_start": "2025-12-15T17:54:07.970990435Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:22.213Z",
+      "traces": "2025-12-15T17:53:00.076072953Z",
+      "objects": "2025-12-15T18:02:47.564951113Z",
+      "events": "2025-12-15T18:02:23.263320792Z",
+      "logs": "2025-12-15T17:39:12.0027111Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 614.242009565,
+      "traces": -67.894917482,
+      "objects": 519.593960678,
+      "events": 495.292330357,
+      "logs": -895.968279335
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "not_covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S19": {
+    "directory": "S19/snapshot",
+    "fault_start": "2025-12-15T17:53:06.920785651Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:06:22.189Z",
+      "traces": "2025-12-15T18:04:38.484849Z",
+      "objects": "2025-12-15T18:02:40.138256878Z",
+      "events": "2025-12-15T18:02:28.12320504Z",
+      "logs": "2025-12-15T18:03:05.784193536Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 795.268214349,
+      "traces": 691.564063349,
+      "objects": 573.217471227,
+      "events": 561.202419389,
+      "logs": 598.863407885
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S20": {
+    "directory": "S20/snapshot",
+    "fault_start": "2025-12-15T17:49:53.564379742Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:02:22.264Z",
+      "traces": "2025-12-15T18:00:52.450892Z",
+      "objects": "2025-12-15T17:55:46.423301426Z",
+      "events": "2025-12-15T17:59:00.606292974Z",
+      "logs": "2025-12-15T17:59:34.748567Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 748.699620258,
+      "traces": 658.886512258,
+      "objects": 352.858921684,
+      "events": 547.041913232,
+      "logs": 581.184187258
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S21": {
+    "directory": "S21/snapshot",
+    "fault_start": "2025-12-15T17:54:06.215027759Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:03:04.483Z",
+      "traces": "2025-12-15T17:42:38.545782871Z",
+      "objects": "2025-12-15T17:57:51.197702351Z",
+      "events": "2025-12-15T18:01:22.561670564Z",
+      "logs": "2025-12-15T18:01:41.281024763Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 538.267972241,
+      "traces": -687.669244888,
+      "objects": 224.982674592,
+      "events": 436.346642805,
+      "logs": 455.065997004
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S22": {
+    "directory": "S22/snapshot",
+    "fault_start": "2025-12-15T17:54:55.085093936Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:32.718Z",
+      "traces": "2025-12-15T17:52:27.648371585Z",
+      "objects": "2025-12-15T17:57:28.055404996Z",
+      "events": "2025-12-15T18:01:48.098277848Z",
+      "logs": "2025-12-15T18:02:11.739965Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 577.632906064,
+      "traces": -147.436722351,
+      "objects": 152.97031106,
+      "events": 413.013183912,
+      "logs": 436.654871064
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S23": {
+    "directory": "S23/snapshot",
+    "fault_start": "2025-12-15T17:54:40.336305853Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:49.745Z",
+      "traces": "2025-12-15T17:54:50.965793104Z",
+      "objects": "2025-12-15T18:02:48.063737766Z",
+      "events": "2025-12-15T18:03:00.897370199Z",
+      "logs": "2025-12-15T18:03:34.779996Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 609.408694147,
+      "traces": 10.629487251,
+      "objects": 487.727431913,
+      "events": 500.561064346,
+      "logs": 534.443690147
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S24": {
+    "directory": "S24/snapshot",
+    "fault_start": "2025-12-15T17:41:19.038370408Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T17:59:34.904Z",
+      "traces": "2025-12-15T17:50:00.874856054Z",
+      "objects": "2025-12-15T17:57:11.562646833Z",
+      "events": "2025-12-15T17:57:49.983479279Z",
+      "logs": "2025-12-15T17:58:24.784706006Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 1095.865629592,
+      "traces": 521.836485646,
+      "objects": 952.524276425,
+      "events": 990.945108871,
+      "logs": 1025.746335598
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S25": {
+    "directory": "S25/snapshot",
+    "fault_start": "2025-12-15T17:58:04.551402655Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:07:04.413Z",
+      "traces": "2025-12-15T18:05:16.233503Z",
+      "objects": "2025-12-15T18:01:34.383932308Z",
+      "events": "2025-12-15T18:03:08.166737241Z",
+      "logs": "2025-12-15T18:03:44.855132532Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 539.861597345,
+      "traces": 431.682100345,
+      "objects": 209.832529653,
+      "events": 303.615334586,
+      "logs": 340.303729877
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S29": {
+    "directory": "S29/snapshot",
+    "fault_start": "2025-12-15T17:47:21.460402135Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:03:46.004Z",
+      "traces": "2025-12-15T17:39:02.296196383Z",
+      "objects": "2025-12-15T17:58:33.148605516Z",
+      "events": "2025-12-15T18:02:00.037905022Z",
+      "logs": "2025-12-15T18:02:16.613307088Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 984.543597865,
+      "traces": -499.164205752,
+      "objects": 671.688203381,
+      "events": 878.577502887,
+      "logs": 895.152904953
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S31": {
+    "directory": "S31/snapshot",
+    "fault_start": "2025-12-15T17:57:13.229243327Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:02:40.651Z",
+      "traces": "2025-12-15T17:39:13.167411445Z",
+      "objects": "2025-12-15T17:57:16.287597579Z",
+      "events": "2025-12-15T18:00:24.7799411Z",
+      "logs": "2025-12-15T18:01:06.542495014Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 327.421756673,
+      "traces": -1080.061831882,
+      "objects": 3.058354252,
+      "events": 191.550697773,
+      "logs": 233.313251687
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "partial",
+      "logs": "partial"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S33": {
+    "directory": "S33/snapshot",
+    "fault_start": "2025-12-15T17:55:48.471579169Z",
+    "entry_alertname": "PendingPodsDetected",
+    "ends": {
+      "metrics": "2025-12-15T18:08:09.916Z",
+      "traces": "2025-12-15T17:43:17.286172412Z",
+      "objects": "2025-12-15T18:04:40.909216104Z",
+      "events": "2025-12-15T18:06:01.034467942Z",
+      "logs": "2025-12-15T18:06:39.101520797Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 741.444420831,
+      "traces": -751.185406757,
+      "objects": 532.437636935,
+      "events": 612.562888773,
+      "logs": 650.629941628
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S34": {
+    "directory": "S34/snapshot",
+    "fault_start": "2025-12-15T17:50:35.424627359Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T17:59:09.401Z",
+      "traces": "2025-12-15T17:58:06.346703Z",
+      "objects": "2025-12-15T17:57:04.549027135Z",
+      "events": "2025-12-15T17:56:41.426951073Z",
+      "logs": "2025-12-15T17:57:13.957596Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 513.976372641,
+      "traces": 450.922075641,
+      "objects": 389.124399776,
+      "events": 366.002323714,
+      "logs": 398.532968641
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S35": {
+    "directory": "S35/snapshot",
+    "fault_start": "2025-12-15T17:55:06.824140828Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:36.426Z",
+      "traces": "2025-12-15T17:39:28.285431447Z",
+      "objects": "2025-12-15T17:58:29.277217039Z",
+      "events": "2025-12-15T18:03:07.618132376Z",
+      "logs": "2025-12-15T17:58:57.981633Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 569.601859172,
+      "traces": -938.538709381,
+      "objects": 202.453076211,
+      "events": 480.793991548,
+      "logs": 231.157492172
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "partial"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S38": {
+    "directory": "S38/snapshot",
+    "fault_start": "2025-12-15T18:18:44.847729751Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T17:44:27.831Z",
+      "traces": "2025-12-15T17:43:08.39160341Z",
+      "objects": "2025-12-15T17:39:10.774705645Z",
+      "events": "2025-12-15T17:42:16.237256547Z",
+      "logs": "2025-12-15T17:42:52.279269154Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": -2057.016729751,
+      "traces": -2136.456126341,
+      "objects": -2374.073024106,
+      "events": -2188.610473204,
+      "logs": -2152.568460597
+    },
+    "coverage": {
+      "metrics": "not_covered",
+      "traces": "not_covered",
+      "objects": "not_covered",
+      "events": "not_covered",
+      "logs": "not_covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S80": {
+    "directory": "S80/snapshot",
+    "fault_start": "2025-12-15T17:34:31.067025518Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:04:44.871Z",
+      "traces": "2025-12-15T17:57:07.469283468Z",
+      "objects": "2025-12-15T18:02:48.458090051Z",
+      "events": "2025-12-15T18:02:26.040541749Z",
+      "logs": "2025-12-15T18:03:07.883213689Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 1813.803974482,
+      "traces": 1356.40225795,
+      "objects": 1697.391064533,
+      "events": 1674.973516231,
+      "logs": 1716.816188171
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S81": {
+    "directory": "S81/snapshot",
+    "fault_start": "2025-12-15T17:59:58.49193012Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:09:14.914Z",
+      "traces": "2025-12-15T17:44:07.333261833Z",
+      "objects": "2025-12-15T18:05:29.131944556Z",
+      "events": "2025-12-15T18:08:00.342629622Z",
+      "logs": "2025-12-15T18:08:31.463844054Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 556.42206988,
+      "traces": -951.158668287,
+      "objects": 330.640014436,
+      "events": 481.850699502,
+      "logs": 512.971913934
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S83": {
+    "directory": "S83/snapshot",
+    "fault_start": "2025-12-15T17:57:10.50528766Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:07:24.039Z",
+      "traces": "2025-12-15T18:05:53.40655Z",
+      "objects": "2025-12-15T18:01:06.464120974Z",
+      "events": "2025-12-15T18:04:16.5740015Z",
+      "logs": "2025-12-15T18:04:50.858062347Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 613.53371234,
+      "traces": 522.90126234,
+      "objects": 235.958833314,
+      "events": 426.06871384,
+      "logs": 460.352774687
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "指标+trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S91": {
+    "directory": "S91/snapshot",
+    "fault_start": "2025-12-15T18:03:01.226376759Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:17:34.279Z",
+      "traces": "2025-12-15T18:06:13.946477284Z",
+      "objects": "2025-12-15T18:11:19.445863387Z",
+      "events": "2025-12-15T18:13:10.81287411Z",
+      "logs": "2025-12-15T18:13:59.209858376Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 873.052623241,
+      "traces": 192.720100525,
+      "objects": 498.219486628,
+      "events": 609.586497351,
+      "logs": 657.983481617
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "covered",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S102": {
+    "directory": "S102/snapshot",
+    "fault_start": "2025-12-15T17:55:33.255943253Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:03:55.688Z",
+      "traces": "2025-12-15T17:58:31.803879489Z",
+      "objects": "2025-12-15T17:59:06.985560696Z",
+      "events": "2025-12-15T18:01:44.105198888Z",
+      "logs": "2025-12-15T18:02:19.74073Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 502.432056747,
+      "traces": 178.547936236,
+      "objects": 213.729617443,
+      "events": 370.849255635,
+      "logs": 406.484786747
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "partial",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  },
+  "S105": {
+    "directory": "S105/snapshot",
+    "fault_start": "2025-12-15T17:56:04.072999735Z",
+    "entry_alertname": "RequestErrorRate",
+    "ends": {
+      "metrics": "2025-12-15T18:03:54.564Z",
+      "traces": "2025-12-15T17:54:22.940964083Z",
+      "objects": "2025-12-15T17:59:09.247200736Z",
+      "events": "2025-12-15T18:01:53.166154898Z",
+      "logs": "2025-12-15T18:02:32.8985568Z"
+    },
+    "seconds_after_fault_start": {
+      "metrics": 470.491000265,
+      "traces": -101.132035652,
+      "objects": 185.174201001,
+      "events": 349.093155163,
+      "logs": 388.825557065
+    },
+    "coverage": {
+      "metrics": "covered",
+      "traces": "not_covered",
+      "objects": "partial",
+      "events": "covered",
+      "logs": "covered"
+    },
+    "tier": "故障窗无 trace",
+    "rule": {
+      "window_seconds": 300,
+      "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
+      "classes": [
+        "metrics",
+        "traces",
+        "objects",
+        "events",
+        "logs"
+      ],
+      "covered": "end - fault_start >= 300 s",
+      "partial": "0 s <= end - fault_start < 300 s",
+      "not_covered": "end - fault_start < 0 s, or no data of the class",
+      "tier": "traces covered -> 指标+trace; otherwise 故障窗无 trace",
+      "source": "snapshot whitelist only (load_snapshot); no answer file"
+    }
+  }
+}

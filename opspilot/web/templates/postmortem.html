@@ -1,83 +1,360 @@
 {% extends "base.html" %}
+{% set nav = "incidents" %}
+{% import "_ui.html" as ui %}
 {% set v = page.version %}
 {% set sm = page.summary %}
-{% block title %}Postmortem version {{ v.version }}{% endblock %}
+{% set g = page.generation_record %}
+{% block title %}Postmortem version {{ v.version }} · OpsPilot{% endblock %}
 {% block body %}
-<h1>Postmortem <code>{{ page.postmortem_id }}</code> version {{ v.version }}</h1>
-<p>
-  <a href="/incidents/{{ page.incident_id }}">incident <code>{{ page.incident_id }}</code></a>
-  · state <span class="badge" id="version-state">{{ v.state }}</span>
-  {% if v.stale_reason %}· stale: <code id="stale-reason">{{ v.stale_reason }}</code>{% endif %}
-  · postmortem generation <strong id="postmortem-generation">{{ page.generation }}</strong>
-  · latest version {{ page.latest_version }}
-  {% if v.revises_version %}· revises <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.revises_version }}">version {{ v.revises_version }}</a>{% endif %}
-  · generated {{ v.created_at }} by <code>{{ v.generated_by }}</code> ({{ v.generated_by_kind }})
-  · content sha256 <code>{{ v.content_sha256 }}</code>
-</p>
-<p class="muted">Watermark: control generation {{ v.incident_control_generation }} · observation generation {{ v.observation_generation }}
-  · runs {{ v.run_count }} · input {{ v.input_watermark }} · evidence snapshot <code>{{ v.evidence_snapshot_sha256 }}</code></p>
+{#- Postmortem review page (UI redesign contract r2: 3.3, section 6).
+    Rules this template keeps, each pinned by an acceptance test
+    (tests/acceptance/test_f13_postmortem.py:308-344):
+    - id="version-state" holds exactly the stored state, id="postmortem-generation"
+      exactly the postmortem generation;
+    - the watermark stays one sentence "control generation N · observation
+      generation N · runs N · input W · evidence snapshot S";
+    - inside each id="conclusion-{key}": body, author and certainty; the words
+      "citations invalid", "disputed" and "not citable as fact" appear only when
+      that is the case (never "undisputed" or "citations valid");
+    - id="disputes" carries every dispute's five fields;
+    - every form field (name, value, attribute order) is the one the review
+      route reads; no form at all when the version is not reviewable. -#}
+<style>
+  .crumb { font-size: 12.5px; color: var(--ink2); margin: 0 0 6px; }
+  .pfb { margin-bottom: 8px; }
+  .pfb h2 { border-top: 0; padding-top: 0; margin-top: 32px; }
+  .pfb p { margin: 4px 0; }
+  .pfbt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; }
+  .crumb code { font-size: 12px; }
+  .irc { margin: 10px 0 4px; padding: 8px 12px; border-left: 3px solid var(--line2); background: var(--tint); border-radius: 0 6px 6px 0; max-width: 75ch; overflow-wrap: anywhere; line-height: 1.6; }
+  .irc-k { font-weight: 600; }
+  .irc-src, .irc-refs, .irc-changed { color: var(--ink2); font-size: 12.5px; }
+  .irc-label { font-weight: 500; }
+  .irc-obj { font-size: 13px; }
+  .ptitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+  .ptitle h1 { margin: 0; }
+  .ctx { font-size: 13.5px; color: var(--ink2); margin: 6px 0 0; }
+  .ctx code { font-size: 12.5px; }
+  .ctx .sep, .stored .sep { color: var(--ink4); margin: 0 4px; }
+  .stored { font-size: 12.5px; color: var(--ink2); margin: 4px 0 0; }
+  .stored code { font-size: 12px; }
+  .godec { display: none; font-size: 13px; margin: 6px 0 0; }
+  .task { font-size: 20px; line-height: 1.5; margin: 24px 0 6px; max-width: 70ch; }
+  .lede { color: var(--ink2); max-width: 75ch; margin: 0; }
+  .notice { background: var(--tint); border: 1px solid var(--ink); border-radius: 4px; padding: 12px 14px; margin: 16px 0 0; max-width: 90ch; }
+  .notice p { margin: 0; }
+  .notice .nt { font-size: 15.5px; font-weight: 500; }
+
+  .band { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 48px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 24px; padding: 20px 0; }
+  .band .k { font-size: 12.5px; color: var(--ink2); }
+  .band .a { font-size: 15.5px; font-weight: 500; margin: 4px 0 2px; line-height: 1.4; }
+  .band .s { font-size: 12.5px; color: var(--ink2); margin: 0 0 8px; }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 352px; gap: 0 64px; align-items: start; }
+  .cols > .main > h2:first-child, .cols > aside > h2:first-child { border-top: 0; padding-top: 0; margin-top: 32px; }
+  h2 .q, h3 .q { font-size: 12.5px; font-weight: 400; color: var(--ink2); margin-left: 8px; }
+  .lines { margin: 8px 0 0; padding: 0; list-style: none; }
+  .lines li { margin: 2px 0; }
+  .counts { font-size: 13px; color: var(--ink2); margin: 12px 0 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+  .counts b { color: var(--ink); font-weight: 600; }
+
+  .chk { margin: 0; padding: 0; list-style: none; }
+  .chk li { display: grid; grid-template-columns: 130px 170px minmax(0, 1fr) auto; gap: 4px 16px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: baseline; }
+  .chk .why { font-weight: 600; }
+  .chk .sec { color: var(--ink2); }
+  .chk .ex { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl { margin: 0; padding: 0; list-style: none; }
+  .dl li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+
+  .sh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 28px 0 4px; }
+  .sh h3 { margin: 0; font-size: 15px; }
+  .sh .n { font-size: 13px; color: var(--ink2); }
+  .stmts { margin: 0; padding: 0; list-style: none; }
+  .stmt { display: grid; grid-template-columns: 28px 112px minmax(0, 1fr); gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start; }
+  .stmt:last-child { border-bottom: 0; }
+  .stmt:target { background: var(--acc-soft); }
+  .stmt .no { font-family: var(--mono); font-size: 12px; color: var(--ink3); padding-top: 2px; }
+  .cert { font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+  .cert i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink2); flex: none; }
+  .cert.uncertain i { background: none; border: 1.5px solid var(--ink2); }
+  .cert.uncertain { font-weight: 600; }
+  .flag { display: block; font-size: 12.5px; font-weight: 600; margin-top: 4px; }
+  .stmt .tx { white-space: pre-wrap; max-width: 76ch; margin: 0; }
+  .stmt .mt { font-size: 12.5px; color: var(--ink2); margin-top: 6px; }
+  .stmt .mt code { font-size: 12px; }
+  .refs { font-size: 12.5px; color: var(--ink2); margin: 4px 0 0; padding: 0; list-style: none; }
+  .refs li { margin: 2px 0; }
+  .refs code { font-size: 12px; }
+  .stmt pre { max-height: 320px; overflow: auto; margin: 0; font-size: 12px; }
+
+  .props { margin: 0; padding: 0; list-style: none; }
+  .props > li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .props .nm { font-weight: 500; }
+  .props .meta { font-size: 12.5px; color: var(--ink2); margin-top: 2px; }
+  .props pre { max-height: 280px; overflow: auto; font-size: 12px; }
+
+  .gen { margin: 0; padding: 0; list-style: none; }
+  .gen > li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .gen > li > details > summary { font-weight: 500; }
+  .gen .stmt { grid-template-columns: minmax(0, 1fr); border-bottom: 0; padding-bottom: 0; }
+
+  .tw { margin-top: 8px; }
+  .tw table td { overflow-wrap: normal; }
+  .tw table td.mono, .tw table th { white-space: nowrap; }
+  .tw table td.calls-c { min-width: 260px; }
+  .tw table code { font-size: 12px; }
+  .calls { margin: 0; padding-left: 18px; }
+
+  aside .dec { border-top: 1px solid var(--line); padding: 14px 0; }
+  aside .dec:first-of-type { border-top: 0; padding-top: 6px; }
+  aside .dec form { margin: 0 0 8px; }
+  aside .dec input[name="reason"] { width: 100%; margin-bottom: 8px; font-family: var(--sans); font-size: 13px; }
+  aside .dec p { font-size: 13px; color: var(--ink2); margin: 0; }
+  aside .side-h { display: flex; justify-content: space-between; align-items: baseline; }
+  aside .small { margin: 6px 0; }
+  .hist { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+  .hist li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .hist .t { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  .ev { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+  .ev li { padding: 4px 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 2px 12px; }
+  .ev .t { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+  .wm { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+  @media (max-width: 1180px) {
+    .cols { grid-template-columns: minmax(0, 1fr); }
+    .godec { display: block; }
+    .chk li { grid-template-columns: 110px minmax(0, 1fr) auto; }
+    .chk .sec { display: none; }
+  }
+  @media (max-width: 720px) {
+    .band { grid-template-columns: minmax(0, 1fr); }
+    .task { font-size: 18px; }
+    .chk li { grid-template-columns: minmax(0, 1fr) auto; }
+    .chk .ex { grid-column: 1 / -1; grid-row: 2; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .stmt { grid-template-columns: 22px minmax(0, 1fr); }
+    .stmt .cert { grid-column: 2; }
+    .stmt .bd { grid-column: 2; }
+    .ev li { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+
+{%- macro ts(t) -%}
+{%- if t is none -%}{{ ui.missing("no time") }}
+{%- elif t.strftime is defined -%}{{ t.strftime("%Y-%m-%d %H:%M:%S") }}{% if t.utcoffset() is not none and t.utcoffset().total_seconds() == 0 %} UTC{% else %}{{ t.strftime(" %z") }}{% endif %}
+{%- else -%}{{ t }}{%- endif -%}
+{%- endmacro -%}
+
+{%- set section_names = {
+  "impact_summary": ("Impact summary", "what broke and for whom"),
+  "findings": ("Findings", "facts; each must cite evidence citable as fact"),
+  "hypotheses": ("Hypotheses and counter-evidence", "hypotheses and counter-evidence are never “supported”"),
+  "recommendations": ("Recommendations", "advice to humans; OpsPilot does not carry it out"),
+  "other": ("Other statements", "in a section this page does not know"),
+  "incident": ("Incident", ""), "timeline": ("Timeline", ""), "runs": ("Runs", ""),
+  "human_actions": ("Human actions", ""), "recovery": ("Recovery", ""),
+} -%}
+{%- set code_names = ("incident", "timeline", "runs", "human_actions", "recovery") -%}
+{%- set model_sections = page.sections | rejectattr("section", "in", code_names) | list -%}
+{%- set code_sections = page.sections | selectattr("section", "in", code_names) | list -%}
+{%- set ns = namespace(model=0, code=0, supported=0, uncertain=0, flagged=[]) -%}
+{%- for s in model_sections %}{% for c in s.conclusions %}
+  {%- set ns.model = ns.model + 1 -%}
+  {%- if c.certainty == "supported" %}{% set ns.supported = ns.supported + 1 %}{% endif -%}
+  {%- if c.certainty == "uncertain" %}{% set ns.uncertain = ns.uncertain + 1 %}{% endif -%}
+  {%- if c.certainty == "uncertain" or not c.citations_valid or c.dispute_state == "disputed" -%}
+    {%- set ns.flagged = ns.flagged + [(s.section, c)] -%}
+  {%- endif -%}
+{%- endfor %}{% endfor -%}
+{%- for s in code_sections %}{% set ns.code = ns.code + (s.conclusions | length) %}{% endfor -%}
+{%- set reviewable = sm.actions | length > 0 -%}
+{#- approvable: the page offers approve or supersede (summary.approve_action);
+    a disputed or citation-failed version under review is only returned or
+    rejected, so nothing on the page may say approval would publish. -#}
+{%- set approvable = sm.approve_action is not none -%}
+{%- if approvable -%}{% set no_approval = none %}
+{%- elif reviewable -%}{% set no_approval = "a statement is under dispute" if sm.disputes else "the citation check failed" %}
+{%- elif v.state == "approved" -%}{% set no_approval = "version " ~ v.version ~ " is already approved" %}
+{%- else -%}{% set no_approval = "version " ~ v.version ~ " is " ~ v.state ~ ", not under review" %}
+{%- endif -%}
+{%- set state_pill = {
+  "under_review": "Waiting for your review", "approved": "Approved", "rejected": "Rejected",
+  "returned": "Returned for revision", "stale": "Stale, not reviewable",
+  "draft": "Citation check failed, not reviewable",
+} -%}
+{%- set inc8 = (page.incident_id | string)[:8] -%}
+
+<p class="crumb"><a href="/" data-list-crumb>Incidents</a> / <a href="/incidents/{{ page.incident_id }}"><code>{{ inc8 }}</code></a> / Postmortem</p>
+<div class="ptitle">
+  <h1>{% if v.state in ("under_review", "draft") %}Postmortem draft, version {{ v.version }}{% else %}Postmortem, version {{ v.version }}{% endif %}</h1>
+  {{ ui.pill(state_pill.get(v.state, v.state), todo=(v.state == "under_review")) }}
+</div>
+<p class="ctx">Incident <a href="/incidents/{{ page.incident_id }}"><code>{{ inc8 }}</code></a>
+  {%- if incident and incident.alert_name %}<span class="sep">·</span><code>{{ incident.alert_name }}</code>{% endif %}
+  {%- if incident and incident.service %}<span class="sep">·</span><code>{{ incident.service }}</code>
+  {%- elif incident and incident.target %}<span class="sep">·</span>target <code>{{ incident.target }}</code>{% endif %}
+  {%- if incident and incident.question and not incident.alert_name %}<span class="sep">·</span>asked: {{ incident.question | truncate(140) }}{% endif %}
+  {%- if not incident or not (incident.alert_name or incident.service or incident.target or incident.question) %}<span class="sep">·</span>{{ ui.missing("subject: no data") }}{% endif %}
+  <span class="sep">·</span>generated {{ ts(v.created_at) }}</p>
+<p class="stored">Stored values: state <code id="version-state">{{ v.state }}</code>
+  {%- if v.stale_reason %} <code id="stale-reason">{{ v.stale_reason }}</code>{% endif %}
+  <span class="sep">·</span>postmortem generation <code id="postmortem-generation">{{ page.generation }}</code>
+  <span class="sep">·</span>latest version {{ page.latest_version }}
+  {%- if v.revises_version %}<span class="sep">·</span>revises <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.revises_version }}">version {{ v.revises_version }}</a>{% endif %}
+  {%- if v.version != page.latest_version %}<span class="sep">·</span><a href="/postmortems/{{ page.postmortem_id }}/versions/{{ page.latest_version }}">open the latest version</a>{% endif %}</p>
+<p class="godec"><a href="#decision">Go to decision</a></p>
 
 {% if error %}
-<div id="review-error" class="unknown">
-  <p><strong>Refused: <code>{{ error.code }}</code></strong> ({{ error.error_class }})
-  {% if error.code == "WATERMARK_MOVED" %}— the incident moved past this version's watermark (reopen, new Run, input or evidence, or a changed recovery verdict): it can no longer be approved and will be regenerated. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a>.
-  {% elif error.error_class == "conflict" %}— the page is out of date{% if error.current_generation is not none %} (current generation {{ error.current_generation }}){% endif %}. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a> and review again.
-  {% elif error.error_class == "refused" %}— this version cannot take that action in its current state.
-  {% elif error.error_class == "invalid" %}— check {{ error.fields | join(", ") if error.fields else "the form" }}.
-  {% elif error.error_class == "unavailable" %}— storage is unavailable; nothing was changed by this page, retry the same form.
+<div id="review-error" class="notice">
+  <p class="nt">Not applied: <code>{{ error.code }}</code> ({{ error.error_class }})</p>
+  <p>{% if error.code == "WATERMARK_MOVED" %}The incident moved past this version's watermark (reopen, new Run, input or evidence, or a changed recovery verdict): it can no longer be approved and will be regenerated. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a>.
+  {% elif error.error_class == "conflict" %}The page is out of date{% if error.current_generation is not none %} (current generation {{ error.current_generation }}){% endif %}. <a href="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}">Reload</a> and review again.
+  {% elif error.error_class == "refused" %}This version cannot take that action in its current state.
+  {% elif error.error_class == "invalid" %}Check {{ error.fields | join(", ") if error.fields else "the form" }}.
+  {% elif error.error_class == "unavailable" %}Storage is unavailable; nothing was changed by this page, retry the same form.
   {% endif %}</p>
 </div>
 {% endif %}
 
+{% if reviewable and sm.approve_action %}
+<p class="task">Decide whether this draft becomes knowledge: approve, return for revision, or reject.</p>
+<p class="lede">Not knowledge yet: OpsPilot uses nothing in this draft until a human approves it here, and approval writes only to OpsPilot's own knowledge store.</p>
+{% elif reviewable %}
+<p class="task">This draft cannot be approved ({% if sm.disputes %}a statement is under dispute{% else %}its citation check failed{% endif %}): return it for revision or reject it.</p>
+<p class="lede">Not knowledge yet: OpsPilot uses nothing in this draft until a human approves a version of it.</p>
+{% elif v.state == "approved" %}
+<p class="task">Version {{ v.version }} was approved; nothing here waits for a decision.</p>
+<p class="lede">Its proposed entries were written to OpsPilot's own knowledge store; see what was published below.</p>
+{% elif v.state == "stale" %}
+<p class="task">Version {{ v.version }} is stale: the incident moved on after it was drafted, so it can no longer be reviewed.</p>
+<p class="lede">The postmortem worker drafts a new version at the incident's current state; review that one.</p>
+{% elif v.state == "draft" %}
+<p class="task">Version {{ v.version }} failed its citation check and was never offered for review.</p>
+<p class="lede">The draft is kept so the failure can be read; the worker retries generation.</p>
+{% else %}
+<p class="task">Version {{ v.version }} was {{ "returned for revision" if v.state == "returned" else v.state }}; nothing here waits for a decision.</p>
+<p class="lede">Nothing from this version was published as knowledge.</p>
+{% endif %}
+
+{#- #652 B2-U2 (user, option a): read from the incident's current report at
+    render time; not stored in this version, not exported, never sent to the
+    drafting model (like the feedback beside the decision). -#}
+{% if root_cause %}
+<p class="irc" id="investigation-root-cause"><span class="irc-k">Investigation root cause</span> <span class="irc-src">from the investigation report · not part of this draft</span><br>
+  <span class="irc-label">{{ root_cause.label }}</span> <code class="irc-obj">{{ root_cause.kind }} {{ root_cause.object }}</code>
+  {%- if root_cause.refs %} <span class="small irc-refs">{% for r in root_cause.refs %}<a href="/incidents/{{ page.incident_id }}/evidence/{{ r.eid }}" title="{{ r.eid }}">{% if r.call %}{{ r.call.tool }} · {% if r.call.step %}step {{ r.call.step }}{% else %}earlier Run{% endif %}{% else %}evidence {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+  {%- if root_cause.changed %}<br><span class="small irc-changed" id="investigation-root-cause-changed">The incident has a newer Run: the report has changed since this draft.</span>{% endif %}</p>
+{% endif %}
+
+<div class="band">
+  <div>
+    <div class="k">The draft</div>
+    <p class="a">{{ ns.model }} statement{{ "" if ns.model == 1 else "s" }} by the model, {{ ns.code }} record section{{ "" if ns.code == 1 else "s" }} by code</p>
+    <p class="s">{{ ns.uncertain }} uncertain · {{ sm.disputes | length }} {% if sm.disputes %}under dispute{% else %}disputes{% endif %} · citation check {{ "failed" if page.citation_errors else "passed" }}</p>
+    {% call ui.source("agent") %}Model (postmortem worker) · checked by code{% endcall %}
+  </div>
+  <div>
+    <div class="k">Generated from</div>
+    <p class="a">{{ v.run_count }} investigation Run{{ "" if v.run_count == 1 else "s" }} and the Recovery watch</p>
+    <p class="s">{% if page.catalog_entries is not none %}{{ page.catalog_entries }} evidence catalog entries in the input{% else %}evidence catalog {{ ui.missing() }}{% endif %}
+      · {% if g and g.input_bytes is defined %}{{ "{:,}".format(g.input_bytes) }} input bytes{% else %}input size {{ ui.missing() }}{% endif %}</p>
+    {{ ui.source("code", "Stored records") }}
+  </div>
+  <div>
+    <div class="k">{% if approvable %}Approval would publish{% else %}Proposed knowledge{% endif %}</div>
+    <p class="a">{{ sm.proposals }} knowledge entr{{ "y" if sm.proposals == 1 else "ies" }}{% if sm.replaces %}, {{ sm.replaces }} replacing an existing one{% endif %}</p>
+    {% if approvable %}<p class="s">Read by later investigations as hints · no change to any production system</p>
+    {% else %}<p class="s">Approval is not available: {{ no_approval }}.</p>{% endif %}
+    {{ ui.source("agent", "Proposed by Model (postmortem worker)") }}
+  </div>
+</div>
+
+<div class="cols">
+<div class="main">
+
+<h2>What the model wrote <span class="q">read before deciding</span></h2>
+<ul class="lines">
+  <li>{% call ui.source("agent") %}Written by Model (postmortem worker){% if g %}: <code>{{ g.model }}</code>, {{ g.model_requests }} of {{ g.max_model_requests }} model requests{% if g.repaired %}, repaired once{% endif %}{% endif %}{% endcall %}</li>
+  <li>{% call ui.source("code") %}Citation check (code): {% if page.citation_errors %}failed for {{ page.citation_errors | length }} statement{{ "" if page.citation_errors | length == 1 else "s" }}{% else %}passed · every cited evidence id is in the input{% endif %}{% if not sm.disputes %} · no statement under dispute{% endif %}{% endcall %}</li>
+</ul>
+<p class="counts"><b>{{ ns.supported }}</b> supported fact{{ "" if ns.supported == 1 else "s" }} · <b>{{ ns.uncertain }}</b> uncertain · <b>{{ sm.disputes | length }}</b> under dispute</p>
+
+{% if ns.flagged %}
+<h3>{% if approvable %}Check before approving{% else %}Flagged statements{% endif %} ({{ ns.flagged | length }})</h3>
+<p class="small">Every statement whose certainty is not &ldquo;supported&rdquo;, whose citations are invalid, or that is under dispute.{% if ns.model > ns.flagged | length %} The other {{ ns.model - ns.flagged | length }} are supported facts.{% endif %}</p>
+<ul class="chk">
+  {% for section, c in ns.flagged %}
+  <li><span class="why">{% if c.dispute_state == "disputed" %}disputed{% elif not c.citations_valid %}citations invalid{% else %}{{ c.certainty }}{% endif %}</span>
+    <span class="sec">{{ section_names.get(section, (section, ""))[0] }}</span>
+    <span class="ex">{{ c.body }}</span>
+    <a href="#conclusion-{{ c.conclusion_key }}">Go to statement</a></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
 {% if sm.disputes %}
-<section id="disputes" class="counter">
-  <h2>Disputed ({{ sm.disputes | length }}) <span class="muted">— a disputed version cannot be approved; return or reject it</span></h2>
-  <ul>{% for d in sm.disputes %}<li><code>{{ d.conclusion_key }}</code>: {{ d.reason }} <span class="muted">raised by <code>{{ d.raised_by }}</code> ({{ d.raised_by_kind }}) at {{ d.raised_at }}</span></li>{% endfor %}</ul>
+<section id="disputes">
+  <h3>Disputed ({{ sm.disputes | length }}) <span class="q">a disputed version cannot be approved; return or reject it</span></h3>
+  <ul class="dl">{% for d in sm.disputes %}<li><a href="#conclusion-{{ d.conclusion_key }}"><code>{{ d.conclusion_key }}</code></a>: {{ d.reason }} <span class="muted">raised by <code>{{ d.raised_by }}</code> ({{ d.raised_by_kind }}) at {{ d.raised_at }}</span></li>{% endfor %}</ul>
 </section>
 {% endif %}
 {% if page.citation_errors %}
-<section id="citation-errors" class="unknown">
-  <h2>Citation check failed <span class="muted">— this draft cannot be reviewed</span></h2>
-  <ul>{% for key, codes in page.citation_errors.items() %}<li><code>{{ key }}</code>: {% for c in codes %}<code>{{ c }}</code> {% endfor %}</li>{% endfor %}</ul>
+<section id="citation-errors">
+  <h3>Citation check failed <span class="q">this draft cannot be approved</span></h3>
+  <ul class="dl">{% for key, codes in page.citation_errors.items() %}<li><a href="#conclusion-{{ key }}"><code>{{ key }}</code></a>: {% for c in codes %}<code>{{ c }}</code> {% endfor %}</li>{% endfor %}</ul>
 </section>
 {% endif %}
 
-<h2>Review</h2>
-{% if sm.actions %}
-<p class="muted">Every action is a conditional update against postmortem generation {{ page.generation }}; a stale form is refused, never applied. Your identity comes from your sign-in.</p>
-{% if sm.approve_action == "supersede" %}
-<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-supersede">
-  <input type="hidden" name="action" value="supersede">
-  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
-  <input type="hidden" name="idempotency_key" value="supersede-{{ page.generation }}-{{ form_nonce }}">
-  {% for t in page.targets %}<input type="hidden" name="entry_generation:{{ t.entry_id }}" value="{{ t.generation }}">{% endfor %}
-  <button type="submit">supersede (approve and replace {{ page.targets | length }} existing entr{{ "y" if page.targets | length == 1 else "ies" }})</button>
-</form>
-{% elif sm.approve_action == "approve" %}
-<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-approve">
-  <input type="hidden" name="action" value="approve">
-  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
-  <input type="hidden" name="idempotency_key" value="approve-{{ page.generation }}-{{ form_nonce }}">
-  <button type="submit">approve</button>
-</form>
-{% endif %}
-{% for action in ("return", "reject") %}{% if action in sm.actions %}
-<form class="inline" method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-{{ action }}">
-  <input type="hidden" name="action" value="{{ action }}">
-  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
-  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ page.generation }}-{{ form_nonce }}">
-  <input name="reason" placeholder="{{ 'what to revise' if action == 'return' else 'why reject' }}" required maxlength="8192">
-  <button type="submit">{{ "return for revision" if action == "return" else "reject" }}</button>
-</form>
-{% endif %}{% endfor %}
-{% if not sm.approve_action %}<p class="muted" id="no-approval">Approval is not offered: {% if sm.disputes %}disputed{% else %}citation check failed{% endif %}.</p>{% endif %}
-{% else %}
-<p class="muted" id="no-review">No review action: version is <code>{{ v.state }}</code>{% if v.state == "draft" %} (citation check failed, never reviewable){% endif %}.</p>
-{% endif %}
+{%- macro statement(c, number=none, code=false) -%}
+<li class="stmt" id="conclusion-{{ c.conclusion_key }}">
+  {%- if not code %}<span class="no">{{ number }}</span>{% endif %}
+  <span class="cert {{ c.certainty }}"><i aria-hidden="true"></i>{{ c.certainty }}</span>
+  <div class="bd">
+    {%- if code %}<pre>{{ c.body }}</pre>{% else %}<p class="tx">{{ c.body }}</p>{% endif %}
+    {%- if not c.citations_valid %}<span class="flag">citations invalid</span>{% endif %}
+    {%- if c.dispute_state == "disputed" %}<span class="flag">disputed</span>{% endif %}
+    <div class="mt"><code>{{ c.conclusion_key }}</code> · written by {{ c.author }}
+    {%- if c.evidence_refs %} · {{ c.evidence_refs | length }} evidence reference{{ "" if c.evidence_refs | length == 1 else "s" }}{% endif %}</div>
+    {%- if c.evidence_refs %}
+    <ul class="refs">
+      {%- for ref in c.evidence_refs %}
+      <li><a href="/incidents/{{ page.incident_id }}/evidence/{{ ref.evidence_id }}"><code>{{ ref.evidence_id }}</code></a> {{ ref.scope }} <span class="mono">{{ ref.window_start }} → {{ ref.window_end }}</span>{% if not ref.citable_as_fact %} (not citable as fact){% endif %}</li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+  </div>
+</li>
+{%- endmacro %}
+
+{% for s in model_sections %}
+{%- set name, note = section_names.get(s.section, (s.section, "")) -%}
+{%- set checks = ns.flagged | selectattr("0", "eq", s.section) | list | length -%}
+<section>
+  <div class="sh"><h3>{{ name }}</h3>
+    <span class="n">{{ s.conclusions | length }} · {% if checks %}{{ checks }} to check{% else %}all supported{% endif %}</span>
+    {% if note %}<span class="q small">{{ note }}</span>{% endif %}</div>
+  <ol class="stmts">
+  {% for c in s.conclusions %}{{ statement(c, c.ordinal) }}{% endfor %}
+  </ol>
+</section>
+{% endfor %}
+{% if not model_sections %}<p class="small">{{ ui.missing("no model statements") }} this version carries no statement by the model.</p>{% endif %}
+
+<h3>{% if approvable %}Entries approval would publish{% else %}Proposed knowledge entries{% endif %} ({{ v.proposals | length }}) <span class="q">proposed by Model (postmortem worker)</span></h3>
+{% if v.proposals %}
+<ul class="props" id="proposals">
+  {% for p in v.proposals %}
+  <li><span class="nm">{{ p.name }}</span>
+    <div class="meta"><code>{{ p.proposal_key }}</code> ·
+      {% if p.supersedes_entry_id %}replaces <a href="/knowledge/{{ p.supersedes_entry_id }}"><code>{{ p.supersedes_entry_id }}</code></a>{% else %}new entry{% endif %}
+      · tags {% for t in p.tags %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</div>
+    {% call ui.fold("Show content") %}<pre>{{ p.content }}</pre>{% endcall %}</li>
+  {% endfor %}
+</ul>
+{% else %}<p class="small">This version proposes no knowledge entry.</p>{% endif %}
 
 {% if page.targets %}
 <h3>Existing knowledge this version replaces</h3>
-<ul id="supersede-targets">
+<ul class="dl" id="supersede-targets">
   {% for t in page.targets %}
   <li><a href="/knowledge/{{ t.entry_id }}"><code>{{ t.entry_id }}</code></a> (proposal <code>{{ t.proposal_key }}</code>) · entry generation {{ t.generation }} · latest revision {{ t.latest_revision }}
     {% if t.active %}· active: {{ t.active.name }} (revision {{ t.active.revision }}){% else %}· <span class="muted">no active revision</span>{% endif %}</li>
@@ -85,70 +362,170 @@
 </ul>
 {% endif %}
 
-{% for s in page.sections %}
-<section class="{{ 'facts' if s.section in ('incident', 'timeline', 'runs', 'human_actions', 'recovery') else 'hypotheses' }}">
-  <h2>{{ s.section }}</h2>
-  <ul>
-  {% for c in s.conclusions %}
-    <li id="conclusion-{{ c.conclusion_key }}"><pre>{{ c.body }}</pre>
-      <span class="badge">{{ c.author }}</span> <span class="badge">{{ c.certainty }}</span>
-      {% if not c.citations_valid %}<strong>citations invalid</strong>{% endif %}
-      {% if c.dispute_state == "disputed" %}<strong>disputed</strong>{% endif %}
-      {% if c.evidence_refs %}<br><span class="muted">evidence:</span>
-        {% for ref in c.evidence_refs %}
-          <a href="/incidents/{{ page.incident_id }}/evidence/{{ ref.evidence_id }}"><code>{{ ref.evidence_id }}</code></a>
-          <span class="muted">{{ ref.scope }} {{ ref.window_start }} → {{ ref.window_end }}{% if not ref.citable_as_fact %} (not citable as fact){% endif %}</span>
-        {% endfor %}
-      {% endif %}
-    </li>
+<h2>What it was generated from <span class="q">{{ ui.source("code", "Assembled by code from stored records, no model") }}</span></h2>
+<p class="small">These {{ code_sections | length }} sections are part of the draft, written by code from the incident's records at the version's watermark.</p>
+{% if code_sections %}
+<ul class="gen">
+  {% for s in code_sections %}
+  <li>{% call ui.fold(section_names.get(s.section, (s.section, ""))[0]) %}<ol class="stmts">{% for c in s.conclusions %}{{ statement(c, code=true) }}{% endfor %}</ol>{% endcall %}</li>
   {% endfor %}
-  </ul>
-</section>
-{% endfor %}
+</ul>
+{% else %}<p class="small">{{ ui.missing("no record sections") }}</p>{% endif %}
 
-<h2>Proposed knowledge ({{ v.proposals | length }})</h2>
-{% if v.proposals %}
-<table id="proposals">
-  <thead><tr><th>Key</th><th>Name</th><th>Tags</th><th>Replaces</th><th>Content</th></tr></thead>
+<h2>Versions <span class="q">newest first · one reviewable version per incident state</span></h2>
+<div class="tw"><table id="pm-versions">
+  <thead><tr><th>Version</th><th>State</th><th>Revises</th><th>Statements</th><th>Disputes</th><th>Proposals</th><th>Generated</th></tr></thead>
   <tbody>
-  {% for p in v.proposals %}
-  <tr><td><code>{{ p.proposal_key }}</code></td><td>{{ p.name }}</td><td>{% for t in p.tags %}<code>{{ t }}</code> {% endfor %}</td>
-      <td>{% if p.supersedes_entry_id %}<a href="/knowledge/{{ p.supersedes_entry_id }}"><code>{{ p.supersedes_entry_id }}</code></a>{% else %}<span class="muted">new entry</span>{% endif %}</td>
-      <td><pre>{{ p.content }}</pre></td></tr>
+  {% for r in page.versions %}
+  <tr><td>{% if r.version == v.version %}<b>{{ r.version }}</b>{% else %}<a href="/postmortems/{{ page.postmortem_id }}/versions/{{ r.version }}">{{ r.version }}</a>{% endif %}</td>
+    <td>{% if r.version == v.version %}this page · {% endif %}{{ r.state }}{% if r.stale_reason %} <code>{{ r.stale_reason }}</code>{% endif %}</td>
+    <td>{{ r.revises_version or "" }}</td>
+    <td>{{ r.conclusions }}{% if r.uncertain %} ({{ r.uncertain }} uncertain){% endif %}</td>
+    <td>{{ r.disputes | length }}</td><td>{{ r.proposals }}</td>
+    <td><span class="mono">{{ ts(r.created_at) }}</span><br>by <code>{{ r.generated_by }}</code></td></tr>
   {% endfor %}
   </tbody>
-</table>
-{% else %}<p class="muted">none</p>{% endif %}
+</table></div>
+{% if page.versions_total > page.versions | length %}<p class="small">Showing the latest {{ page.versions | length }} of {{ page.versions_total }} versions.</p>{% endif %}
 
-{% if page.published %}
-<h3>Published from this version <span class="muted">(review history; only an active revision is returned to a knowledge read)</span></h3>
-<ul id="published">
-  {% for k in page.published %}<li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %}</li>{% endfor %}
-</ul>
+<h2>Generation attempts <span class="q">{{ ui.source("agent", "Model (postmortem worker) requests") }}{% if page.schedule %} · consecutive failures {{ page.schedule.consecutive_failures }}{% if page.schedule.lease_active %} · generating now{% endif %}{% if page.schedule.pending_regeneration_version %} · regeneration pending for version {{ page.schedule.pending_regeneration_version }}{% endif %}{% endif %}</span></h2>
+{% if page.attempts %}
+<div class="tw"><table id="pm-attempts">
+  <thead><tr><th>Attempt</th><th>Result</th><th>Error</th><th>Wrote</th><th>Requests</th><th>Started → finished</th><th>Per request: finish · tokens · outcome</th></tr></thead>
+  <tbody>
+  {% for a in page.attempts %}
+  <tr><td><code title="{{ a.attempt_id }}">{{ (a.attempt_id | string)[:8] }}</code></td><td>{{ a.status }}</td><td>{% if a.error_code %}<code>{{ a.error_code }}</code>{% endif %}</td>
+    <td>{% if a.version %}v{{ a.version }}{% endif %}{% if a.revises_version %} <span class="muted">revises {{ a.revises_version }}</span>{% endif %}</td>
+    <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td>
+    <td class="mono">{{ ts(a.started_at) }} → {% if a.finished_at %}{{ ts(a.finished_at) }}{% endif %}</td>
+    <td class="calls-c">{% if a.model_calls %}<ol class="calls">{% for c in a.model_calls %}<li>{{ c.purpose }} · finish <code>{{ c.finish_reason if c.finish_reason is not none else "unknown" }}</code>
+      · prompt {{ c.prompt_tokens if c.prompt_tokens is not none else "unknown" }}
+      · completion {{ c.completion_tokens if c.completion_tokens is not none else "unknown" }}
+      (reasoning {{ c.reasoning_tokens if c.reasoning_tokens is not none else "unknown" }} / visible {{ c.visible_completion_tokens if c.visible_completion_tokens is not none else "unknown" }})
+      · {{ c.outcome }}{% if c.problems %} · {% for p in c.problems %}<code>{{ p }}</code> {% endfor %}{% endif %}</li>{% endfor %}</ol>{% else %}<span class="muted">unknown</span>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if page.attempts | length >= page.attempts_cap %}<p class="small">Showing the latest {{ page.attempts_cap }} attempts of this incident.</p>{% endif %}
+{% else %}<p class="small">No attempt is recorded for this incident.</p>{% endif %}
+{% if g %}
+{% call ui.fold("Generation record of version " ~ v.version) %}
+<dl class="kv" id="generation-record">
+  <dt>Model</dt><dd>{{ g.model }}{% if g.response_model %} (response {{ g.response_model }}){% endif %}</dd>
+  <dt>Model requests</dt><dd>{{ g.model_requests }} / {{ g.max_model_requests }}{% if g.repaired %} · repaired once{% endif %}</dd>
+  <dt>Profile</dt><dd>{{ g.model_profile }}</dd>
+  <dt>Prompt · output · input</dt><dd>{{ g.prompt_version }} · {{ g.output_schema_version }} · {{ g.input_policy_version }}</dd>
+  {% if g.return_reason %}<dt>Returned with</dt><dd>{{ g.return_reason }}</dd>{% endif %}
+</dl>
+{% endcall %}
 {% endif %}
 
-{% set g = page.generation_record %}
-{% if g %}
-<h2>Generation</h2>
-<p class="muted" id="generation-record">model <code>{{ g.model }}</code>{% if g.response_model %} (response <code>{{ g.response_model }}</code>){% endif %}
-  · profile <code>{{ g.model_profile }}</code> · prompt <code>{{ g.prompt_version }}</code> · output schema <code>{{ g.output_schema_version }}</code>
-  · input policy <code>{{ g.input_policy_version }}</code> · model requests {{ g.model_requests }} / {{ g.max_model_requests }}
-  {% if g.repaired %}· repaired once{% endif %}
-  {% if g.return_reason %}<br>returned with: {{ g.return_reason }}{% endif %}</p>
+<h2>Published knowledge <span class="q">what later investigations can read from this version</span></h2>
+{% if page.published %}
+<p class="small">Review history; only an active revision is returned to a knowledge read.</p>
+<ul class="dl" id="published">
+  {% for k in page.published %}<li{% if k.state != "active" %} class="muted"{% endif %}><a href="/knowledge/{{ k.entry_id }}">{{ k.name }}</a> revision {{ k.revision }} <span class="badge">{{ k.state }}</span>{% if k.state != "active" %} not retrievable{% endif %}</li>{% endfor %}
+</ul>
+{% else %}<p class="small">Nothing published from this version.</p>{% endif %}
+
+<h2>Identifiers and integrity <span class="q">for auditing</span></h2>
+{% call ui.fold("Version " ~ v.version ~ " watermark and hashes") %}
+<p class="wm">control generation {{ v.incident_control_generation }} · observation generation {{ v.observation_generation }} · runs {{ v.run_count }} · input {{ v.input_watermark }} · evidence snapshot {{ v.evidence_snapshot_sha256 }}</p>
+<dl class="kv">
+  <dt>Postmortem</dt><dd>{{ page.postmortem_id }}</dd>
+  <dt>Incident</dt><dd>{{ page.incident_id }}</dd>
+  <dt>Generated by</dt><dd>{{ v.generated_by }} ({{ v.generated_by_kind }}) at {{ v.created_at }}</dd>
+  <dt>Content sha256</dt><dd>{{ v.content_sha256 }}</dd>
+  {% if g and g.input_sha256 %}<dt>Input sha256</dt><dd>{{ g.input_sha256 }}</dd>{% endif %}
+</dl>
+{% endcall %}
+<div style="margin-top:10px">
+{% call ui.fold("Postmortem events") %}
+{% if page.events %}
+<ul class="ev" id="pm-events">
+  {% for e in page.events %}
+  <li><span class="t">#{{ e.sequence }} {{ ts(e.recorded_at) }}</span>
+    <span>{{ e.kind }}{% if e.version is not none %} · version {{ e.version }}{% endif %}{% if e.entry_id %} · entry <code>{{ (e.entry_id | string)[:8] }}</code> revision {{ e.revision }}{% endif %}{% if e.state %} · {{ e.state }}{% endif %}{% if e.generation is not none %} · generation {{ e.generation }}{% endif %}{% if e.reason %} · {{ e.reason }}{% endif %}</span></li>
+  {% endfor %}
+</ul>
+{% if page.events_more %}<p class="small">Showing the latest {{ page.events | length }} postmortem events.</p>{% endif %}
+{% else %}<p class="small">No postmortem event{% if page.events_window %} among the incident's latest {{ page.events_window }} events{% endif %}.</p>{% endif %}
+{% if page.events_window %}<p class="small">Read from the incident's latest {{ page.events_window }} events; earlier events are not shown.</p>{% endif %}
+{% endcall %}
+</div>
+
+</div>
+
+<aside id="decision">
+{#- Workbench P5 F11 (user, option A): the incident's feedback, for the
+    reviewer only; the drafting model never saw it. -#}
+<section class="pfb" id="feedback" aria-labelledby="h-pfb">
+<h2 id="h-pfb">Feedback on the investigation</h2>
+{% if feedback %}
+<p class="pfbv" id="feedback-current" data-verdict="{{ feedback.verdict }}"><b>{{ feedback.verdict_words }}</b>{% if feedback.steering_needed is sameas true %} · steering was needed{% elif feedback.steering_needed is sameas false %} · no steering needed{% endif %}{% if feedback.next_steps_words %} · {{ feedback.next_steps_words | lower }}{% endif %}</p>
+{% if feedback.actual_root_cause %}<p class="small">Actual root cause</p><p class="pfbt" id="feedback-actual">{{ feedback.actual_root_cause }}</p>{% endif %}
+{% if feedback.correct_next_steps %}<p class="small">What the next steps should have been</p><p class="pfbt">{{ feedback.correct_next_steps }}</p>{% endif %}
+{% if feedback.notes %}<p class="small">Notes</p><p class="pfbt">{{ feedback.notes }}</p>{% endif %}
+<p class="small" id="feedback-meta">by {{ feedback.updated_by }} · {{ (feedback.updated_at or "")[:16] | replace("T", " ") }} UTC</p>
+<p class="small">Shown to reviewers; not sent to the drafting model. If it disagrees with the draft, return or reject the version.</p>
+{% else %}
+<p class="small" id="feedback-none">No one has rated the investigation's root cause. Feedback is added on the <a href="/incidents/{{ page.incident_id }}#feedback">incident page</a>.</p>
+{% endif %}
+</section>
+<h2>Your decision</h2>
+{% if sm.actions %}
+<p class="small">None of these actions touches the investigated system.{% if ns.flagged %} {{ ns.flagged | length }} statement{{ " is" if ns.flagged | length == 1 else "s are" }} flagged; see <a href="#conclusion-{{ ns.flagged[0][1].conclusion_key }}">the first one</a>.{% endif %}</p>
+{% if sm.approve_action == "supersede" %}
+<div class="dec">
+<form method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-supersede">
+  <input type="hidden" name="action" value="supersede">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="supersede-{{ page.generation }}-{{ form_nonce }}">
+  {% for t in page.targets %}<input type="hidden" name="entry_generation:{{ t.entry_id }}" value="{{ t.generation }}">{% endfor %}
+  <button type="submit" class="btn primary">Approve and replace {{ page.targets | length }} existing entr{{ "y" if page.targets | length == 1 else "ies" }}</button>
+</form>
+<p>Marks version {{ v.version }} approved, publishes its {{ sm.proposals }} proposed entr{{ "y" if sm.proposals == 1 else "ies" }} and replaces the active revision of the entries listed under &ldquo;Existing knowledge this version replaces&rdquo;.</p>
+</div>
+{% elif sm.approve_action == "approve" %}
+<div class="dec">
+<form method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-approve">
+  <input type="hidden" name="action" value="approve">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="approve-{{ page.generation }}-{{ form_nonce }}">
+  <button type="submit" class="btn primary">Approve and publish {{ sm.proposals }} entr{{ "y" if sm.proposals == 1 else "ies" }}</button>
+</form>
+<p>Marks version {{ v.version }} approved and adds its proposed entries to OpsPilot's knowledge store, where later investigations may read them as hints.</p>
+</div>
+{% endif %}
+{% for action in ("return", "reject") %}{% if action in sm.actions %}
+<div class="dec">
+<form method="post" action="/postmortems/{{ page.postmortem_id }}/versions/{{ v.version }}/review" id="form-{{ action }}">
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="expected_generation" value="{{ page.generation }}">
+  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ page.generation }}-{{ form_nonce }}">
+  <input name="reason" placeholder="{{ 'what to revise' if action == 'return' else 'why reject' }}" required maxlength="8192">
+  <button type="submit">{{ "Return for revision" if action == "return" else "Reject" }}</button>
+</form>
+{% if action == "return" %}<p>Version {{ v.version }} stays read-only; the postmortem worker drafts a new version from the same records plus your reason. Nothing is published.</p>
+{% else %}<p>Final for version {{ v.version }}. Nothing is published, and no new draft is made unless the incident changes (reopen, new Run, input or evidence).</p>{% endif %}
+</div>
+{% endif %}{% endfor %}
+{% if not sm.approve_action %}<p class="small" id="no-approval">Approval is not offered: {% if sm.disputes %}disputed{% else %}citation check failed{% endif %}.</p>{% endif %}
+<p class="small">Each form is checked against postmortem generation {{ page.generation }}; a stale form is refused, never applied. Your identity comes from your sign-in (<code>{{ principal.actor_id }}</code>).</p>
+{% else %}
+<p class="small" id="no-review">No review action: version is <code>{{ v.state }}</code>{% if v.state == "draft" %} (citation check failed, never reviewable){% endif %}.</p>
 {% endif %}
 
 <h2>Review history</h2>
 {% if page.audit %}
-<table id="review-history">
-  <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Generation</th><th>Reason</th></tr></thead>
-  <tbody>
+<ul class="hist" id="review-history">
   {% for a in page.audit %}
-  <tr><td>{{ a.recorded_at }}</td><td><code>{{ a.action }}</code></td><td><code>{{ a.actor_id }}</code> ({{ a.principal_kind }})</td>
-      <td>{{ a.expected_generation }} → {{ a.resulting_generation }}</td><td>{{ a.reason or "" }}</td></tr>
+  <li><span class="t">{{ ts(a.recorded_at) }}</span><br>{{ ui.source("human", a.action) }} by <code>{{ a.actor_id }}</code> ({{ a.principal_kind }}) · generation {{ a.expected_generation }} → {{ a.resulting_generation }}{% if a.reason %}<br><span class="muted">{{ a.reason }}</span>{% endif %}</li>
   {% endfor %}
-  </tbody>
-</table>
-{% else %}<p class="muted">none</p>{% endif %}
+</ul>
+{% else %}<p class="small">No review decision yet.</p>{% endif %}
+</aside>
+</div>
 
 <script>
 (function () {
@@ -159,4 +536,5 @@
   });
 })();
 </script>
+{{ ui.list_crumb_script() }}
 {% endblock %}

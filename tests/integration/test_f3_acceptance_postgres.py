@@ -83,18 +83,7 @@ from opspilot.web import (
     create_app,
 )
 from opspilot.web.store import MappingTargetRegistry
-from tests.acceptance.f7_pg_support import (
-    MODEL_KEY,
-    POOL,
-    UI,
-    ScriptedProvider,
-    _auth,
-    assistant,
-    fn,
-    scratch_database,
-    tool_views,
-)
-from tests.acceptance.test_f3_step5_rubric_gates import (
+from tests.acceptance.f3_step5_rubric_gates_support import (
     STIMULUS,
     answer,
     gate4_problems,
@@ -106,6 +95,17 @@ from tests.acceptance.test_f3_step5_rubric_gates import (
     signature_matches,
     step1_problems,
     step2_problems,
+)
+from tests.acceptance.f7_pg_support import (
+    MODEL_KEY,
+    POOL,
+    UI,
+    ScriptedProvider,
+    _auth,
+    assistant,
+    fn,
+    scratch_database,
+    tool_views,
 )
 from tests.m1_web_support import basic, bearer, call, post_form, post_json
 from tests.test_m1_otel_demo_contract import FakeOpener
@@ -535,7 +535,8 @@ def competing(env) -> dict[str, Any]:
     run_before = env["store"].rebuild(incident)["run"]["run_id"]
     text = _follow_up_text(env["starts"] - timedelta(minutes=8))
     answered = _control(env, incident, "follow_up", 0, text=text)
-    assert answered["generation"] == 1, answered
+    # Workbench contract A1/B3: the message moves no generation.
+    assert answered["generation"] == 0, answered
     provider = ScriptedProvider(
         [
             assistant(
@@ -566,7 +567,7 @@ def competing(env) -> dict[str, Any]:
 def test_step5_alert_follow_up_and_one_run_published(competing) -> None:
     sc = scenario(5, "competing-cause", str(competing["incident"]))
     record = competing["record"]
-    assert scenario_shape_problems(record) == [], sc
+    assert scenario_shape_problems(record, expected_generation=0) == [], sc
     assert record["run_id"] == str(competing["run_before"]), sc
     assert record["outcome"]["final_state"] == "completed", record["outcome"]
 

@@ -42,8 +42,6 @@ from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools.executor import (
-    MAX_OPERATIONS_PER_RUN,
-    MAX_TOOL_SECONDS_PER_RUN,
     Clock,
     ControlSnapshot,
     EvidenceSink,
@@ -313,12 +311,7 @@ def fixture_executor_factory(
             evidence=evidence,
             control=_EchoControl(),
             clock=clock,
-            ledger=DurableToolLedger(
-                store,
-                lease,
-                max_operations=MAX_OPERATIONS_PER_RUN,
-                max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
-            ),
+            ledger=DurableToolLedger(store, lease),
         )
 
     return factory

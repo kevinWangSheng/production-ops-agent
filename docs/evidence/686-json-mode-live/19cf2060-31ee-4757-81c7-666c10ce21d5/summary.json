@@ -1,0 +1,289 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "19cf2060-31ee-4757-81c7-666c10ce21d5",
+  "frozen_at": "2026-11-17T18:49:24.655622+00:00",
+  "incident_id": "3ed7691e-d7b8-402f-bd56-6d42e4d3a1e2",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-17T18:48:46.357475+00:00",
+  "ended": "2026-11-17T18:49:17.804363+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "fixture",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "RESPONSE_INVALID",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      },
+      {
+        "label": "after-message",
+        "status": "handed_off",
+        "reason": "RESPONSE_INVALID",
+        "handoff_reasons": [
+          "RESPONSE_INVALID"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff",
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 3,
+    "http_count": 4,
+    "prompt_tokens": 12534,
+    "completion_tokens": 5660,
+    "run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 13.865924876183271,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "current_run_id": "f6013abf-cb17-41b3-8a92-15f4ac85d213",
+    "current_run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 2,
+      "model_seconds_used": 17.035039874725044,
+      "tool_operations_used": 0,
+      "tool_seconds_used": 0.0
+    },
+    "evidence_ids": [
+      "e59d9075-9da0-42d7-8bfe-aaa22936baea-t0:83355825-ee34-4851-95e0-8cb660a27bd4",
+      "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.077032
+  },
+  "report": {
+    "note": "Re-queried the only authorized expression rate(http_errors[5m]) on checkout-prod to refresh current state against the carried evidence before answering and reporting.",
+    "replies": [
+      {
+        "to_input_seq": 1,
+        "text": "你好！本次运行中我重新查询了授权目标 checkout-prod 的 rate(http_errors[5m])，返回单个聚合值 http_errors_rate = 0.042（result_count=1，data_as_of 2026-09-14T00:00:00+00:00，位于授权窗口 2026-09-14T00:00:00Z–2026-09-14T01:00:00Z 内）。该视图没有任何 service/operation/状态码标签，也没有请求速率分母和同期基线，因此目前无法确认“错误升高”，只能作为未验证的假设。其余依赖 traces、kubernetes_state、pod_logs、change_history 的证据在本 Run 中未集成，无法追查下游依赖。完整结论（inconclusive）与缺口见报告。",
+        "evidence_ids": [
+          "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+        ]
+      }
+    ],
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "inconclusive",
+      "summary": "Re-query of the single authorized expression rate(http_errors[5m]) against target checkout-prod returned exactly one aggregate sample: metric http_errors_rate = 0.042, result_count 1, data_as_of 2026-09-14T00:00:00+00:00, within the authorized window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z (freshness_seconds 5597341.86, i.e. the reading is roughly 64.8 days older than the observation time 2026-11-17T18:49:01Z). This reproduces the carried observation (http_errors_rate 0.042) with a fresh view rather than revising it. Because the view is a single unlabeled aggregate with no total-request-rate denominator and no preceding comparison window, the claim that checkout HTTP errors are 'elevated' remains an unverified hypothesis rather than an established fact, and no failing operation, status code or dependency can be named. No other metric expression is authorized in this Run, and traces, kubernetes_state, pod_logs and change_history are not integrated, so no causal or dependency investigation and no root-cause object could be established.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "For target checkout-prod, the authorized expression rate(http_errors[5m]) returned a single series: metric http_errors_rate with value 0.042, result_count 1 and returned_count 1, with data_as_of 2026-09-14T00:00:00+00:00 inside the authorized window 2026-09-14T00:00:00Z to 2026-09-14T01:00:00Z.",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The same query view reports freshness_seconds 5597341.86 and observed_at 2026-11-17T18:49:01.856809+00:00, so the returned sample (data_as_of 2026-09-14T00:00:00+00:00) is approximately 64.8 days older than the observation time; currency of the reading relative to the incident question is therefore not confirmed by the data itself.",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The returned view contains one value for http_errors_rate with no service, operation, HTTP status code or route label dimensions and no total-request-rate series, so the view itself cannot show which checkout operation failed or produce an error ratio.",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "Counter-evidence against treating the question's premise as established: the single returned sample (http_errors_rate 0.042) is reported at data_as_of 2026-09-14T00:00:00+00:00, equal to the window start, and the view contains no preceding comparison period, so this view supplies no reference point against which elevation of checkout HTTP errors could be demonstrated.",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "Checkout HTTP errors may be elevated relative to normal operation on checkout-prod, but this is untested: the Run contains no baseline or preceding comparison window, no request-rate denominator for an error ratio, and a single aggregate sample, so the magnitude 0.042 has no reference point (no latency or error trend may be inferred).",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "If checkout errors are genuinely elevated, a dependency of the checkout service would be a plausible contributing cause; this remains untested because trace span data (including the parent references needed to establish call edges) is not integrated in this Run, so no dependency of checkout can be named or investigated.",
+          "evidence_ids": [
+            "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+          ],
+          "target_refs": [
+            "checkout-prod"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "No baseline or preceding comparison window is available, so elevation of http_errors_rate 0.042 on checkout-prod is unverified.",
+        "The metric payload is unlabeled and aggregate: no service, operation, HTTP status code or route breakdown exists in the returned view, so no specific failing operation can be named.",
+        "No total request-rate series is available among the authorized expressions (only rate(http_errors[5m])), so an error ratio cannot be computed.",
+        "Only one sample was returned for the authorized hour (data_as_of equals the window start); the rest of 2026-09-14T00:00–01:00 is unknown, and missing points are unknown rather than zero.",
+        "freshness_seconds 5597341.86 indicates the metric data is roughly 64.8 days older than the observation time, so the scrape pipeline's currency is unconfirmed.",
+        "The traces integration is missing: no spans, error spans, service identity attribution or parent-child call edges were available to investigate checkout dependencies.",
+        "The kubernetes_state integration is missing: no Pod/Deployment/Service status, readiness or restart evidence was available.",
+        "The pod_logs integration is missing: no application error logs or exception text were available.",
+        "The change_history integration is missing: no deployment, configuration or rollout changes during the window could be checked.",
+        "No other authorized target or metric expression is queryable, so neither downstream impact nor health of any other service could be verified or ruled out."
+      ],
+      "next_steps": [
+        "Provide a baseline window (for example the same hour on prior days) or a longer range for rate(http_errors[5m]) on checkout-prod before calling errors elevated.",
+        "Expose request-rate and label dimensions (service, operation, status code, route) so an error ratio and the specific failing operation can be identified.",
+        "Integrate traces with parent references to attribute error spans and dependency call edges, then investigate the dependency that carries the errors.",
+        "Integrate kubernetes_state, pod_logs and change_history to test whether a restart, failed readiness, exception pattern or recent change coincides with the window.",
+        "Confirm the metric scrape pipeline is current, given the ~64.8-day data freshness gap."
+      ],
+      "root_cause": null
+    }
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "conclusion:g0:ctx0:round-2"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 2,
+    "next_round": 3,
+    "evidence_ids": [
+      "e59d9075-9da0-42d7-8bfe-aaa22936baea-t0:83355825-ee34-4851-95e0-8cb660a27bd4",
+      "206b4746-4d28-472c-b831-508632b7faec-t0:96792082-0243-403d-840c-df9931ec94f5"
+    ]
+  },
+  "citations": {
+    "cited": [],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "a1b0619ba54b3f9598171bd2fb56bdfbd37ad94bef128affe6e6c457838b66ae",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "fbc477f4dc0e0ab4425257c4cda2b601",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-686-json-mode",
+    "project_id": "cfde3246-6a59-4eb2-9ee2-7045f43d5cb5",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-a5b3-994b17fc42df",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/cfde3246-6a59-4eb2-9ee2-7045f43d5cb5/r/00000000-0000-0000-a5b3-994b17fc42df?poll=true",
+    "read_back": "found"
+  },
+  "conversation": {
+    "run_id": "f6013abf-cb17-41b3-8a92-15f4ac85d213",
+    "mode": "report_optional",
+    "floor": 0,
+    "input_seq": 1,
+    "text": "你好",
+    "before": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "run_state": "waiting_human",
+    "tool_operations_used": 0,
+    "steps": [
+      {
+        "logical_key": "ctx0:round-1",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 1,
+        "note": null,
+        "replies": [],
+        "final": false
+      },
+      {
+        "logical_key": "ctx0:round-2",
+        "input_watermark": 1,
+        "reply_instruction_sha256": "3c97bbac9650ca25eeeb076d11d9d11b753117274ebc994f6e9483d5fe59a26d",
+        "tool_calls": 0,
+        "note": null,
+        "replies": null,
+        "final": false
+      }
+    ],
+    "terminal": {
+      "execution": "failed",
+      "handoff": true,
+      "handoff_reasons": [
+        "RESPONSE_INVALID"
+      ],
+      "replies": [],
+      "report_rejected_reason": null,
+      "report_content_sha256": "a1b0619ba54b3f9598171bd2fb56bdfbd37ad94bef128affe6e6c457838b66ae",
+      "model_requests_used": 2,
+      "prompt_revision": "prompt-replay-candidate-8688f6e52275"
+    },
+    "after": {
+      "control_generation": 0,
+      "lifecycle": "open",
+      "conclusion_sha256": null
+    },
+    "conclusion_unchanged": true
+  },
+  "raw_ledger": {
+    "sha256": "f17e5b2761d2664c8847fd743e6b98b318c8f7c63d3673bb4f8366d6e1ee9718",
+    "bytes": 12411,
+    "path": "m1-01-handoff-runner/19cf2060-31ee-4757-81c7-666c10ce21d5/ledger.json",
+    "in_repository": false
+  }
+}

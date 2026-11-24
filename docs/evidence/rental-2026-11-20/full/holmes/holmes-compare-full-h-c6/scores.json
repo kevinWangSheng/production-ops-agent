@@ -1,0 +1,214 @@
+{
+ "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+ "main": {
+  "passes": 16,
+  "denominator": 21,
+  "rate": 0.7619047619047619
+ },
+ "per_question": {
+  "217_database_sql_query": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "218_mysql_query_performance": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "219_mariadb_query_performance": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "222_clickhouse_query_performance": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "223_sqlserver_query_performance": {
+   "passes": 3,
+   "denominator": 3,
+   "rate": 1.0,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": true,
+     "category": "ok"
+    },
+    "3": {
+     "passed": true,
+     "category": "ok"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "229_mongodb_schema_discovery": {
+   "passes": 0,
+   "denominator": 3,
+   "rate": 0.0,
+   "trials": {
+    "1": {
+     "passed": false,
+     "category": "no_report"
+    },
+    "2": {
+     "passed": false,
+     "category": "no_report"
+    },
+    "3": {
+     "passed": false,
+     "category": "no_report"
+    }
+   },
+   "swing": false,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  },
+  "230_mongodb_aggregation_analysis": {
+   "passes": 1,
+   "denominator": 3,
+   "rate": 0.3333333333333333,
+   "trials": {
+    "1": {
+     "passed": true,
+     "category": "ok"
+    },
+    "2": {
+     "passed": false,
+     "category": "no_report"
+    },
+    "3": {
+     "passed": false,
+     "category": "no_report"
+    }
+   },
+   "swing": true,
+   "rerun_passes": 0,
+   "rerun_trials": 0
+  }
+ },
+ "swing_questions": [
+  "230_mongodb_aggregation_analysis"
+ ],
+ "rerun": {
+  "questions": {},
+  "passes": 0,
+  "trials": 0,
+  "rate": null,
+  "in_main_score": false
+ },
+ "zero_scored": {
+  "no_report": [
+   "229_mongodb_schema_discovery#1",
+   "229_mongodb_schema_discovery#2",
+   "229_mongodb_schema_discovery#3",
+   "230_mongodb_aggregation_analysis#2",
+   "230_mongodb_aggregation_analysis#3"
+  ],
+  "judge_exhausted": [],
+  "env_broken": []
+ },
+ "missing_trials": [],
+ "multi_cluster": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "time_box_limited": {
+  "questions": [],
+  "passes": 0,
+  "denominator": 0,
+  "rate": null
+ },
+ "excluding_env_broken": {
+  "questions": [
+   "217_database_sql_query",
+   "218_mysql_query_performance",
+   "219_mariadb_query_performance",
+   "222_clickhouse_query_performance",
+   "223_sqlserver_query_performance",
+   "229_mongodb_schema_discovery",
+   "230_mongodb_aggregation_analysis"
+  ],
+  "passes": 16,
+  "denominator": 21,
+  "rate": 0.7619047619047619,
+  "excluded": []
+ },
+ "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具"
+}

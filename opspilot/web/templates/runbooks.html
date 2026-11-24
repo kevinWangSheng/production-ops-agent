@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% set nav = "runbooks" %}
+{% block title %}Runbooks{% endblock %}
+{% block body %}
+<h1>Runbooks</h1>
+<p class="muted">Imported runbooks per target. Only an approved revision that is neither superseded nor revoked can be read by an investigation; pending and rejected submissions never are. Runbook text is untrusted data for the model, not instructions.</p>
+<p><a href="/runbooks/new" id="new-runbook">Submit a runbook</a></p>
+{% if not page.targets %}<p class="muted" id="no-runbooks">No runbooks yet.</p>{% endif %}
+{% for target, groups in page.targets.items() %}
+<section class="runbook-target">
+<h2>Target <code>{{ target }}</code></h2>
+{% for state in ("active", "pending", "rejected", "superseded", "revoked") %}
+{% set rows = groups[state] %}
+{% if rows %}
+<h3>{{ state | capitalize }} ({{ rows | length }})</h3>
+<table class="runbooks-{{ state }}">
+  <thead><tr><th>Name</th><th>Description</th><th>Source</th><th>{% if state in ("pending", "rejected") %}Submitted{% else %}Approved{% endif %}</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    {% if state in ("pending", "rejected") %}
+    <td><a href="/runbooks/submissions/{{ r.submission_id }}"><code>{{ r.name }}</code></a>{% if r.supersedes_entry_id %} <span class="muted">(replaces an entry)</span>{% endif %}</td>
+    <td>{{ r.description }}</td><td>{{ r.source_label }}</td>
+    <td>{{ r.submitted_at }} by <code>{{ r.submitted_by }}</code>{% if state == "rejected" %}<br>rejected by <code>{{ r.decided_by }}</code>: {{ r.reason }}{% endif %}</td>
+    {% else %}
+    <td><a href="/runbooks/{{ r.entry_id }}"><code>{{ r.name }}</code></a> <span class="muted">r{{ r.latest_revision }}</span></td>
+    <td>{{ r.description }}</td><td>{{ r.source_label }}</td>
+    <td>{{ r.approved_at }} by <code>{{ r.approved_by }}</code></td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

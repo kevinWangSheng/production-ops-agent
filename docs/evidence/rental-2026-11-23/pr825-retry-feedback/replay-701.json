@@ -1,0 +1,369 @@
+{
+ "note": "Read-only replay of r3 rejected final answers from raw ledgers (sha256 below) through validated_report; codes only, feedback text kept off-repo.",
+ "replays": [
+  {
+   "trial": "S105 t2",
+   "run_id": "6c65bcb9-cbeb-588d-bb45-724889d7a30e",
+   "ledger_sha256": "22475dbc229ed49cfe8866e1c90130291dd12f5ce9e73e32ff087b7d552a0c0b",
+   "code": "main",
+   "step": "ctx0:round-15",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 17,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "0": [
+     "unknown_evidence_id"
+    ],
+    "1": [
+     "unknown_evidence_id"
+    ],
+    "2": [
+     "unknown_evidence_id"
+    ],
+    "3": [
+     "unknown_evidence_id"
+    ],
+    "4": [
+     "unknown_evidence_id"
+    ],
+    "5": [
+     "unknown_evidence_id"
+    ],
+    "6": [
+     "unknown_evidence_id"
+    ],
+    "7": [
+     "unknown_evidence_id"
+    ],
+    "8": [
+     "unknown_evidence_id"
+    ],
+    "9": [
+     "unknown_evidence_id"
+    ],
+    "10": [
+     "unknown_evidence_id"
+    ],
+    "11": [
+     "unknown_evidence_id"
+    ],
+    "12": [
+     "unknown_evidence_id"
+    ],
+    "13": [
+     "unknown_evidence_id"
+    ],
+    "14": [
+     "unknown_evidence_id"
+    ],
+    "15": [
+     "unknown_evidence_id"
+    ],
+    "16": [
+     "unknown_evidence_id"
+    ]
+   },
+   "feedback_sha256": "d58cb9713e3e9a2c2d9f0afcff905378cd44f4e5b02a39f2e82d766c27c73e83"
+  },
+  {
+   "trial": "S105 t2",
+   "run_id": "6c65bcb9-cbeb-588d-bb45-724889d7a30e",
+   "ledger_sha256": "22475dbc229ed49cfe8866e1c90130291dd12f5ce9e73e32ff087b7d552a0c0b",
+   "code": "main",
+   "step": "ctx0:round-16",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 17,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "0": [
+     "missing_target_refs"
+    ],
+    "1": [
+     "missing_target_refs"
+    ],
+    "2": [
+     "missing_target_refs"
+    ],
+    "3": [
+     "missing_target_refs"
+    ],
+    "4": [
+     "missing_target_refs"
+    ],
+    "5": [
+     "missing_target_refs"
+    ],
+    "6": [
+     "missing_target_refs"
+    ],
+    "7": [
+     "missing_target_refs"
+    ],
+    "8": [
+     "missing_target_refs"
+    ],
+    "9": [
+     "missing_target_refs"
+    ],
+    "10": [
+     "missing_target_refs"
+    ],
+    "11": [
+     "missing_target_refs"
+    ],
+    "12": [
+     "missing_target_refs"
+    ],
+    "13": [
+     "missing_target_refs"
+    ],
+    "14": [
+     "missing_target_refs"
+    ],
+    "15": [
+     "missing_target_refs"
+    ],
+    "16": [
+     "missing_target_refs"
+    ]
+   },
+   "feedback_sha256": "4f99fedc3e1264b1bb7cc8145d2166dcd230dc5f07138e30ba1b0fe39bc8cc89"
+  },
+  {
+   "trial": "S105 t2",
+   "run_id": "6c65bcb9-cbeb-588d-bb45-724889d7a30e",
+   "ledger_sha256": "22475dbc229ed49cfe8866e1c90130291dd12f5ce9e73e32ff087b7d552a0c0b",
+   "code": "merge",
+   "step": "ctx0:round-15",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 17,
+   "claims_with_2plus_checks": 17,
+   "checks_per_claim": {
+    "0": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "1": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "2": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "3": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "4": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "5": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "6": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "7": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "8": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "9": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "10": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "11": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "12": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "13": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "14": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "15": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ],
+    "16": [
+     "unknown_evidence_id",
+     "missing_target_refs"
+    ]
+   },
+   "feedback_sha256": "c67a5720f8756cfe1d405624f12f79c12385a3845c2f8645e0b63fc5a92739ac"
+  },
+  {
+   "trial": "S105 t2",
+   "run_id": "6c65bcb9-cbeb-588d-bb45-724889d7a30e",
+   "ledger_sha256": "22475dbc229ed49cfe8866e1c90130291dd12f5ce9e73e32ff087b7d552a0c0b",
+   "code": "merge",
+   "step": "ctx0:round-16",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 17,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "0": [
+     "missing_target_refs"
+    ],
+    "1": [
+     "missing_target_refs"
+    ],
+    "2": [
+     "missing_target_refs"
+    ],
+    "3": [
+     "missing_target_refs"
+    ],
+    "4": [
+     "missing_target_refs"
+    ],
+    "5": [
+     "missing_target_refs"
+    ],
+    "6": [
+     "missing_target_refs"
+    ],
+    "7": [
+     "missing_target_refs"
+    ],
+    "8": [
+     "missing_target_refs"
+    ],
+    "9": [
+     "missing_target_refs"
+    ],
+    "10": [
+     "missing_target_refs"
+    ],
+    "11": [
+     "missing_target_refs"
+    ],
+    "12": [
+     "missing_target_refs"
+    ],
+    "13": [
+     "missing_target_refs"
+    ],
+    "14": [
+     "missing_target_refs"
+    ],
+    "15": [
+     "missing_target_refs"
+    ],
+    "16": [
+     "missing_target_refs"
+    ]
+   },
+   "feedback_sha256": "4f99fedc3e1264b1bb7cc8145d2166dcd230dc5f07138e30ba1b0fe39bc8cc89"
+  },
+  {
+   "trial": "S12 t2",
+   "run_id": "e5221ff1-5f39-5d18-aa89-2619b160b1b8",
+   "ledger_sha256": "9116ad5192688c44f859f88eae9ac55a1dadb57e6bcdc4ff73da4230d1ab2280",
+   "code": "main",
+   "step": "ctx0:round-15",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 4,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "6": [
+     "unknown_evidence_id"
+    ],
+    "11": [
+     "unknown_evidence_id"
+    ],
+    "12": [
+     "unknown_evidence_id"
+    ],
+    "15": [
+     "unknown_evidence_id"
+    ]
+   },
+   "feedback_sha256": "deacb71f11a67c523921c73b379cface65f9e7ecdce0c109feb64aa1bb8b8e4a"
+  },
+  {
+   "trial": "S12 t2",
+   "run_id": "e5221ff1-5f39-5d18-aa89-2619b160b1b8",
+   "ledger_sha256": "9116ad5192688c44f859f88eae9ac55a1dadb57e6bcdc4ff73da4230d1ab2280",
+   "code": "main",
+   "step": "ctx0:round-16",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 1,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "15": [
+     "cites_non_ok_view"
+    ]
+   },
+   "feedback_sha256": "33069d52a703fba28162e81bef8a5dc5f191a25ad2e1ab775b10604d29fc1ef1"
+  },
+  {
+   "trial": "S12 t2",
+   "run_id": "e5221ff1-5f39-5d18-aa89-2619b160b1b8",
+   "ledger_sha256": "9116ad5192688c44f859f88eae9ac55a1dadb57e6bcdc4ff73da4230d1ab2280",
+   "code": "merge",
+   "step": "ctx0:round-15",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 4,
+   "claims_with_2plus_checks": 1,
+   "checks_per_claim": {
+    "6": [
+     "unknown_evidence_id"
+    ],
+    "11": [
+     "unknown_evidence_id"
+    ],
+    "12": [
+     "unknown_evidence_id"
+    ],
+    "15": [
+     "unknown_evidence_id",
+     "cites_non_ok_view"
+    ]
+   },
+   "feedback_sha256": "3bdb60ed13109e339a6ed99bcd5c3502e822242a4323ba40733183f4af3e4aa5"
+  },
+  {
+   "trial": "S12 t2",
+   "run_id": "e5221ff1-5f39-5d18-aa89-2619b160b1b8",
+   "ledger_sha256": "9116ad5192688c44f859f88eae9ac55a1dadb57e6bcdc4ff73da4230d1ab2280",
+   "code": "merge",
+   "step": "ctx0:round-16",
+   "accepted": false,
+   "reason": "REPORT_INVALID",
+   "claims_failing": 1,
+   "claims_with_2plus_checks": 0,
+   "checks_per_claim": {
+    "15": [
+     "cites_non_ok_view"
+    ]
+   },
+   "feedback_sha256": "33069d52a703fba28162e81bef8a5dc5f191a25ad2e1ab775b10604d29fc1ef1"
+  }
+ ]
+}

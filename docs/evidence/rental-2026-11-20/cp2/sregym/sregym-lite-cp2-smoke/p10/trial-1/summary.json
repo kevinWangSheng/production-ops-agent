@@ -1,0 +1,167 @@
+{
+  "schema": "sregym-eval-summary-1",
+  "status": "missing",
+  "run": null,
+  "trace": null,
+  "sregym_eval": {
+    "schema": "sregym-eval-trial-1",
+    "track": "SREGym Lite 诊断段（中立第三方现场题，自测）",
+    "upstream_commit": "ac60c642d94f8342e924014ddf36f5cdf15b3327",
+    "round": "cp2-smoke",
+    "problem_id": "service_wrong_pod_selection_hotel_reservation",
+    "problem_seq": 10,
+    "trial": 1,
+    "question_template_sha256": "b969b4e32ad6ea73dd628e88756bc75620cd23359ba0b60fc941d2bdc7ca3b8e",
+    "question_sha256": "4c9e0f2791b86afa8a7e8e069d2c3bfc3ab2b2805692b4d10894037b0d2154cf",
+    "idempotency_key": "sregym-cp2-smoke-p10-t1",
+    "cluster_path": "filter_proxy_readonly",
+    "submission": {
+      "submitted": true,
+      "empty": true,
+      "status_code": 200,
+      "error_code": null,
+      "text_sha256": null,
+      "chars": 0
+    },
+    "conversion_reason": null,
+    "result": {
+      "success": false,
+      "accuracy": 0.0,
+      "composite_score": 0.0,
+      "dimensions": {
+        "D1": 0.0,
+        "D2": 0.0,
+        "D3": 0.0
+      },
+      "unscored_reason": null,
+      "multi_cause": false,
+      "timed_out": false,
+      "deploy_failed": false,
+      "deploy_attempts": 1,
+      "run_status": "complete",
+      "incomplete_reason": null,
+      "ttl_s": 7.30241847038269,
+      "phase_seconds": {
+        "deploy": 257.954,
+        "inject_fault": 8.578,
+        "stage:diagnosis": 7.294,
+        "evaluate:diagnosis": 0.006,
+        "cleanup": 105.349,
+        "fix_kubernetes": 2.769,
+        "undeploy_leftovers": 5.116
+      },
+      "fault_injected_at": "2026-11-21T04:14:30.135013Z"
+    },
+    "category": "no_report",
+    "passed": false,
+    "disclosures": [
+      "JUDGE_ZAI_GLM",
+      "DIAGNOSIS_STAGE_ONLY",
+      "INTERNET_OPEN",
+      "NON_CONTAINER_AGENT",
+      "QUESTION_TEMPLATE_OURS",
+      "OBSERVABILITY_DIRECT_UNFILTERED",
+      "NO_SECRET_READ",
+      "SELF_RUN_NOT_LEADERBOARD",
+      "VISIBILITY_SAME_FILTER_PROXY",
+      "KAFKA_NO_AUTH_TOOL_LAYER_ONLY"
+    ],
+    "entry": {
+      "exit_code": 4,
+      "stage_seen": "diagnosis",
+      "disclosures": [],
+      "observability": {
+        "prometheus": "forwarded",
+        "jaeger": "forwarded",
+        "loki": "forwarded",
+        "kafka": "missing"
+      },
+      "leak_check": "ok",
+      "submission": {
+        "submitted": true,
+        "empty": true,
+        "status_code": 200,
+        "error_code": null,
+        "text_sha256": null,
+        "chars": 0
+      },
+      "conversion_reason": null,
+      "started_at": "2026-11-21T04:14:31.871957+00:00",
+      "deadline_s": 1678.246,
+      "app": {
+        "app_name": "Hotel Reservation",
+        "namespaces": [
+          "hotel-reservation"
+        ]
+      },
+      "question_sha256": "4c9e0f2791b86afa8a7e8e069d2c3bfc3ab2b2805692b4d10894037b0d2154cf",
+      "idempotency_key": "sregym-cp2-smoke-p10-t1",
+      "failure": "PROCESS_EXITED",
+      "done_seen": true,
+      "ended_at": "2026-11-21T04:16:23.952536+00:00"
+    },
+    "boundary": {
+      "rbac": [],
+      "env_isolation": "ok",
+      "can_i": {
+        "create deployments.apps": "no",
+        "patch deployments.apps": "no",
+        "delete deployments.apps": "no",
+        "create pods": "no",
+        "patch pods": "no",
+        "delete pods": "no",
+        "create configmaps": "no",
+        "patch configmaps": "no",
+        "delete configmaps": "no",
+        "get secrets": "no",
+        "list secrets": "no",
+        "create pods/exec": "no",
+        "create pods/portforward": "no",
+        "create serviceaccounts/token": "no",
+        "list pods": "yes",
+        "list deployments.apps": "yes",
+        "list events": "yes"
+      },
+      "product_path": {
+        "list_pods": 200,
+        "dry_run_create_configmap": 403
+      }
+    },
+    "ports": {
+      "pg": 29510,
+      "web": 29580,
+      "prometheus": 29590,
+      "jaeger": 29586,
+      "loki": 29531,
+      "loki_gateway": 29532,
+      "kafka": 9092,
+      "unreachable": 29599,
+      "conductor": 28000,
+      "mcp": 29954,
+      "sregym_proxy": 26443,
+      "opspilot_proxy": 26444
+    },
+    "git": {
+      "commit": "8b912caa834e8819a550d30b4c3d36330a5a0a92",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "main_exit_code": 0,
+    "timings": {
+      "started_at": "2026-11-21T04:09:45.112231+00:00",
+      "main_started_at": "2026-11-21T04:09:47.469904+00:00",
+      "main_ended_at": "2026-11-21T04:16:25.696569+00:00"
+    },
+    "data_plane": {
+      "loki_gateway_port": 29532,
+      "loki_gateway_upstream": "127.0.0.1:29531",
+      "kafka_bootstrap": "127.0.0.1:9092",
+      "kafka_security_protocol": "PLAINTEXT",
+      "kafka_auth": "none",
+      "kafka_advertised_hosts": [
+        "kafka"
+      ]
+    }
+  },
+  "frozen_at": "2026-11-21T04:16:26.113392+00:00"
+}

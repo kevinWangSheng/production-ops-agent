@@ -1,0 +1,2509 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "lane-d-helm-q1",
+  "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+  "frozen_at": "2026-11-20T21:42:42.596577+00:00",
+  "run": {
+    "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+    "incident_id": "e55171d7-b965-5427-8643-9968f336834c",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 5,
+      "deadline": "2026-11-20T23:41:24.631829+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "b4-demo 这个 namespace 最近一次发布是什么时候",
+      "authorized_window": {
+        "end": "2026-11-20T21:41:24+00:00",
+        "start": "2026-11-19T21:41:24+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "e55171d7-b965-5427-8643-9968f336834c",
+      "target_id": "1029248f-cd55-4e6d-811e-86a4db4acc7c",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+      "created_at": "2026-11-20T21:41:24.653358+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-1137251eea4d",
+      "tool_schema_revision": "otel-demo-ext-ec596e186760",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "The b4-demo namespace has exactly one Helm release, \"web\" (chart web-0.1.0, app_version 1.16.0). Its most recent release action was revision 3, last_deployed 2026-11-20T21:39:21Z, and it failed: Helm recorded 'Upgrade \"web\" failed: resource Deployment/b4-demo/web not ready. status: InProgress, message: Pending termination: 1 context deadline exceeded'. The same release cycle's earlier steps were revision 1 (install, 21:39:15Z) and revision 2 (upgrade complete, 21:39:16Z, still the deployed revision). The failed revision 3 corresponds to Deployment b4-demo/web (helm annotation deployment.kubernetes.io/revision=3) whose pod template now carries the image tag nginx:does-not-exist-b4; the replica created for it, pod web-d59578599-m8mlm, is Pending with ImagePullBackOff because that tag does not resolve (NotFound). So the last release activity in the namespace is the failed revision 3 at 2026-11-20T21:39:21Z, roughly 2 minutes before this evidence was gathered.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Namespace b4-demo contains one Helm release named \"web\" (chart web 0.1.0, app_version 1.16.0); its latest revision is 3 with last_deployed 2026-11-20T21:39:21Z, first_deployed 2026-11-20T21:39:15Z and status \"failed\".",
+          "evidence_ids": [
+            "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Helm history of release web in b4-demo has 3 revisions: revision 1 \"Install complete\" last_deployed 2026-11-20T21:39:15Z (superseded), revision 2 \"Upgrade complete\" last_deployed 2026-11-20T21:39:16Z (status deployed), revision 3 last_deployed 2026-11-20T21:39:21Z with status failed and description 'Upgrade \"web\" failed: resource Deployment/b4-demo/web not ready. status: InProgress, message: Pending termination: 1 context deadline exceeded'.",
+          "evidence_ids": [
+            "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Deployment b4-demo/web was created 2026-11-20T21:39:15Z, carries meta.helm.sh/release-name=web and deployment.kubernetes.io/revision=3, and its current pod template image is nginx:does-not-exist-b4.",
+          "evidence_ids": [
+            "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+            "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Two pods exist in b4-demo: web-b77b9fdb5-gj4jq (Running, container ready=true, started 2026-11-20T21:39:16Z) and web-d59578599-m8mlm (Pending, ready=false, container waiting reason ImagePullBackOff, started 2026-11-20T21:39:21Z).",
+          "evidence_ids": [
+            "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Events for pod web-d59578599-m8mlm (21:39:22Z to 21:40:54Z) show 'Pulling image \"nginx:does-not-exist-b4\"' then Warning Failed 'Failed to pull image \"nginx:does-not-exist-b4\": rpc error: code = NotFound ... failed to resolve reference' and 'Error: ErrImagePull'; the same window shows pod web-b77b9fdb5-gj4jq successfully pulling nginx:1.27.4 at 21:39:20Z.",
+          "evidence_ids": [
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Three ReplicaSets owned by Deployment web exist in b4-demo: web-685fcc95d4 (created 2026-11-20T21:39:15Z), web-b77b9fdb5 (21:39:16Z) and web-d59578599 (21:39:21Z); Deployment events show scale-up of web-685fcc95d4 at 21:39:15Z, scale-up of web-b77b9fdb5 at 21:39:16Z, and at 21:39:21Z scale-down of web-685fcc95d4 to 0 together with scale-up of web-d59578599 to 1.",
+          "evidence_ids": [
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "The failed revision 3 at 2026-11-20T21:39:21Z failed because its pod template pins the non-existent tag nginx:does-not-exist-b4, so the replica web-d59578599-m8mlm could never pull and the Deployment stayed InProgress past Helm's deadline. The exact prior image was nginx:1.27.4 (pulled successfully by web-b77b9fdb5-gj4jq).",
+          "evidence_ids": [
+            "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+            "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "rejected_hypothesis",
+          "text": "The transient Warning Unhealthy readiness-probe misses on startup pods (connection refused on port 80 at 21:39:15Z and 21:39:20Z) do not explain the revision-3 failure: that pod failed before starting a container, with ErrImagePull/NotFound on nginx:does-not-exist-b4, and the other pod reached Running/ready.",
+          "evidence_ids": [
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+            "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "recommendation",
+          "text": "Check the release values/source that supplied the image tag nginx:does-not-exist-b4 for release web (chart values and the rendered manifest are not exposed by the Helm tools), and consider rolling release web back to revision 2, whose pods run nginx:1.27.4.",
+          "evidence_ids": [
+            "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+            "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "Helm chart values and the rendered manifest are not returned by the Helm tools, so what set the image tag nginx:does-not-exist-b4 and who applied revision 3 (CI/CD vs manual helm upgrade) could not be verified.",
+        "2 events in b4-demo were dropped as outside the authorized window, so anything that happened before 2026-11-19T21:41:24Z in this namespace is unknown; all Helm revisions observed start at 2026-11-20T21:39:15Z."
+      ],
+      "next_steps": [
+        "Review the pipeline or values file that produced revision 3 of release web in namespace b4-demo and correct the image tag.",
+        "If the bad tag cannot be corrected promptly, evaluate a Helm rollback of release web to revision 2 (nginx:1.27.4)."
+      ],
+      "root_cause": {
+        "kind": "Deployment",
+        "namespace": "b4-demo",
+        "name": "web",
+        "evidence_ids": [
+          "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+          "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+          "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917"
+        ]
+      }
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 5,
+      "logical_key": "conclusion:g0:ctx0:round-5",
+      "status": "response_committed",
+      "observed_at": "2026-11-20T21:41:55.600591+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:41:26.779799+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:41:28.916481+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:41:31.609914+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-20T21:41:36.440659+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "ctx0:round-5",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:41:55.591746+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 5,
+        "logical_key": "conclusion:g0:ctx0:round-5",
+        "status": "response_committed",
+        "observed_at": "2026-11-20T21:41:55.600591+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 5,
+      "prompt_tokens": 90904,
+      "completion_tokens": 6069,
+      "total_tokens": 96973,
+      "prompt_cache_hit_tokens": 80512,
+      "prompt_cache_miss_tokens": 10392
+    },
+    "tool_requests": [
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0",
+        "epoch": 1,
+        "tool": "helm_list",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1",
+        "epoch": 1,
+        "tool": "kubernetes_tabular_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0",
+        "epoch": 1,
+        "tool": "helm_history",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1",
+        "epoch": 1,
+        "tool": "kubernetes_tabular_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1",
+        "epoch": 1,
+        "tool": "kubernetes_tabular_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t1",
+        "epoch": 1,
+        "tool": "kubernetes_tabular_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "operation_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "helm_list",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:26.826275+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_tabular_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "deployments",
+          "columns": "NAME:.metadata.name,REPLICAS:.spec.replicas,AVAILABLE:.status.conditions[0].lastUpdateTime,IMG:.spec.containers[0].image,CREATED:.metadata.creationTimestamp",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:26.829370+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "helm_history",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "namespace": "b4-demo",
+          "release_name": "web"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:28.961399+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_tabular_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "pods",
+          "columns": "NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,START:.status.startTime,REASON:.status.containerStatuses[0].state.waiting.reason",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:28.969947+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_tabular_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "replicasets",
+          "columns": "NAME:.metadata.name,OWNER:.metadata.ownerReferences[0].name,CREATED:.metadata.creationTimestamp,IMAGE:.spec.containers[0].image,PULLPOLICY:.spec.containers[0].imagePullPolicy",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:31.664477+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "events",
+          "jq_expr": ".items | map({kind: .involvedObject.kind, name: .involvedObject.name, reason, type, first: .firstTimestamp, last: .lastTimestamp, msg: (.message // \"\")[0:200]}) | sort_by(.last)",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:31.679806+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t1:f902e3b7-754e-4444-8261-5ba3f2e33f0f",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_tabular_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "configmaps",
+          "columns": "NAME:.metadata.name,CREATED:.metadata.creationTimestamp,KEYS:.data",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:36.487897+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+        "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v1",
+        "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+        "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "deployments",
+          "jq_expr": ".items[] | {name: .metadata.name, images: [.spec.template.spec.containers[].image], annotations: .metadata.annotations, updated: .status.conditions}",
+          "namespace": "b4-demo"
+        },
+        "window": {
+          "end": "2026-11-20T21:41:24+00:00",
+          "start": "2026-11-19T21:41:24+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-20T21:41:36.497322+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v11",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "e55171d7-b965-5427-8643-9968f336834c",
+      "observations": [
+        {
+          "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "helm_list",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:26.826275+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_tabular_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "deployments",
+            "columns": "NAME:.metadata.name,REPLICAS:.spec.replicas,AVAILABLE:.status.conditions[0].lastUpdateTime,IMG:.spec.containers[0].image,CREATED:.metadata.creationTimestamp",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:26.829370+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "helm_history",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "namespace": "b4-demo",
+            "release_name": "web"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:28.961399+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_tabular_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "pods",
+            "columns": "NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,START:.status.startTime,REASON:.status.containerStatuses[0].state.waiting.reason",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:28.969947+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_tabular_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "replicasets",
+            "columns": "NAME:.metadata.name,OWNER:.metadata.ownerReferences[0].name,CREATED:.metadata.creationTimestamp,IMAGE:.spec.containers[0].image,PULLPOLICY:.spec.containers[0].imagePullPolicy",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:31.664477+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "events",
+            "jq_expr": ".items | map({kind: .involvedObject.kind, name: .involvedObject.name, reason, type, first: .firstTimestamp, last: .lastTimestamp, msg: (.message // \"\")[0:200]}) | sort_by(.last)",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:31.679806+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t1:f902e3b7-754e-4444-8261-5ba3f2e33f0f",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_tabular_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "configmaps",
+            "columns": "NAME:.metadata.name,CREATED:.metadata.creationTimestamp,KEYS:.data",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:36.487897+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v1",
+          "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+          "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "deployments",
+            "jq_expr": ".items[] | {name: .metadata.name, images: [.spec.template.spec.containers[].image], annotations: .metadata.annotations, updated: .status.conditions}",
+            "namespace": "b4-demo"
+          },
+          "window": {
+            "end": "2026-11-20T21:41:24+00:00",
+            "start": "2026-11-19T21:41:24+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-20T21:41:36.497322+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v11",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "claims": {
+            "fact": [
+              {
+                "text": "Namespace b4-demo contains one Helm release named \"web\" (chart web 0.1.0, app_version 1.16.0); its latest revision is 3 with last_deployed 2026-11-20T21:39:21Z, first_deployed 2026-11-20T21:39:15Z and status \"failed\".",
+                "evidence": [
+                  {
+                    "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Helm history of release web in b4-demo has 3 revisions: revision 1 \"Install complete\" last_deployed 2026-11-20T21:39:15Z (superseded), revision 2 \"Upgrade complete\" last_deployed 2026-11-20T21:39:16Z (status deployed), revision 3 last_deployed 2026-11-20T21:39:21Z with status failed and description 'Upgrade \"web\" failed: resource Deployment/b4-demo/web not ready. status: InProgress, message: Pending termination: 1 context deadline exceeded'.",
+                "evidence": [
+                  {
+                    "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Deployment b4-demo/web was created 2026-11-20T21:39:15Z, carries meta.helm.sh/release-name=web and deployment.kubernetes.io/revision=3, and its current pod template image is nginx:does-not-exist-b4.",
+                "evidence": [
+                  {
+                    "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Two pods exist in b4-demo: web-b77b9fdb5-gj4jq (Running, container ready=true, started 2026-11-20T21:39:16Z) and web-d59578599-m8mlm (Pending, ready=false, container waiting reason ImagePullBackOff, started 2026-11-20T21:39:21Z).",
+                "evidence": [
+                  {
+                    "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Events for pod web-d59578599-m8mlm (21:39:22Z to 21:40:54Z) show 'Pulling image \"nginx:does-not-exist-b4\"' then Warning Failed 'Failed to pull image \"nginx:does-not-exist-b4\": rpc error: code = NotFound ... failed to resolve reference' and 'Error: ErrImagePull'; the same window shows pod web-b77b9fdb5-gj4jq successfully pulling nginx:1.27.4 at 21:39:20Z.",
+                "evidence": [
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Three ReplicaSets owned by Deployment web exist in b4-demo: web-685fcc95d4 (created 2026-11-20T21:39:15Z), web-b77b9fdb5 (21:39:16Z) and web-d59578599 (21:39:21Z); Deployment events show scale-up of web-685fcc95d4 at 21:39:15Z, scale-up of web-b77b9fdb5 at 21:39:16Z, and at 21:39:21Z scale-down of web-685fcc95d4 to 0 together with scale-up of web-d59578599 to 1.",
+                "evidence": [
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "The failed revision 3 at 2026-11-20T21:39:21Z failed because its pod template pins the non-existent tag nginx:does-not-exist-b4, so the replica web-d59578599-m8mlm could never pull and the Deployment stayed InProgress past Helm's deadline. The exact prior image was nginx:1.27.4 (pulled successfully by web-b77b9fdb5-gj4jq).",
+                "evidence": [
+                  {
+                    "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [
+              {
+                "text": "Check the release values/source that supplied the image tag nginx:does-not-exist-b4 for release web (chart values and the rendered manifest are not exposed by the Helm tools), and consider rolling release web back to revision 2, whose pods run nginx:1.27.4.",
+                "evidence": [
+                  {
+                    "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "counter_evidence": [],
+            "rejected_hypothesis": [
+              {
+                "text": "The transient Warning Unhealthy readiness-probe misses on startup pods (connection refused on port 80 at 21:39:15Z and 21:39:20Z) do not explain the revision-3 failure: that pod failed before starting a container, with ErrImagePull/NotFound on nginx:does-not-exist-b4, and the other pod reached Running/ready.",
+                "evidence": [
+                  {
+                    "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ]
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 6,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 2,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "deployments",
+              "jq_expr": ".items[] | {name: .metadata.name, images: [.spec.template.spec.containers[].image], annotations: .metadata.annotations, updated: .status.conditions}",
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "kind": "deployments",
+              "api_group": "apps",
+              "namespace": "b4-demo",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "web",
+                "images": [
+                  "nginx:does-not-exist-b4"
+                ],
+                "updated": [
+                  {
+                    "type": "Available",
+                    "reason": "MinimumReplicasAvailable",
+                    "status": "True",
+                    "message": "Deployment has minimum availability.",
+                    "lastUpdateTime": "2026-11-20T21:39:16Z",
+                    "lastTransitionTime": "2026-11-20T21:39:16Z"
+                  },
+                  {
+                    "type": "Progressing",
+                    "reason": "ReplicaSetUpdated",
+                    "status": "True",
+                    "message": "ReplicaSet \"web-d59578599\" is progressing.",
+                    "lastUpdateTime": "2026-11-20T21:39:21Z",
+                    "lastTransitionTime": "2026-11-20T21:39:15Z"
+                  }
+                ],
+                "annotations": {
+                  "meta.helm.sh/release-name": "web",
+                  "meta.helm.sh/release-namespace": "b4-demo",
+                  "deployment.kubernetes.io/revision": "3"
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+            "observed_at": "2026-11-20T21:41:36.497322+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind.",
+            "omitted_rows": 0,
+            "operation_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:36.451218+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "total_items_processed": 1,
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986"
+          }
+        }
+      },
+      {
+        "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+        "resolvable": true,
+        "tool": "helm_history",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "helm_history",
+            "notes": [
+              "Helm release records as stored now (queried at 2026-11-20T21:41:28Z); revisions outside the authorized window are listed too."
+            ],
+            "query": {
+              "namespace": "b4-demo",
+              "release_name": "web"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "web",
+                "chart": "web",
+                "status": "superseded",
+                "deleted": null,
+                "revision": 1,
+                "namespace": "b4-demo",
+                "app_version": "1.16.0",
+                "description": "Install complete",
+                "chart_version": "0.1.0",
+                "last_deployed": "2026-11-20T21:39:15Z",
+                "first_deployed": "2026-11-20T21:39:15Z",
+                "rollback_revision": null
+              },
+              {
+                "name": "web",
+                "chart": "web",
+                "status": "deployed",
+                "deleted": null,
+                "revision": 2,
+                "namespace": "b4-demo",
+                "app_version": "1.16.0",
+                "description": "Upgrade complete",
+                "chart_version": "0.1.0",
+                "last_deployed": "2026-11-20T21:39:16Z",
+                "first_deployed": "2026-11-20T21:39:15Z",
+                "rollback_revision": null
+              },
+              {
+                "name": "web",
+                "chart": "web",
+                "status": "failed",
+                "deleted": null,
+                "revision": 3,
+                "namespace": "b4-demo",
+                "app_version": "1.16.0",
+                "description": "Upgrade \"web\" failed: resource Deployment/b4-demo/web not ready. status: InProgress, message: Pending termination: 1\ncontext deadline exceeded",
+                "chart_version": "0.1.0",
+                "last_deployed": "2026-11-20T21:39:21Z",
+                "first_deployed": "2026-11-20T21:39:15Z",
+                "rollback_revision": null
+              }
+            ],
+            "dropped": {
+              "malformed": 0,
+              "too_large": 0
+            },
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+            "observed_at": "2026-11-20T21:41:28.961399+00:00",
+            "cannot_prove": "Release history is the current content of Helm's records: revisions outside the authorized window are listed too, so it cannot prove that only these changes happened inside the window. Only Helm's own record: changes made with kubectl apply or kubectl edit, or by any tool other than Helm, are not in it. Revision times come from Helm, not from when Pods finished rolling out; deployed only means Helm considered the release successful, not that its Pods are healthy.",
+            "omitted_rows": 0,
+            "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0",
+            "result_count": 3,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 3,
+            "citable_as_fact": true,
+            "revisions_shown": 3,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "revisions_omitted": 0,
+            "dispatch_started_at": "2026-11-20T21:41:28.930948+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+            "backend_revisions_returned": 3
+          }
+        }
+      },
+      {
+        "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+        "resolvable": true,
+        "tool": "kubernetes_tabular_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_tabular_query",
+            "count": 2,
+            "notes": [],
+            "query": {
+              "kind": "pods",
+              "columns": "NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[0].ready,RESTARTS:.status.containerStatuses[0].restartCount,START:.status.startTime,REASON:.status.containerStatuses[0].state.waiting.reason",
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "kind": "pods",
+              "api_group": "",
+              "namespace": "b4-demo",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "header": [
+              "NAME",
+              "PHASE",
+              "READY",
+              "RESTARTS",
+              "START",
+              "REASON"
+            ],
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                "web-b77b9fdb5-gj4jq",
+                "Running",
+                "true",
+                "0",
+                "2026-11-20T21:39:16Z",
+                "<none>"
+              ],
+              [
+                "web-d59578599-m8mlm",
+                "Pending",
+                "false",
+                "0",
+                "2026-11-20T21:39:21Z",
+                "ImagePullBackOff"
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+            "filter_mode": null,
+            "observed_at": "2026-11-20T21:41:28.969947+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). <none> means the path reached no value in that object, not that the field is absent from the kind; a filtered table is not a full picture of the kind.",
+            "omitted_rows": 0,
+            "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1",
+            "result_count": 2,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 2,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:28.942189+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "total_items_processed": 2,
+            "rows_removed_by_filter": 0,
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986"
+          }
+        }
+      },
+      {
+        "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [
+              "2 events outside the authorized window were dropped before jq ran."
+            ],
+            "query": {
+              "kind": "events",
+              "jq_expr": ".items | map({kind: .involvedObject.kind, name: .involvedObject.name, reason, type, first: .firstTimestamp, last: .lastTimestamp, msg: (.message // \"\")[0:200]}) | sort_by(.last)",
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "kind": "events",
+              "api_group": "",
+              "namespace": "b4-demo",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                {
+                  "msg": "Successfully assigned b4-demo/web-685fcc95d4-cz4tq to opspilot-m1-control-plane",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "Scheduled"
+                },
+                {
+                  "msg": "Container image \"nginx:1.27.3\" already present on machine and can be accessed by the pod",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "Pulled"
+                },
+                {
+                  "msg": "Container created",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "Created"
+                },
+                {
+                  "msg": "Container started",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "Started"
+                },
+                {
+                  "msg": "Readiness probe failed: Get \"http://10.244.0.45:80/\": dial tcp 10.244.0.45:80: connect: connection refused",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Warning",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "Unhealthy"
+                },
+                {
+                  "msg": "Created pod: web-685fcc95d4-cz4tq",
+                  "kind": "ReplicaSet",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web-685fcc95d4",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "SuccessfulCreate"
+                },
+                {
+                  "msg": "Scaled up replica set web-685fcc95d4 from 0 to 1",
+                  "kind": "Deployment",
+                  "last": "2026-11-20T21:39:15Z",
+                  "name": "web",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:15Z",
+                  "reason": "ScalingReplicaSet"
+                },
+                {
+                  "msg": "Successfully assigned b4-demo/web-b77b9fdb5-gj4jq to opspilot-m1-control-plane",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:16Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:16Z",
+                  "reason": "Scheduled"
+                },
+                {
+                  "msg": "Created pod: web-b77b9fdb5-gj4jq",
+                  "kind": "ReplicaSet",
+                  "last": "2026-11-20T21:39:16Z",
+                  "name": "web-b77b9fdb5",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:16Z",
+                  "reason": "SuccessfulCreate"
+                },
+                {
+                  "msg": "Scaled up replica set web-b77b9fdb5 from 0 to 1",
+                  "kind": "Deployment",
+                  "last": "2026-11-20T21:39:16Z",
+                  "name": "web",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:16Z",
+                  "reason": "ScalingReplicaSet"
+                },
+                {
+                  "msg": "Pulling image \"nginx:1.27.4\"",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:17Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:17Z",
+                  "reason": "Pulling"
+                },
+                {
+                  "msg": "Successfully pulled image \"nginx:1.27.4\" in 3.115s (3.116s including waiting). Image size: 72207578 bytes.",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:20Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:20Z",
+                  "reason": "Pulled"
+                },
+                {
+                  "msg": "Container created",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:20Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:20Z",
+                  "reason": "Created"
+                },
+                {
+                  "msg": "Container started",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:20Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:20Z",
+                  "reason": "Started"
+                },
+                {
+                  "msg": "Readiness probe failed: Get \"http://10.244.0.46:80/\": dial tcp 10.244.0.46:80: connect: connection refused",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:20Z",
+                  "name": "web-b77b9fdb5-gj4jq",
+                  "type": "Warning",
+                  "first": "2026-11-20T21:39:20Z",
+                  "reason": "Unhealthy"
+                },
+                {
+                  "msg": "Stopping container web",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web-685fcc95d4-cz4tq",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "Killing"
+                },
+                {
+                  "msg": "Deleted pod: web-685fcc95d4-cz4tq",
+                  "kind": "ReplicaSet",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web-685fcc95d4",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "SuccessfulDelete"
+                },
+                {
+                  "msg": "Successfully assigned b4-demo/web-d59578599-m8mlm to opspilot-m1-control-plane",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web-d59578599-m8mlm",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "Scheduled"
+                },
+                {
+                  "msg": "Created pod: web-d59578599-m8mlm",
+                  "kind": "ReplicaSet",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web-d59578599",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "SuccessfulCreate"
+                },
+                {
+                  "msg": "Scaled down replica set web-685fcc95d4 from 1 to 0",
+                  "kind": "Deployment",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "ScalingReplicaSet"
+                },
+                {
+                  "msg": "Scaled up replica set web-d59578599 from 0 to 1",
+                  "kind": "Deployment",
+                  "last": "2026-11-20T21:39:21Z",
+                  "name": "web",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:21Z",
+                  "reason": "ScalingReplicaSet"
+                },
+                {
+                  "msg": "Pulling image \"nginx:does-not-exist-b4\"",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:40:54Z",
+                  "name": "web-d59578599-m8mlm",
+                  "type": "Normal",
+                  "first": "2026-11-20T21:39:22Z",
+                  "reason": "Pulling"
+                },
+                {
+                  "msg": "Failed to pull image \"nginx:does-not-exist-b4\": rpc error: code = NotFound desc = failed to pull and unpack image \"docker.io/library/nginx:does-not-exist-b4\": failed to resolve reference \"docker.io/li",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:40:54Z",
+                  "name": "web-d59578599-m8mlm",
+                  "type": "Warning",
+                  "first": "2026-11-20T21:39:22Z",
+                  "reason": "Failed"
+                },
+                {
+                  "msg": "Error: ErrImagePull",
+                  "kind": "Pod",
+                  "last": "2026-11-20T21:40:54Z",
+                  "name": "web-d59578599-m8mlm",
+                  "type": "Warning",
+                  "first": "2026-11-20T21:39:22Z",
+                  "reason": "Failed"
+                }
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+            "observed_at": "2026-11-20T21:41:31.679806+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind.",
+            "omitted_rows": 0,
+            "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": "2026-11-20T21:40:54+00:00",
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": "2026-11-20T21:39:15+00:00",
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:31.622461+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "total_items_processed": 24,
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986"
+          }
+        }
+      },
+      {
+        "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+        "resolvable": true,
+        "tool": "kubernetes_tabular_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_tabular_query",
+            "count": 3,
+            "notes": [],
+            "query": {
+              "kind": "replicasets",
+              "columns": "NAME:.metadata.name,OWNER:.metadata.ownerReferences[0].name,CREATED:.metadata.creationTimestamp,IMAGE:.spec.containers[0].image,PULLPOLICY:.spec.containers[0].imagePullPolicy",
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "kind": "replicasets",
+              "api_group": "apps",
+              "namespace": "b4-demo",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "header": [
+              "NAME",
+              "OWNER",
+              "CREATED",
+              "IMAGE",
+              "PULLPOLICY"
+            ],
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                "web-685fcc95d4",
+                "web",
+                "2026-11-20T21:39:15Z",
+                "<none>",
+                "<none>"
+              ],
+              [
+                "web-b77b9fdb5",
+                "web",
+                "2026-11-20T21:39:16Z",
+                "<none>",
+                "<none>"
+              ],
+              [
+                "web-d59578599",
+                "web",
+                "2026-11-20T21:39:21Z",
+                "<none>",
+                "<none>"
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+            "filter_mode": null,
+            "observed_at": "2026-11-20T21:41:31.664477+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). <none> means the path reached no value in that object, not that the field is absent from the kind; a filtered table is not a full picture of the kind.",
+            "omitted_rows": 0,
+            "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1",
+            "result_count": 3,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 3,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:31.630056+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "total_items_processed": 3,
+            "rows_removed_by_filter": 0,
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986"
+          }
+        }
+      },
+      {
+        "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+        "resolvable": true,
+        "tool": "helm_list",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "helm_list",
+            "notes": [
+              "Helm release records as stored now (queried at 2026-11-20T21:41:26Z); revisions outside the authorized window are listed too."
+            ],
+            "query": {
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "namespace": "b4-demo",
+              "all_namespaces": false
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "name": "web",
+                "chart": "web",
+                "status": "failed",
+                "deleted": null,
+                "revision": 3,
+                "namespace": "b4-demo",
+                "app_version": "1.16.0",
+                "description": "Upgrade \"web\" failed: resource Deployment/b4-demo/web not ready. status: InProgress, message: Pending termination: 1\ncontext deadline exceeded",
+                "chart_version": "0.1.0",
+                "last_deployed": "2026-11-20T21:39:21Z",
+                "first_deployed": "2026-11-20T21:39:15Z",
+                "rollback_revision": null
+              }
+            ],
+            "dropped": {
+              "malformed": 0,
+              "too_large": 0
+            },
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+            "observed_at": "2026-11-20T21:41:26.826275+00:00",
+            "cannot_prove": "Release history is the current content of Helm's records: revisions outside the authorized window are listed too, so it cannot prove that only these changes happened inside the window. Only Helm's own record: changes made with kubectl apply or kubectl edit, or by any tool other than Helm, are not in it. Revision times come from Helm, not from when Pods finished rolling out; deployed only means Helm considered the release successful, not that its Pods are healthy.",
+            "omitted_rows": 0,
+            "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "releases_shown": 1,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "releases_omitted": 0,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:26.794662+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986",
+            "backend_releases_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+        "resolvable": true,
+        "tool": "kubernetes_tabular_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "subject_id": "e55171d7-b965-5427-8643-9968f336834c",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_tabular_query",
+            "count": 1,
+            "notes": [],
+            "query": {
+              "kind": "deployments",
+              "columns": "NAME:.metadata.name,REPLICAS:.spec.replicas,AVAILABLE:.status.conditions[0].lastUpdateTime,IMG:.spec.containers[0].image,CREATED:.metadata.creationTimestamp",
+              "namespace": "b4-demo"
+            },
+            "scope": {
+              "kind": "deployments",
+              "api_group": "apps",
+              "namespace": "b4-demo",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "header": [
+              "NAME",
+              "REPLICAS",
+              "AVAILABLE",
+              "IMG",
+              "CREATED"
+            ],
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-20T21:41:24+00:00",
+              "start": "2026-11-19T21:41:24+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                "web",
+                "1",
+                "2026-11-20T21:39:16Z",
+                "<none>",
+                "2026-11-20T21:39:15Z"
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+            "filter_mode": null,
+            "observed_at": "2026-11-20T21:41:26.829370+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). <none> means the path reached no value in that object, not that the field is absent from the kind; a filtered table is not a full picture of the kind.",
+            "omitted_rows": 0,
+            "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1",
+            "result_count": 1,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "269b553dcabd6a556ba365ac2a5cda7e394c9c52a2f54f0cade7d525a8bdba0d",
+            "dispatch_started_at": "2026-11-20T21:41:26.803204+00:00",
+            "projection_revision": "m1-01-tool-view-v11",
+            "total_items_processed": 1,
+            "rows_removed_by_filter": 0,
+            "tool_registry_revision": "d150ca7a396e015b85d9f98cb56e70816ae85a15f91875903d9f079d1ba6c986"
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "e55171d7-b965-5427-8643-9968f336834c",
+      "entries": [
+        {
+          "recorded_at": "2026-11-20T21:41:24.663652+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:24.663652+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:1",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:25.210781+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.779799+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:ea23ad6b-004e-4769-b691-b6760d15b9eb",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.785640+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.865231+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0",
+            "epoch": 1,
+            "tool": "helm_list",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.865231+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.865231+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.877207+00:00",
+          "sequence": 8,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1",
+            "epoch": 1,
+            "tool": "kubernetes_tabular_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.877207+00:00",
+          "sequence": 9,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:26.877207+00:00",
+          "sequence": 10,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:28.916481+00:00",
+          "sequence": 11,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:5f1f8016-7b7e-4af9-b6cd-17b32b669fb5",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:28.922126+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:28.997229+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0",
+            "epoch": 1,
+            "tool": "helm_history",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:28.997229+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:28.997229+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:29.008494+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1",
+            "epoch": 1,
+            "tool": "kubernetes_tabular_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:29.008494+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:29.008494+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.609914+00:00",
+          "sequence": 19,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:e5a4a312-6297-4b24-908f-c7dc3c21f00e",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.613833+00:00",
+          "sequence": 20,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.708810+00:00",
+          "sequence": 21,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1",
+            "epoch": 1,
+            "tool": "kubernetes_tabular_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.708810+00:00",
+          "sequence": 22,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.708810+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.721225+00:00",
+          "sequence": 24,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.721225+00:00",
+          "sequence": 25,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:31.721225+00:00",
+          "sequence": 26,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.440659+00:00",
+          "sequence": 27,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:56775bf3-a032-4236-94b8-0f3409d7037d",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.444836+00:00",
+          "sequence": 28,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.527089+00:00",
+          "sequence": 29,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "f902e3b7-754e-4444-8261-5ba3f2e33f0f",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t1",
+            "epoch": 1,
+            "tool": "kubernetes_tabular_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.527089+00:00",
+          "sequence": 30,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t1:f902e3b7-754e-4444-8261-5ba3f2e33f0f",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.527089+00:00",
+          "sequence": 31,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "13",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 13
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.536964+00:00",
+          "sequence": 32,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "dc82fa2d-8eaf-4807-919f-28d49a042023",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "operation_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.536964+00:00",
+          "sequence": 33,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:36.536964+00:00",
+          "sequence": 34,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "14",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 14
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:55.591746+00:00",
+          "sequence": 35,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:426491ca-b248-4d8f-9124-6940cc8e176d",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:55.595593+00:00",
+          "sequence": 36,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "15",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 15
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:55.611112+00:00",
+          "sequence": 37,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "16",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 16
+          }
+        },
+        {
+          "recorded_at": "2026-11-20T21:41:55.611112+00:00",
+          "sequence": 38,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74:16",
+          "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 16
+          }
+        }
+      ],
+      "counts": {
+        "input": 5,
+        "query": 8,
+        "evidence": 8,
+        "state_change": 18,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "9d6d2581-1db0-5996-b050-633b8b9a6f74",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "ea23ad6b-004e-4769-b691-b6760d15b9eb-t0:f324c6be-0811-4ff8-be13-1b0fe1e8acc6",
+        "ea23ad6b-004e-4769-b691-b6760d15b9eb-t1:95c2849d-3f98-45fe-86c2-85c53da6a2cf",
+        "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t0:3c0de34b-9d8d-4cfd-bc80-2765dcf6a4db",
+        "5f1f8016-7b7e-4af9-b6cd-17b32b669fb5-t1:a8b346a9-0a3a-4f79-af8c-912ee92f29e7",
+        "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t0:e73f772e-a5e7-41ab-b6a5-cc4d37a1c917",
+        "e5a4a312-6297-4b24-908f-c7dc3c21f00e-t1:1e54d6f4-4bea-4f9e-902e-19bf8ac9eea8",
+        "56775bf3-a032-4236-94b8-0f3409d7037d-t0:dc82fa2d-8eaf-4807-919f-28d49a042023",
+        "56775bf3-a032-4236-94b8-0f3409d7037d-t1:f902e3b7-754e-4444-8261-5ba3f2e33f0f"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-20T21:42:39.742431+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-rental-d-20261120",
+    "project_id": "2b708f6c-a76b-4e3d-ba2a-95526eab6790",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-8ff3-33af122f3e1f",
+        "start_time": "2026-11-20T21:41:25.211963+00:00",
+        "end_time": "2026-11-20T21:41:55.612148+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/2b708f6c-a76b-4e3d-ba2a-95526eab6790/r/00000000-0000-0000-8ff3-33af122f3e1f?poll=true"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "2d984f592fd85e9293d8be2d0b2a0befd9cc5709008d9b4171d42b4108f536aa",
+    "bytes": 154061,
+    "path": "tmp/lab-ledgers/lane-d-helm-q1/9d6d2581-1db0-5996-b050-633b8b9a6f74/ledger.json",
+    "in_repository": false
+  }
+}

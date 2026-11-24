@@ -38,13 +38,23 @@ AuthChannel = Literal["ui_basic", "event_token"]
 
 #: How a delivery relates to one already accepted under the same key.
 #: ``key_conflict`` is the case a boolean would hide: same key, different
-#: actor, channel, target or question.
+#: actor, channel, target, question or lookback (#779).
 IntakeDelivery = Literal["same_request", "key_conflict", "different_request"]
 
 #: An identity, target or key that is rendered verbatim into an audit line.
 #: Bounded because every one of these is written to a log an operator reads;
 #: ``Text`` carries no upper bound, and an unbounded identifier is not one.
 Identifier = Annotated[str, Field(min_length=1, max_length=256)]
+
+#: #779 (B4-U1/U2): how far back a submitted Run's authorized frame reaches,
+#: as the operator chose it on the submit form; ``24h`` is today's frame.
+Lookback = Literal["24h", "7d", "30d"]
+DEFAULT_LOOKBACK: Lookback = "24h"
+LOOKBACK_SECONDS: dict[str, int] = {
+    "24h": 24 * 3600,
+    "7d": 7 * 24 * 3600,
+    "30d": 30 * 24 * 3600,
+}
 
 #: ``revalidate_instances="always"`` must sit on the model being revalidated,
 #: not on the container. Without it an already-built instance is stored as
@@ -87,6 +97,9 @@ class IntakeRequest(DTO):
     target_id: Identifier
     question: str = Field(min_length=1, max_length=16_384)
     idempotency_key: Identifier
+    #: #779: the frame's length; the deployment cap is checked by the
+    #: workbench (``LOOKBACK_NOT_ALLOWED``), not here.
+    lookback: Lookback = DEFAULT_LOOKBACK
 
     @field_validator("target_id", "idempotency_key")
     @classmethod
@@ -206,8 +219,8 @@ def classify_intake_delivery(
     A boolean cannot carry this answer. "Not the same request" covers two
     materially different situations: a new request, which the caller should
     accept, and a reused idempotency key over a different actor, channel,
-    target or question, which is a client error the caller must surface rather
-    than quietly open a second incident for. Returning three states makes the
+    target, question or lookback, which is a client error the caller must
+    surface rather than quietly open a second incident for. Returning three states makes the
     conflict a branch the caller has to write.
     """
 
@@ -219,6 +232,7 @@ def classify_intake_delivery(
         left.principal == right.principal
         and left.request.target_id == right.request.target_id
         and left.request.question == right.request.question
+        and left.request.lookback == right.request.lookback
     ):
         return "same_request"
     return "key_conflict"

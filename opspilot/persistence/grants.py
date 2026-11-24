@@ -87,12 +87,35 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "starts_at,starts_at_raw,target_id,workload)",
         ),
         "opspilot_budget_reservations": NONE,
+        # 0026 (workbench P7, user U-P7 2026-11-18): the web starts sessions,
+        # writes the question with the record snapshot the model reads, and
+        # the forward result; it can never write an answer
+        "opspilot_chat_sessions": _g(
+            "SELECT", "INSERT(created_by,incident_id,session_id,title)"
+        ),
+        "opspilot_chat_turns": _g(
+            "SELECT",
+            "INSERT(author,context,context_sha256,idempotency_key,question,session_id,"
+            "turn_id)",
+            "UPDATE(forward_code,forward_state,forwarded_at,forwarded_input_sequence)",
+        ),
         "opspilot_controls": _g(
             "SELECT",
             "INSERT(action,actor,audit_id,expected_generation,incident_id,payload,"
             "resulting_generation)",
         ),
         "opspilot_evidence": S,
+        # 0027 (workbench P5, user F1 2026-11-18): the web alone keeps the
+        # one feedback row per incident; it is never an input or a control
+        "opspilot_investigation_feedback": _g(
+            "SELECT",
+            "INSERT(actual_root_cause,correct_next_steps,incident_id,"
+            "next_steps_verdict,notes,rated_report_sha256,rated_run_id,"
+            "steering_needed,updated_by,verdict)",
+            "UPDATE(actual_root_cause,correct_next_steps,next_steps_verdict,notes,"
+            "rated_report_sha256,rated_run_id,steering_needed,updated_at,updated_by,"
+            "verdict)",
+        ),
         "opspilot_f13_audit": _g(
             "SELECT",
             "INSERT(action,actor_id,event_id,expected_generation,idempotency_key,object_id,"
@@ -142,7 +165,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_observation_sessions": _g(
             "INSERT(active_sample_due_at,active_sample_job_id,active_sample_sequence,authorization_source,authorized_by,authorized_global_generation,authorized_target_generation,deadline_at,health_profile_revision,incident_id,issued_sequence,max_samples,observation_generation,purpose,release_budget_used_at_authorization,release_observation_id,release_policy_revision,sample_interval_seconds,session_id,subject_control_generation,sustained_window_seconds,target,target_id)",
             "SELECT",
-            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,adopted_window_end,ended_reason,healthy_since,state,updated_at)",
+            # subject_control_generation: 0025, workbench A11 r4 (a cancelled
+            # continuation rebinds the recovery session; user 2026-11-17).
+            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,adopted_window_end,ended_reason,healthy_since,state,subject_control_generation,updated_at)",
         ),
         "opspilot_observation_signal_readings": S,
         "opspilot_postmortem_conclusions": S,
@@ -170,6 +195,39 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         # human controls and the deadline sweep clear owner/lease_until; no
         # epoch, so the web cannot issue a lease of its own (claim() sets it)
+        # 0028 (C2a, user r11 C2-U1=a 2026-11-19): imported runbooks are
+        # submitted, decided and revoked only by a signed-in user
+        "opspilot_runbook_audit": _g(
+            "SELECT",
+            "INSERT(action,actor_id,event_id,expected_generation,idempotency_key,"
+            "object_id,object_kind,principal_kind,reason,resulting_generation,revision)",
+        ),
+        "opspilot_runbook_decisions": _g(
+            "SELECT", "INSERT(decided_by,decision,event_id,reason,submission_id)"
+        ),
+        "opspilot_runbook_entries": _g(
+            "SELECT",
+            "INSERT(entry_id,resource_uid)",
+            "UPDATE(generation,latest_revision,updated_at)",
+        ),
+        "opspilot_runbook_requests": _g(
+            "SELECT", "INSERT(action,idempotency_key,request_sha256,result)"
+        ),
+        "opspilot_runbook_revision_states": S,
+        "opspilot_runbook_revisions": _g(
+            "SELECT",
+            "INSERT(approved_by,content,content_sha256,description,entry_id,event_id,"
+            "name,resource_uid,revision,source_label,source_ref,submission_id,"
+            "supersedes_revision)",
+        ),
+        "opspilot_runbook_revocations": _g(
+            "SELECT", "INSERT(entry_id,event_id,reason,revision,revoked_by)"
+        ),
+        "opspilot_runbook_submissions": _g(
+            "SELECT",
+            "INSERT(content,content_sha256,description,event_id,name,resource_uid,"
+            "source_label,source_ref,submission_id,submitted_by,supersedes_entry_id)",
+        ),
         "opspilot_runs": _g(
             "SELECT",
             "INSERT(budget_limit,control_generation,deadline,incident_id,input,run_id,"
@@ -236,6 +294,14 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "INSERT(amount,reservation_id,reserved_seconds,run_id)",
             "UPDATE(seconds,state)",
         ),
+        # 0026 (workbench P7, U-P7): the chat thread claims a turn and writes
+        # its answer; no INSERT, never the question or the forward columns
+        "opspilot_chat_sessions": S,
+        "opspilot_chat_turns": _g(
+            "SELECT",
+            "UPDATE(answer,answered_at,attempts,claim_owner,claim_until,"
+            "completion_tokens,error_code,prompt_tokens,refs,status,steer)",
+        ),
         "opspilot_controls": S,
         "opspilot_evidence": _g(
             "SELECT",
@@ -261,6 +327,8 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "UPDATE(committed,control_generation,input_watermark)",
         ),
         "opspilot_inputs": S,
+        # 0027 (P5 F4): nothing the investigation or Chat reads sees feedback
+        "opspilot_investigation_feedback": NONE,
         "opspilot_knowledge_entries": NONE,
         "opspilot_knowledge_revision_states": S,
         "opspilot_knowledge_revisions": S,
@@ -314,6 +382,16 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_release_events": NONE,
         "opspilot_release_observations": NONE,
+        # 0028 (C2a): fetch_skill (C2b) reads only approved revisions and
+        # their state; submissions, decisions and the audit stay unreadable
+        "opspilot_runbook_audit": NONE,
+        "opspilot_runbook_decisions": NONE,
+        "opspilot_runbook_entries": NONE,
+        "opspilot_runbook_requests": NONE,
+        "opspilot_runbook_revision_states": S,
+        "opspilot_runbook_revisions": S,
+        "opspilot_runbook_revocations": NONE,
+        "opspilot_runbook_submissions": NONE,
         "opspilot_runs": _g(
             "SELECT",
             "UPDATE(budget_reserved,budget_spent,budget_unknown,control_generation,epoch,"

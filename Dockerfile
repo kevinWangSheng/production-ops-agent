@@ -30,9 +30,15 @@ FROM python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad
 RUN groupadd --system --gid 10001 opspilot \
     && useradd --system --uid 10001 --gid 10001 --no-create-home \
        --home-dir /nonexistent --shell /usr/sbin/nologin opspilot
+# jq: the cluster object queries' expression runner (tool expansion A2-8).
+RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY opspilot /app/opspilot
+# License notices (#542): the project's MIT LICENSE and the Apache-2.0
+# notices for the HolmesGPT excerpts, in the Debian place for them.
+COPY LICENSE /usr/share/doc/opspilot/LICENSE
+COPY third_party /usr/share/doc/opspilot/third_party
 COPY deploy/docker-entrypoint.sh /usr/local/bin/opspilot-entrypoint
 # The runtimes' health listener (opspilot.health) answers on the container
 # network; Compose publishes it to the host only in compose.lab.yaml.

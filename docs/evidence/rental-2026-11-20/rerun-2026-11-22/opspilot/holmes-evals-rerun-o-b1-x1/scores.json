@@ -1,0 +1,229 @@
+{
+  "track": "HolmesGPT 公开评测集（竞品自评集）",
+  "main": {
+    "passes": 9,
+    "denominator": 27,
+    "rate": 0.3333333333333333
+  },
+  "per_question": {
+    "183b_elasticsearch_index_discovery": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183c_elasticsearch_log_search": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183d_elasticsearch_aggregation": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183e_elasticsearch_field_mappings": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "184_elasticsearch_index_explosion": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "187_elasticsearch_disk_space": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "188_elasticsearch_mapping_explosion": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "189_elasticsearch_timeseries_gap": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "190_elasticsearch_cross_service_correlation": {
+      "passes": 1,
+      "denominator": 3,
+      "rate": 0.3333333333333333,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": null,
+        "3": null
+      },
+      "swing": true,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    }
+  },
+  "swing_questions": [
+    "183b_elasticsearch_index_discovery",
+    "183c_elasticsearch_log_search",
+    "183d_elasticsearch_aggregation",
+    "183e_elasticsearch_field_mappings",
+    "184_elasticsearch_index_explosion",
+    "187_elasticsearch_disk_space",
+    "188_elasticsearch_mapping_explosion",
+    "189_elasticsearch_timeseries_gap",
+    "190_elasticsearch_cross_service_correlation"
+  ],
+  "rerun": {
+    "questions": {},
+    "passes": 0,
+    "trials": 0,
+    "rate": null,
+    "in_main_score": false
+  },
+  "zero_scored": {
+    "no_report": [],
+    "judge_exhausted": [],
+    "env_broken": []
+  },
+  "missing_trials": [
+    "183b_elasticsearch_index_discovery#2",
+    "183b_elasticsearch_index_discovery#3",
+    "183c_elasticsearch_log_search#2",
+    "183c_elasticsearch_log_search#3",
+    "183d_elasticsearch_aggregation#2",
+    "183d_elasticsearch_aggregation#3",
+    "183e_elasticsearch_field_mappings#2",
+    "183e_elasticsearch_field_mappings#3",
+    "184_elasticsearch_index_explosion#2",
+    "184_elasticsearch_index_explosion#3",
+    "187_elasticsearch_disk_space#2",
+    "187_elasticsearch_disk_space#3",
+    "188_elasticsearch_mapping_explosion#2",
+    "188_elasticsearch_mapping_explosion#3",
+    "189_elasticsearch_timeseries_gap#2",
+    "189_elasticsearch_timeseries_gap#3",
+    "190_elasticsearch_cross_service_correlation#2",
+    "190_elasticsearch_cross_service_correlation#3"
+  ],
+  "multi_cluster": {
+    "questions": [],
+    "passes": 0,
+    "denominator": 0,
+    "rate": null
+  },
+  "time_box_limited": {
+    "questions": [
+      "184_elasticsearch_index_explosion",
+      "189_elasticsearch_timeseries_gap"
+    ],
+    "passes": 2,
+    "denominator": 6,
+    "rate": 0.3333333333333333
+  },
+  "excluding_env_broken": {
+    "questions": [
+      "183b_elasticsearch_index_discovery",
+      "183c_elasticsearch_log_search",
+      "183d_elasticsearch_aggregation",
+      "183e_elasticsearch_field_mappings",
+      "184_elasticsearch_index_explosion",
+      "187_elasticsearch_disk_space",
+      "188_elasticsearch_mapping_explosion",
+      "189_elasticsearch_timeseries_gap",
+      "190_elasticsearch_cross_service_correlation"
+    ],
+    "passes": 9,
+    "denominator": 27,
+    "rate": 0.3333333333333333,
+    "excluded": []
+  }
+}

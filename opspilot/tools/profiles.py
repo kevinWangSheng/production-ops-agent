@@ -15,8 +15,83 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   / ``OPSPILOT_OTEL_PROMETHEUS_PASSWORD`` (basic auth, the lab) or
   ``OPSPILOT_OTEL_TOKEN`` (bearer). The Observer's ``OPSPILOT_OBSERVER_*``
   variables are never read here (C3 §3, D3).
+* ``otel-demo-ext``: every ``otel-demo`` tool unchanged plus the read-only
+  cluster object queries (``opspilot.tools.otel_demo_ext``, tool expansion
+  A2). Its face and versions need no cluster setting, so the web starts
+  without one; only the worker reads ``OPSPILOT_K8S_API_URL``,
+  ``OPSPILOT_K8S_TOKEN``, ``OPSPILOT_K8S_CA_FILE`` and
+  ``OPSPILOT_K8S_NAMESPACE``, when it builds the executor, and refuses to
+  start without them or without ``jq``. With ``OPSPILOT_ES_URL`` set, the
+  three Elasticsearch/OpenSearch tools join it (B1-U2): both processes read
+  that address to pick the face and versions, and only the worker reads the
+  ``es-ro`` credential (``OPSPILOT_ES_API_KEY``, or ``OPSPILOT_ES_USERNAME``
+  and ``OPSPILOT_ES_PASSWORD``; ``OPSPILOT_ES_CA_FILE`` for HTTPS). With
+  ``OPSPILOT_LOKI_URL`` set, ``grafana_loki_query`` joins it the same way
+  (C5-14): both processes read the address, only the worker reads the
+  ``loki-ro`` credential (``OPSPILOT_LOKI_USERNAME`` and
+  ``OPSPILOT_LOKI_PASSWORD``, or ``OPSPILOT_LOKI_BEARER_TOKEN``;
+  ``OPSPILOT_LOKI_CA_FILE`` for HTTPS) and the tenant
+  ``OPSPILOT_LOKI_TENANT_ID``. ``OPSPILOT_VICTORIALOGS_URL`` adds the five
+  ``victorialogs_*`` tools likewise (C5b): only the worker reads the
+  ``vlogs-ro`` credential (``OPSPILOT_VICTORIALOGS_USERNAME`` and
+  ``_PASSWORD``, or ``_BEARER_TOKEN``; ``_CA_FILE``) and the tenant
+  (``_ACCOUNT_ID``, ``_PROJECT_ID``). ``OPSPILOT_K8S_LIVE_METRICS=1`` adds
+  ``kubectl_top_pods`` and ``kubectl_top_nodes`` (B3-1) over the existing
+  cluster connection; any value but ``1``, ``0`` or empty is a startup error
+  (``K8S_LIVE_METRICS_INVALID``) in both processes.
+  ``OPSPILOT_KNOWLEDGE_TOOL=1`` adds ``fetch_skill`` and, in the web, the
+  approved-runbook list to new Runs (C2b); the same values rule
+  (``KNOWLEDGE_TOOL_INVALID``). ``OPSPILOT_SQL_URL`` adds the three
+  ``database_sql_*`` tools (C6a): both processes read the address's scheme
+  for the dialect, only the worker reads the ``sql-ro`` credential
+  (``OPSPILOT_SQL_USERNAME``, ``OPSPILOT_SQL_PASSWORD``; ``OPSPILOT_SQL_TLS``,
+  ``OPSPILOT_SQL_CA_FILE``) and refuses an address that is one of
+  OpsPilot's own ``OPSPILOT_*DSN`` databases (``SQL_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` adds the eight Kafka tools (C3): the
+  web reads the address only, the worker the ``kafka-ro`` settings
+  (``OPSPILOT_KAFKA_SECURITY_PROTOCOL``, ``_SASL_MECHANISM``, ``_USERNAME``,
+  ``_PASSWORD``, ``_CA_FILE``; ``KAFKA_CONFIG_MISSING``/``_INVALID``).
+  ``OPSPILOT_MONGODB_URL`` adds the six MongoDB tools (C6c): the web reads
+  the address only, the worker the ``mongodb-ro`` settings
+  (``OPSPILOT_MONGODB_DATABASE``, ``_USERNAME``, ``_PASSWORD``,
+  ``_AUTH_SOURCE``, ``_TLS``, ``_CA_FILE``; ``MONGODB_CONFIG_MISSING``/
+  ``_INVALID``, ``MONGODB_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_REDIS_URL`` adds the six Redis/Valkey tools (#773): the web
+  reads the address only, the worker the ``redis-ro`` settings
+  (``OPSPILOT_REDIS_DATABASE``, ``_USERNAME``, ``_PASSWORD``, ``_TLS``,
+  ``_CA_FILE``; ``REDIS_CONFIG_MISSING``/``_INVALID``,
+  ``REDIS_TARGETS_OPSPILOT_DB``).
+  ``OPSPILOT_HELM_RELEASES=1`` adds ``helm_list``, ``helm_history`` and
+  ``helm_status`` (B4) over the existing cluster connection;
+  ``OPSPILOT_ARGOCD=1`` adds the four ``argocd_app_*`` tools (C4) the same way
+  (``ARGOCD_INVALID`` for any other value); the same values
+  rule (``HELM_RELEASES_INVALID``), and the worker does not start when the
+  cluster address is not a lab host (``HELM_NOT_LAB``).
 
-Both processes must be started with the same value.
+``otel-demo-ext`` also reads ``OPSPILOT_CLUSTER_NAME`` (#722, r10 H-U1), the
+operator's name for the cluster its Kubernetes access reads: when set, the
+investigation prompt gains a multi-cluster paragraph naming it and fresh Runs
+record it in their input. Both processes read it; whether it is set picks the
+prompt variant and so ``prompt_revision``. An empty value is unset; any other
+value outside ``discipline.CLUSTER_NAME_PATTERN`` refuses to start
+(``CLUSTER_NAME_INVALID``). ``fixture`` and ``otel-demo`` never read it.
+
+``OPSPILOT_MAX_LOOKBACK`` (#779, B4-U1/U2) caps how far back a submitted
+Run's frame may reach: ``24h`` (unset or empty, today's behaviour), ``7d``
+or ``30d``. Both processes read it: the web offers and accepts lookbacks up
+to it, and in ``otel-demo-ext`` it is every tool's registered window ceiling
+(B4-2), so it enters ``tool_schema_revision`` once it is above ``24h``. Any
+other value, or a cap above ``24h`` for ``fixture`` or ``otel-demo`` (whose
+faces stay fixed, B4-1), refuses to start (``MAX_LOOKBACK_INVALID``).
+
+Both processes must be started with the same value (and, for
+``otel-demo-ext``, with ``OPSPILOT_ES_URL``, ``OPSPILOT_LOKI_URL`` and
+``OPSPILOT_VICTORIALOGS_URL``, ``OPSPILOT_SQL_URL`` and
+``OPSPILOT_KAFKA_BOOTSTRAP_SERVERS`` each set (to the same value) in both or
+in neither, and
+``OPSPILOT_K8S_LIVE_METRICS``, ``OPSPILOT_KNOWLEDGE_TOOL``,
+``OPSPILOT_HELM_RELEASES``, ``OPSPILOT_CLUSTER_NAME`` and
+``OPSPILOT_MAX_LOOKBACK`` the same in both).
 """
 
 from __future__ import annotations
@@ -24,26 +99,62 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from opspilot.instructions.discipline import valid_cluster_name
+from opspilot.intake import DEFAULT_LOOKBACK, LOOKBACK_SECONDS
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.runner import ExecutorFactory
+from opspilot.investigation.todo import todo_write_enabled
 from opspilot.persistence import DurableStore
+from opspilot.tools.argocd_apps import argocd_enabled
+from opspilot.tools.elasticsearch_logs import (
+    ElasticsearchConfig,
+    elasticsearch_enabled,
+)
 from opspilot.tools.executor import Clock, EvidenceSink
 from opspilot.tools.fixture import (
     fixture_executor_factory,
     fixture_face,
     fixture_versions,
 )
+from opspilot.tools.helm_releases import helm_releases_enabled
+from opspilot.tools.kafka_admin import KafkaConfig, kafka_enabled
+from opspilot.tools.knowledge_fetch import knowledge_tool_enabled
+from opspilot.tools.kubernetes_core import KubernetesConfig
+from opspilot.tools.kubernetes_live_metrics import live_metrics_enabled
+from opspilot.tools.loki_logs import LokiConfig, loki_enabled
+from opspilot.tools.mongodb_query import MongoConfig, mongodb_enabled
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
     otel_demo_executor_factory,
     otel_demo_face,
     otel_demo_versions,
 )
+from opspilot.tools.otel_demo_ext import (
+    otel_demo_ext_executor_factory,
+    otel_demo_ext_face,
+    otel_demo_ext_versions,
+)
+from opspilot.tools.redis_inspect import RedisConfig, redis_enabled
+from opspilot.tools.registry import ToolContractError
+from opspilot.tools.sql_query import SqlConfig, sql_dialect
+from opspilot.tools.victorialogs_logs import (
+    VictoriaLogsConfig,
+    victorialogs_enabled,
+)
 
-__all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
+__all__ = [
+    "CLUSTER_NAME_ENV",
+    "MAX_LOOKBACK_ENV",
+    "PROFILE_ENV",
+    "PROFILE_NAMES",
+    "ToolProfile",
+    "select_profile",
+]
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
-PROFILE_NAMES = ("fixture", "otel-demo")
+CLUSTER_NAME_ENV = "OPSPILOT_CLUSTER_NAME"
+MAX_LOOKBACK_ENV = "OPSPILOT_MAX_LOOKBACK"
+PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-ext")
 
 
 @dataclass(frozen=True)
@@ -52,6 +163,9 @@ class ToolProfile:
     face: Callable[[Clock], ToolFace]
     versions: Callable[[], dict[str, str]]
     executor_factory: Callable[[DurableStore, EvidenceSink, Clock], ExecutorFactory]
+    #: C2b: whether new Runs carry the approved-runbook list (input v7);
+    #: only ``otel-demo-ext`` with ``OPSPILOT_KNOWLEDGE_TOOL=1``.
+    runbook_catalog: bool = False
 
 
 def _fixture() -> ToolProfile:
@@ -77,11 +191,190 @@ def _otel_demo(env: Mapping[str, str]) -> ToolProfile:
     )
 
 
+_STARTUP_CODES = frozenset(
+    {
+        "K8S_CONFIG_MISSING",
+        "K8S_CONFIG_INVALID",
+        "JQ_NOT_FOUND",
+        "PYTHON_NOT_FOUND",
+        "ES_CONFIG_MISSING",
+        "ES_CONFIG_INVALID",
+        "LOKI_CONFIG_MISSING",
+        "LOKI_CONFIG_INVALID",
+        "VICTORIALOGS_CONFIG_MISSING",
+        "VICTORIALOGS_CONFIG_INVALID",
+        "SQL_CONFIG_MISSING",
+        "SQL_CONFIG_INVALID",
+        "SQL_TARGETS_OPSPILOT_DB",
+        "MONGODB_CONFIG_MISSING",
+        "MONGODB_CONFIG_INVALID",
+        "MONGODB_TARGETS_OPSPILOT_DB",
+        "REDIS_CONFIG_MISSING",
+        "REDIS_CONFIG_INVALID",
+        "REDIS_TARGETS_OPSPILOT_DB",
+        "REDIS_NOT_LAB",
+        "KAFKA_CONFIG_MISSING",
+        "KAFKA_CONFIG_INVALID",
+        "ARGOCD_INVALID",
+        "HELM_NOT_LAB",
+    }
+)
+
+
+def _cluster_name(env: Mapping[str, str]) -> str | None:
+    """#722 CN-9: unset or empty is no name; anything else must be a valid
+    name exactly as given (no trimming), or the process does not start."""
+    value = env.get(CLUSTER_NAME_ENV)
+    if not value:
+        return None
+    if not valid_cluster_name(value):
+        raise SystemExit("CLUSTER_NAME_INVALID")
+    return value
+
+
+def _max_lookback(env: Mapping[str, str], *, extended: bool) -> int:
+    """#779: the deployment's lookback cap in seconds; unset or empty is
+    ``24h``. Anything outside the enum, or a longer cap for a profile whose
+    face is fixed at 24 h, does not start."""
+    value = env.get(MAX_LOOKBACK_ENV) or DEFAULT_LOOKBACK
+    seconds = LOOKBACK_SECONDS.get(value)
+    if seconds is None or (
+        not extended and seconds > LOOKBACK_SECONDS[DEFAULT_LOOKBACK]
+    ):
+        raise SystemExit("MAX_LOOKBACK_INVALID")
+    return seconds
+
+
+def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
+    config = OtelDemoConfig.from_env(env)
+    # #779: both processes read the cap; it is the face's longest frame and
+    # every registered window ceiling (B4-2).
+    window_seconds = _max_lookback(env, extended=True)
+    # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
+    # selects this profile too. Only the worker, when it builds the executor
+    # factory, reads them from the same mapping (the process environment).
+    # B1-U2: the Elasticsearch address alone decides the face and versions;
+    # the web never reads an ``OPSPILOT_ES_*`` credential.
+    elasticsearch = elasticsearch_enabled(env)
+    # C5-14: likewise the Loki address; never an ``OPSPILOT_LOKI_*``
+    # credential or tenant in the web.
+    loki = loki_enabled(env)
+    # #722 CN-10: both processes read the name; the web records it in the
+    # Run input, and whether it is set enters both processes' versions.
+    cluster_name = _cluster_name(env)
+    victorialogs = victorialogs_enabled(env)
+    # B3-1: the switch only; it adds no credential or address.
+    live_metrics = live_metrics_enabled(env)
+    # C2b: the switch only; the worker reads knowledge with its own runtime
+    # role, the web adds the runbook list to new Runs.
+    knowledge = knowledge_tool_enabled(env)
+    # C1 (#565): the switch only; the loop answers ``TodoWrite`` from the Run
+    # input's tools, so the worker reads it only to record the same versions.
+    todo = todo_write_enabled(env)
+    # C6-13: the dialect from the address's scheme only; never an
+    # ``OPSPILOT_SQL_*`` credential in the web.
+    sql = sql_dialect(env)
+    # C3-12: the bootstrap address only; never an ``OPSPILOT_KAFKA_*``
+    # credential in the web.
+    kafka = kafka_enabled(env)
+    # C6c: the address only; never an ``OPSPILOT_MONGODB_*`` credential.
+    mongodb = mongodb_enabled(env)
+    # #773: the address only; never an ``OPSPILOT_REDIS_*`` credential.
+    redis = redis_enabled(env)
+    # B4-2: the switch only (not an ``OPSPILOT_K8S_*`` name, A2-3); the
+    # worker alone checks the cluster address is a lab host (B4-3).
+    helm = helm_releases_enabled(env)
+    # C4 (#568): the switch only; the same cluster connection.
+    argocd = argocd_enabled(env)
+
+    def executor_factory(
+        store: DurableStore, evidence: EvidenceSink, clock: Clock
+    ) -> ExecutorFactory:
+        # The cluster setting and jq are startup preconditions of this
+        # worker: their fixed codes end the process like any other
+        # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
+        # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters;
+        # ``ES_CONFIG_MISSING`` / ``ES_CONFIG_INVALID`` for B1-4;
+        # ``LOKI_CONFIG_MISSING`` / ``LOKI_CONFIG_INVALID`` and
+        # ``VICTORIALOGS_CONFIG_MISSING`` / ``VICTORIALOGS_CONFIG_INVALID``
+        # for C5-4; ``SQL_CONFIG_*`` and ``SQL_TARGETS_OPSPILOT_DB`` for
+        # C6-7/C6-8; ``KAFKA_CONFIG_*`` for C3-4; ``HELM_NOT_LAB`` for B4-3).
+        try:
+            return otel_demo_ext_executor_factory(
+                store,
+                evidence=evidence,
+                clock=clock,
+                config=config,
+                kubernetes=KubernetesConfig.from_env(env),
+                elasticsearch=ElasticsearchConfig.from_env(env),
+                loki=LokiConfig.from_env(env),
+                victorialogs=VictoriaLogsConfig.from_env(env),
+                live_metrics=live_metrics,
+                knowledge=knowledge,
+                todo=todo,
+                sql=SqlConfig.from_env(env),
+                kafka=KafkaConfig.from_env(env),
+                mongodb=MongoConfig.from_env(env),
+                redis=RedisConfig.from_env(env),
+                helm=helm,
+                argocd=argocd,
+                window_seconds=window_seconds,
+            )
+        except ToolContractError as error:
+            code = str(error)
+            if code in _STARTUP_CODES:
+                raise SystemExit(code) from None
+            raise
+
+    return ToolProfile(
+        name="otel-demo-ext",
+        face=lambda clock: otel_demo_ext_face(
+            clock,
+            elasticsearch=elasticsearch,
+            loki=loki,
+            victorialogs=victorialogs,
+            live_metrics=live_metrics,
+            knowledge=knowledge,
+            todo=todo,
+            sql=sql,
+            kafka=kafka,
+            mongodb=mongodb,
+            redis=redis,
+            helm=helm,
+            argocd=argocd,
+            cluster_name=cluster_name,
+            window_seconds=window_seconds,
+        ),
+        versions=lambda: otel_demo_ext_versions(
+            elasticsearch=elasticsearch,
+            loki=loki,
+            victorialogs=victorialogs,
+            live_metrics=live_metrics,
+            knowledge=knowledge,
+            todo=todo,
+            sql=sql,
+            kafka=kafka,
+            mongodb=mongodb,
+            redis=redis,
+            helm=helm,
+            argocd=argocd,
+            cluster_name=cluster_name,
+            window_seconds=window_seconds,
+        ),
+        runbook_catalog=knowledge,
+        executor_factory=executor_factory,
+    )
+
+
 def select_profile(env: Mapping[str, str]) -> ToolProfile:
     """The profile ``env`` names; an unknown name is a startup error."""
     name = env.get(PROFILE_ENV) or "fixture"
     if name == "fixture":
+        _max_lookback(env, extended=False)
         return _fixture()
     if name == "otel-demo":
+        _max_lookback(env, extended=False)
         return _otel_demo(env)
+    if name == "otel-demo-ext":
+        return _otel_demo_ext(env)
     raise SystemExit(f"{PROFILE_ENV} must be one of {', '.join(PROFILE_NAMES)}")

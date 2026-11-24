@@ -1,0 +1,506 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "b3a2e9f0-140b-4c8e-abb9-1c0973bfe611",
+  "frozen_at": "2026-11-16T22:15:43.032310+00:00",
+  "incident_id": "48f4b34f-e113-4d87-b3ad-841d9aad9dfa",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-16T22:14:08.734892+00:00",
+  "ended": "2026-11-16T22:15:33.268817+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "INCOMPLETE_INVESTIGATION",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 100,
+    "http_count": 11,
+    "prompt_tokens": 161274,
+    "completion_tokens": 13346,
+    "run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 11,
+      "model_seconds_used": 67.60220236000168,
+      "tool_operations_used": 20,
+      "tool_seconds_used": 16.040794429995003
+    },
+    "current_run_id": "b3a2e9f0-140b-4c8e-abb9-1c0973bfe611",
+    "current_run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 11,
+      "model_seconds_used": 67.60220236000168,
+      "tool_operations_used": 20,
+      "tool_seconds_used": 16.040794429995003
+    },
+    "evidence_ids": [
+      "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t0:a280ed8e-6d3a-4e3c-87af-0d33116362d9",
+      "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t1:bf500cfc-ec20-42de-8ad9-a122ca6bf290",
+      "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t0:9e812299-9a16-4f63-80ee-5036bf305622",
+      "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t1:900ae662-8044-4289-934a-a4f2616383ac",
+      "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5",
+      "65d18555-63b6-4b73-918f-657e66f9bb31-t0:94af69b7-5269-43ed-a62f-790b1db85529",
+      "1286b55e-6bd4-4a34-a78d-623f00e9a853-t0:5e2369c0-1710-4cc4-aa02-fd6f758d0320",
+      "1286b55e-6bd4-4a34-a78d-623f00e9a853-t1:ba52945f-a819-47bb-b5e0-373e403cb697",
+      "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t0:84ffcf2a-362b-4a91-b228-e5aeb8271c90",
+      "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t1:77777932-eb22-444c-9aab-395769296ce7",
+      "6f035620-2e38-4e03-9b76-789d4ed8e201-t0:45a92fbf-f3ac-4e97-8ff0-20de55562c16",
+      "a2561621-a52a-48ec-9784-8fb454cbe1f5-t0:48e390dd-913b-4ecb-891a-ca0cda3f6668",
+      "a2561621-a52a-48ec-9784-8fb454cbe1f5-t1:23b1984b-0eae-465f-b024-85022d15f38a",
+      "15eb3432-c96e-4616-b34c-2c6e8e24d7f7-t1:9588fb84-ae41-4a33-aae9-5a10ae54b7b8",
+      "2eda0539-65c9-46b6-99df-c2c67392458a-t0:49485172-1960-4e4a-a30a-39a85bf926f1",
+      "2eda0539-65c9-46b6-99df-c2c67392458a-t1:70760cd5-b276-434f-a43e-bf14ff1b930b"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.470102
+  },
+  "report": {
+    "schema_version": "m0-report-v3",
+    "assessment_status": "incomplete",
+    "conclusion": "inconclusive",
+    "summary": "Partial findings only. The Prometheus target m0-otel-20260909 returned just two metric names, traces_span_metrics_calls_total and traces_span_metrics_duration_milliseconds_bucket (discovery for kube_.*, app_.*, http_.*, rpc_.* patterns returned those same two names and no kube-state, rpc or http series). On traces_span_metrics_calls_total the recorded service_name values are frontend, checkout and payment. For checkout the only status_code values are STATUS_CODE_ERROR and STATUS_CODE_UNSET (no OK value; UNSET means no status tag, not success), and spans with STATUS_CODE_ERROR are present at every evaluated point of the 24h window: at 1h steps the checkout ERROR series held 6,8,10,12,14 repeating while UNSET held 30,31,32,33,34 repeating, and the identical pattern and values appear at the start (2026-11-15T23:14) and end (2026-11-16T22:14) of the window. So checkout's own error reading is non-zero, but no onset or deviation can be located inside the authorized window, and no baseline outside it exists. A payment STATUS_CODE_ERROR series (9,12,15,18,21 repeating) is present in the same response; payment returned no UNSET series. Important data-quality counter-evidence: the same values came back for 5m, 10m and 1h range widths and for a raw non-rate query, queries filtered to service_name=\"checkout\" and to service_name=\"payment\" both returned the full checkout+payment series set, and a query for rpc_client_duration_milliseconds_count and for duration buckets returned status_code-labelled series identical to calls_total — the metrics backend did not discriminate by expression, label or filter, so operation-level, RPC-level and dependency-level attribution cannot be derived from it. Jaeger was unavailable: all four traces_search attempts returned status error with reason SOURCE_UNAVAILABLE, so no span, operation name, error detail or parent-child edge was observed. span_name label values for checkout returned no_data. No Kubernetes state exists in this target, so no Deployment/Pod can be named. Hypotheses that remain open: payment as the origin of checkout's errors (correlation only, no trace edge), and an operation-specific or configuration/rollout cause (untestable with the available sources). No root-cause object can be identified, so root_cause is null.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "Only two metric names were discoverable in the authorized Prometheus target: traces_span_metrics_calls_total and traces_span_metrics_duration_milliseconds_bucket. A discovery for {__name__=~\"kube_.*\"} and one for {__name__=~\"app_.*|http_.*|rpc_.*\"} both returned exactly those two trace metric names, so no kube-state, app transaction, http_server or rpc_client series were returned.",
+        "evidence_ids": [
+          "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t0:a280ed8e-6d3a-4e3c-87af-0d33116362d9",
+          "2eda0539-65c9-46b6-99df-c2c67392458a-t0:49485172-1960-4e4a-a30a-39a85bf926f1",
+          "2eda0539-65c9-46b6-99df-c2c67392458a-t1:70760cd5-b276-434f-a43e-bf14ff1b930b"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The service_name label values present on traces_span_metrics_calls_total are frontend, checkout and payment.",
+        "evidence_ids": [
+          "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t1:bf500cfc-ec20-42de-8ad9-a122ca6bf290",
+          "1286b55e-6bd4-4a34-a78d-623f00e9a853-t1:ba52945f-a819-47bb-b5e0-373e403cb697"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "For service_name=\"checkout\" the only status_code label values returned are STATUS_CODE_ERROR and STATUS_CODE_UNSET; no OK/STATUS_CODE_OK value was returned, and STATUS_CODE_UNSET denotes spans carrying no status tag rather than success.",
+        "evidence_ids": [
+          "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t0:9e812299-9a16-4f63-80ee-5036bf305622"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "At 1h steps over the whole authorized window, checkout's STATUS_CODE_ERROR series repeated the cycle 6,8,10,12,14 and its STATUS_CODE_UNSET series repeated 30,31,32,33,34, from the first evaluated point (2026-11-15T23:14:08) to the last (2026-11-16T22:14:08); a raw (non-rate) query of the same metric returned the same per-timestamp values. Checkout therefore has a persistent non-zero error-status span count, with no segment of the window distinguishable from the others.",
+        "evidence_ids": [
+          "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5",
+          "6f035620-2e38-4e03-9b76-789d4ed8e201-t0:45a92fbf-f3ac-4e97-8ff0-20de55562c16"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A payment STATUS_CODE_ERROR series is present in the same responses, repeating 9,12,15,18,21 per evaluated point; no payment STATUS_CODE_UNSET series was returned.",
+        "evidence_ids": [
+          "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5",
+          "6f035620-2e38-4e03-9b76-789d4ed8e201-t0:45a92fbf-f3ac-4e97-8ff0-20de55562c16"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The metric responses did not vary with the expression, label or filter applied: increase[5m], increase[10m] and increase[1h] of traces_span_metrics_calls_total returned the same per-timestamp values (a non-counter-like pattern), a query filtered to service_name=\"checkout\" and one filtered to service_name=\"payment\" both returned the identical checkout(UNSET,ERROR)+payment(ERROR) series set, and queries for rpc_client_duration_milliseconds_count and for traces_span_metrics_duration_milliseconds_bucket returned the same status_code-labelled series as calls_total instead of the rpc_grpc_status_code or le labels requested. This blocks any operation-level, RPC-level or dependency-level attribution from these metrics.",
+        "evidence_ids": [
+          "1286b55e-6bd4-4a34-a78d-623f00e9a853-t0:5e2369c0-1710-4cc4-aa02-fd6f758d0320",
+          "65d18555-63b6-4b73-918f-657e66f9bb31-t0:94af69b7-5269-43ed-a62f-790b1db85529",
+          "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t0:84ffcf2a-362b-4a91-b228-e5aeb8271c90",
+          "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t1:77777932-eb22-444c-9aab-395769296ce7",
+          "a2561621-a52a-48ec-9784-8fb454cbe1f5-t0:48e390dd-913b-4ecb-891a-ca0cda3f6668",
+          "15eb3432-c96e-4616-b34c-2c6e8e24d7f7-t1:9588fb84-ae41-4a33-aae9-5a10ae54b7b8"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "frontend is listed as a service_name value on traces_span_metrics_calls_total, but no frontend series was returned by any executed query (the frontend-filtered query returned only checkout and payment series), so frontend's own error and latency state was not observed and is unknown, not healthy.",
+        "evidence_ids": [
+          "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t1:bf500cfc-ec20-42de-8ad9-a122ca6bf290",
+          "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t0:84ffcf2a-362b-4a91-b228-e5aeb8271c90"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Payment may be the origin of the errors checkout records, since a payment STATUS_CODE_ERROR series is present with higher counts (9-21) than checkout's (6-14). This is correlation only: no span was retrievable, so no checkout-to-payment parent-child edge, payment operation name or grpc status was observed, and a failing dependency would not by itself show which callers broke.",
+        "evidence_ids": [
+          "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The checkout errors could alternatively arise inside checkout itself on specific operations (for example its own payment-client span or a handler), but this cannot be tested: span_name label values for checkout returned no_data and no error span, error detail or parent reference was available from Jaeger.",
+        "evidence_ids": [
+          "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t0:9e812299-9a16-4f63-80ee-5036bf305622"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "Jaeger traces are unavailable in this Run: four traces_search attempts (checkout over 2h, checkout over 1h, checkout with the default window, frontend over 30m) all returned status error with reason SOURCE_UNAVAILABLE, so no span, operation name, error detail field or parent-child call edge was observed for any service.",
+      "span_name label values for {__name__=\"traces_span_metrics_calls_total\",service_name=\"checkout\"} returned status no_data, so the operations behind checkout's error spans are unknown.",
+      "No Kubernetes state evidence exists: kubernetes_state is listed as not_integrated and the {__name__=~\"kube_.*\"} discovery returned only the two trace metric names, so no Deployment/ReplicaSet/Pod, image digest, readiness or restart evidence can place the fault on a Kubernetes object.",
+      "pod_logs and change_history are not integrated, so no deployment/configuration change in the window can be confirmed or excluded.",
+      "The metrics backend in this target appears to answer every expression with the same small series set (identical values for 5m, 10m and 1h ranges, filter-insensitive, and label-mismatched results for rpc_client_duration_milliseconds_count and the duration bucket), so the returned values cannot be treated as reliable per-metric, per-operation readings and no trustworthy error ratio per operation or RPC exists.",
+      "The authorized window is a 24h historical window (2026-11-15T22:14:08 to 2026-11-16T22:14:08) and no samples outside it are readable, so there is no pre-window baseline against which to judge whether checkout's error counts are elevated versus normal.",
+      "No alert metadata (alert rule, threshold, start time) was supplied, so the instant the alerting signal began to deviate could not be determined from the evidence."
+    ],
+    "next_steps": [
+      "Restore or verify Jaeger availability for m0-otel-20260909 and re-run traces_search for checkout and payment to obtain error spans, operation names, error detail text and parent references.",
+      "Inspect the checkout service's outgoing payment call (operation names, grpc status codes) once span data or a functioning rpc_client_duration_milliseconds series is available, to test the payment-origin hypothesis.",
+      "Add kube-state-metrics and change history for the otel-demo namespace so a Deployment/ReplicaSet change or pod restart coincident with the error signal can be checked.",
+      "Validate the Prometheus scrape/query path for this target, since metric responses ignored metric name, label and filter (rpc_client_duration_milliseconds_count and duration buckets returned status_code-labelled series identical to traces_span_metrics_calls_total).",
+      "Obtain a baseline period (e.g. 24-48h before 2026-11-15T22:14:08) and the alert rule definition to establish when checkout's error rate actually deviated."
+    ],
+    "root_cause": null
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "ctx0:round-3",
+      "ctx0:round-4",
+      "ctx0:round-5",
+      "ctx0:round-6",
+      "ctx0:round-7",
+      "ctx0:round-8",
+      "ctx0:round-9",
+      "ctx0:round-10",
+      "ctx0:round-11",
+      "conclusion:g0:ctx0:round-11"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 11,
+    "next_round": 12,
+    "evidence_ids": [
+      "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t0:a280ed8e-6d3a-4e3c-87af-0d33116362d9",
+      "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t1:bf500cfc-ec20-42de-8ad9-a122ca6bf290",
+      "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t0:9e812299-9a16-4f63-80ee-5036bf305622",
+      "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t1:900ae662-8044-4289-934a-a4f2616383ac",
+      "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5",
+      "65d18555-63b6-4b73-918f-657e66f9bb31-t0:94af69b7-5269-43ed-a62f-790b1db85529",
+      "1286b55e-6bd4-4a34-a78d-623f00e9a853-t0:5e2369c0-1710-4cc4-aa02-fd6f758d0320",
+      "1286b55e-6bd4-4a34-a78d-623f00e9a853-t1:ba52945f-a819-47bb-b5e0-373e403cb697",
+      "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t0:84ffcf2a-362b-4a91-b228-e5aeb8271c90",
+      "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t1:77777932-eb22-444c-9aab-395769296ce7",
+      "6f035620-2e38-4e03-9b76-789d4ed8e201-t0:45a92fbf-f3ac-4e97-8ff0-20de55562c16",
+      "a2561621-a52a-48ec-9784-8fb454cbe1f5-t0:48e390dd-913b-4ecb-891a-ca0cda3f6668",
+      "a2561621-a52a-48ec-9784-8fb454cbe1f5-t1:23b1984b-0eae-465f-b024-85022d15f38a",
+      "15eb3432-c96e-4616-b34c-2c6e8e24d7f7-t1:9588fb84-ae41-4a33-aae9-5a10ae54b7b8",
+      "2eda0539-65c9-46b6-99df-c2c67392458a-t0:49485172-1960-4e4a-a30a-39a85bf926f1",
+      "2eda0539-65c9-46b6-99df-c2c67392458a-t1:70760cd5-b276-434f-a43e-bf14ff1b930b"
+    ]
+  },
+  "citations": {
+    "cited": [
+      {
+        "evidence_id": "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t0:a280ed8e-6d3a-4e3c-87af-0d33116362d9",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "2eda0539-65c9-46b6-99df-c2c67392458a-t0:49485172-1960-4e4a-a30a-39a85bf926f1",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "2eda0539-65c9-46b6-99df-c2c67392458a-t1:70760cd5-b276-434f-a43e-bf14ff1b930b",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "c6e10f4f-4da9-42fa-a84f-8291dc94b6e8-t1:bf500cfc-ec20-42de-8ad9-a122ca6bf290",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "1286b55e-6bd4-4a34-a78d-623f00e9a853-t1:ba52945f-a819-47bb-b5e0-373e403cb697",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "11305ff7-c8dc-47c3-ad90-4572a78acd2a-t0:9e812299-9a16-4f63-80ee-5036bf305622",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "f3908364-eff4-47f2-9851-b9ca05ed5754-t0:6d94e102-17ad-4da0-ad76-b0772ee545e5",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "6f035620-2e38-4e03-9b76-789d4ed8e201-t0:45a92fbf-f3ac-4e97-8ff0-20de55562c16",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "1286b55e-6bd4-4a34-a78d-623f00e9a853-t0:5e2369c0-1710-4cc4-aa02-fd6f758d0320",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "65d18555-63b6-4b73-918f-657e66f9bb31-t0:94af69b7-5269-43ed-a62f-790b1db85529",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t0:84ffcf2a-362b-4a91-b228-e5aeb8271c90",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "94f08c04-e279-4bd5-9d78-7df9f7b7204d-t1:77777932-eb22-444c-9aab-395769296ce7",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "a2561621-a52a-48ec-9784-8fb454cbe1f5-t0:48e390dd-913b-4ecb-891a-ca0cda3f6668",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "15eb3432-c96e-4616-b34c-2c6e8e24d7f7-t1:9588fb84-ae41-4a33-aae9-5a10ae54b7b8",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      }
+    ],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "96b963813c33092030b89e01ca82e62f9f01a629d07fa9b0caea2765fbda07c1",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "db812819c8de39eb6d1bcf8220019fd2",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-f3-676-d9-missing-source",
+    "project_id": "ebc2b200-3393-4a55-87f4-f220d2325feb",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-1115-52b1e6f7c3a2",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ebc2b200-3393-4a55-87f4-f220d2325feb/r/00000000-0000-0000-1115-52b1e6f7c3a2?poll=true",
+    "read_back": "found"
+  },
+  "f3_coverage": {
+    "run_id": "b3a2e9f0-140b-4c8e-abb9-1c0973bfe611",
+    "coverage": {
+      "run_id": "b3a2e9f0-140b-4c8e-abb9-1c0973bfe611",
+      "sources_recorded": true,
+      "duplicates_skipped": 0,
+      "sources": [
+        {
+          "name": "jaeger",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 4,
+          "reasons": {
+            "SOURCE_UNAVAILABLE": 4
+          },
+          "state": "failed",
+          "gap": true
+        },
+        {
+          "name": "prometheus",
+          "ok": 14,
+          "no_data": 2,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "all_ok",
+          "gap": false
+        },
+        {
+          "name": "kubernetes_state",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "pod_logs",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "change_history",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        }
+      ]
+    },
+    "report_collection_truncated": [
+      false
+    ],
+    "page": {
+      "http_status": 200,
+      "coverage_gaps": true,
+      "coverage_rows": [
+        {
+          "source": "jaeger",
+          "state": "failed"
+        },
+        {
+          "source": "prometheus",
+          "state": "all_ok"
+        },
+        {
+          "source": "kubernetes_state",
+          "state": "not_integrated"
+        },
+        {
+          "source": "pod_logs",
+          "state": "not_integrated"
+        },
+        {
+          "source": "change_history",
+          "state": "not_integrated"
+        }
+      ],
+      "collection_truncated": false,
+      "collection_truncated_text": null,
+      "not_integrated": true
+    },
+    "u6": {
+      "answer_path": "evals/f3/missing-source/answer.json",
+      "answer_sha256": "b9a541ab9d13b7fce5433a923263eb133936b95e59822561d136ff6fa3ddaab5",
+      "report_parsed": true,
+      "report_parse_reason": "",
+      "conclusion": "inconclusive",
+      "assessment_status": "incomplete",
+      "fact_evidence_matching_signature": [],
+      "required_source": "jaeger",
+      "required_source_state": "failed",
+      "required_source_gap": true,
+      "passed": true,
+      "model_gaps_name_traces": true
+    }
+  },
+  "raw_ledger": {
+    "sha256": "22706a1caa534627a1f1b867b70af9e3d17208bcacfbc6ffd91eae82952ed7be",
+    "bytes": 26774,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/b3a2e9f0-140b-4c8e-abb9-1c0973bfe611/ledger.json",
+    "in_repository": false
+  }
+}

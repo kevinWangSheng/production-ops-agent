@@ -100,6 +100,23 @@ def test_contract_forbids_citing_operation_id():
     ), "REPORT_CONTRACT must say operation_id is never an evidence_id / cited"
 
 
+def test_contract_defines_completed_versus_incomplete():
+    """#771: 14 of 15 rental handoffs marked themselves incomplete after
+    running every available check (subject absent, source not configured).
+    The contract must say that is completed-with-gaps, and reserve
+    incomplete for checks that were cut short."""
+    text = REPORT_CONTRACT
+    assert (
+        "completed means you ran the checks the available tools allow, "
+        "including when the subject asked about is not present or the tool or "
+        "source the question needs is not configured or unreachable" in text
+    )
+    assert (
+        "incomplete is only for checks you still needed and could run but "
+        "were cut short" in text
+    )
+
+
 def test_prompt_revision_moved_with_the_contract_text():
     """C3 §5: the prompt revision is a hash of the L2 bytes, so a changed
     contract must not reclaim Runs recorded under the pre-fix literal."""
@@ -177,11 +194,11 @@ def test_projection_revision_is_v6():
     assert PROJECTION_REVISION != PRE_FIX_PROJECTION_REVISION
     # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10;
     # #319 to v11.
-    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v19"
     executor, transport, _, _ = build()
     transport.response = TransportResponse(body=body([]))
     view = executor.execute(request()).model_view
-    assert view["projection_revision"] == "m1-01-tool-view-v11"
+    assert view["projection_revision"] == "m1-01-tool-view-v19"
 
 
 def test_view_stub_keeps_citable_as_fact():

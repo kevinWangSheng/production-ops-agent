@@ -1,0 +1,94 @@
+{
+ "_comment": "#839: one tool snapshot in the shape recorded before 2026-11-19 (QueryScope still has max_operations/max_tool_seconds; ToolRegistration has no citable_as_fact). Structure from an archived F1 recording; identifiers synthetic.",
+ "snapshot": {
+  "scope": {
+   "control_generation": 0,
+   "deadline": "2026-11-05T13:46:18.664577+00:00",
+   "default_query_window": {
+    "end": "2026-11-05T11:46:18+00:00",
+    "start": "2026-11-05T10:43:41+00:00"
+   },
+   "global_suspension_generation": 0,
+   "max_operations": 20,
+   "max_tool_seconds": 240.0,
+   "registry_revision": "registry-revision-839",
+   "run_id": "run-839",
+   "scope_id": "otel-demo:run-839:1",
+   "subject_id": "incident-839",
+   "subject_kind": "incident",
+   "target_ids": [
+    "m0-otel-20260909"
+   ],
+   "target_suspension_generation": 0,
+   "tool_names": [
+    "read_evidence"
+   ],
+   "tool_registry_revision": "tool-registry-revision-839",
+   "window": {
+    "end": "2026-11-05T11:46:18+00:00",
+    "start": "2026-11-04T11:46:18+00:00"
+   }
+  },
+  "targets": [
+   {
+    "credential_ref": "otel-demo-ro",
+    "display_name": "OTel Demo 2.0.2 lab",
+    "endpoint": "http://127.0.0.1:19190",
+    "selector": {
+     "opspilot.integration.id": "m0-otel-20260909",
+     "traces_endpoint": "http://127.0.0.1:16786/jaeger/ui"
+    },
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909"
+   }
+  ],
+  "tools": [
+   {
+    "description": {
+     "cannot_prove": "A slice proves only the rows it shows: rows of the kept result outside [offset, offset + returned) are unknown from this view, and a slice is not the whole result, so no total, maximum, minimum or absence may be read from it. The kept result itself (the over-limit refusal's evidence_id) is not citable; cite the slice. A single row larger than the view limit cannot be read this way; narrow the original query.",
+     "limits": "offset (at least 0, default 0) and limit (at least 1) count rows under the parent tool's result path: series for metrics_range_query, spans for traces_search, names or values for the discovery tools. An offset at or past total_rows returns no_data. The whole slice view is limited to the registered max_view_tokens (25,000 DeepSeek tokens): a larger slice is refused with RESULT_TOO_LARGE and no rows, never cut; read fewer rows. Only an evidence_id from an over-limit refusal of this Run can be read; any other is denied with EVIDENCE_NOT_READABLE.",
+     "returns": "Rows of one over-limit result this Run kept as un-adopted evidence, read back from the gateway's evidence store: the rows offset to offset + limit - 1 under the parent tool's result path, with parent_tool and a slice header; source, window and time fields are the parent's.",
+     "values_format": "The authorized target for this Run is appended as {values}; only a result kept from that target is readable.",
+     "window_format": "The parent result's query window, which lies inside the authorized window appended as {window}; a slice never reads outside it."
+    },
+    "error_classes": {
+     "EVIDENCE_CORRUPT": "SOURCE_ERROR",
+     "EVIDENCE_NOT_READABLE": "EVIDENCE_NOT_READABLE",
+     "INVALID_LIMIT": "INVALID_PARAMS",
+     "INVALID_OFFSET": "INVALID_PARAMS"
+    },
+    "incomplete_marker": null,
+    "max_result_bytes": 2097152,
+    "max_view_tokens": 25000,
+    "max_window_seconds": 86400,
+    "may_contain_secrets": false,
+    "name": "read_evidence",
+    "parameters": {
+     "evidence_id": {
+      "description": "evidence_id of a kept over-limit result.",
+      "kind": "string",
+      "required": true
+     },
+     "limit": {
+      "description": "How many rows to return.",
+      "kind": "integer",
+      "required": true
+     },
+     "offset": {
+      "description": "First row to return, from 0.",
+      "kind": "integer",
+      "required": false
+     }
+    },
+    "read_only": true,
+    "request_timeout_seconds": 10.0,
+    "result_path": [
+     "rows"
+    ],
+    "source": "opspilot-evidence",
+    "verb": "get",
+    "version": "v1"
+   }
+  ]
+ }
+}

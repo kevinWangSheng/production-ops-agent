@@ -1,0 +1,2492 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-b1b",
+  "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+  "frozen_at": "2026-11-23T17:11:27.192799+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+    "incident_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 6,
+      "deadline": "2026-11-23T19:10:38.725901+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "I'm investigating an error in trace TRACE-ERR-X9K2M. Check Elasticsearch and tell me which service failed and what the error was.",
+      "authorized_window": {
+        "end": "2026-11-23T17:10:38+00:00",
+        "start": "2026-10-24T17:10:38+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+      "target_id": "30ff2cfe-a422-4476-98d0-be7af820ce7b",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+      "created_at": "2026-11-23T17:10:38.740881+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-231b046ecbb5",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "The trace identifier TRACE-ERR-X9K2M exists only in the Elasticsearch index app-245-apm-traces (the only index matching *), which holds 22 documents in the sampled hour 2026-11-23T16:10:38Z–17:10:38Z. Two of those documents belong to TRACE-ERR-X9K2M. The error is recorded on the span of service payment-gateway, operation authenticate_payment: error.type ConnectionTimeout and error.message 'Authentication service timeout - error code AUTH-4729', http.status_code 503, duration_ms 5180. Its stack trace shows the payment_gateway application awaiting self.http_client.post(auth_url, json=payload, timeout=5.0) in /app/payment_gateway/clients/auth_client.py line 201, i.e. payment-gateway timed out calling an authentication service. The parent span of that span (parent_span_id span-gw-err) belongs to service api-gateway, operation POST /api/payment, and its own document also carries http.status_code 503 with duration_ms 5234, so the api-gateway request that fronted this call failed as well. The other 20 documents in the window are TRACE-OK-* records with http.status_code 200 for api-gateway POST /api/payment and payment-service process_payment, so those two series show no error in the sample. The service that payment-gateway called (an authentication service at auth_url) produced no document in this index, and no workload of that name exists in the cluster, so its own state is not observable here; the deepest cause therefore remains unconfirmed and no root-cause object can be named. Jaeger and Prometheus were unreachable (SOURCE_UNAVAILABLE) during this Run, so neither span data nor metric/label data from those sources could be checked.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "The Elasticsearch index app-245-apm-traces maps the fields trace_id, service, operation, span_id, parent_span_id, duration_ms, error.message, error.type, error.stack_trace and http.status_code, and a search across its documents in the window 2026-11-23T16:10:38Z–17:10:38Z returned 22 documents (total 22, none omitted) whose service values are payment-gateway, api-gateway and payment-service.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Document c55jCaIBRlXO9qICQK31 in app-245-apm-traces (@timestamp 2026-11-23T17:09:00.050Z, trace_id TRACE-ERR-X9K2M) is the span of service payment-gateway, operation authenticate_payment, span_id span-pay-err, parent_span_id span-gw-err, duration_ms 5180, http.status_code 503, with error.type ConnectionTimeout and error.message exactly 'Authentication service timeout - error code AUTH-4729'.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The error.stack_trace on that payment-gateway span shows the failure inside /app/payment_gateway/handlers/payment_handler.py (process_payment) calling /app/payment_gateway/clients/auth_client.py line 201 authenticate(), which awaits self.http_client.post(auth_url, json=payload, timeout=5.0); the observed span duration of 5180 ms is consistent with that 5.0 s client timeout being exceeded.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Document cp5jCaIBRlXO9qICQK31 (@timestamp 2026-11-23T17:09:00Z, trace_id TRACE-ERR-X9K2M) is the span of service api-gateway, operation POST /api/payment, span_id span-gw-err, duration_ms 5234 and http.status_code 503; its span_id matches the parent_span_id of the payment-gateway error span, so per the supplied parent reference api-gateway's POST /api/payment is the parent of payment-gateway's authenticate_payment.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The remaining 20 returned documents in the same window are TRACE-OK-* traces (16:55:00Z–17:04:00Z) in which service api-gateway operation POST /api/payment has http.status_code 200, duration_ms 245, and service payment-service operation process_payment has http.status_code 200, duration_ms 180; no error field or non-200 status appears on those documents.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The cluster's deployment list at query time contains 24 deployments, all with available replicas equal to replicas, and includes none named payment-gateway, api-gateway or auth; the otel-demo namespace contains payment, frontend, frontend-proxy, checkout, jaeger, flagd and other otel-demo components, so the trace's service identities do not correspond to workloads observable in this cluster.",
+          "evidence_ids": [
+            "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "The proximate cause of the failure is an unresponsive or unreachable authentication service: payment-gateway's outbound HTTP call to auth_url exceeded the configured 5.0 s timeout, producing ConnectionTimeout and a 503 surfaced through api-gateway's POST /api/payment. This is a hypothesis because no document in app-245-apm-traces carries the authentication service as its service identity and no workload of that name exists in the cluster, so the dependency's own error/latency evidence was not observed.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+            "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "rejected_hypothesis",
+          "text": "Rejected: an api-gateway-internal fault as the origin. The api-gateway span carries 503 only as the status it returned for POST /api/payment, while the error object (error.type ConnectionTimeout, error.message 'Authentication service timeout - error code AUTH-4729') and the outbound auth_client call site are on the child payment-gateway span; api-gateway's same operation returned 200 in the 20 TRACE-OK-* documents of the same window.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "rejected_hypothesis",
+          "text": "Rejected: payment-service as the failing service. The service named payment-service appears only as operation process_payment with http.status_code 200 and duration_ms 180 in the TRACE-OK-* documents; the failing span belongs to the differently named service payment-gateway, and no document ties payment-service to trace TRACE-ERR-X9K2M.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "recommendation",
+          "text": "Advisory: verify the authentication service behind auth_url (DNS/endpoint reachability, its own p99 latency versus payment-gateway's 5.0 s client timeout) and review payment-gateway's auth_client timeout/retry settings; when Jaeger and Prometheus are reachable again, check service_name label series for an auth service and payment-gateway error counts to confirm the dependency failure.",
+          "evidence_ids": [
+            "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "Jaeger was unreachable in this Run: traces_list_services returned SOURCE_UNAVAILABLE on two attempts, so no span-level confirmation of the trace or of a call edge beyond the supplied parent_span_id could be obtained.",
+        "traces_query_trace_by_id for 'TRACE-ERR-X9K2M' returned INVALID_PARAMS (the value is not a valid hexadecimal trace ID), so the trace was found only through the trace_id field of app-245-apm-traces in Elasticsearch.",
+        "Prometheus was unreachable in this Run: execute_prometheus_instant_query for count by (service_name) (traces_span_metrics_calls_total) and get_label_values on service_name both returned SOURCE_UNAVAILABLE, so no metric names or label values (including any ERROR series for payment-gateway, api-gateway or an auth service) could be checked.",
+        "The authentication service that payment-gateway called is not among the service identities returned by Elasticsearch (payment-gateway, api-gateway, payment-service) and no workload named auth exists in the cluster at query time; its own errors, logs and latency are unknown, so the deepest cause is unconfirmed.",
+        "No workload named payment-gateway or api-gateway exists in the cluster, so no pod status, events or container logs could be read for the failing service; only Elasticsearch documents describe it.",
+        "The Elasticsearch sample covers only 2026-11-23T16:55:00Z–17:09:00.050Z (22 documents); behaviour before or after that span within the authorized window is unknown, and one error document cannot establish an error rate.",
+        "error.stack_trace, http.request.body and http.response.body in the error document were cut at 2000 characters, so the portions beyond that limit are unknown."
+      ],
+      "next_steps": [
+        "Identify the authentication service behind payment-gateway's auth_url and check its own availability, error logs and latency around 2026-11-23T17:09:00Z.",
+        "Re-query Jaeger and Prometheus for payment-gateway / api-gateway error and latency series once those sources are reachable, to confirm whether the timeout was isolated or sustained.",
+        "Review the payment_gateway auth_client configuration (timeout 5.0 s, retry, circuit breaking) if the dependency latency is expected to exceed that bound."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 6,
+      "logical_key": "conclusion:g0:ctx0:round-6",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T17:11:17.729153+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:10:41.056010+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:10:43.025856+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:10:47.956401+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "ctx0:round-4",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:10:50.236201+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 4,
+        "logical_key": "ctx0:round-5",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T17:10:52.038630+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 5,
+        "logical_key": "ctx0:round-6",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:11:17.723150+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 6,
+        "logical_key": "conclusion:g0:ctx0:round-6",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T17:11:17.729153+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 6,
+      "prompt_tokens": 136904,
+      "completion_tokens": 6862,
+      "total_tokens": 143766,
+      "prompt_cache_hit_tokens": 127616,
+      "prompt_cache_miss_tokens": 9288
+    },
+    "tool_requests": [
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "050eeaaa-a347-42bf-9116-11486c59e879-t1",
+        "epoch": 1,
+        "tool": "traces_query_trace_by_id",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "INVALID_PARAMS",
+        "outbound": false,
+        "source_contact": "none",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "050eeaaa-a347-42bf-9116-11486c59e879-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_list_indices",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0",
+        "epoch": 1,
+        "tool": "elasticsearch_mappings",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1",
+        "epoch": 1,
+        "tool": "elasticsearch_search",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t0",
+        "epoch": 1,
+        "tool": "traces_list_services",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "SOURCE_UNAVAILABLE",
+        "outbound": null,
+        "source_contact": "possible",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t1",
+        "epoch": 1,
+        "tool": "get_label_values",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "SOURCE_UNAVAILABLE",
+        "outbound": null,
+        "source_contact": "possible",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t0",
+        "epoch": 1,
+        "tool": "traces_list_services",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "SOURCE_UNAVAILABLE",
+        "outbound": null,
+        "source_contact": "possible",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t1",
+        "epoch": 1,
+        "tool": "execute_prometheus_instant_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "error",
+        "reason": "SOURCE_UNAVAILABLE",
+        "outbound": null,
+        "source_contact": "possible",
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "operation_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0",
+        "epoch": 1,
+        "tool": "kubernetes_tabular_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "050eeaaa-a347-42bf-9116-11486c59e879-t0:2ed8ee31-14af-4c13-8340-3f2dc58a2bb7",
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_list_indices",
+        "tool_version": "v1",
+        "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {},
+        "window": {
+          "end": "2026-11-23T17:10:38+00:00",
+          "start": "2026-10-24T17:10:38+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:10:41.081454+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_mappings",
+        "tool_version": "v1",
+        "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "index": "app-245-apm-traces"
+        },
+        "window": {
+          "end": "2026-11-23T17:10:38+00:00",
+          "start": "2026-10-24T17:10:38+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:10:43.050360+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "status": "ok",
+        "adopted": true,
+        "tool": "elasticsearch_search",
+        "tool_version": "v1",
+        "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "size": 30,
+          "index": "app-245-apm-traces"
+        },
+        "window": {
+          "end": "2026-11-23T17:10:38+00:00",
+          "start": "2026-11-23T16:10:38+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:10:43.063515+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+        "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_tabular_query",
+        "tool_version": "v2",
+        "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+        "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "deployments",
+          "columns": "NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICAS:.status.replicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.containers[*].image"
+        },
+        "window": {
+          "end": "2026-11-23T17:10:38+00:00",
+          "start": "2026-10-24T17:10:38+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T17:10:52.108997+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+      "observations": [
+        {
+          "evidence_id": "050eeaaa-a347-42bf-9116-11486c59e879-t0:2ed8ee31-14af-4c13-8340-3f2dc58a2bb7",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_list_indices",
+          "tool_version": "v1",
+          "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {},
+          "window": {
+            "end": "2026-11-23T17:10:38+00:00",
+            "start": "2026-10-24T17:10:38+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:10:41.081454+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_mappings",
+          "tool_version": "v1",
+          "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "index": "app-245-apm-traces"
+          },
+          "window": {
+            "end": "2026-11-23T17:10:38+00:00",
+            "start": "2026-10-24T17:10:38+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:10:43.050360+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "status": "ok",
+          "adopted": true,
+          "tool": "elasticsearch_search",
+          "tool_version": "v1",
+          "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "size": 30,
+            "index": "app-245-apm-traces"
+          },
+          "window": {
+            "end": "2026-11-23T17:10:38+00:00",
+            "start": "2026-11-23T16:10:38+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:10:43.063515+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_tabular_query",
+          "tool_version": "v2",
+          "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+          "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "deployments",
+            "columns": "NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICAS:.status.replicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.containers[*].image"
+          },
+          "window": {
+            "end": "2026-11-23T17:10:38+00:00",
+            "start": "2026-10-24T17:10:38+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T17:10:52.108997+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [
+        {
+          "operation_id": "050eeaaa-a347-42bf-9116-11486c59e879-t1",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "tool": "traces_query_trace_by_id",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "INVALID_PARAMS",
+          "source_contact": "none"
+        },
+        {
+          "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t0",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "tool": "traces_list_services",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "SOURCE_UNAVAILABLE",
+          "source_contact": "possible"
+        },
+        {
+          "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t1",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "tool": "get_label_values",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "SOURCE_UNAVAILABLE",
+          "source_contact": "possible"
+        },
+        {
+          "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t0",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "tool": "traces_list_services",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "SOURCE_UNAVAILABLE",
+          "source_contact": "possible"
+        },
+        {
+          "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t1",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "tool": "execute_prometheus_instant_query",
+          "target_id": "m0-otel-20260909",
+          "status": "error",
+          "reason": "SOURCE_UNAVAILABLE",
+          "source_contact": "possible"
+        }
+      ],
+      "reports": [
+        {
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "claims": {
+            "fact": [
+              {
+                "text": "The Elasticsearch index app-245-apm-traces maps the fields trace_id, service, operation, span_id, parent_span_id, duration_ms, error.message, error.type, error.stack_trace and http.status_code, and a search across its documents in the window 2026-11-23T16:10:38Z–17:10:38Z returned 22 documents (total 22, none omitted) whose service values are payment-gateway, api-gateway and payment-service.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Document c55jCaIBRlXO9qICQK31 in app-245-apm-traces (@timestamp 2026-11-23T17:09:00.050Z, trace_id TRACE-ERR-X9K2M) is the span of service payment-gateway, operation authenticate_payment, span_id span-pay-err, parent_span_id span-gw-err, duration_ms 5180, http.status_code 503, with error.type ConnectionTimeout and error.message exactly 'Authentication service timeout - error code AUTH-4729'.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The error.stack_trace on that payment-gateway span shows the failure inside /app/payment_gateway/handlers/payment_handler.py (process_payment) calling /app/payment_gateway/clients/auth_client.py line 201 authenticate(), which awaits self.http_client.post(auth_url, json=payload, timeout=5.0); the observed span duration of 5180 ms is consistent with that 5.0 s client timeout being exceeded.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Document cp5jCaIBRlXO9qICQK31 (@timestamp 2026-11-23T17:09:00Z, trace_id TRACE-ERR-X9K2M) is the span of service api-gateway, operation POST /api/payment, span_id span-gw-err, duration_ms 5234 and http.status_code 503; its span_id matches the parent_span_id of the payment-gateway error span, so per the supplied parent reference api-gateway's POST /api/payment is the parent of payment-gateway's authenticate_payment.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The remaining 20 returned documents in the same window are TRACE-OK-* traces (16:55:00Z–17:04:00Z) in which service api-gateway operation POST /api/payment has http.status_code 200, duration_ms 245, and service payment-service operation process_payment has http.status_code 200, duration_ms 180; no error field or non-200 status appears on those documents.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "The cluster's deployment list at query time contains 24 deployments, all with available replicas equal to replicas, and includes none named payment-gateway, api-gateway or auth; the otel-demo namespace contains payment, frontend, frontend-proxy, checkout, jaeger, flagd and other otel-demo components, so the trace's service identities do not correspond to workloads observable in this cluster.",
+                "evidence": [
+                  {
+                    "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [
+              {
+                "text": "The proximate cause of the failure is an unresponsive or unreachable authentication service: payment-gateway's outbound HTTP call to auth_url exceeded the configured 5.0 s timeout, producing ConnectionTimeout and a 503 surfaced through api-gateway's POST /api/payment. This is a hypothesis because no document in app-245-apm-traces carries the authentication service as its service identity and no workload of that name exists in the cluster, so the dependency's own error/latency evidence was not observed.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  },
+                  {
+                    "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "recommendation": [
+              {
+                "text": "Advisory: verify the authentication service behind auth_url (DNS/endpoint reachability, its own p99 latency versus payment-gateway's 5.0 s client timeout) and review payment-gateway's auth_client timeout/retry settings; when Jaeger and Prometheus are reachable again, check service_name label series for an auth service and payment-gateway error counts to confirm the dependency failure.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "counter_evidence": [],
+            "rejected_hypothesis": [
+              {
+                "text": "Rejected: an api-gateway-internal fault as the origin. The api-gateway span carries 503 only as the status it returned for POST /api/payment, while the error object (error.type ConnectionTimeout, error.message 'Authentication service timeout - error code AUTH-4729') and the outbound auth_client call site are on the child payment-gateway span; api-gateway's same operation returned 200 in the 20 TRACE-OK-* documents of the same window.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "Rejected: payment-service as the failing service. The service named payment-service appears only as operation process_payment with http.status_code 200 and duration_ms 180 in the TRACE-OK-* documents; the failing span belongs to the differently named service payment-gateway, and no document ties payment-service to trace TRACE-ERR-X9K2M.",
+                "evidence": [
+                  {
+                    "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ]
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 3,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 2,
+                "INVALID_PARAMS": 1
+              },
+              "state": "failed",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 1,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 2,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 2
+              },
+              "state": "failed",
+              "gap": true
+            },
+            {
+              "name": "elasticsearch",
+              "ok": 3,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+        "resolvable": true,
+        "tool": "kubernetes_tabular_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "subject_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_tabular_query",
+            "count": 24,
+            "notes": [],
+            "query": {
+              "kind": "deployments",
+              "columns": "NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPLICAS:.status.replicas,AVAILABLE:.status.availableReplicas,IMAGE:.spec.containers[*].image"
+            },
+            "scope": {
+              "kind": "deployments",
+              "api_group": "apps",
+              "namespace": null,
+              "all_namespaces": true,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "header": [
+              "NAMESPACE",
+              "NAME",
+              "REPLICAS",
+              "AVAILABLE",
+              "IMAGE"
+            ],
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:10:38+00:00",
+              "start": "2026-10-24T17:10:38+00:00"
+            },
+            "adopted": true,
+            "content": [
+              [
+                "kube-system",
+                "coredns",
+                "2",
+                "2",
+                "<none>"
+              ],
+              [
+                "kube-system",
+                "metrics-server",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "local-path-storage",
+                "local-path-provisioner",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "ad",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "cart",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "checkout",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "currency",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "email",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "flagd",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "frontend",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "frontend-proxy",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "image-provider",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "jaeger",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "kube-state-metrics",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "load-generator",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "otel-collector",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "payment",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "product-catalog",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "prometheus",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "prometheus-readonly-proxy",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "quote",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "recommendation",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "shipping",
+                "1",
+                "1",
+                "<none>"
+              ],
+              [
+                "otel-demo",
+                "valkey-cart",
+                "1",
+                "1",
+                "<none>"
+              ]
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+            "filter_mode": null,
+            "observed_at": "2026-11-23T17:10:52.108997+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). <none> means the path reached no value in that object, not that the field is absent from the kind; a filtered table is not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0",
+            "result_count": 24,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 24,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+            "dispatch_started_at": "2026-11-23T17:10:52.045840+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 24,
+            "rows_removed_by_filter": 0,
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f"
+          }
+        }
+      },
+      {
+        "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+        "resolvable": true,
+        "tool": "elasticsearch_mappings",
+        "status": "ok",
+        "stored": {
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "subject_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+          "status": "ok",
+          "view": {
+            "tool": "elasticsearch_mappings",
+            "index": "app-245-apm-traces",
+            "notes": [
+              "This tool has no time range: it shows the cluster's indices and mappings at the moment of the query, which can be after the authorized window."
+            ],
+            "query": {
+              "index": "app-245-apm-traces"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:10:38+00:00",
+              "start": "2026-10-24T17:10:38+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "index": "app-245-apm-traces",
+                "mappings": {
+                  "properties": {
+                    "http": {
+                      "properties": {
+                        "method": {
+                          "type": "keyword"
+                        },
+                        "request": {
+                          "properties": {
+                            "body": {
+                              "type": "text"
+                            }
+                          }
+                        },
+                        "response": {
+                          "properties": {
+                            "body": {
+                              "type": "text"
+                            }
+                          }
+                        },
+                        "status_code": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "error": {
+                      "properties": {
+                        "type": {
+                          "type": "keyword"
+                        },
+                        "message": {
+                          "type": "text"
+                        },
+                        "stack_trace": {
+                          "type": "text"
+                        }
+                      }
+                    },
+                    "service": {
+                      "type": "keyword"
+                    },
+                    "span_id": {
+                      "type": "keyword"
+                    },
+                    "trace_id": {
+                      "type": "keyword"
+                    },
+                    "operation": {
+                      "type": "keyword"
+                    },
+                    "@timestamp": {
+                      "type": "date"
+                    },
+                    "duration_ms": {
+                      "type": "integer"
+                    },
+                    "parent_span_id": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+            "observed_at": "2026-11-23T17:10:43.050360+00:00",
+            "cannot_prove": "This is the state at the moment of the query only: it cannot prove which indices, fields or document counts existed during the incident window, nor that any document lies in that window. A field that is mapped is not proof that documents carry it.",
+            "omitted_rows": 0,
+            "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0",
+            "result_count": 1,
+            "tool_version": "v1",
+            "indices_shown": 1,
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "indices_matched": 1,
+            "indices_omitted": 0,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+            "dispatch_started_at": "2026-11-23T17:10:43.034363+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_indices_returned": 1
+          }
+        }
+      },
+      {
+        "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+        "resolvable": true,
+        "tool": "elasticsearch_search",
+        "status": "ok",
+        "stored": {
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "subject_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+          "status": "ok",
+          "view": {
+            "took": 4,
+            "tool": "elasticsearch_search",
+            "index": "app-245-apm-traces",
+            "notes": [
+              "String values longer than 2000 characters are cut there (_source.http.request.body, _source.http.response.body, _source.error.stack_trace); each hit lists its cut fields under _truncated_fields.",
+              "The tool filtered @timestamp to the query window; this filter cannot be turned off."
+            ],
+            "query": {
+              "size": 30,
+              "index": "app-245-apm-traces"
+            },
+            "total": {
+              "value": 22,
+              "relation": "eq"
+            },
+            "trust": "untrusted-evidence",
+            "shards": {
+              "total": 1,
+              "failed": 0,
+              "skipped": 0,
+              "successful": 1
+            },
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T17:10:38+00:00",
+              "start": "2026-11-23T16:10:38+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "_id": "c55jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453740050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-gateway",
+                  "span_id": "span-pay-err",
+                  "trace_id": "TRACE-ERR-X9K2M",
+                  "operation": "authenticate_payment",
+                  "@timestamp": "2026-11-23T17:09:00.050Z",
+                  "error.type": "ConnectionTimeout",
+                  "duration_ms": 5180,
+                  "error.message": "Authentication service timeout - error code AUTH-4729",
+                  "parent_span_id": "span-gw-err",
+                  "http.status_code": 503,
+                  "error.stack_trace": "Traceback (most recent call last):\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 101, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 201, in authenticate\n    response = await self.http_client.post(auth_url, json=payload, timeout=5.0)\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 102, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 202, in authenticate\n    response = await self.http_client.post(auth_url, json=payload, timeout=5.0)\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 103, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 203, in authenticate\n    response = await self.http_client.post(auth_url, json=payload, timeout=5.0)\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 104, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 204, in authenticate\n    response = await self.http_client.post(auth_url, json=payload, timeout=5.0)\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 105, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 205, in authenticate\n    response = await self.http_client.post(auth_url, json=payload, timeout=5.0)\n  File \"/app/payment_gateway/handlers/payment_handler.py\", line 106, in process_payment\n    result = await self.auth_client.authenticate(payment_method, customer_id, amount)\n  File \"/app/payment_gateway/clients/auth_client.py\", line 206, in authenticate\n    response = await self.http_client.pos",
+                  "http.request.body": "{\"payment_method\":{\"type\":\"credit_card\",\"card_number\":\"4532XXXXXXXX1234\",\"cvv\":\"***\"},\"customer\":{\"id\":\"cust_9847239847\",\"email\":\"customer@example.com\"},\"items\":[{\"sku\":\"PROD-1\",\"name\":\"Product 1 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-1\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-2\",\"name\":\"Product 2 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-2\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-3\",\"name\":\"Product 3 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-3\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-4\",\"name\":\"Product 4 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-4\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-5\",\"name\":\"Product 5 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-5\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-6\",\"name\":\"Product 6 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-6\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-7\",\"name\":\"Product 7 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-7\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-8\",\"name\":\"Product 8 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-8\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-9\",\"name\":\"Product 9 with extended description and details\",\"price\":29.99,\"quantity\":1,\"metadata\":{\"warehouse\":\"US-EAST-1\",\"vendor\":\"VENDOR-9\",\"tags\":[\"popular\",\"sale\",\"featured\"]}},{\"sku\":\"PROD-10\",\"name\":\"Product 10 with extended description and details\",\"price\":",
+                  "http.response.body": "<!DOCTYPE html><html><head><title>Payment Gateway Error</title></head><body><h1>Service Unavailable</h1><p>The payment authentication service is currently unavailable.</p><div class='debug-info'>Request ID: req_1_9847239847 | Timestamp: 2024-01-15T10:15:1Z | Server: pay-gw-node-1 | Correlation: corr_1_detailed_trace_information</div><div class='debug-info'>Request ID: req_2_9847239847 | Timestamp: 2024-01-15T10:15:2Z | Server: pay-gw-node-2 | Correlation: corr_2_detailed_trace_information</div><div class='debug-info'>Request ID: req_3_9847239847 | Timestamp: 2024-01-15T10:15:3Z | Server: pay-gw-node-3 | Correlation: corr_3_detailed_trace_information</div><div class='debug-info'>Request ID: req_4_9847239847 | Timestamp: 2024-01-15T10:15:4Z | Server: pay-gw-node-4 | Correlation: corr_4_detailed_trace_information</div><div class='debug-info'>Request ID: req_5_9847239847 | Timestamp: 2024-01-15T10:15:5Z | Server: pay-gw-node-5 | Correlation: corr_5_detailed_trace_information</div><div class='debug-info'>Request ID: req_6_9847239847 | Timestamp: 2024-01-15T10:15:6Z | Server: pay-gw-node-6 | Correlation: corr_6_detailed_trace_information</div><div class='debug-info'>Request ID: req_7_9847239847 | Timestamp: 2024-01-15T10:15:7Z | Server: pay-gw-node-7 | Correlation: corr_7_detailed_trace_information</div><div class='debug-info'>Request ID: req_8_9847239847 | Timestamp: 2024-01-15T10:15:8Z | Server: pay-gw-node-8 | Correlation: corr_8_detailed_trace_information</div><div class='debug-info'>Request ID: req_9_9847239847 | Timestamp: 2024-01-15T10:15:9Z | Server: pay-gw-node-9 | Correlation: corr_9_detailed_trace_information</div><div class='debug-info'>Request ID: req_10_9847239847 | Timestamp: 2024-01-15T10:15:10Z | Server: pay-gw-node-10 | Correlation: corr_10_detailed_trace_information</div><div class='debug-info'>Request ID: req_11_9847239847 | Timestamp: 2024-01-15T10:15:11Z | Server: pay-gw-node-11 | Correlation: corr_11_detailed_trace_information</div><div class='debug"
+                },
+                "_truncated_fields": [
+                  "_source.http.request.body",
+                  "_source.http.response.body",
+                  "_source.error.stack_trace"
+                ]
+              },
+              {
+                "_id": "cp5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453740000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-err",
+                  "trace_id": "TRACE-ERR-X9K2M",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:09:00Z",
+                  "duration_ms": 5234,
+                  "http.method": "POST",
+                  "http.status_code": 503
+                }
+              },
+              {
+                "_id": "cZ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453440050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-10",
+                  "trace_id": "TRACE-OK-40289",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T17:04:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-10",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "cJ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453440000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-10",
+                  "trace_id": "TRACE-OK-40289",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:04:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "b55jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453380050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-9",
+                  "trace_id": "TRACE-OK-35112",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T17:03:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-9",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "bp5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453380000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-9",
+                  "trace_id": "TRACE-OK-35112",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:03:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "bZ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453320050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-8",
+                  "trace_id": "TRACE-OK-37028",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T17:02:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-8",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "bJ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453320000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-8",
+                  "trace_id": "TRACE-OK-37028",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:02:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "a55jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453260050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-7",
+                  "trace_id": "TRACE-OK-21699",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T17:01:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-7",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "ap5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453260000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-7",
+                  "trace_id": "TRACE-OK-21699",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:01:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "aZ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453200050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-6",
+                  "trace_id": "TRACE-OK-38719",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T17:00:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-6",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "aJ5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453200000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-6",
+                  "trace_id": "TRACE-OK-38719",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T17:00:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "Z55jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453140050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-5",
+                  "trace_id": "TRACE-OK-42529",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T16:59:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-5",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "Zp5jCaIBRlXO9qICQK31",
+                "sort": [
+                  1795453140000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-5",
+                  "trace_id": "TRACE-OK-42529",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T16:59:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "ZZ5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795453080050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-4",
+                  "trace_id": "TRACE-OK-29059",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T16:58:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-4",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "ZJ5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795453080000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-4",
+                  "trace_id": "TRACE-OK-29059",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T16:58:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "Y55jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795453020050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-3",
+                  "trace_id": "TRACE-OK-17179",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T16:57:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-3",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "Yp5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795453020000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-3",
+                  "trace_id": "TRACE-OK-17179",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T16:57:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "YZ5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795452960050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-2",
+                  "trace_id": "TRACE-OK-19147",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T16:56:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-2",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "YJ5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795452960000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-2",
+                  "trace_id": "TRACE-OK-19147",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T16:56:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "X55jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795452900050
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "payment-service",
+                  "span_id": "span-pay-1",
+                  "trace_id": "TRACE-OK-21491",
+                  "operation": "process_payment",
+                  "@timestamp": "2026-11-23T16:55:00.050Z",
+                  "duration_ms": 180,
+                  "parent_span_id": "span-gw-1",
+                  "http.status_code": 200
+                }
+              },
+              {
+                "_id": "Xp5jCaIBRlXO9qICQK30",
+                "sort": [
+                  1795452900000
+                ],
+                "_index": "app-245-apm-traces",
+                "_source": {
+                  "service": "api-gateway",
+                  "span_id": "span-gw-1",
+                  "trace_id": "TRACE-OK-21491",
+                  "operation": "POST /api/payment",
+                  "@timestamp": "2026-11-23T16:55:00Z",
+                  "duration_ms": 245,
+                  "http.method": "POST",
+                  "http.status_code": 200
+                }
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "timed_out": false,
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "evidence_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+            "observed_at": "2026-11-23T17:10:43.063515+00:00",
+            "time_filter": {
+              "end": "2026-11-23T17:10:38+00:00",
+              "field": "@timestamp",
+              "start": "2026-11-23T16:10:38+00:00",
+              "applied": true
+            },
+            "cannot_prove": "A document that is not returned is unknown, not proof that nothing was logged: only size documents are shown, and retention, ingest delay and the index pattern can leave gaps. The time field is the writer's timestamp, not necessarily when the event happened. total and aggregations cover only the matched indices inside the query window.",
+            "omitted_rows": 0,
+            "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1",
+            "result_count": 22,
+            "tool_version": "v1",
+            "omitted_bytes": 0,
+            "source_end_at": "2026-11-23T17:09:00.050000+00:00",
+            "returned_count": 22,
+            "citable_as_fact": true,
+            "documents_shown": 22,
+            "indices_matched": 1,
+            "long_values_cut": 3,
+            "source_start_at": "2026-11-23T16:55:00+00:00",
+            "lookback_seconds": null,
+            "documents_omitted": 0,
+            "freshness_seconds": null,
+            "incomplete_reason": null,
+            "lookback_start_at": null,
+            "registry_revision": "98309d3f96aa8a446995e83122ca81dd54afb95a47ff742c420aa163f4158c8f",
+            "dispatch_started_at": "2026-11-23T17:10:43.039428+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "tool_registry_revision": "c492c8b1ebb506365bb5b1e3eac12ac0188a12ae51e41c66c8bf74f6d0b5624f",
+            "backend_documents_returned": 22
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T17:10:38.748343+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:38.748343+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:1",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:38.966485+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.056010+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:050eeaaa-a347-42bf-9116-11486c59e879",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.059164+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.091185+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "47276bcb-fbc0-49e3-8534-4a2f78a28310",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "050eeaaa-a347-42bf-9116-11486c59e879-t1",
+            "epoch": 1,
+            "tool": "traces_query_trace_by_id",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "INVALID_PARAMS",
+            "outbound": false,
+            "source_contact": "none",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.091185+00:00",
+          "sequence": 6,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.099550+00:00",
+          "sequence": 7,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "2ed8ee31-14af-4c13-8340-3f2dc58a2bb7",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "050eeaaa-a347-42bf-9116-11486c59e879-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_list_indices",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.099550+00:00",
+          "sequence": 8,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "050eeaaa-a347-42bf-9116-11486c59e879-t0:2ed8ee31-14af-4c13-8340-3f2dc58a2bb7",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:41.099550+00:00",
+          "sequence": 9,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.025856+00:00",
+          "sequence": 10,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.028861+00:00",
+          "sequence": 11,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.075697+00:00",
+          "sequence": 12,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0",
+            "epoch": 1,
+            "tool": "elasticsearch_mappings",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.075697+00:00",
+          "sequence": 13,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.075697+00:00",
+          "sequence": 14,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.104582+00:00",
+          "sequence": 15,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1",
+            "epoch": 1,
+            "tool": "elasticsearch_search",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.104582+00:00",
+          "sequence": 16,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:43.104582+00:00",
+          "sequence": 17,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.956401+00:00",
+          "sequence": 18,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:38c09fee-2092-4e4c-ad39-8062f8ffda32",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.959172+00:00",
+          "sequence": 19,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.991634+00:00",
+          "sequence": 20,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "286682f1-c9b5-43dd-a9bf-20b766c10e1e",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t0",
+            "epoch": 1,
+            "tool": "traces_list_services",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "SOURCE_UNAVAILABLE",
+            "outbound": null,
+            "source_contact": "possible",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.991634+00:00",
+          "sequence": 21,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.996292+00:00",
+          "sequence": 22,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "9420edf4-184f-41d8-a7fc-b124c0255dc8",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "38c09fee-2092-4e4c-ad39-8062f8ffda32-t1",
+            "epoch": 1,
+            "tool": "get_label_values",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "SOURCE_UNAVAILABLE",
+            "outbound": null,
+            "source_contact": "possible",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:47.996292+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.236201+00:00",
+          "sequence": 24,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:4afea7d5-5ff7-4440-bcbd-9ee18883be60",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.238878+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "12",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 12
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.274739+00:00",
+          "sequence": 26,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "8c8b63c9-423f-4a67-9317-48fda09e70ff",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t0",
+            "epoch": 1,
+            "tool": "traces_list_services",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "SOURCE_UNAVAILABLE",
+            "outbound": null,
+            "source_contact": "possible",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.274739+00:00",
+          "sequence": 27,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "13",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 13
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.278876+00:00",
+          "sequence": 28,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "3ea622f4-ef5f-41f2-9d80-56cd0d944030",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "4afea7d5-5ff7-4440-bcbd-9ee18883be60-t1",
+            "epoch": 1,
+            "tool": "execute_prometheus_instant_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "error",
+            "reason": "SOURCE_UNAVAILABLE",
+            "outbound": null,
+            "source_contact": "possible",
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:50.278876+00:00",
+          "sequence": 29,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "14",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 14
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:52.038630+00:00",
+          "sequence": 30,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:b6f867fb-3428-474f-a8fe-7fd0f6d4035a",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:52.041385+00:00",
+          "sequence": 31,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "15",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 15
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:52.129211+00:00",
+          "sequence": 32,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "de7634f7-d648-42a5-91b8-20b0a103b91b",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "operation_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0",
+            "epoch": 1,
+            "tool": "kubernetes_tabular_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:52.129211+00:00",
+          "sequence": 33,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:10:52.129211+00:00",
+          "sequence": 34,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "16",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 16
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:11:17.723150+00:00",
+          "sequence": 35,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:4ab16e07-1f37-4776-8c09-644f0da96aae",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:11:17.725940+00:00",
+          "sequence": 36,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "17",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 17
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:11:17.738210+00:00",
+          "sequence": 37,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "18",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 18
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T17:11:17.738210+00:00",
+          "sequence": 38,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "29d1b067-0027-5cb9-8558-5217df285f18:18",
+          "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 18
+          }
+        }
+      ],
+      "counts": {
+        "input": 6,
+        "query": 9,
+        "evidence": 4,
+        "state_change": 20,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "050eeaaa-a347-42bf-9116-11486c59e879-t0:2ed8ee31-14af-4c13-8340-3f2dc58a2bb7",
+        "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t0:284dc23d-d129-4224-8ea7-8572a3bc3b4c",
+        "f3eb5435-1fc7-44bc-8d5b-10de8ef8ad9f-t1:f608e7d9-8dd1-453e-90b1-ee3e72a16449",
+        "b6f867fb-3428-474f-a8fe-7fd0f6d4035a-t0:de7634f7-d648-42a5-91b8-20b0a103b91b"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T17:11:19.261874+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-b1b",
+    "project_id": "3dc7397f-1ffd-46ab-a9f2-155e1a9f31a2",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-a019-78cf32a23fc2",
+        "start_time": "2026-11-23T17:10:38.967171+00:00",
+        "end_time": "2026-11-23T17:11:17.739054+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/3dc7397f-1ffd-46ab-a9f2-155e1a9f31a2/r/00000000-0000-0000-a019-78cf32a23fc2?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-b1b",
+    "qid": "245_elasticsearch_trace_large_fields",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 3,
+    "chance": 1,
+    "git": {
+      "commit": "51257e79a6eba6872b5435c23086f6ea7aec1f33",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 35010,
+      "web": 35080,
+      "es": 35092,
+      "prometheus": 35090,
+      "jaeger_query": 35086,
+      "k8s": 35043
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:10:28.421154+00:00",
+        "ended_at": "2026-11-23T17:10:28.453501+00:00",
+        "seconds": 0.032,
+        "log_sha256": "c6801a1d95824162a17c8a39cdd94aa9e7fe30c033644667a9172180e648a883",
+        "skipped": false
+      },
+      "purged": {
+        "before": [],
+        "after": []
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:10:28.459534+00:00",
+        "ended_at": "2026-11-23T17:10:31.482284+00:00",
+        "seconds": 3.023,
+        "log_sha256": "edb189f507ed996d1df54f4323c76405e6d5e8b247bbf57adb47a1d54c11c314",
+        "skipped": false
+      },
+      "ended_at": "2026-11-23T17:10:31.482583+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T17:11:19.339255+00:00",
+        "ended_at": "2026-11-23T17:11:19.404150+00:00",
+        "seconds": 0.065,
+        "log_sha256": "6c4e726ac9936d8377a353e2dae64d46d33a566e5225dbc9f5e8d7ee86df18b6",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": true,
+      "reason": null,
+      "seconds": 90140040,
+      "anchor": "2024-01-15T10:15:00.050000+00:00",
+      "original_min": "2024-01-15T10:01:00+00:00",
+      "original_max": "2024-01-15T10:15:00.050000+00:00",
+      "shifted_min": "2026-11-23T16:55:00+00:00",
+      "shifted_max": "2026-11-23T17:09:00.050000+00:00",
+      "indices": [
+        {
+          "index": "app-245-apm-traces",
+          "fields": [
+            "@timestamp"
+          ],
+          "documents": 22,
+          "rewritten": 22,
+          "unparsed": 0
+        }
+      ],
+      "store_size_before": {
+        "app-245-apm-traces": 227
+      },
+      "store_size_after": {
+        "app-245-apm-traces": 227
+      },
+      "question_rewrites": [],
+      "time_only_phrases": 0
+    },
+    "shift_timing": {
+      "started_at": "2026-11-23T17:10:31.482583+00:00",
+      "ended_at": "2026-11-23T17:10:31.597530+00:00",
+      "seconds": 0.115
+    },
+    "question": {
+      "sha256_original": "eaca013d49a9b64c5e82dd6ec4c453f57ae8f2b97e4e3a5f3c7cfb728aea8bd7",
+      "sha256_delivered": "eaca013d49a9b64c5e82dd6ec4c453f57ae8f2b97e4e3a5f3c7cfb728aea8bd7",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "DESHIFT_TIME_ONLY_UNCHANGED",
+      "DESHIFT_DATE_MIDPOINT"
+    ],
+    "data_plane": {
+      "backend": "elasticsearch",
+      "mode": "external",
+      "product_url": "http://127.0.0.1:30921",
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-23T17:10:38.671077+00:00",
+      "setup_to_delivery_seconds": 7.074,
+      "data_end_to_delivery_seconds": 98.621,
+      "status": 201,
+      "code": null,
+      "incident_id": "7b08e0b8-9987-5783-8ab3-d5d3348d3a32",
+      "run_id": "29d1b067-0027-5cb9-8558-5217df285f18",
+      "idempotency_label": "holmes-full-o-b1b-245_elasticsearch_trace_large_fields-t3-c1",
+      "responded_at": "2026-11-23T17:10:38.751515+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 40.086
+    },
+    "conversion": {
+      "with_tool_calls": true,
+      "tool_calls": 9,
+      "tool_calls_sha256": "121f9736700aae7432e37b8ab2ca9efc309d3607af76a8748a6f2949c50e413a",
+      "deshift_count": 45,
+      "reason": null,
+      "text_sha256": "251742bac51dc3febba98185641d91974e3d777c57eb6836ff69d7e41845b4ad"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "B",
+      "passed": false,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 45584
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "2c3e6e5ca1a7d92136e999e2dbedf535104827e572056360a6e63cbbed908855",
+    "bytes": 184962,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-b1b/29d1b067-0027-5cb9-8558-5217df285f18/ledger.json",
+    "in_repository": false
+  }
+}

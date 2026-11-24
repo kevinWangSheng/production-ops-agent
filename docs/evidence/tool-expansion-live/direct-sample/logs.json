@@ -1,0 +1,255 @@
+{
+  "item": "logs",
+  "tool": "fetch_pod_logs",
+  "params": {
+    "pod_name": "frontend-6c9bc688bf-cnprz",
+    "namespace": "otel-demo",
+    "start_time": "2026-11-14T19:38:50Z",
+    "end_time": "2026-11-14T20:38:50Z"
+  },
+  "window": {
+    "start": "2026-11-14T19:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "status": "ok",
+  "reason": null,
+  "source_contact": "confirmed",
+  "dispatched": true,
+  "adopted": true,
+  "model_view_keys": [
+    "adopted",
+    "backend_lines_returned",
+    "bytes_read",
+    "cannot_prove",
+    "citable_as_fact",
+    "containers",
+    "content",
+    "data_as_of",
+    "dispatch_started_at",
+    "evidence_id",
+    "filter_mode",
+    "freshness_seconds",
+    "incomplete",
+    "incomplete_reason",
+    "lines_after_window",
+    "lines_before_window",
+    "lines_omitted",
+    "lines_read",
+    "lines_removed_by_exclude_filter",
+    "lines_removed_by_filter",
+    "lines_requested",
+    "lines_shown",
+    "lines_without_timestamp",
+    "long_lines_cut",
+    "lookback_seconds",
+    "lookback_start_at",
+    "notes",
+    "observed_at",
+    "omitted_bytes",
+    "omitted_rows",
+    "operation_id",
+    "pod",
+    "projection_revision",
+    "query",
+    "read_limit_bytes",
+    "read_limit_reached",
+    "read_through",
+    "registry_revision",
+    "result_count",
+    "returned_count",
+    "source",
+    "source_end_at",
+    "source_start_at",
+    "status",
+    "streams",
+    "target_id",
+    "tool",
+    "tool_registry_revision",
+    "tool_version",
+    "truncated",
+    "trust",
+    "window"
+  ],
+  "model_view": {
+    "evidence_id": "tool-sample-t1:30aa5d56-279f-4f13-abe9-10163bec689e",
+    "operation_id": "tool-sample-t1",
+    "trust": "untrusted-evidence",
+    "status": "ok",
+    "adopted": true,
+    "citable_as_fact": true,
+    "tool": "fetch_pod_logs",
+    "tool_version": "v1",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "registry_revision": "3f1e18d57f89d2985579d84de2bec7af0e29379bf7112cb6f65b5008e211bf9b",
+    "tool_registry_revision": "bc4db9a58a8b30802563c58a93963c43c5ae4392e7329a22e8c0bb4713d4915c",
+    "projection_revision": "m1-01-tool-view-v11",
+    "query": {
+      "pod_name": "frontend-6c9bc688bf-cnprz",
+      "namespace": "otel-demo",
+      "start_time": "2026-11-14T19:38:50Z",
+      "end_time": "2026-11-14T20:38:50Z"
+    },
+    "window": {
+      "start": "2026-11-14T19:38:50+00:00",
+      "end": "2026-11-14T20:38:50+00:00"
+    },
+    "observed_at": "2026-11-14T20:38:50.760277+00:00",
+    "dispatch_started_at": "2026-11-14T20:38:50.729935+00:00",
+    "data_as_of": null,
+    "source_start_at": "2026-11-14T20:19:29.162993+00:00",
+    "source_end_at": "2026-11-14T20:23:34.805111+00:00",
+    "freshness_seconds": null,
+    "lookback_seconds": null,
+    "lookback_start_at": null,
+    "result_count": 100,
+    "incomplete": true,
+    "pod": {
+      "namespace": "otel-demo",
+      "name": "frontend-6c9bc688bf-cnprz",
+      "application_namespace": "otel-demo"
+    },
+    "containers": [
+      "frontend"
+    ],
+    "streams": [
+      {
+        "container": "frontend",
+        "instance": "previous",
+        "status": "unavailable",
+        "bytes_read": 0,
+        "lines_read": 0,
+        "read_limit_reached": false,
+        "read_through": null
+      },
+      {
+        "container": "frontend",
+        "instance": "current",
+        "status": "read",
+        "bytes_read": 48708,
+        "lines_read": 504,
+        "read_limit_reached": false,
+        "read_through": "2026-11-14T20:23:34.805111Z"
+      }
+    ],
+    "lines_requested": 100,
+    "lines_read": 504,
+    "lines_without_timestamp": 0,
+    "lines_before_window": 0,
+    "lines_after_window": 0,
+    "lines_removed_by_filter": 0,
+    "lines_removed_by_exclude_filter": 0,
+    "long_lines_cut": 0,
+    "filter_mode": {
+      "filter": null,
+      "exclude_filter": null
+    },
+    "bytes_read": 48708,
+    "read_limit_bytes": 4194304,
+    "read_limit_reached": false,
+    "read_through": null,
+    "incomplete_reason": "limit: the newest 100 of 504 matching lines are shown",
+    "notes": [
+      "Container frontend has no previous instance (HTTP 400: previous terminated container \"frontend\" in pod \"frontend-6c9bc688bf-cnprz\" not found); the other streams are unaffected."
+    ],
+    "cannot_prove": "Only what the containers wrote to standard output and standard error and the node still keeps: the current instance and the one before it, nothing older and nothing from a pod that no longer exists. No matching line is not proof that something did not happen; lines cut by limit or by the read limit, and lines not read, are unknown, not absent.",
+    "returned_count": 100,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0,
+    "backend_lines_returned": 504,
+    "lines_shown": 100,
+    "lines_omitted": 404
+  },
+  "content_summary": {
+    "type": "list",
+    "length": 100,
+    "first_rows": [
+      {
+        "timestamp": "2026-11-14T20:19:29.162993407Z",
+        "container": "frontend",
+        "previous": false
+      },
+      {
+        "timestamp": "2026-11-14T20:19:29.162996113Z",
+        "container": "frontend",
+        "previous": false
+      },
+      {
+        "timestamp": "2026-11-14T20:19:38.644228264Z",
+        "container": "frontend",
+        "previous": false
+      }
+    ]
+  },
+  "evidence": {
+    "evidence_id": "tool-sample-t1:30aa5d56-279f-4f13-abe9-10163bec689e",
+    "status": "ok",
+    "adopted": true,
+    "raw_bytes": 18432,
+    "raw_sha256": "a5f77eda918c579f5063a82611ffe5fb59002854d34cc7002a0bb37badabfd2b",
+    "view_sha256": "96d8922ed2bc03d660f2f0818f73ed148bd56819110fd34131eaa6bf8cda770a",
+    "projection_revision": "m1-01-tool-view-v11",
+    "observed_at": "2026-11-14T20:38:50.760277+00:00",
+    "data_as_of": null,
+    "source_start_at": "2026-11-14T20:19:29.162993+00:00",
+    "source_end_at": "2026-11-14T20:23:34.805111+00:00",
+    "result_count": 100,
+    "incomplete": true,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "ledger_charges": [
+    {
+      "operation_id": "tool-sample-t1",
+      "dispatch_id": "30aa5d56-279f-4f13-abe9-10163bec689e",
+      "reserved_seconds": 30.0,
+      "seconds": 0.03,
+      "settled": true
+    }
+  ],
+  "checks": [
+    {
+      "check": "status == ok",
+      "ok": true,
+      "observed": "ok"
+    },
+    {
+      "check": "incomplete is True",
+      "ok": true,
+      "observed": true
+    },
+    {
+      "check": "lines_omitted > 0",
+      "ok": true,
+      "observed": 404
+    },
+    {
+      "check": "lines_shown == len(rows) <= limit",
+      "ok": true,
+      "observed": {
+        "lines_shown": 100,
+        "rows": 100
+      }
+    },
+    {
+      "check": "matching lines > shown lines",
+      "ok": true,
+      "observed": {
+        "backend_lines_returned": 504,
+        "lines_shown": 100
+      }
+    },
+    {
+      "check": "lines_omitted == backend_lines_returned - lines_shown",
+      "ok": true,
+      "observed": {
+        "lines_omitted": 404,
+        "backend_lines_returned": 504,
+        "lines_shown": 100
+      }
+    }
+  ],
+  "verdict": "pass"
+}

@@ -1,0 +1,38 @@
+{
+ "control_kubectl_json": {
+  "pod_env": 2,
+  "cm_key": 2,
+  "mentions_DB_PASSWORD": 2,
+  "mentions_api_token": 2
+ },
+ "summary_json": {
+  "pod_env": 0,
+  "cm_key": 0,
+  "mentions_DB_PASSWORD": 5,
+  "mentions_api_token": 5
+ },
+ "raw_ledger": {
+  "pod_env": 0,
+  "cm_key": 0,
+  "mentions_DB_PASSWORD": 8,
+  "mentions_api_token": 9
+ },
+ "trace_dump": {
+  "pod_env": 0,
+  "cm_key": 0,
+  "mentions_DB_PASSWORD": 8,
+  "mentions_api_token": 8
+ },
+ "worker_log": {
+  "pod_env": 0,
+  "cm_key": 0,
+  "mentions_DB_PASSWORD": 0,
+  "mentions_api_token": 0
+ },
+ "web_log": {
+  "pod_env": 0,
+  "cm_key": 0,
+  "mentions_DB_PASSWORD": 0,
+  "mentions_api_token": 0
+ }
+}

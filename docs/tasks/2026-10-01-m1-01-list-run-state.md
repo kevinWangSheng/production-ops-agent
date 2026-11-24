@@ -37,3 +37,4 @@
 
 - 已知行为：列表页不执行超时清扫（合同 2 读页面不写行），已过期但未被清扫的 Run 在列表上仍显示 `running`，直到 worker 清扫或有人打开事故页。
 - 独立审查（Opus）：产品代码符合合同；两条测试缺口（多 Run 时取 current_run_id 而非最新 Run；合同 3 统计整个请求的查询而非最后一个事务）交独立测试作者补；可简化项：撤回 `find_incident` 的联表（合同未要求），`_summary` 改用 `row["run_state"]`。
+- 修订（2026-11-16）：网页 UI 重做按 [UI 合同 U5](2026-11-15-web-ui-redesign-contract.md) 改变列表的列顺序与表头清单（Generation 不再单独成列、第一格内容随设计变化）；Run、Control、Lifecycle、Concluded 四项存储原词保留为独立列，合同 1–4 的语义不变。

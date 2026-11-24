@@ -1,0 +1,151 @@
+{
+ "holmes_compare": {
+  "category": "ok",
+  "chance": 1,
+  "code": null,
+  "conversion": {
+   "deshift_count": 3,
+   "text_sha256": "05a81c03c8eba9052bf1fc0c73c9617548e85034eb1e44435a705afdddc3b60c"
+  },
+  "data_plane": {
+   "backend": "loki",
+   "mode": "upstream-direct",
+   "product_url": "http://localhost:3110",
+   "victorialogs_image": null
+  },
+  "disclosures": [
+   "TOOL_FACE_UPSTREAM_DEFAULT",
+   "UPSTREAM_HARNESS_JUDGE_TEXT",
+   "QUESTION_TIME_REWRITTEN",
+   "SHIFT_WHOLE_DAYS",
+   "LOKI_ORIGINALS_KEPT",
+   "LOKI_FUTURE_DROPPED",
+   "LOG_LINE_TIME_REWRITTEN",
+   "JUDGE_DIFFERS_FROM_UPSTREAM"
+  ],
+  "history": [
+   {
+    "category": "ok",
+    "chance": 1,
+    "code": null
+   }
+  ],
+  "judge": {
+   "attempts": 1,
+   "choice": "A",
+   "error_code": null,
+   "model": "glm-5.3-flashx",
+   "passed": true,
+   "path": "opspilot",
+   "prompt": "scripts.holmes_evals.judge (#666)",
+   "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+   "receiver": "zai"
+  },
+  "llm_calls": 10,
+  "model": "deepseek/deepseek-flash",
+  "model_env": {
+   "ENABLE_TELEMETRY": "false",
+   "LLM_REQUEST_TIMEOUT": "360",
+   "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+   "OVERRIDE_MAX_OUTPUT_TOKEN": "65536",
+   "REASONING_EFFORT": "high",
+   "TEMPERATURE": "none",
+   "THINKING": "{\"type\": \"enabled\"}"
+  },
+  "purged": {
+   "after": [],
+   "before": []
+  },
+  "pytest": {
+   "errors": {},
+   "exit": 0,
+   "phases": {
+    "call": "passed",
+    "setup": "passed",
+    "teardown": "passed"
+   },
+   "timed_out": false
+  },
+  "qid": "100a_loki_historical_logs",
+  "question": {
+   "sha256_delivered": "1f4c52da0d683044ae4c1afd97b04bab8229d14ec9042e4681176c38db5892e1",
+   "sha256_original": "19ea26572f18c1080ba4cd22299ef2a52a590e4f2d8e796e5350aabd1de9ad32"
+  },
+  "round": "full-h-c5k",
+  "seconds": 167.02945590019226,
+  "shift": {
+   "anchor": "2025-08-02T13:45:00+00:00",
+   "anchor_source": "question",
+   "applied": true,
+   "backend": "loki",
+   "dropped_future": 574,
+   "fixed_entries": 1551,
+   "line_stamps_rewritten": 0,
+   "original_max": "2025-08-03T05:16:55+00:00",
+   "original_min": "2025-08-01T00:01:49+00:00",
+   "pushed": 977,
+   "question_rewrites": [
+    {
+     "instant": "2026-11-20T13:45:00+00:00",
+     "original": "August 2, 2025 around 13:45 UTC",
+     "rewritten": "November 20, 2026 around 13:45 UTC"
+    }
+   ],
+   "reason": null,
+   "seconds": 41040000,
+   "shifted_max": "2026-11-21T05:16:55+00:00",
+   "shifted_min": "2026-11-19T00:01:49+00:00",
+   "streams": [
+    {
+     "entries": 1099,
+     "labels": {
+      "job": "payment-api",
+      "level": "DEBUG",
+      "namespace": "app-100a",
+      "pod_name": "payment-api-100a-64dcc58445-x8vd7",
+      "service": "payment-api"
+     },
+     "pushed": 693
+    },
+    {
+     "entries": 22,
+     "labels": {
+      "job": "payment-api",
+      "level": "ERROR",
+      "namespace": "app-100a",
+      "pod_name": "payment-api-100a-64dcc58445-x8vd7",
+      "service": "payment-api"
+     },
+     "pushed": 22
+    },
+    {
+     "entries": 430,
+     "labels": {
+      "job": "payment-api",
+      "level": "INFO",
+      "namespace": "app-100a",
+      "pod_name": "payment-api-100a-64dcc58445-x8vd7",
+      "service": "payment-api"
+     },
+     "pushed": 262
+    }
+   ],
+   "time_only_phrases": 0
+  },
+  "shift_day_wait_seconds": 0.0,
+  "todo": {
+   "enabled": false,
+   "mode": "question",
+   "source": "question"
+  },
+  "tool_calls": 20,
+  "tool_face_note": "Holmes 按官方默认配置运行，含 OpsPilot 按只读约束不提供的工具",
+  "track": "Holmes 对照（HolmesGPT 公开评测集，同题同模型）",
+  "trial": 1,
+  "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+  "wall_seconds": 311.404
+ },
+ "schema": "holmes-compare-trial-1",
+ "status": "completed",
+ "written_at": "2026-11-21T05:38:23.055045+00:00"
+}

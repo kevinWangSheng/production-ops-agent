@@ -14,6 +14,8 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 - **起草待审核的复盘。** worker 根据事故记录起草复盘；人在工作台批准后，它才作为知识进入后续调查。
 - **观察发布。** 版本变更事件开启观察窗口，延迟出现的回归会变成事故。OpsPilot 不批准、不阻断、不执行发布。
 
+数据源全部只读：Prometheus 与 Jaeger；`otel-demo-ext` 工具档位另加 Kubernetes 对象、Pod 日志与 Pod/节点用量、Elasticsearch/OpenSearch、Loki、VictoriaLogs、SQL 数据库（PostgreSQL、MySQL/MariaDB、ClickHouse、SQL Server）、MongoDB、Redis/Valkey、Kafka、Argo CD 应用和 Helm release。
+
 不做的事写在 [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)：不写生产、不做发布门、不执行恢复步骤。
 
 ## 状态
@@ -21,8 +23,25 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 F1 第 1–4 步）；F1 第 5 步未达成，所以 F1 未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。
 
 - [feature_list.json](feature_list.json) 中 11 个功能有 10 个通过全部验收步骤（F2、F3、F6、F7、F8、F9、F11、F12、F13、F14）；F1 未完成。F8（持续运行）与 F9（交付）只凭 lab 证据通过，不是生产证明。
-- 所有测量都在运行 OpenTelemetry Demo 的 kind 实验环境里完成：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-final-clean-host-2026-11-11/README.md)、[第 3 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)、[第 2、4 步](docs/evidence/f9-final2-2026-11-11/README.md)；限制见[限制](docs/portfolio/limitations.md)）。
+- M3 的全部验收证据都在运行 OpenTelemetry Demo 的 kind 实验环境里测得：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-final-clean-host-2026-11-11/README.md)、[第 3 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)、[第 2、4 步](docs/evidence/f9-final2-2026-11-11/README.md)；限制见[限制](docs/portfolio/limitations.md)）。
 - 版本由 release workflow 打 tag 并发布到 GHCR。最新是 `v0.1.1`（2026-11-10）；soak 与前两轮干净主机运行用的是 `v0.1.0`，[干净主机终轮](docs/evidence/f9-final-clean-host-2026-11-11/README.md)（2026-11-11）在钉住的 `v0.1.0` 与 `v0.1.1` digest 之间切换。`v0.1.0` 的 digest 是 `ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`。
+
+### 评测结果（2026-11）
+
+在租用主机上做的集成运行（kind 集群；ITBench-Lite 为回放的离线快照），模型是真实的 DeepSeek `deepseek-flash`，judge 用 Z.ai `glm-5.3-flashx`，与上游评测的 judge 不同。每个 trial 都计入，没有报告的 trial 记 0。这些都不是生产证据。
+
+| 评测 | 运行 | OpsPilot | 对照 |
+|---|---|---|---|
+| HolmesGPT 公开评测集，同题、同模型、同 judge | 53 题 × 3 遍，全量 2026-11-21 | 133/159 | HolmesGPT 150/159，同一轮 |
+| 同上，修复 [#772](https://github.com/kevinWangSheng/production-ops-agent/pull/772)、[#775](https://github.com/kevinWangSheng/production-ops-agent/pull/775)、[#776](https://github.com/kevinWangSheng/production-ops-agent/pull/776) 后 | 只跑 OpsPilot 侧的定向重跑，2026-11-22 | 145/159，拼合值（见下） | HolmesGPT 未重跑 |
+| SREGym Lite 诊断 | 17 题 × 3 遍，2026-11-21 | 43/51 | — |
+| ITBench-Lite SRE，离线快照 | 35 个场景 × 3 遍，2026-11-18 | 82/105，官方根因 pass@1 | — |
+
+- HolmesGPT 评测集分组（全量 → 修复后，对 HolmesGPT）：数据库 21/21 对 16/21（HolmesGPT 丢的 5 遍是 pytest 报错或跳过、没有回答，是否为上游 harness 问题未确认）；Elasticsearch 与多集群 72/90 → 82/90 对 86/90；runbook/skill 10/18 → 12/18 对 18/18；Loki 与 VictoriaLogs 27/27 对 27/27；任务清单 3/3 对 3/3。HolmesGPT 按上游默认配置运行，其中包含 OpsPilot 按只读约束不提供的工具。
+- 145/159 不是单次全量。重跑 3 遍的题（12 道 Elasticsearch、6 道 runbook，以及追加 3 遍的 1 道 Loki 题）取重跑分；只重跑 1 遍的题保留全量分；235 题取隔离重跑的 3 遍（3/3），因为批量重跑时并行题的命名空间混进了它（若用那次受污染的 1/3，总分为 143）。
+- ITBench-Lite：分数是官方评测器的每个 trial `root_cause_entity_f1 == 1`，judge 用上面那个，不是官方示例的。按 OpsPilot 自己的确定性实体匹配（`det_pass`），同样 105 个 trial 是 22/105。结论偏向 `partial`：`supported` 22 份、`partial` 83 份。这套题没有跑 HolmesGPT。
+- 已知缺口：回看窗按设计固定为 24 小时，HolmesGPT 评测集里 185、280 两题 0/3 就归因于此（[#779](https://github.com/kevinWangSheng/production-ops-agent/issues/779)）；没有按目标常驻的操作员说明作为输入，而 162 题（0/3）依赖它（[#780](https://github.com/kevinWangSheng/production-ops-agent/issues/780)）；SREGym 第 p12 题（Valkey）0/3，因为它的目标没有可交给 Redis/Valkey 工具的只读账号（[#773](https://github.com/kevinWangSheng/production-ops-agent/issues/773)）。
+- 证据：[HolmesGPT 全量](docs/evidence/rental-2026-11-20/full/run.md)（分组见 `compare-*.md`）、[定向重跑](docs/evidence/rental-2026-11-20/rerun-2026-11-22/run.md)及其[逐题对照](docs/evidence/rental-2026-11-20/rerun-2026-11-22/compare.md)、[SREGym 分数](docs/evidence/rental-2026-11-20/full/sregym/sregym-lite-full/scores.json)、[ITBench-Lite 运行](docs/evidence/itbench-lite-sre-lite-full-r3/run.md)；汇总见[工具面拓展任务记录](docs/tasks/2026-11-12-tool-expansion.md)。
 
 导览见[作品集导览](docs/portfolio/README.md)（英文），证据不能说明的事见[限制](docs/portfolio/limitations.md)。工作顺序见 [ROADMAP.md](ROADMAP.md)。
 

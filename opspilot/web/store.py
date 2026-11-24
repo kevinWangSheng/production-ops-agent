@@ -11,6 +11,7 @@ state, generation or conclusion.
 from __future__ import annotations
 
 import inspect
+import json
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -29,6 +30,15 @@ from opspilot.schema import (
     load_target_identities,
     target_match,
 )
+
+#: Web UX spec 3.3/3.4: the list tabs, the default first.
+LIST_TABS = ("needs_human", "in_progress", "resolved", "closed", "all")
+LIST_PER_PAGE = 25
+LIST_QUERY_CHARS = 200
+#: Workbench P6 L1/L6: the linked and "Followed by" lists show at most this
+#: many incidents; the store reads one more to tell the page it cut the list.
+LINKED_SHOWN = 20
+LINKED_LIMIT = LINKED_SHOWN + 1
 
 
 @dataclass(frozen=True)
@@ -238,18 +248,46 @@ class IncidentStore(Protocol):
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
-        *,
-        renew_run_id: UUID | None = None,
-        renew_deadline: datetime | None = None,
-        renew_input: dict[str, Any] | None = None,
-        renew_basis: dict[str, Any] | None = None,
     ) -> int:
-        """Apply one human decision; ``payload`` carries follow-up/correction content.
-
-        ``renew_run_id`` / ``renew_deadline`` are the fresh Run a note on a
-        timed-out Run starts (``DurableStore.control``); unused otherwise.
-        """
+        """Apply one human decision; ``payload`` is its audit annotation."""
         ...
+
+    def append_message(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str,
+    ) -> tuple[int, bool]:
+        """Record one human ``message`` input (workbench contract B1);
+        ``(sequence, replayed)``."""
+        ...
+
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]: ...
+
+    def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None: ...
+
+    def relay_continuation(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        basis: dict[str, Any],
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+    ) -> bool:
+        """Open the continuation Run of contract R4; ``False`` on a replay
+        or when the relay predicate no longer holds."""
+        ...
+
+    def conversation_floor(self, incident_id: UUID) -> int: ...
+
+    def has_validated_report(self, incident_id: UUID) -> bool: ...
+
+    def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]: ...
 
     def new_run(
         self,
@@ -283,6 +321,10 @@ class IncidentStore(Protocol):
     def publish(
         self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
     ) -> bool: ...
+
+    def settle_answered(self, lease: Lease, *, step_id: UUID) -> bool:
+        """Complete the leased Run on its ``answered`` step (contract A4)."""
+        ...
 
     def abandon(self, lease: Lease) -> None: ...
 
@@ -519,8 +561,7 @@ class DurableWebLedger:
 
 
 def _like_prefix(prefix: str) -> str:
-    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return escaped + "%"
+    return _like_escape(prefix) + "%"
 
 
 class DurableClock:
@@ -552,12 +593,6 @@ class DurableIncidentStore:
         # + opspilot_inputs). Detect it once so this adapter works on both bases.
         parameters = inspect.signature(store.control).parameters
         self._payload_supported = "payload" in parameters
-        # A note on a timed-out Run starts a fresh Run (user decision
-        # 2026-09-25) only where the store's control() knows the renewal
-        # keywords; an older base gets the positional call it accepts and
-        # keeps re-queueing (bot review, PR #47).
-        self._renewal_supported = "renew_run_id" in parameters
-        self._renew_basis_supported = "renew_basis" in parameters
         # #128 adds ``payload`` to DurableStore.new_run (the request key on
         # the audit row); an older base gets the call it accepts.
         new_run = getattr(store, "new_run", None)
@@ -629,36 +664,118 @@ class DurableIncidentStore:
         action: str,
         actor: str,
         payload: dict[str, Any] | None = None,
-        *,
-        renew_run_id: UUID | None = None,
-        renew_deadline: datetime | None = None,
-        renew_input: dict[str, Any] | None = None,
-        renew_basis: dict[str, Any] | None = None,
     ) -> int:
-        renewal: dict[str, Any] = {}
-        if self._renewal_supported:
-            renewal = {
-                "renew_run_id": renew_run_id,
-                "renew_deadline": renew_deadline,
-                "renew_input": renew_input,
-            }
-        if self._renew_basis_supported:
-            renewal["renew_basis"] = renew_basis
-        # The signature guards above prove which keywords exist at runtime;
-        # mypy only sees the current DurableStore signature.
-        control: Any = self._store.control
         if payload is None or not self._payload_supported:
-            # Base without PR #31: the store has no payload column. The
-            # workbench then keeps the note in its ledger and composes it
-            # into the next attempt's question (read under the lease).
-            result: int = control(
-                incident_id, expected_generation, action, actor, **renewal
+            # Base without PR #31: the store has no payload column.
+            result: int = self._store.control(
+                incident_id, expected_generation, action, actor
             )
             return result
-        applied: int = control(
-            incident_id, expected_generation, action, actor, payload, **renewal
+        return self._store.control(
+            incident_id, expected_generation, action, actor, payload
         )
-        return applied
+
+    def append_message(
+        self,
+        incident_id: UUID,
+        input_id: UUID,
+        content: dict[str, Any],
+        *,
+        actor: str,
+    ) -> tuple[int, bool]:
+        return self._store.append_message(incident_id, input_id, content, actor=actor)
+
+    def relay_candidates(self, *, limit: int = 20) -> tuple[dict[str, Any], ...]:
+        return self._store.relay_candidates(limit=limit)
+
+    def relay_basis(self, incident_id: UUID) -> dict[str, Any] | None:
+        return self._store.relay_basis(incident_id)
+
+    def relay_continuation(
+        self,
+        incident_id: UUID,
+        run_id: UUID,
+        *,
+        basis: dict[str, Any],
+        deadline: datetime,
+        budget_limit: int,
+        versions: dict[str, str],
+        input: dict[str, Any] | None,
+    ) -> bool:
+        return self._store.relay_continuation(
+            incident_id,
+            run_id,
+            basis=basis,
+            deadline=deadline,
+            budget_limit=budget_limit,
+            versions=versions,
+            input=input,
+        )
+
+    def conversation_floor(self, incident_id: UUID) -> int:
+        return self._store.conversation_floor(incident_id)
+
+    def has_validated_report(self, incident_id: UUID) -> bool:
+        return self._store.has_validated_report(incident_id)
+
+    def prior_replies(self, incident_id: UUID) -> list[dict[str, Any]]:
+        return self._store.prior_replies(incident_id)
+
+    def report_run(self, incident_id: UUID) -> dict[str, Any] | None:
+        """The Run whose conclusion step is the incident's published
+        conclusion, with its input and committed steps; ``None`` when there
+        is no conclusion or it is the current Run's (contract A1/A9: a
+        continuation Run becomes current while the report stays an earlier
+        Run's)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.run_id,r.input FROM opspilot_incidents i"
+                " JOIN opspilot_runs r ON r.incident_id=i.incident_id"
+                " JOIN opspilot_steps s ON s.run_id=r.run_id"
+                " WHERE i.incident_id=%s AND i.conclusion IS NOT NULL"
+                " AND r.run_id IS DISTINCT FROM i.current_run_id"
+                " AND s.status<>'late_result' AND s.response=i.conclusion"
+                " ORDER BY s.observed_at DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self.run_record(incident_id, row["run_id"])
+
+    def run_record(self, incident_id: UUID, run_id: UUID) -> dict[str, Any] | None:
+        """One Run of this incident with its input and committed steps (the
+        page shows an earlier Run's report with that Run's evidence, A9)."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT run_id,input FROM opspilot_runs WHERE run_id=%s AND incident_id=%s",
+                (run_id, incident_id),
+            ).fetchone()
+            if row is None:
+                return None
+            steps = conn.execute(
+                "SELECT step_id,run_id,sequence,logical_key,status,response,"
+                "tool_results,control_generation,observed_at"
+                " FROM opspilot_steps WHERE run_id=%s"
+                " ORDER BY sequence,observed_at,step_id",
+                (run_id,),
+            ).fetchall()
+        return {
+            "run_id": row["run_id"],
+            "input": row["input"] or {},
+            "steps": list(steps),
+        }
+
+    def message_inputs(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The people's messages to the investigation (input kind
+        ``message``, contract B1), oldest first, for the incident page."""
+        with self._store.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT sequence,actor,content,received_at FROM opspilot_inputs"
+                    " WHERE incident_id=%s AND kind='message' ORDER BY sequence",
+                    (incident_id,),
+                ).fetchall()
+            )
 
     def new_run(
         self,
@@ -713,6 +830,9 @@ class DurableIncidentStore:
         self, lease: Lease, conclusion: dict[str, Any], *, step_id: UUID
     ) -> bool:
         return self._store.publish(lease, conclusion, step_id=step_id)
+
+    def settle_answered(self, lease: Lease, *, step_id: UUID) -> bool:
+        return self._store.settle_answered(lease, step_id=step_id)
 
     def abandon(self, lease: Lease) -> None:
         self._store.abandon(lease)
@@ -829,10 +949,100 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,i.merged_into_incident_id FROM opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                f"SELECT {_LIST_COLUMNS} FROM {_LIST_FROM} ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
+
+    def list_incident_items(self, *, limit: int = 50) -> tuple[IncidentListItem, ...]:
+        """The list page's rows (UI redesign 3.2): ``list_incidents`` plus the
+        row's subject, raw conclusion, latest recovery session and the
+        postmortem version waiting for review, all in one statement so the
+        query count does not grow with the row count (list contract 3)."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(_item(row) for row in rows)
+
+    def list_page(
+        self,
+        *,
+        tab: str = "needs_human",
+        service: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+        per_page: int = LIST_PER_PAGE,
+    ) -> IncidentPage:
+        """One page of the incident list (web UX spec 3.7): the Service
+        values, the five tab counts over the whole database under the
+        filters, and the page's rows, in three statements of one snapshot
+        whatever the row count. A ``service`` that is not one of the values
+        is ignored and a ``page`` past the last shows the last one; an
+        unknown ``tab`` reads as the default (3.4)."""
+        tab = tab if tab in LIST_TABS else LIST_TABS[0]
+        page = max(1, page)
+        with self._store.transaction(snapshot=True) as conn:
+            services = tuple(
+                row["service"]
+                for row in conn.execute(
+                    f"{_PAGE_BASE} SELECT DISTINCT service FROM base WHERE service IS NOT NULL ORDER BY 1 LIMIT {_SERVICE_LIMIT}"
+                ).fetchall()
+            )
+            service = service if service in services else None
+            where, params = _page_filters(service, q)
+            row = conn.execute(
+                f"{_PAGE_BASE} SELECT count(*) FILTER (WHERE grp='needs_human') AS needs_human,"
+                "count(*) FILTER (WHERE grp='in_progress') AS in_progress,"
+                "count(*) FILTER (WHERE lifecycle='resolved') AS resolved,"
+                "count(*) FILTER (WHERE lifecycle='closed') AS closed,"
+                f'count(*) AS "all" FROM base WHERE {where}',
+                params,
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("STORAGE_UNAVAILABLE")
+            counts = {key: int(row[key]) for key in LIST_TABS}
+            pages = max(1, -(-counts[tab] // per_page))
+            page = min(page, pages)
+            rows = conn.execute(
+                f"{_PAGE_BASE} SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " WHERE i.incident_id IN (SELECT incident_id FROM base"
+                f" WHERE {_TAB_PREDICATES[tab]} AND {where}"
+                " ORDER BY created_at DESC, incident_id LIMIT %s OFFSET %s)"
+                " ORDER BY i.created_at DESC, i.incident_id",
+                (*params, per_page, (page - 1) * per_page),
+            ).fetchall()
+        return IncidentPage(
+            items=tuple(_item(r) for r in rows),
+            counts=counts,
+            services=services,
+            tab=tab,
+            service=service,
+            page=page,
+            pages=pages,
+        )
+
+    def page_groups(self) -> dict[UUID, str]:
+        """Every incident's list group as SQL computes it (``base.grp``): the
+        consistency guard against ``incident_list.status_of`` (3.7) reads
+        it. Unbounded; tests only."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"{_PAGE_BASE} SELECT incident_id,grp FROM base"
+            ).fetchall()
+        return {row["incident_id"]: row["grp"] for row in rows}
+
+    def incident_item(self, incident_id: UUID) -> IncidentListItem | None:
+        """One incident's list-page row (UI redesign 3.3): the postmortem
+        page's heading reads the same subject (alert name or question,
+        service) the list shows. At most one row."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS} WHERE i.incident_id=%s",
+                (incident_id,),
+            ).fetchone()
+        return None if row is None else _item(row)
 
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
@@ -859,6 +1069,60 @@ class DurableIncidentStore:
             ).fetchall()
         return tuple(row["incident_id"] for row in rows)
 
+    def linked_incidents(
+        self, incident_id: UUID, *, limit: int | None = LINKED_LIMIT
+    ) -> tuple[tuple[IncidentListItem, Mapping[str, Any]], ...]:
+        """Incidents merged into ``incident_id`` (workbench P6 L1/L2), in
+        merge order, at most ``limit`` (``None``: all of them, #715): each
+        source's list row (its title)
+        with the merge decision -- who, when, the optional reason the
+        ``merge_into`` audit row keeps -- and the source's lifecycle at the
+        merge, from the fixed-template event the survivor took."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS},mc.actor AS merge_actor,"
+                "mc.reason AS merge_reason,mc.created_at AS merged_at,"
+                "me.lifecycle AS lifecycle_at_merge"
+                f" FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " LEFT JOIN LATERAL (SELECT c.actor,c.payload->>'text' AS reason,c.created_at"
+                " FROM opspilot_controls c WHERE c.incident_id=i.incident_id"
+                " AND c.action='merge_into' ORDER BY c.resulting_generation DESC LIMIT 1) mc ON true"
+                " LEFT JOIN LATERAL (SELECT n.content->>'source_lifecycle' AS lifecycle"
+                " FROM opspilot_inputs n WHERE n.incident_id=%s AND n.kind='event'"
+                " AND n.content->>'channel'='merge'"
+                " AND n.content->>'source_incident_id'=i.incident_id::text"
+                " ORDER BY n.sequence LIMIT 1) me ON true"
+                " WHERE i.merged_into_incident_id=%s"
+                " ORDER BY mc.created_at NULLS LAST,i.created_at,i.incident_id"
+                + (" LIMIT ALL" if limit is None else " LIMIT %s"),
+                (incident_id, incident_id) + (() if limit is None else (limit,)),
+            ).fetchall()
+        return tuple(
+            (
+                _item(row),
+                {
+                    "actor": row["merge_actor"],
+                    "reason": row["merge_reason"],
+                    "merged_at": row["merged_at"],
+                    "lifecycle_at_merge": row["lifecycle_at_merge"],
+                },
+            )
+            for row in rows
+        )
+
+    def followed_by(
+        self, incident_id: UUID, *, limit: int = LINKED_LIMIT
+    ) -> tuple[IncidentListItem, ...]:
+        """Incidents opened after this closed one (``related_incident_id``,
+        workbench P6 L6), oldest first, at most ``limit``."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                f"SELECT {_LIST_COLUMNS},{_ITEM_COLUMNS} FROM {_LIST_FROM} {_ITEM_JOINS}"
+                " WHERE i.related_incident_id=%s ORDER BY i.created_at,i.incident_id LIMIT %s",
+                (incident_id, limit),
+            ).fetchall()
+        return tuple(_item(row) for row in rows)
+
     def alert_records(self, incident_id: UUID) -> AlertIntakeRecords | None:
         with self._store.transaction(snapshot=True) as conn:
             records = alert_intake_records(conn, incident_id)
@@ -873,6 +1137,79 @@ class DurableIncidentStore:
                 (incident_id,),
             ).fetchall()
         return tuple(rows)
+
+    def latest_incomplete_report(
+        self, incident_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        """The newest conclusion step of any Run of this incident that ended
+        with a validated report the Agent marked incomplete: execution
+        ``completed`` and handoff reasons exactly ``INCOMPLETE_INVESTIGATION``
+        (the loop sets that reason only after the report validated).
+        Redesign contract A8/D7a: the page keeps showing it after a later
+        Run (a reply-only continuation) ends without a report of its own."""
+        with self._store.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT s.run_id,s.response FROM opspilot_steps s"
+                " JOIN opspilot_runs r ON r.run_id=s.run_id"
+                " WHERE r.incident_id=%s AND s.status<>'late_result'"
+                " AND s.response->>'kind'='conclusion'"
+                " AND s.response->'conclusion'->>'execution'='completed'"
+                " AND s.response->'conclusion'->'handoff_reasons'"
+                "='[\"INCOMPLETE_INVESTIGATION\"]'::jsonb"
+                " ORDER BY s.observed_at DESC,s.sequence DESC LIMIT 1",
+                (incident_id,),
+            ).fetchone()
+        return None if row is None else (row["run_id"], row["response"])
+
+    def incident_runs(self, incident_id: UUID) -> dict[str, Any]:
+        """Every Run of the incident with its committed non-late steps, in
+        one snapshot (workbench redesign P3-1, the one investigation log).
+
+        Tool results come without their raw ``content`` (P3-6: an earlier
+        Run's raw result is read from its evidence page; the current Run and
+        the shown report's Run are read with content elsewhere). Alongside:
+        each Run's ``run_completed`` report hash and ``run_resumed`` time from
+        the event log, read by kind instead of scanning every retained page
+        (P3-19), and the ``new_run`` audit rows that opened a Run (P3-2/3).
+        """
+        with self._store.transaction(snapshot=True) as conn:
+            runs = conn.execute(
+                "SELECT run_id,state,control_generation,input_watermark,budget_limit,"
+                "input->'scope_facts'->'conversation' AS conversation"
+                " FROM opspilot_runs WHERE incident_id=%s",
+                (incident_id,),
+            ).fetchall()
+            steps = conn.execute(
+                # E3/P7: the web never loads the model's private reasoning.
+                "SELECT s.step_id,s.run_id,s.sequence,s.logical_key,s.status,"
+                "s.response #- '{assistant,reasoning_content}' AS response,"
+                "(SELECT COALESCE(jsonb_agg(t #- '{result,content}' ORDER BY n),'[]'::jsonb)"
+                " FROM jsonb_array_elements(COALESCE(s.tool_results,'[]'::jsonb))"
+                " WITH ORDINALITY AS a(t,n)) AS tool_results,"
+                "s.control_generation,s.observed_at"
+                " FROM opspilot_steps s JOIN opspilot_runs r ON r.run_id=s.run_id"
+                " WHERE r.incident_id=%s AND s.status<>'late_result'"
+                " ORDER BY s.sequence,s.observed_at,s.step_id",
+                (incident_id,),
+            ).fetchall()
+            events = conn.execute(
+                "SELECT kind,payload->>'run_id' AS run_id,"
+                "payload->>'report_sha256' AS report_sha256,recorded_at"
+                " FROM opspilot_subject_events WHERE subject_id=%s"
+                " AND kind IN ('run_completed','run_resumed') ORDER BY sequence",
+                (incident_id,),
+            ).fetchall()
+            opened = conn.execute(
+                "SELECT actor,resulting_generation,created_at FROM opspilot_controls"
+                " WHERE incident_id=%s AND action='new_run' ORDER BY resulting_generation",
+                (incident_id,),
+            ).fetchall()
+        return {
+            "runs": list(runs),
+            "steps": list(steps),
+            "events": list(events),
+            "new_runs": list(opened),
+        }
 
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
@@ -901,6 +1238,21 @@ class DurableIncidentStore:
             for row in rows
         )
 
+    def control_log(self, incident_id: UUID, limit: int) -> list[dict[str, Any]]:
+        """The latest ``limit`` committed ``opspilot_controls`` rows with their
+        database time, oldest first: the incident page's decision log (#572),
+        which shows system rows (``auto_authorize_observation``) next to
+        human decisions. Bounded read (PRODUCT-CONSTRAINTS: result volume
+        is constrained even for read-only operations); callers ask for one
+        row more than they show to learn that older rows exist.
+        ``control_audit`` keeps its shape."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT action,actor,expected_generation,resulting_generation,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY created_at DESC, resulting_generation DESC LIMIT %s",
+                (incident_id, limit),
+            ).fetchall()
+        return list(reversed(rows))
+
     def now(self) -> datetime:
         return self._clock.now()
 
@@ -922,6 +1274,231 @@ _REFIRED = (
     "WHERE e.incident_id=i.incident_id AND e.lifecycle_after='resolved'), "
     "'-infinity'::timestamptz))) AS refired_after_resolved"
 )
+_LIST_COLUMNS = (
+    "i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,"
+    "i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,"
+    f"i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,"
+    f"i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,"
+    "i.merged_into_incident_id"
+)
+_LIST_FROM = (
+    "opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id"
+    " LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id"
+    " LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id"
+)
+#: UI redesign 3.2 / section 6. The question is the intake envelope the web
+#: ledger keeps under the incident's own key (``Workbench.submit`` writes
+#: namespace ``intake``, key ``intake:{idempotency_key}``, which is also the
+#: incident's ``intake_key``). The alert text is the latest delivery's stored
+#: (redacted, bounded) record, parsed in Python because a record cut at its
+#: byte bound is not JSON. Recovery is the newest incident-recovery session;
+#: the postmortem is the version under review when one is, else the newest.
+_ITEM_COLUMNS = (
+    "i.conclusion AS conclusion,wl.value #>> '{envelope,request,question}' AS question,"
+    "a.namespace AS alert_namespace,a.workload AS alert_workload,ld.alert_json,"
+    "o.state AS recovery_state,o.ended_reason AS recovery_ended_reason,"
+    "o.adopted_count AS recovery_samples,o.ended_at AS recovery_ended_at,"
+    "pm.postmortem_id,pm.version AS postmortem_version,pm.state AS postmortem_state,"
+    # Workbench P6 L4: "N linked" on a survivor's row, in the same statement.
+    "(SELECT count(*) FROM opspilot_incidents mi"
+    " WHERE mi.merged_into_incident_id=i.incident_id) AS linked_count"
+)
+_ITEM_JOINS = (
+    "LEFT JOIN opspilot_web_ledger wl ON wl.namespace='intake' AND wl.key=i.intake_key"
+    " LEFT JOIN LATERAL (SELECT d.alert_json FROM opspilot_alert_deliveries d"
+    " WHERE d.incident_id=i.incident_id ORDER BY d.delivery_id DESC LIMIT 1) ld ON true"
+    " LEFT JOIN LATERAL (SELECT s.state,s.ended_reason,s.adopted_count,"
+    "(SELECT max(e.recorded_at) FROM opspilot_observation_endings e"
+    " WHERE e.session_id=s.session_id) AS ended_at"
+    " FROM opspilot_observation_sessions s WHERE s.incident_id=i.incident_id"
+    " AND s.purpose='incident_recovery'"
+    " ORDER BY s.authorized_at DESC,s.session_id DESC LIMIT 1) o ON true"
+    " LEFT JOIN LATERAL (SELECT p.postmortem_id,v.version,v.state"
+    " FROM opspilot_postmortems p JOIN opspilot_postmortem_versions v"
+    " ON v.postmortem_id=p.postmortem_id WHERE p.incident_id=i.incident_id"
+    " ORDER BY (v.state='under_review') DESC,v.version DESC LIMIT 1) pm ON true"
+)
+
+_SERVICE_LIMIT = 200
+#: The list group ``incident_list.status_of`` gives a row, in SQL, in the
+#: same first-match order as ``status.incident_status`` (redesign contract
+#: A8). Change both together.
+_PAGE_GROUP = (
+    "CASE"
+    " WHEN i.lifecycle='closed' THEN CASE WHEN pm.state='under_review'"
+    " AND pm.postmortem_id IS NOT NULL THEN 'needs_human' ELSE 'closed' END"
+    " WHEN i.lifecycle='resolved' THEN 'needs_human'"
+    " WHEN i.state IN ('cancelled','paused') OR r.state='paused' THEN 'needs_human'"
+    " WHEN i.mode='human_owned' THEN 'needs_human'"
+    " WHEN r.state IN ('queued','running') THEN 'in_progress'"
+    " WHEN i.conclusion IS NOT NULL AND i.lifecycle='observing_recovery'"
+    " THEN 'in_progress'"
+    " ELSE 'needs_human' END"
+)
+#: ``incident_list.service_of`` in SQL: ``namespace/workload`` of the alert,
+#: else the bound target's ``resource_uid``.
+_PAGE_SERVICE = (
+    "COALESCE(NULLIF(a.namespace,'')||'/'||NULLIF(a.workload,''),"
+    "NULLIF(t.resource_uid,''))"
+)
+_PAGE_BASE = (
+    "WITH base AS (SELECT i.incident_id,i.created_at,i.lifecycle,"
+    + _PAGE_GROUP
+    + " AS grp,"
+    + _PAGE_SERVICE
+    + " AS service,wl.value #>> '{envelope,request,question}' AS question,"
+    "ld.alert_json FROM "
+    + _LIST_FROM
+    + " LEFT JOIN LATERAL (SELECT p.postmortem_id,v.state"
+    " FROM opspilot_postmortems p JOIN opspilot_postmortem_versions v"
+    " ON v.postmortem_id=p.postmortem_id WHERE p.incident_id=i.incident_id"
+    " ORDER BY (v.state='under_review') DESC,v.version DESC LIMIT 1) pm ON true"
+    " LEFT JOIN opspilot_web_ledger wl ON wl.namespace='intake' AND wl.key=i.intake_key"
+    " LEFT JOIN LATERAL (SELECT d.alert_json FROM opspilot_alert_deliveries d"
+    " WHERE d.incident_id=i.incident_id ORDER BY d.delivery_id DESC LIMIT 1) ld ON true)"
+)
+_TAB_PREDICATES = {
+    "needs_human": "grp='needs_human'",
+    "in_progress": "grp='in_progress'",
+    "resolved": "lifecycle='resolved'",
+    "closed": "lifecycle='closed'",
+    "all": "TRUE",
+}
+
+
+#: The latest delivery's record decoded, or NULL when it is not valid
+#: ``jsonb`` input: cut at its byte bound, or holding an escape ``jsonb``
+#: refuses (``\u0000``, a lone surrogate) that ``json.loads`` accepts --
+#: those rows' alert fields never match (web UX spec 3.7). The ``CASE``
+#: keeps the cast from running on input that would raise.
+_ALERT_DOC = (
+    "(CASE WHEN pg_input_is_valid(alert_json,'jsonb') THEN alert_json::jsonb END)"
+)
+
+
+def _alert_text(path: str) -> str:
+    """A string member of the decoded alert record (``_alert_fields``), else
+    NULL: a number or object there is not the alert's name or summary."""
+    return (
+        f"(CASE WHEN jsonb_typeof({_ALERT_DOC} #> '{path}')='string'"
+        f" THEN {_ALERT_DOC} #>> '{path}' END)"
+    )
+
+
+def _page_filters(service: str | None, q: str | None) -> tuple[str, tuple[Any, ...]]:
+    """The list filters as a ``WHERE`` fragment over ``base`` and its
+    parameters: the Service value, and ``q`` as a case-insensitive
+    substring of the question, the latest delivery's decoded
+    ``labels.alertname`` or ``annotations.summary`` or the service, or a
+    prefix of the incident id -- ``incident_list._matches`` in SQL."""
+    clauses = ["TRUE"]
+    params: list[Any] = []
+    if service is not None:
+        clauses.append("service=%s")
+        params.append(service)
+    if q:
+        text = _like_escape(q)
+        clauses.append(
+            "(question ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            f" OR {_alert_text('{labels,alertname}')} ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            f" OR {_alert_text('{annotations,summary}')} ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            " OR service ILIKE '%%'||%s||'%%' ESCAPE '\\'"
+            " OR incident_id::text LIKE %s||'%%' ESCAPE '\\')"
+        )
+        params.extend([text, text, text, text, text.lower()])
+    return " AND ".join(clauses), tuple(params)
+
+
+def _like_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@dataclass(frozen=True)
+class IncidentPage:
+    """One page of the incident list (web UX spec 3.7). ``counts`` has
+    every tab of ``LIST_TABS``; ``tab``, ``service`` and ``page`` are the
+    values the page was read with after the fallbacks of 3.4."""
+
+    items: tuple[IncidentListItem, ...]
+    counts: Mapping[str, int]
+    services: tuple[str, ...]
+    tab: str
+    service: str | None
+    page: int
+    pages: int
+
+
+@dataclass(frozen=True, eq=False)
+class IncidentListItem:
+    """One list-page row: the summary plus what only the list shows. Every
+    extra is ``None`` when the store has no such record."""
+
+    summary: IncidentSummary
+    #: The committed conclusion payload (``opspilot_incidents.conclusion``);
+    #: the view parses it with the incident page's ``_report_view``.
+    conclusion: Mapping[str, Any] | None = None
+    question: str | None = None
+    alert_name: str | None = None
+    #: The latest delivery's ``annotations.summary`` (the incident page's
+    #: title reads the same record); ``None`` when absent or blank.
+    alert_summary: str | None = None
+    alert_namespace: str | None = None
+    alert_workload: str | None = None
+    recovery_state: str | None = None
+    recovery_ended_reason: str | None = None
+    recovery_samples: int | None = None
+    recovery_ended_at: datetime | None = None
+    postmortem_id: UUID | None = None
+    postmortem_version: int | None = None
+    postmortem_state: str | None = None
+    #: Incidents merged into this one (workbench P6 L4).
+    linked_count: int = 0
+
+
+def _alert_fields(alert_json: str | None) -> tuple[str | None, str | None]:
+    """``labels.alertname`` and ``annotations.summary`` of a stored delivery
+    record; a record cut at its byte bound is not JSON and gives neither."""
+    if alert_json is None:
+        return None, None
+    try:
+        alert = json.loads(alert_json)
+    except ValueError:
+        return None, None
+    if not isinstance(alert, dict):
+        return None, None
+    labels = alert.get("labels")
+    name = labels.get("alertname") if isinstance(labels, dict) else None
+    annotations = alert.get("annotations")
+    summary = annotations.get("summary") if isinstance(annotations, dict) else None
+    return (
+        name if isinstance(name, str) and name else None,
+        summary if isinstance(summary, str) and summary.strip() else None,
+    )
+
+
+def _item(row: Mapping[str, Any]) -> IncidentListItem:
+    conclusion = row.get("conclusion")
+    samples = row.get("recovery_samples")
+    version = row.get("postmortem_version")
+    question = row.get("question")
+    alert_name, alert_summary = _alert_fields(row.get("alert_json"))
+    return IncidentListItem(
+        summary=_summary(row),
+        conclusion=conclusion if isinstance(conclusion, Mapping) else None,
+        question=question if isinstance(question, str) else None,
+        alert_name=alert_name,
+        alert_summary=alert_summary,
+        alert_namespace=row.get("alert_namespace"),
+        alert_workload=row.get("alert_workload"),
+        recovery_state=row.get("recovery_state"),
+        recovery_ended_reason=row.get("recovery_ended_reason"),
+        recovery_samples=None if samples is None else int(samples),
+        recovery_ended_at=row.get("recovery_ended_at"),
+        postmortem_id=row.get("postmortem_id"),
+        postmortem_version=None if version is None else int(version),
+        postmortem_state=row.get("postmortem_state"),
+        linked_count=int(row.get("linked_count") or 0),
+    )
 
 
 def _summary(row: Mapping[str, Any]) -> IncidentSummary:

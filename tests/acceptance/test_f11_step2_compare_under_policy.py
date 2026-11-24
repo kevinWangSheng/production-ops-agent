@@ -221,7 +221,7 @@ def test_item4_insufficient_evidence_is_unknown_never_degraded(
         assert receipt.disposition == "adopted", receipt
         assert receipt.evaluation.verdict == "unknown", receipt.evaluation
         assert receipt.release_status == "observing", receipt
-    env.wait_past(case.record.deadline_at)
+    env.expire_deadline(case.oid)
     env.tick(s.ReleaseWorld())
     env.anomaly_pass()
 

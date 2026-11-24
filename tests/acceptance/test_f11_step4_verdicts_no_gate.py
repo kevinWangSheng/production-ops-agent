@@ -4,15 +4,53 @@ policy".
 
 Independent acceptance tests for ``docs/tasks/2026-10-24-f11-pr5-contract.md``
 section 4, step 4, items 1-5 (A10 / D5 projection, D2 control refusals,
-D8 ``release_outcome_from_durable``, A8 no Kubernetes credentials, A11).
+D8 ``release_outcome_from_durable``, the no-gate code surface, A11).
 
-U-5 (decided, recorded here as context): the lab has no CI gate, so "no
-result changes a required CI check" is proven at the CI layer by code
-surface (no Kubernetes client, no kubectl / subprocess, no GitHub or CI API
-client in ``opspilot/``; the Observer's outbound HTTP goes to Prometheus
-only) plus "the three product entry points read no KUBECONFIG, Kubernetes
-service-account token or CI / GitHub token" (a static check of what their
-configuration can read). Items 3 and 4 below are those tests.
+U-5 was revised 2026-11-13 for PR #588 after the user's 2026-11-12 X1/Q1/Q2
+decisions.  The product may now hold one read-only Kubernetes credential in
+the A2 extension profile, and model-written jq plus the A3 Python ``re``
+worker may run in bounded child processes.  The code-surface proof therefore
+requires: Kubernetes access is confined to ``opspilot/tools/kubernetes_core.py``;
+that transport is GET-only; its only child-process entry is
+``run_isolated`` with one ``Popen(env={})``.  The only child programs are jq,
+resolved once by ``require_jq``, and the Python regex worker, resolved once
+from PATH by ``require_python`` and run with ``-I -S -B`` against a fixed
+package script under ``opspilot/tools/``;
+the module has no ``kubectl`` client and no GitHub/GitLab/CI/forge client; and
+the other product modules retain their original forbidden-client checks.  A2's
+contract test records that web face/version construction works without
+``OPSPILOT_K8S_*`` variables, while worker configuration is the only place
+that reads them.  Item 4 still rejects KUBECONFIG, service-account token paths,
+CI/forge credentials and credential files for every product entry point.
+
+Extended 2026-11-20 for B4 (#563, lead ruling, on the A2 precedent): the Helm
+release history tools read Helm's own release records (Secrets of type
+``helm.sh/release.v1``) through the same GET-only Kubernetes transport.  Three
+string constants must therefore name Helm or kubectl, and only these three are
+excepted, by module and constant name and for the one matched word each:
+``kubernetes_core.HELM_FIELD_SELECTOR`` and ``kubernetes_core.HELM_OWNER``
+(``helm``: the identifiers of the read-only release records), and
+``helm_releases._CANNOT_PROVE`` (``kubectl``: model-visible text saying that
+changes made with kubectl outside Helm are not in the records).  They are
+identifiers and explanatory text for reading release metadata, not a call to
+a deployment or release tool.  The step's wording and the intent of every
+assertion are unchanged.  Accepted by the user 2026-11-22 (R-2 in
+``docs/tasks/2026-11-12-tool-expansion.md``).
+
+Extended 2026-11-20 for C4 (#568, lead ruling, on the B4 precedent): the ArgoCD
+tools read ArgoCD's Application objects (``applications.argoproj.io``) through
+the same GET-only Kubernetes transport.  Three string constants of
+``argocd_apps`` must name ``argocd`` and are excepted for that one word only:
+``DEFAULT_NAMESPACE`` (the value ``argocd``, the namespace ArgoCD keeps its
+Applications in), ``_NAMESPACE_DEFAULT_TEXT`` and ``_NAMESPACE_PARAM_TEXT``
+(model-visible text saying that namespace is the default).  Item 4 excepts
+exactly four names containing ``ARGO``, by full match: the switch
+``OPSPILOT_ARGOCD``, its startup code ``ARGOCD_INVALID``, and the profile
+constants ``ARGOCD_TOOL_NAMES`` and ``ARGOCD_TOOL_SCHEMA_REVISION``.  They are
+identifiers and explanatory text for reading Application objects, not a call
+to a deployment tool or an ArgoCD credential.  The step's wording and the
+intent of every assertion are unchanged.  Accepted by the user 2026-11-22 (R-2
+in ``docs/tasks/2026-11-12-tool-expansion.md``).
 
 PostgreSQL tests use ``tests/acceptance/f11_steps_support.py``; the code
 surface tests need no database.
@@ -108,7 +146,7 @@ def _release_in(env: s.Env, status: str) -> s.Delivered:
     if status == "unknown":
         case = s.deliver(env, released_ago=s.DEADLINE - 4.0)
         env.authorize_pass()
-        env.wait_past(case.record.deadline_at)
+        env.expire_deadline(case.oid)
         env.tick(s.ReleaseWorld())
         return case
     if status == "cancelled":
@@ -356,6 +394,51 @@ FORBIDDEN_TEXT = re.compile(
     r"|/api/v1/namespaces|kubernetes\.default|\bkubectl\b|\bhelm\b|\bargocd\b"
     r"|\bgh\s+(?:pr|api|workflow|run)\b"
 )
+KUBERNETES_CORE_RELATIVE = "opspilot/tools/kubernetes_core.py"
+KUBERNETES_READ_API_PATH = re.compile(
+    r"^/api/v1(?:/[^\s\"']*)?$|^/apis/[A-Za-z0-9_.-]+/v1(?:/[^\s\"']*)?$"
+)
+#: B4 (#563): (module, module-level constant) -> the one forbidden word its
+#: string literals may contain (see the module docstring).
+HELM_TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    ("opspilot/tools/kubernetes_core.py", "HELM_FIELD_SELECTOR"): "helm",
+    ("opspilot/tools/kubernetes_core.py", "HELM_OWNER"): "helm",
+    ("opspilot/tools/helm_releases.py", "_CANNOT_PROVE"): "kubectl",
+}
+#: C4 (#568): the same, for the ArgoCD Application tools (module docstring).
+ARGOCD_TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    ("opspilot/tools/argocd_apps.py", "DEFAULT_NAMESPACE"): "argocd",
+    ("opspilot/tools/argocd_apps.py", "_NAMESPACE_DEFAULT_TEXT"): "argocd",
+    ("opspilot/tools/argocd_apps.py", "_NAMESPACE_PARAM_TEXT"): "argocd",
+}
+TEXT_EXCEPTIONS: dict[tuple[str, str], str] = {
+    **HELM_TEXT_EXCEPTIONS,
+    **ARGOCD_TEXT_EXCEPTIONS,
+}
+
+
+def _excepted_constants(path: Path, tree: ast.AST) -> dict[int, str]:
+    """``id(node) -> allowed word`` for the string literals inside the value
+    of an excepted module-level assignment."""
+    relative = str(path.relative_to(REPO))
+    allowed: dict[int, str] = {}
+    for statement in getattr(tree, "body", []):
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            word = TEXT_EXCEPTIONS.get((relative, target.id))
+            if word is None:
+                continue
+            for node in ast.walk(value):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    allowed[id(node)] = word
+    return allowed
 
 
 def _imported(tree: ast.AST) -> list[str]:
@@ -391,19 +474,37 @@ def test_item3_no_product_module_imports_a_kubernetes_forge_or_ci_client() -> No
 
 
 def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() -> None:
-    offenders = [
-        (str(path.relative_to(REPO)), node.value[:80])
-        for path, tree in _trees()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and FORBIDDEN_TEXT.search(node.value)
-    ]
+    def forbidden(path: Path, value: str, excepted: str | None) -> str | None:
+        relative = str(path.relative_to(REPO))
+        for match in FORBIDDEN_TEXT.finditer(value):
+            if (
+                relative == KUBERNETES_CORE_RELATIVE
+                and KUBERNETES_READ_API_PATH.fullmatch(match.group())
+            ):
+                continue
+            if excepted is not None and match.group() == excepted:
+                continue  # B4/C4: only this word, only in this constant
+            return match.group()
+        return None
+
+    offenders = []
+    for path, tree in _trees():
+        excepted = _excepted_constants(path, tree)
+        offenders += [
+            (str(path.relative_to(REPO)), node.value[:80])
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and forbidden(path, node.value, excepted.get(id(node))) is not None
+        ]
     assert offenders == []
 
 
 #: ``opspilot/schema.py`` is the migration tool (``make migrate``), not a
 #: product process; it shells out to ``pg_dump`` only (ambiguity note E2).
+#: The Kubernetes module is the one bounded exception for its two child
+#: processes: jq (A2) and the Python ``re`` worker (A3).  Both must use the
+#: same ``run_isolated`` boundary.
 SUBPROCESS_ALLOWED = {"opspilot/schema.py"}
 PROCESS_CALLS = {
     ("subprocess", name)
@@ -425,37 +526,460 @@ PROCESS_CALLS = {
 }
 
 
-def test_item3_only_the_migration_tool_starts_a_process_and_only_pg_dump() -> None:
-    offenders = []
+def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -> None:
+    offenders: list[tuple[str, str]] = []
+    kubernetes_tree: ast.Module | None = None
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+
+    def function_parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+        parents: dict[ast.AST, ast.AST] = {}
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                parents[child] = parent
+        return parents
+
+    def enclosing_function(
+        node: ast.AST, parents: dict[ast.AST, ast.AST]
+    ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+        current = parents.get(node)
+        while current is not None:
+            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                return current
+            current = parents.get(current)
+        return None
+
     for path, tree in _trees():
         relative = str(path.relative_to(REPO))
+        if relative == KUBERNETES_CORE_RELATIVE:
+            kubernetes_tree = tree  # type: ignore[assignment]
+
+        subprocess_aliases = {"subprocess"}
+        os_aliases = {"os"}
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                names = (
-                    [a.name for a in node.names]
-                    if isinstance(node, ast.Import)
-                    else [node.module or ""]
-                )
-                if any(n.split(".")[0] in {"subprocess", "pty"} for n in names) and (
-                    relative not in SUBPROCESS_ALLOWED
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "subprocess":
+                        if alias.asname is not None:
+                            offenders.append((relative, "subprocess alias"))
+                        else:
+                            subprocess_aliases.add("subprocess")
+                    if alias.name == "os" and alias.asname is not None:
+                        os_aliases.add(alias.asname)
+                    process_root = alias.name.split(".")[0]
+                    if process_root == "pty":
+                        if relative not in SUBPROCESS_ALLOWED:
+                            offenders.append((relative, "imports pty"))
+                    elif process_root == "subprocess":
+                        if relative == KUBERNETES_CORE_RELATIVE:
+                            if alias.asname is not None:
+                                offenders.append((relative, "subprocess alias"))
+                        elif relative not in SUBPROCESS_ALLOWED:
+                            offenders.append((relative, "imports a process module"))
+            elif isinstance(node, ast.ImportFrom):
+                if (
+                    node.module
+                    and node.module.split(".")[0] in {"pty", "subprocess"}
+                    and relative not in SUBPROCESS_ALLOWED
                 ):
-                    offenders.append((relative, "imports a process module"))
-                if isinstance(node, ast.ImportFrom) and node.module == "os":
+                    offenders.append((relative, "from process module"))
+                if node.module == "os":
                     bad = {a.name for a in node.names} & {n for _, n in PROCESS_CALLS}
                     if bad:
                         offenders.append((relative, f"from os import {sorted(bad)}"))
-            if (
-                isinstance(node, ast.Call)
+            if isinstance(node, ast.Call):
+                function = node.func
+                dynamic_process_import = (
+                    isinstance(function, ast.Name) and function.id == "__import__"
+                ) or (
+                    isinstance(function, ast.Attribute)
+                    and function.attr == "import_module"
+                )
+                if dynamic_process_import and relative == KUBERNETES_CORE_RELATIVE:
+                    offenders.append((relative, "dynamic process import"))
+
+                if (
+                    isinstance(function, ast.Attribute)
+                    and isinstance(function.value, ast.Name)
+                    and function.value.id in subprocess_aliases
+                ):
+                    pair = ("subprocess", function.attr)
+                    if relative == KUBERNETES_CORE_RELATIVE:
+                        if function.attr != "Popen":
+                            offenders.append((relative, f"subprocess.{function.attr}"))
+                        else:
+                            parents = function_parents(tree)
+                            owner = enclosing_function(node, parents)
+                            if owner is None or owner.name != "run_isolated":
+                                offenders.append(
+                                    (relative, "Popen outside run_isolated")
+                                )
+                            env_keywords = [
+                                keyword
+                                for keyword in node.keywords
+                                if keyword.arg == "env"
+                            ]
+                            if len(env_keywords) != 1 or not (
+                                isinstance(env_keywords[0].value, ast.Dict)
+                                and not env_keywords[0].value.keys
+                                and not env_keywords[0].value.values
+                            ):
+                                offenders.append((relative, "Popen env is not {}"))
+                            if any(keyword.arg == "shell" for keyword in node.keywords):
+                                offenders.append((relative, "Popen shell keyword"))
+                    elif relative not in SUBPROCESS_ALLOWED:
+                        offenders.append((relative, f"{pair[0]}.{pair[1]}"))
+
+                if (
+                    isinstance(function, ast.Attribute)
+                    and isinstance(function.value, ast.Name)
+                    and function.value.id in os_aliases
+                    and ("os", function.attr) in PROCESS_CALLS
+                    and relative not in SUBPROCESS_ALLOWED
+                ):
+                    offenders.append((relative, f"os.{function.attr}"))
+
+        if relative == KUBERNETES_CORE_RELATIVE:
+            assert isinstance(tree, ast.Module)
+            run_isolated = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "run_isolated"
+            ]
+            require_jq = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "require_jq"
+            ]
+            require_python = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "require_python"
+            ]
+            if len(run_isolated) != 1:
+                offenders.append((relative, "run_isolated function count"))
+            if len(require_jq) != 1:
+                offenders.append((relative, "require_jq function count"))
+            if len(require_python) != 1:
+                offenders.append((relative, "require_python function count"))
+            if require_jq:
+                jq_checks = [
+                    node
+                    for node in ast.walk(require_jq[0])
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "shutil"
+                    and node.func.attr == "which"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "jq"
+                ]
+                if not jq_checks:
+                    offenders.append((relative, "require_jq does not resolve jq"))
+            if require_python:
+                python_checks = [
+                    node
+                    for node in ast.walk(require_python[0])
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "shutil"
+                    and node.func.attr == "which"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "python3"
+                ]
+                if not python_checks:
+                    offenders.append(
+                        (relative, "require_python does not resolve python3")
+                    )
+
+            popen_calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Name)
-                and (node.func.value.id, node.func.attr) in PROCESS_CALLS
-                and relative not in SUBPROCESS_ALLOWED
+                and node.func.value.id == "subprocess"
+                and node.func.attr == "Popen"
+            ]
+            if len(popen_calls) != 1:
+                offenders.append((relative, "Popen call count"))
+
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"chmod", "fchmod"}
+                ):
+                    offenders.append((relative, "executable temp-file mode change"))
+
+            def target_key(node: ast.AST) -> str | None:
+                if isinstance(node, ast.Name):
+                    return node.id
+                if isinstance(node, ast.Attribute):
+                    return ast.dump(node, include_attributes=False)
+                return None
+
+            assignments: dict[str, ast.AST] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (key := target_key(target)) is not None:
+                            assignments[key] = node.value
+                elif isinstance(node, ast.AnnAssign):
+                    if (key := target_key(node.target)) is not None:
+                        assignments[key] = node.value
+
+            def resolve(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
+                key = target_key(node)
+                if key is None or key in seen or key not in assignments:
+                    return node
+                return resolve(node=assignments[key], seen=seen | {key})
+
+            def call_named(node: ast.AST, name: str) -> bool:
+                node = resolve(node)
+                if not isinstance(node, ast.Call):
+                    return False
+                function = node.func
+                return (isinstance(function, ast.Name) and function.id == name) or (
+                    isinstance(function, ast.Attribute) and function.attr == name
+                )
+
+            def argv_for(call: ast.Call) -> ast.List | ast.Tuple | None:
+                if not call.args:
+                    return None
+                value = resolve(call.args[0])
+                return value if isinstance(value, (ast.List, ast.Tuple)) else None
+
+            run_calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and (
+                    (isinstance(node.func, ast.Name) and node.func.id == "run_isolated")
+                    or (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run_isolated"
+                    )
+                )
+            ]
+            if len(run_calls) != 2:
+                offenders.append((relative, "run_isolated call count"))
+
+            argv_lists = [argv_for(call) for call in run_calls]
+            argv_lists = [argv for argv in argv_lists if argv is not None]
+            regex_argv = [
+                argv
+                for argv in argv_lists
+                if len(argv.elts) == 5
+                and all(
+                    isinstance(item, ast.Constant) and item.value == flag
+                    for item, flag in zip(argv.elts[1:4], ("-I", "-S", "-B"))
+                )
+                and isinstance(argv.elts[4], ast.Name)
+                and argv.elts[4].id == "REGEX_CHILD"
+            ]
+            if len(regex_argv) != 1:
+                offenders.append((relative, "regex run_isolated argv shape"))
+            elif not call_named(regex_argv[0].elts[0], "require_python"):
+                offenders.append(
+                    (relative, "regex argv[0] is not require_python result")
+                )
+
+            forbidden_process_literals = {"/bin/sh", "sh", "bash", "-c"}
+            jq_argv = [argv for argv in argv_lists if argv not in regex_argv]
+            if len(jq_argv) != 1:
+                offenders.append((relative, "jq run_isolated argv shape"))
+            else:
+                first = jq_argv[0].elts[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    offenders.append((relative, "jq argv[0] is a string literal"))
+                if any(
+                    isinstance(item, ast.Constant)
+                    and isinstance(item.value, str)
+                    and item.value in forbidden_process_literals
+                    for item in jq_argv[0].elts[1:]
+                ):
+                    offenders.append((relative, "jq argv contains shell flag"))
+
+            regex_constants = [
+                node
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "REGEX_CHILD"
+                    for target in node.targets
+                )
+            ]
+            regex_constants += [
+                node
+                for node in tree.body
+                if isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "REGEX_CHILD"
+            ]
+            if len(regex_constants) != 1:
+                offenders.append((relative, "REGEX_CHILD module constant count"))
+
+            def is_path_file(node: ast.AST) -> bool:
+                return (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "Path"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id == "__file__"
+                )
+
+            def is_regex_child_path(node: ast.AST) -> bool:
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "with_name"
+                    and is_path_file(node.func.value)
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "_regex_child.py"
+                ):
+                    return True
+                return (
+                    isinstance(node, ast.BinOp)
+                    and isinstance(node.op, ast.Div)
+                    and isinstance(node.right, ast.Constant)
+                    and node.right.value == "_regex_child.py"
+                    and isinstance(node.left, ast.Attribute)
+                    and node.left.attr == "parent"
+                    and is_path_file(node.left.value)
+                )
+
+            if regex_constants and not is_regex_child_path(regex_constants[0].value):
+                offenders.append(
+                    (relative, "REGEX_CHILD is not Path(__file__) sibling")
+                )
+            if not (PACKAGE / "tools" / "_regex_child.py").is_file():
+                offenders.append((relative, "_regex_child.py is missing"))
+
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Attribute):
+                    if (
+                        isinstance(node.value, ast.Name)
+                        and node.value.id == "sys"
+                        and node.attr == "executable"
+                    ):
+                        offenders.append((relative, "sys.executable"))
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and (
+                        node.value in forbidden_process_literals
+                        or node.value == "sys.executable"
+                    )
+                ):
+                    offenders.append(
+                        (relative, f"forbidden process literal {node.value!r}")
+                    )
+
+    all_run_isolated_calls = []
+    for path, tree in _trees():
+        relative = str(path.relative_to(REPO))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if not (
+                isinstance(function, ast.Name)
+                and function.id == "run_isolated"
+                or isinstance(function, ast.Attribute)
+                and function.attr == "run_isolated"
             ):
-                offenders.append((relative, f"{node.func.value.id}.{node.func.attr}"))
+                continue
+            if relative != KUBERNETES_CORE_RELATIVE:
+                offenders.append((relative, "run_isolated outside kubernetes_core"))
+            all_run_isolated_calls.append((relative, node))
+            if not node.args:
+                offenders.append((relative, "run_isolated has no argv"))
+                continue
+            argv = node.args[0]
+            if isinstance(argv, (ast.List, ast.Tuple)) and argv.elts:
+                first = argv.elts[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    offenders.append((relative, "run_isolated literal argv[0]"))
+                if (
+                    isinstance(first, ast.Attribute)
+                    and isinstance(first.value, ast.Name)
+                    and first.value.id == "sys"
+                    and first.attr == "executable"
+                ):
+                    offenders.append((relative, "run_isolated sys.executable argv[0]"))
+
+    if kubernetes_tree is not None and not all_run_isolated_calls:
+        offenders.append((KUBERNETES_CORE_RELATIVE, "run_isolated call missing"))
+
     assert offenders == []
     schema_text = (PACKAGE / "schema.py").read_text()
     assert "pg_dump" in schema_text
     assert not FORBIDDEN_TEXT.search(schema_text)
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if kubernetes_path.is_file():
+        assert "jq" in kubernetes_path.read_text()
+
+
+def test_item3_kubernetes_transport_constructs_get_only_requests() -> None:
+    """Static GET-only proof keeps this F11 gate hermetic.
+
+    The A2 contract tests separately exercise the injected opener and assert
+    every observed request method is GET.  This check guards the implementation
+    surface even when no Kubernetes server or worker process is available in
+    the F11 acceptance environment.
+    """
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if not kubernetes_path.is_file():
+        return
+    tree = ast.parse(kubernetes_path.read_text(), filename=str(kubernetes_path))
+    request_calls: list[ast.Call] = []
+    data_open_calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        is_request = isinstance(function, ast.Name) and function.id == "Request"
+        is_request = is_request or (
+            isinstance(function, ast.Attribute) and function.attr == "Request"
+        )
+        if is_request:
+            request_calls.append(node)
+        is_urlopen = isinstance(function, ast.Name) and function.id == "urlopen"
+        is_urlopen = is_urlopen or (
+            isinstance(function, ast.Attribute) and function.attr == "urlopen"
+        )
+        is_open = isinstance(function, ast.Attribute) and function.attr == "open"
+        if is_urlopen or is_open:
+            if len(node.args) >= 2 or any(
+                keyword.arg == "data" for keyword in node.keywords
+            ):
+                data_open_calls.append(node)
+
+    offenders: list[str] = []
+    for node in request_calls:
+        if len(node.args) >= 2:
+            offenders.append("Request has a second positional argument")
+        if any(keyword.arg == "data" for keyword in node.keywords):
+            offenders.append("Request has data=")
+        methods = [keyword for keyword in node.keywords if keyword.arg == "method"]
+        if len(methods) != 1:
+            offenders.append("Request method is missing or duplicated")
+        elif not (
+            isinstance(methods[0].value, ast.Constant)
+            and methods[0].value.value == "GET"
+        ):
+            offenders.append("Request method is not literal GET")
+    offenders.extend("open/urlopen receives data" for _ in data_open_calls)
+    assert request_calls, "kubernetes_core.py has no Request construction"
+    assert offenders == []
 
 
 _NETWORK_ROOTS = {
@@ -470,6 +994,33 @@ _NETWORK_ROOTS = {
     "websockets",
     "grpc",
 }
+KUBERNETES_NETWORK_ALLOWED = frozenset(
+    {"urllib.request", "urllib.parse", "urllib.error", "ssl"}
+)
+KUBERNETES_NETWORK_FORBIDDEN = frozenset(
+    {"http.client", "socket", "requests", "httpx", "aiohttp", "urllib3"}
+)
+
+
+def test_item3_kubernetes_module_uses_only_the_read_transport_network_stack() -> None:
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if not kubernetes_path.is_file():
+        return
+    tree = ast.parse(kubernetes_path.read_text(), filename=str(kubernetes_path))
+    offenders = []
+    for imported in _imported(tree):
+        if any(
+            imported == root or imported.startswith(root + ".")
+            for root in KUBERNETES_NETWORK_FORBIDDEN
+        ):
+            offenders.append(f"forbidden network import {imported}")
+            continue
+        if imported.startswith("urllib") and not any(
+            imported == root or imported.startswith(root + ".")
+            for root in KUBERNETES_NETWORK_ALLOWED
+        ):
+            offenders.append(f"non-whitelisted urllib import {imported}")
+    assert offenders == []
 
 
 def _closure(module: str) -> list[str]:
@@ -572,6 +1123,18 @@ FORBIDDEN_ENV = re.compile(
     r"KUBE|KUBERNETES|SERVICE_?ACCOUNT|GITHUB|^GH_|GITLAB|JENKINS|BUILDKITE"
     r"|CIRCLE|TRAVIS|^CI_|^CI$|ARGO|^ACTIONS_|^RUNNER_|^BUILD_|^DRONE"
 )
+ALLOWED_K8S_ENV = re.compile(r"^OPSPILOT_K8S_[A-Z0-9_]+$")
+ALLOWED_K8S_LAB_CODE = "KUBERNETES_NOT_LAB"
+#: C4 (#568): the only names containing ``ARGO`` allowed, by full match
+#: (module docstring).
+ALLOWED_ARGOCD_NAMES = frozenset(
+    {
+        "OPSPILOT_ARGOCD",
+        "ARGOCD_INVALID",
+        "ARGOCD_TOOL_NAMES",
+        "ARGOCD_TOOL_SCHEMA_REVISION",
+    }
+)
 ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]+$")
 CREDENTIAL_PATHS = re.compile(
     r"/var/run/secrets/kubernetes\.io|serviceaccount/token|\.kube/config"
@@ -636,7 +1199,11 @@ def test_item4_an_entry_point_reads_no_cluster_ci_or_forge_credential(
 ) -> None:
     """Static check of what the entry's configuration reads: every
     environment read in the product modules its process loads, and every
-    environment-variable-shaped string or credential path they contain."""
+    environment-variable-shaped string or credential path they contain.  A2's
+    web face/version mapping test covers the fact that web does not read the
+    allowed ``OPSPILOT_K8S_*`` names at runtime; this test keeps the names
+    allowed while rejecting credential paths and every other cluster/CI/forge
+    name."""
     reads: dict[str, str] = {}
     names: dict[str, str] = {}
     paths: list[tuple[str, str]] = []
@@ -658,7 +1225,12 @@ def test_item4_an_entry_point_reads_no_cluster_ci_or_forge_credential(
     assert reads, f"{entry}: the scan found no environment read at all"
     assert {n: m for n, m in reads.items() if not n.startswith(ENV_PREFIXES)} == {}
     assert {
-        n: m for n, m in {**names, **reads}.items() if FORBIDDEN_ENV.search(n)
+        n: m
+        for n, m in {**names, **reads}.items()
+        if FORBIDDEN_ENV.search(n)
+        and not ALLOWED_K8S_ENV.fullmatch(n)
+        and n != ALLOWED_K8S_LAB_CODE
+        and n not in ALLOWED_ARGOCD_NAMES
     } == {}
     assert paths == []
 

@@ -1,0 +1,236 @@
+{
+  "item": "tabular",
+  "tool": "kubernetes_tabular_query",
+  "params": {
+    "kind": "pods",
+    "columns": "NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName,IMAGE:.spec.containers[*].image",
+    "namespace": "otel-demo"
+  },
+  "window": {
+    "start": "2026-11-14T19:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "status": "ok",
+  "reason": null,
+  "source_contact": "confirmed",
+  "dispatched": true,
+  "adopted": true,
+  "model_view_keys": [
+    "adopted",
+    "cannot_prove",
+    "citable_as_fact",
+    "content",
+    "count",
+    "data_as_of",
+    "dispatch_started_at",
+    "evidence_id",
+    "filter_mode",
+    "freshness_seconds",
+    "header",
+    "incomplete",
+    "lookback_seconds",
+    "lookback_start_at",
+    "notes",
+    "observed_at",
+    "omitted_bytes",
+    "omitted_rows",
+    "operation_id",
+    "pages_read",
+    "projection_revision",
+    "query",
+    "registry_revision",
+    "result_count",
+    "returned_count",
+    "rows_removed_by_filter",
+    "scope",
+    "source",
+    "source_end_at",
+    "source_start_at",
+    "status",
+    "target_id",
+    "tool",
+    "tool_registry_revision",
+    "tool_version",
+    "total_items_processed",
+    "truncated",
+    "trust",
+    "window"
+  ],
+  "model_view": {
+    "evidence_id": "tool-sample-t0:50442eca-b164-4bbd-b788-bb7841ba1287",
+    "operation_id": "tool-sample-t0",
+    "trust": "untrusted-evidence",
+    "status": "ok",
+    "adopted": true,
+    "citable_as_fact": true,
+    "tool": "kubernetes_tabular_query",
+    "tool_version": "v1",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "registry_revision": "3f1e18d57f89d2985579d84de2bec7af0e29379bf7112cb6f65b5008e211bf9b",
+    "tool_registry_revision": "bc4db9a58a8b30802563c58a93963c43c5ae4392e7329a22e8c0bb4713d4915c",
+    "projection_revision": "m1-01-tool-view-v11",
+    "query": {
+      "kind": "pods",
+      "columns": "NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName,IMAGE:.spec.containers[*].image",
+      "namespace": "otel-demo"
+    },
+    "window": {
+      "start": "2026-11-14T19:38:50+00:00",
+      "end": "2026-11-14T20:38:50+00:00"
+    },
+    "observed_at": "2026-11-14T20:38:50.724798+00:00",
+    "dispatch_started_at": "2026-11-14T20:38:50.711250+00:00",
+    "data_as_of": null,
+    "source_start_at": null,
+    "source_end_at": null,
+    "freshness_seconds": null,
+    "lookback_seconds": null,
+    "lookback_start_at": null,
+    "result_count": 22,
+    "incomplete": false,
+    "header": [
+      "NAME",
+      "STATUS",
+      "NODE",
+      "IMAGE"
+    ],
+    "count": 22,
+    "scope": {
+      "kind": "pods",
+      "api_group": "",
+      "cluster_scoped": false,
+      "namespace": "otel-demo",
+      "all_namespaces": false,
+      "label_selector": null,
+      "field_selector": null,
+      "application_namespace": "otel-demo"
+    },
+    "notes": [],
+    "total_items_processed": 22,
+    "rows_removed_by_filter": 0,
+    "filter_mode": null,
+    "pages_read": 1,
+    "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). <none> means the path reached no value in that object, not that the field is absent from the kind; a filtered table is not a full picture of the kind.",
+    "returned_count": 22,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "content_summary": {
+    "type": "list",
+    "length": 22,
+    "first_rows": [
+      [
+        "ad-757d59f5dd-h7b82",
+        "Running",
+        "opspilot-m1-control-plane",
+        "ghcr.io/open-telemetry/demo:2.0.2-ad"
+      ],
+      [
+        "alertmanager-0",
+        "Running",
+        "opspilot-m1-control-plane",
+        "quay.io/prometheus/alertmanager:v0.28.1"
+      ],
+      [
+        "cart-549b8757d-cblxk",
+        "Running",
+        "opspilot-m1-control-plane",
+        "ghcr.io/open-telemetry/demo:2.0.2-cart"
+      ]
+    ]
+  },
+  "evidence": {
+    "evidence_id": "tool-sample-t0:50442eca-b164-4bbd-b788-bb7841ba1287",
+    "status": "ok",
+    "adopted": true,
+    "raw_bytes": 2744,
+    "raw_sha256": "1a36d7ebd1572bb917de24507fa6eafaa6093171c35a8059a5137d059b64f94e",
+    "view_sha256": "bb87aa3656103ac2769c0a11766c9bb15942454e7bf57b08c9097d5e87044498",
+    "projection_revision": "m1-01-tool-view-v11",
+    "observed_at": "2026-11-14T20:38:50.724798+00:00",
+    "data_as_of": null,
+    "source_start_at": null,
+    "source_end_at": null,
+    "result_count": 22,
+    "incomplete": false,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "ledger_charges": [
+    {
+      "operation_id": "tool-sample-t0",
+      "dispatch_id": "50442eca-b164-4bbd-b788-bb7841ba1287",
+      "reserved_seconds": 30.0,
+      "seconds": 0.013,
+      "settled": true
+    }
+  ],
+  "checks": [
+    {
+      "check": "status == ok",
+      "ok": true,
+      "observed": "ok"
+    },
+    {
+      "check": "view has header/content(rows)/count/scope/notes",
+      "ok": true,
+      "observed": [
+        "header",
+        "content",
+        "count",
+        "scope",
+        "notes"
+      ]
+    },
+    {
+      "check": "rows is a list of lists",
+      "ok": true,
+      "observed": "list"
+    },
+    {
+      "check": "count == len(rows)",
+      "ok": true,
+      "observed": {
+        "count": 22,
+        "rows": 22
+      }
+    },
+    {
+      "check": "header == requested column headers",
+      "ok": true,
+      "observed": {
+        "header": [
+          "NAME",
+          "STATUS",
+          "NODE",
+          "IMAGE"
+        ],
+        "requested": [
+          "NAME",
+          "STATUS",
+          "NODE",
+          "IMAGE"
+        ]
+      }
+    },
+    {
+      "check": "every row has one cell per column",
+      "ok": true,
+      "observed": [
+        4
+      ]
+    },
+    {
+      "check": "scope is an object and notes a list",
+      "ok": true,
+      "observed": {
+        "scope": "dict",
+        "notes": "list"
+      }
+    }
+  ],
+  "verdict": "pass"
+}

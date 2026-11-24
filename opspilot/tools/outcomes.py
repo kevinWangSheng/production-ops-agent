@@ -67,7 +67,33 @@ __all__ = [
 # redacted, bounded errorType/error text), marked untrusted (#311).
 # v11: credential redaction also covers a URL authority still spelled with
 # JSON-escaped slashes, in prose and in JSON nested in a string (#319).
-PROJECTION_REVISION = "m1-01-tool-view-v11"
+# v12: catches up two changes that altered model-visible bytes without a
+# bump -- #710 (09bd4daf, credentials in JSON encoded inside a JSON string)
+# and #775 (a17887e0, secret reference names shown in pod specs). Shipped
+# with #365 (linear-time quoted-scalar redaction), which by itself changes
+# no output.
+# v13: narrower credential names (#366): a number held by a name ending in
+# ``tokens`` and session *settings* (``sessionAffinity``, ``SESSION_TIMEOUT``)
+# are shown; ``sessionid`` is now redacted; ``spec.imagePullSecrets[].name``
+# is shown like the #775 reference names.
+# v14: URL userinfo is also redacted when the authority's ``//`` is
+# percent-encoded, escaped two or more levels deep, or written as HTML
+# entities (#359).
+# v15: env values of credential-named variables are redacted (``env[].value``,
+# and ``"name":"X","value":...`` in JSON text; env names also count
+# ``PASS``/``PWD``), and ``kubernetes_jq_query``/``kubernetes_tabular_query``
+# run on the redacted objects (#574).
+# v16: a credential-named command-line flag's value is redacted
+# (``--password=v``, ``--password v``, ``-token v``, and the element after
+# such a flag in a list, #802).
+# v17: a credential after a short or glued credential value is redacted (#803).
+# v18: Kubernetes objects keep ``metadata.managedFieldsSummary`` (manager,
+# operation, time, subresource; no field tree) instead of dropping
+# ``managedFields`` whole (#696).
+# v19: Redis/Valkey password directives are credential names
+# (``--requirepass v``, ``masterauth=v``) and their config-line form
+# (``requirepass v`` in a redis.conf) hides the value (#818).
+PROJECTION_REVISION = "m1-01-tool-view-v19"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -99,9 +125,16 @@ ERROR_REASONS = frozenset(
     {
         "EVIDENCE_NOT_COMMITTED",
         "INVALID_PARAMS",
+        # Tool expansion A4-2: a trace tag filter that does not parse, refused
+        # before sending.
+        "INVALID_TAGS",
         "MALFORMED_RESULT",
+        # Tool expansion A2-6: a resource the cluster query never reads
+        # (secrets), refused before sending; and a 401/403 from the source.
+        "RESOURCE_NOT_ALLOWED",
         "RESULT_TOO_LARGE",
         "SOURCE_ERROR",
+        "SOURCE_FORBIDDEN",
         "SOURCE_UNAVAILABLE",
     }
 )

@@ -83,7 +83,9 @@ STOPPING = "STOPPING"
 STALE_POLL_INTERVALS = 3
 
 _CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
-_REVISION = re.compile(r"[0-9A-Za-z._-]{1,64}")
+#: Same rule as ``opspilot.persistence.outbox.IDENTIFIER`` (whose 0024
+#: trigger holds a frozen copy), so /metrics, logs and outbox agree (#443).
+_REVISION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 
 @dataclass(frozen=True)
@@ -101,11 +103,24 @@ def poll_readiness(
     poll_interval_seconds: float,
     now_monotonic: float,
     stopping: bool,
+    in_progress_since: float | None = None,
+    in_progress_bound: float | None = None,
 ) -> Readiness:
     """Worker/Observer: ready while not stopping and the last successful
-    poll is at most three intervals old; no success yet is stale."""
+    poll is at most three intervals old; no success yet is stale.
+
+    ``in_progress_since`` (Observer, #522): when a claimed sample started;
+    while it runs the process is ready for at most ``in_progress_bound``
+    seconds (the sample's lease) from that start, and beyond that bound
+    the last poll decides again (F8-R4)."""
     if stopping:
         return Readiness(False, STOPPING)
+    if (
+        in_progress_since is not None
+        and in_progress_bound is not None
+        and now_monotonic - in_progress_since <= in_progress_bound
+    ):
+        return _READY
     if (
         last_success_monotonic is None
         or now_monotonic - last_success_monotonic

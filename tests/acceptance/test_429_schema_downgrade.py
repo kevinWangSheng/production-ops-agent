@@ -20,9 +20,25 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0024_trace_outbox"
+CURRENT = "0028_runbook_imports"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
+# 0026 (workbench P7), 0027 (P5) and 0028 (C2a runbooks) sit above PREVIOUS
+# too: their chat, feedback and runbook tables (and the runbook state view)
+# go with them.
+CHAT_TABLES = (
+    "opspilot_chat_sessions",
+    "opspilot_chat_turns",
+    "opspilot_investigation_feedback",
+    "opspilot_runbook_audit",
+    "opspilot_runbook_decisions",
+    "opspilot_runbook_entries",
+    "opspilot_runbook_requests",
+    "opspilot_runbook_revision_states",
+    "opspilot_runbook_revisions",
+    "opspilot_runbook_revocations",
+    "opspilot_runbook_submissions",
+)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",
@@ -80,8 +96,8 @@ def _business_counts(dsn: str) -> dict[str, int]:
         names = conn.execute(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema='public' AND table_name LIKE 'opspilot\\_%%' "
-            "AND table_name <> %s ORDER BY table_name",
-            (OUTBOX,),
+            "AND table_name <> ALL(%s) ORDER BY table_name",
+            ([OUTBOX, *CHAT_TABLES],),
         ).fetchall()
         return {
             name: conn.execute(
@@ -162,5 +178,10 @@ def test_success_uses_owner_dsn_reports_target_and_drops_only_outbox(
             "SELECT count(*) FROM information_schema.tables "
             "WHERE table_schema='public' AND table_name=%s",
             (OUTBOX,),
+        ).fetchone() == (0,)
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema='public' AND table_name = ANY(%s)",
+            (list(CHAT_TABLES),),
         ).fetchone() == (0,)
     assert _business_counts(scratch_dsn) == before_counts

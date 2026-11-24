@@ -13,6 +13,7 @@ import asyncio
 import base64
 import hashlib
 import json
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -39,7 +40,8 @@ from opspilot.web import (
     hash_password,
     token_digest,
 )
-from opspilot.web.store import ControlAudit, IncidentSummary
+from opspilot.web.incident_list import page_of_items
+from opspilot.web.store import ControlAudit, IncidentListItem, IncidentSummary
 from tests.m1_investigation_support import (
     TOOL_SCHEMAS,
     ScriptedModel,
@@ -448,6 +450,20 @@ class MemoryIncidentStore:
     def investigation_history(self, incident_id):
         return []
 
+    # Workbench contract B4/B8 reads (the double holds no messages).
+    def conversation_floor(self, incident_id):
+        return max(
+            (
+                int(run.get("input_watermark", 0))
+                for run in self.runs.values()
+                if run.get("incident_id") == incident_id
+            ),
+            default=0,
+        )
+
+    def prior_replies(self, incident_id):
+        return []
+
     def control_times(self, incident_id):
         return []
 
@@ -787,6 +803,77 @@ class MemoryIncidentStore:
         )
         return tuple(self._summary(r) for r in rows[:limit])
 
+    def list_incident_items(self, *, limit=50):
+        """Mirror ``DurableIncidentStore.list_incident_items``: the summary
+        with the current Run's state and bound target, the intake question the
+        web ledger keeps under the incident's key (``build_workbench`` hands
+        the ledger over; the durable query joins the same row), the raw
+        conclusion and the newest incident-recovery session. No alert intake
+        or postmortem exists in memory, so those fields stay ``None``."""
+        # Built on list_incidents so a refusal there surfaces the same way.
+        summaries = self.list_incidents(limit=limit)
+        ledger = getattr(self, "ledger", None)
+        items = []
+        for base in summaries:
+            row = self.incidents[base.incident_id]
+            run = self.runs.get(row["current_run_id"])
+            if run is not None and run["incident_id"] != row["incident_id"]:
+                run = None
+            target = self.targets.get(row.get("target_id"))
+            summary = replace(
+                base,
+                run_state=None if run is None else run["state"],
+                target_uid=None if target is None else target["resource_uid"],
+            )
+            intake = None if ledger is None else ledger.get("intake", row["intake_key"])
+            request = ((intake or {}).get("envelope") or {}).get("request") or {}
+            sessions = [
+                s
+                for s in self.sessions
+                if s["incident_id"] == row["incident_id"]
+                and s.get("purpose", "incident_recovery") == "incident_recovery"
+            ]
+            session = (
+                max(sessions, key=lambda s: (s["authorized_at"], str(s["session_id"])))
+                if sessions
+                else None
+            )
+            endings = [] if session is None else session.get("endings", [])
+            items.append(
+                IncidentListItem(
+                    summary=summary,
+                    conclusion=row["conclusion"],
+                    question=request.get("question"),
+                    recovery_state=None if session is None else session["state"],
+                    recovery_ended_reason=None
+                    if session is None
+                    else session["ended_reason"],
+                    recovery_samples=None
+                    if session is None
+                    else session["adopted_count"],
+                    recovery_ended_at=max(
+                        (e["recorded_at"] for e in endings if e.get("recorded_at")),
+                        default=None,
+                    ),
+                )
+            )
+        return tuple(items)
+
+    def list_page(
+        self, *, tab="needs_human", service=None, q=None, page=1, per_page=25
+    ):
+        """Mirror ``DurableIncidentStore.list_page`` (web UX spec 3.7): the
+        same tabs, filters, counts and page fallbacks over every incident in
+        memory (``incident_list.page_of_items``), newest first."""
+        return page_of_items(
+            self.list_incident_items(limit=None),
+            tab=tab,
+            service=service,
+            q=q,
+            page=page,
+            per_page=per_page,
+        )
+
     def find_incident(self, incident_id):
         row = self.incidents.get(incident_id)
         return None if row is None else self._summary(row)
@@ -1060,6 +1147,9 @@ def build_workbench(
     events = MemoryEventLog()
     evidence = MemoryEvidenceStore()
     ledger = MemoryWebLedger()
+    # The durable list query joins the web ledger in the same database; the
+    # in-memory store reads the same rows through this reference.
+    incidents.ledger = ledger
     workbench = Workbench(
         incidents=incidents,
         events=events,

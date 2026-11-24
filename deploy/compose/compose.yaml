@@ -15,6 +15,15 @@
 # container port 9464, opspilot.health) backs its healthcheck and is published
 # to the host only by the lab/development override compose.lab.yaml.
 
+# Log rotation for every service (#476): 50 MB x 5 files per container. This
+# overrides the log driver configured on the Docker daemon; to use your own
+# (journald, Loki, ...), delete x-logging and the `logging:` lines below.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 x-product: &product
   image: ${OPSPILOT_IMAGE:-opspilot:local}
   pull_policy: never
@@ -28,6 +37,7 @@ x-product: &product
     - ALL
   security_opt:
     - no-new-privileges:true
+  logging: *logging
 
 x-owner-dsn: &owner-dsn "host=postgres port=5432 dbname=opspilot user=opspilot_owner passfile=/run/secrets/owner_pgpass"
 
@@ -50,6 +60,7 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    logging: *logging
     restart: unless-stopped
 
   migrate:
@@ -90,6 +101,8 @@ services:
       OPSPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}"
       OPSPILOT_UI_USERS_FILE: /run/secrets/web_ui_users
       OPSPILOT_EVENT_TOKENS_FILE: /run/secrets/web_event_tokens
+      # Signs the session cookie; a fixed key keeps logins across restarts.
+      OPSPILOT_SESSION_SECRET_FILE: /run/secrets/web_session_secret
       OPSPILOT_AUTH_REVISION: "${OPSPILOT_AUTH_REVISION:-compose}"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
       # Binds an Alertmanager alert to a target by its labels; without a
@@ -99,6 +112,7 @@ services:
       - web_pgpass
       - web_ui_users
       - web_event_tokens
+      - web_session_secret
     configs:
       - source: web_target_identities
         target: /run/config/target_identities.json
@@ -139,10 +153,10 @@ services:
       # credentials (all but the keys exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
       # Explicit, not defaults: the worker refuses a pool smaller than
-      # capacity + 3 (one connection per slot, plus the polling, postmortem
-      # and outbox threads).
+      # capacity + 4 (one connection per slot, plus the polling, postmortem,
+      # outbox and Chat threads).
       OPSPILOT_WORKER_CAPACITY: "2"
-      OPSPILOT_POOL_MAX_SIZE: "5"
+      OPSPILOT_POOL_MAX_SIZE: "6"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
       # off (default) | lab | outbox (#428): outbox delivers the trace outbox
       # to LangSmith only with LANGSMITH_API_KEY and LANGSMITH_PROJECT=
@@ -227,6 +241,8 @@ secrets:
     file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_ui_users
   web_event_tokens:
     file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_event_tokens
+  web_session_secret:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_session_secret
   worker_env:
     file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/worker_env
   observer_env:

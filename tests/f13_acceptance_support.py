@@ -149,12 +149,13 @@ class Harness:
         response = self.control(incident, "cancel")
         assert response.status == 200, response.text
 
-    def reopen_follow_up(self, incident, text):
-        """Run 已终态、事故 resolved 时，追问须先重新打开（F12 r2，否则
-        REOPEN_REQUIRED）；追问随即续开新 Run。返回追问的响应。"""
+    def reopen_and_reinvestigate(self, incident):
+        """Run 已终态、事故 resolved 时先重新打开，再 Re-investigate 开新 Run
+        （工作台合同 D6/D11：已取消的调查不接收消息，出路是 Re-investigate）。
+        返回 Re-investigate 的响应。"""
         response = self.control(incident, "reopen")
         assert response.status == 200, response.text
-        return self.control(incident, "follow_up", text=text)
+        return self.control(incident, "reinvestigate")
 
     def post(self, path, fields, *, authenticated=True):
         return post_form(
