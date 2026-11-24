@@ -10,6 +10,9 @@ approver, and the content after the registry's credential redaction. The
 model is sent the content as one untrusted-data user message, before the
 runbook list. A target without approved standing instructions gets no fact,
 so its Run input, model messages and ``prompt_revision`` stay as before.
+A storage failure on that read records the two-key ``unavailable`` marker
+under the same key instead (#851): still v9, not sent to the model, not
+counted in ``prompt_revision``.
 
 Pure shaping and validation; the SQL is in ``opspilot.knowledge.runbooks``.
 """
@@ -44,6 +47,19 @@ class StandingInstructionsSource(Protocol):
         """``entry_id``, ``revision``, ``approved_at``, ``approved_by`` and
         ``content`` of the target's active revision, or ``None``."""
         ...
+
+
+#: #851 (851-2): the whole fact recorded when the read failed.
+UNAVAILABLE = {"policy_version": POLICY_VERSION, "status": "unavailable"}
+
+
+def unavailable_standing_instructions() -> dict[str, Any]:
+    return dict(UNAVAILABLE)
+
+
+def is_standing_instructions(value: object) -> bool:
+    """A normal fact (sent to the model), as opposed to the marker."""
+    return isinstance(value, Mapping) and "content" in value
 
 
 def redacted_content(content: str) -> str:
@@ -82,7 +98,10 @@ def standing_instructions_for_target(
 
 
 def valid_standing_instructions(value: object) -> bool:
-    """Validate a persisted v9 fact: exact keys, types and bounds."""
+    """Validate a persisted v9 fact: exactly the ``unavailable`` marker
+    (#851, 851-7), or the six-key fact with its types and bounds."""
+    if isinstance(value, Mapping) and set(value) == set(UNAVAILABLE):
+        return dict(value) == UNAVAILABLE
     if not isinstance(value, Mapping) or set(value) != FIELDS:
         return False
     if value["policy_version"] != POLICY_VERSION:

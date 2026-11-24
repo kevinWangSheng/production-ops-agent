@@ -94,6 +94,7 @@ from opspilot.investigation.todo import (
     offers_todo_write,
     todo_write_view,
 )
+from opspilot.knowledge.standing import is_standing_instructions
 from opspilot.tools.executor import Clock, QueryScope, ReadOnlyToolExecutor, ToolRequest
 from opspilot.tools.outcomes import ToolOutcome
 from opspilot.tools.registry import canonical
@@ -629,7 +630,10 @@ class InvestigationLoop:
             compactions=transcript.compactions,
             compaction_attempts=transcript.compaction_attempts,
             runbook_catalog=RUNBOOK_CATALOG in input.scope_facts,
-            standing_instructions=STANDING_INSTRUCTIONS in input.scope_facts,
+            # #851 (851-9): the unavailable marker adds no boundary text.
+            standing_instructions=is_standing_instructions(
+                input.scope_facts.get(STANDING_INSTRUCTIONS)
+            ),
         )
         state.last_step_id = transcript.last_step_id
         state.message_sequences = set(transcript.message_sequences)
