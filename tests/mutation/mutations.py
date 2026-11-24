@@ -509,8 +509,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         "credentials: a credential-named command-line flag's value is redacted (#802)",
         # Mutated: ``--password v`` and ``"--password","v"`` in text keep the value.
         "opspilot/redaction.py",
-        "    flagged = _redact_flag_values(redacted)\n",
-        "    flagged = redacted\n",
+        "    flagged = _redact_directives(_redact_flag_values(redacted))\n",
+        "    flagged = _redact_directives(redacted)\n",
     ),
     # #807 (B1-U5): killed by tests/safety/test_safety_postmortem_report_input.py.
     Mutation(
@@ -530,5 +530,38 @@ MUTATIONS: tuple[Mutation, ...] = (
         "opspilot/redaction.py",
         "        glued = _redact_glued(redacted, mark)\n",
         '        glued = redacted.replace(mark, "")\n',
+    ),
+    # #818: killed by tests/safety/test_safety_redis_credentials.py.
+    Mutation(
+        "M61",
+        "credentials: requirepass is a credential name (#818)",
+        # Mutated: ``--requirepass v`` and ``requirepass=v`` keep the value.
+        "opspilot/redaction.py",
+        '    "requirepass",\n',
+        "",
+    ),
+    Mutation(
+        "M62",
+        "credentials: a requirepass/masterauth config line hides its value (#818)",
+        # Mutated: ``requirepass v`` in a redis.conf keeps the value.
+        "opspilot/redaction.py",
+        "    flagged = _redact_directives(_redact_flag_values(redacted))\n",
+        "    flagged = _redact_flag_values(redacted)\n",
+    ),
+    Mutation(
+        "M63",
+        "credentials: a bare requirepass list element hides the next element (#818)",
+        # Mutated: ``["CONFIG", "SET", "requirepass", "v"]`` keeps the value.
+        "opspilot/redaction.py",
+        "    if item.strip().lower() in _DIRECTIVE_NAMES:\n",
+        "    if False:\n",
+    ),
+    Mutation(
+        "M64",
+        "credentials: a credential flag as a credential value keeps its value hidden (#840)",
+        # Mutated: ``password: --token v`` shows ``v``.
+        "opspilot/redaction.py",
+        "        text = self._text\n        last = None\n",
+        "        return None\n        text = self._text\n        last = None\n",
     ),
 )

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import bisect
 import contextvars
+import heapq
 import json
 import re
+from collections.abc import Iterator
 
 # The authentication-bearing subset of RESERVED_PARAMETERS. These names may
 # not appear as target selector keys either: unlike "target"/"target_id",
@@ -54,10 +56,15 @@ _AUTHENTICATION_SUBSTRINGS = (
     "credential",
     "keypair",
     "keystore",
+    # Redis/Valkey password directives (#818): ``--requirepass v``,
+    # ``masterauth v``; ``primaryauth`` is Valkey's name for ``masterauth``.
+    "masterauth",
     "passwd",
     "password",
+    "primaryauth",
     "privatekey",
     "publickey",
+    "requirepass",
     "secret",
     "signature",
     "sshkey",
@@ -464,12 +471,18 @@ def _glued_value(text: str, start: int, end: int) -> bool:
     name and its separator inside it (``x&"secret":``), with the name while
     the separator follows past blanks (``x|token`` before `` :v``), or with
     a credential name, its separator and an auth scheme word
-    (``x|authorization=Bearer`` before `` v``)."""
+    (``x|authorization=Bearer`` before `` v``). Also (review of #840) when
+    the separator follows across a line break, as the assignment rule reads
+    one (``x|token`` before ``\n:v``), and when the span ends in a whole auth
+    scheme word (``//Bearer`` before `` v``), whose token is the next word."""
     index = end
-    while index < len(text) and text[index] in " \t":
+    while index < len(text) and text[index].isspace():
         index += 1
     if index < len(text) and text[index] in ":=":
-        return _credential_before(text, start, end)
+        if _credential_before(text, start, end):
+            return True
+    if _ends_in_scheme_word(text, start, end):
+        return True
     if end > start and text[end - 1] in ":=":
         return _credential_before(text, start, end - 1)
     tail = text[max(start, end - 6) : end].lower()
@@ -655,6 +668,7 @@ def _redact_escaped_quotes(text: str) -> str:
 def _redact_quoted(text: str) -> str:
     parts: list[str] = []
     pos = 0
+    tail = _FlagTail(text)
     while (match := _QUOTED_ASSIGNMENT.search(text, pos)) is not None:
         scalar = match.group("scalar") is not None
         if scalar and not match.group("close"):
@@ -684,15 +698,99 @@ def _redact_quoted(text: str) -> str:
             pos = end
             continue
         marker, end = redaction
+        parts_start = pos
         parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
         pos = end
+        if (hidden := tail.value(start, end)) is not None:
+            after, tail_marker, pos = hidden
+            if after == end:  # joined to the hidden value: one marker
+                parts[-1] = (
+                    text[parts_start:start] + marker + _glue_mark(text, start, pos)
+                )
+            else:
+                parts.append(
+                    text[end:after] + tail_marker + _glue_mark(text, after, pos)
+                )
     parts.append(text[pos:])
     return "".join(parts)
+
+
+class _FlagTail:
+    """The value of a credential flag that a hidden value ends with
+    (``password: --token v``, ``password=//--token v``, review of #840).
+    The flag rule runs on the name rules' output, where the marker has
+    replaced the flag, so the name rules hide its value themselves: past a
+    joining ``=``/``:``, or a closing quote and the separator the flag rule
+    would walk. One pass over each hidden value; the separator walk shares
+    the flag rule's comment memo, so the scan stays linear."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self._newline: _NextNewline | None = None
+        self._after_comment: dict[tuple[int, bool], int | None] = {}
+
+    def value(self, body: int, end: int) -> tuple[int, str, int] | None:
+        """Where the flag's value starts, its marker and where it ends; ``None`` when the hidden value does not end with
+        a credential flag or nothing follows it."""
+        text = self._text
+        last = None
+        for last in _FLAG_START.finditer(text, body, end):
+            pass
+        if last is None or not _credential_name(last.group("name")):
+            return None
+        # What follows the flag, read as ``_redact_flag_values`` reads it: a
+        # joining ``=``/``:`` (inside the hidden value or after it), else a
+        # closing quote, then the separator walk.
+        rest = text[last.end() : end]
+        index = end
+        close = None
+        join = None
+        if rest:
+            close = _FLAG_QUOTE.fullmatch(rest)
+            if close is None:
+                join = _FLAG_JOIN.fullmatch(rest)
+                if join is None:
+                    return None
+        else:
+            close = _FLAG_QUOTE.match(text, end)
+            if close is not None:
+                index = close.end()
+            else:
+                join = _FLAG_JOIN.match(text, end)
+        start: int | None
+        if join is not None:
+            start = end if rest else join.end()
+            blanks = _FLAG_BLANKS.match(text, start)
+            start = start if blanks is None else blanks.end()
+            if rest and start < len(text) and text[start] in ",;&?#}]":
+                # The hidden value stopped there; hide the flag's joined
+                # value up to whitespace, as the flag rule does on the text
+                # the names left (review of #840).
+                stop = start
+                while stop < len(text) and not text[stop].isspace():
+                    stop += 1
+                return start, REDACTED_CREDENTIAL, stop
+        else:
+            if self._newline is None:
+                self._newline = _NextNewline(text)
+            start = _flag_separator(
+                text, index, close is not None, self._newline, self._after_comment
+            )
+        if start is None:
+            return None
+        redaction = _flag_value(
+            text, last.group("name"), start, close is not None, join is not None
+        )
+        if redaction is None:
+            return None
+        marker, flag_end = redaction
+        return start, marker, flag_end
 
 
 def _redact_assignments(text: str) -> str:
     parts: list[str] = []
     pos = 0
+    tail = _FlagTail(text)
     while (match := _CREDENTIAL_ASSIGNMENT.search(text, pos)) is not None:
         name = match.group("name")
         if not _credential_name(name):
@@ -709,6 +807,12 @@ def _redact_assignments(text: str) -> str:
         parts.append(text[pos : match.start("sep")] + match.group("sep"))
         parts.append(REDACTED_CREDENTIAL + _glue_mark(text, body, end))
         pos = end
+        if (hidden := tail.value(body, end)) is not None:
+            start, marker, pos = hidden
+            if start == end:  # joined to the hidden value: one marker
+                parts[-1] = REDACTED_CREDENTIAL + _glue_mark(text, body, pos)
+            else:
+                parts.append(text[end:start] + marker + _glue_mark(text, start, pos))
     parts.append(text[pos:])
     return "".join(parts)
 
@@ -763,6 +867,13 @@ _ENCLOSING_END = frozenset(",]}:);")
 _LIST_STOPS = frozenset(",]}")
 #: One element of a command list that is a whole flag (``--password``,
 #: ``-token``, ``--password=`` with nothing after it).
+#: A bare Redis/Valkey password directive as a quoted element of a list
+#: written as text (``"CONFIG","SET","requirepass","v"``, #818): the next
+#: element is its value, as for ``"--requirepass","v"``.
+_DIRECTIVE_ELEMENT = re.compile(
+    r"(?<=[\"'`])(?P<name>requirepass|masterauth|primaryauth)(?=\\*+[\"'`])",
+    re.IGNORECASE,
+)
 _FLAG_ELEMENT = re.compile(r"\s*+-{1,2}+(?P<name>[A-Za-z][A-Za-z0-9_.\-]*+)=?\s*+")
 
 
@@ -941,6 +1052,10 @@ def _flag_value(
     if char in _CLOSERS:
         return _value_redaction(text, start)
     end = _flag_word_end(text, start, in_list)
+    if end == start and joined and in_list:
+        # ``--token=,v`` after a marker that may have replaced a list's
+        # comma: read as a joined value, as the first call read it.
+        end = _flag_word_end(text, start, False)
     if end == start or _token_count(name, text[start:end]):
         return None
     if text[start:end].lower() in _FLAG_SCHEMES:
@@ -952,8 +1067,17 @@ def _flag_value(
     return REDACTED_CREDENTIAL, end
 
 
+def _flag_matches(text: str) -> Iterator[tuple[re.Match[str], bool]]:
+    """Each flag, and each quoted bare directive name (``"requirepass"``,
+    #818), by position; ``True`` marks a directive, which counts only as a
+    list element."""
+    flags = ((match, False) for match in _FLAG_START.finditer(text))
+    directives = ((match, True) for match in _DIRECTIVE_ELEMENT.finditer(text))
+    return heapq.merge(flags, directives, key=lambda item: item[0].start())
+
+
 def _redact_flag_values(text: str) -> str:
-    if "-" not in text:
+    if "-" not in text and _DIRECTIVE_ELEMENT.search(text) is None:
         return text
     # Value spans by start. A flag inside a ``# comment`` that an earlier
     # flag's separator skipped is still examined, so its span may start
@@ -962,7 +1086,8 @@ def _redact_flag_values(text: str) -> str:
     starts: list[int] = []
     newline = _NextNewline(text)
     after_comment: dict[tuple[int, bool], int | None] = {}
-    for match in _FLAG_START.finditer(text):
+    tail = _FlagTail(text)
+    for match, directive in _flag_matches(text):
         if not _credential_name(match.group("name")):
             continue
         covered = bisect.bisect_right(starts, match.start()) - 1
@@ -970,6 +1095,8 @@ def _redact_flag_values(text: str) -> str:
             continue  # inside a value already hidden
         name = match.group("name")
         in_list, list_value = _in_list(text, match.start())
+        if directive and not in_list:
+            continue
         index = match.end()
         close = _FLAG_QUOTE.match(text, index)
         join = None if close is not None else _FLAG_JOIN.match(text, index)
@@ -989,6 +1116,18 @@ def _redact_flag_values(text: str) -> str:
             continue
         spans[start] = redaction
         bisect.insort(starts, start)
+        # The hidden value ends with another credential flag
+        # (``--a=//--token v``): that flag's value too (review of #840).
+        hidden = tail.value(start, redaction[1])
+        if hidden is not None and hidden[0] == redaction[1]:
+            if redaction[0] == REDACTED_CREDENTIAL:  # joined: one marker
+                spans[start] = (REDACTED_CREDENTIAL, hidden[2])
+            elif hidden[0] not in spans:
+                spans[hidden[0]] = (hidden[1], hidden[2])
+                bisect.insort(starts, hidden[0])
+        elif hidden is not None and hidden[0] not in spans:
+            spans[hidden[0]] = (hidden[1], hidden[2])
+            bisect.insort(starts, hidden[0])
     if not spans:
         return text
     parts: list[str] = []
@@ -1006,11 +1145,52 @@ def _redact_flag_values(text: str) -> str:
     return "".join(parts)
 
 
+# A Redis/Valkey password directive written as a config line (#818):
+# ``requirepass v`` / ``masterauth v`` / ``primaryauth v`` in a redis.conf
+# ConfigMap, a log or ``CONFIG SET`` text. The directive word stands alone
+# (not glued to a preceding letter, digit, ``_``/``.``/``-``; a JSON-escaped
+# ``\n``/``\t`` before it counts as a line break) and is followed by blanks
+# on the same line; the value is then read like a joined flag value (#802):
+# a quoted value whole, otherwise up to whitespace, also when it starts
+# with ``-``. Fail closed: the word after ``requirepass`` in ordinary prose
+# is hidden too. The ``--requirepass v`` and ``requirepass=v`` forms are the
+# flag and assignment rules' (the names are credential names). Runs with
+# the flag rule, after every other rule, and only replaces more.
+_DIRECTIVE = re.compile(
+    r"(?:(?<![A-Za-z0-9_.\-])|(?<=\\[nt]))"
+    r"(?P<name>requirepass|masterauth|primaryauth)[ \t]++",
+    re.IGNORECASE,
+)
+
+
+_DIRECTIVE_NAMES = frozenset({"requirepass", "masterauth", "primaryauth"})
+
+
+def _redact_directives(text: str) -> str:
+    parts: list[str] = []
+    pos = 0
+    for match in _DIRECTIVE.finditer(text):
+        start = match.end()
+        if start < pos:
+            continue  # inside a value already hidden
+        redaction = _flag_value(text, match.group("name"), start, False, True)
+        if redaction is None:
+            continue
+        marker, end = redaction
+        parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
+        pos = end
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
 def _credential_flag(item: object) -> str | None:
     """The name of ``item`` when it is a whole credential-named flag, one
     element of a command list."""
     if not isinstance(item, str):
         return None
+    if item.strip().lower() in _DIRECTIVE_NAMES:
+        # ``["CONFIG", "SET", "requirepass", "v"]`` (#818).
+        return item.strip()
     flag = _FLAG_ELEMENT.fullmatch(item)
     if flag is None or not _credential_name(flag.group("name")):
         return None
@@ -1137,32 +1317,48 @@ def _redact_glued(text: str, mark: str) -> str:
             start = at
             while start < size and text[start] in " \t":
                 start += 1
+            separator = -1
             if start < size and text[start] in ":=":
+                separator = start
                 start += 1
             while start < size and text[start].isspace():
                 start += 1
-            if start >= size or text.startswith(REDACTED_CREDENTIAL, start):
-                break
-            if text[start] == mark:
-                break  # the next mark's own value follows
+            if start < size and (
+                text.startswith(REDACTED_CREDENTIAL, start) or text[start] == mark
+            ):
+                break  # already hidden, or the next mark's own value follows
+            empty = start >= size
             marker = REDACTED_CREDENTIAL
-            if text[start] in "\"'" or text[start] in _CLOSERS:
+            if empty:
+                end = start
+            elif text[start] in "\"'" or text[start] in _CLOSERS:
                 redaction = _value_redaction(text, start)
                 if redaction is None:
-                    break
-                marker, end = redaction
-                end = _value_end(text, end, _GLUED_STOPS)
+                    empty = True
+                    end = start
+                else:
+                    marker, end = redaction
+                    end = _value_end(text, end, _GLUED_STOPS)
             else:
                 end = _value_end(text, start, _GLUED_STOPS)
-                if end == start:
-                    break
-                if _ends_in_scheme_word(text, start, end):
+                empty = end == start
+                if not empty and _ends_in_scheme_word(text, start, end):
                     word = end
                     while word < size and text[word] in " \t":
                         word += 1
                     after = _value_end(text, word, _GLUED_STOPS)
                     if after > word:
                         end = after
+            if empty:
+                # Nothing after the separator: the separator itself was the
+                # value (the span already ended with one, ``token: ="``),
+                # which the pair's own rule would have hidden (review of #840).
+                if separator >= 0:
+                    end = _value_end(text, separator, _GLUED_STOPS)
+                    if end > separator:
+                        parts.append(text[pos:separator] + REDACTED_CREDENTIAL)
+                        pos = end
+                break
             parts.append(text[pos:start] + marker)
             pos = at = end
             if not (text[end - 1] == mark or _glued_value(text, start, end)):
@@ -1211,11 +1407,11 @@ def _redact_rules(text: str) -> str:
     # Flag values last (#802): they only hide more of the result. A hidden
     # value changes what the rules read around it (a key's quotes, a list's
     # commas), so when it hid anything all rules run once more on the result.
-    flagged = _redact_flag_values(redacted)
+    flagged = _redact_directives(_redact_flag_values(redacted))
     if flagged == redacted:
         return redacted
     again = _redact_userinfo(_redact_prose(flagged), *_ENCODED_AUTHORITY_USERINFO)
-    return _redact_flag_values(again)
+    return _redact_directives(_redact_flag_values(again))
 
 
 # Kubernetes reference names that point at a Secret without holding any of
