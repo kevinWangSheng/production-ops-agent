@@ -1,6 +1,6 @@
 # F1 第 5 步判分流程校准：冻结登记（#295，路径 B1）
 
-本目录是盲标开始前的冻结登记。此刻没有任何盲标标签、裁决或对照结果。任务记录见 [2026-11-11-f1-judge-recal.md](../../tasks/2026-11-11-f1-judge-recal.md)。
+本目录先是盲标开始前的冻结登记（2026-11-11），2026-11-24 补入结果：[result.md](result.md)（未达成）、[answer-isolation-scan.md](answer-isolation-scan.md)（R5 扫描）与盲标执行脚本 `label_driver.py`。冻结文件未改。任务记录见 [2026-11-11-f1-judge-recal.md](../../tasks/2026-11-11-f1-judge-recal.md)。
 
 | 文件 | 内容 |
 |---|---|

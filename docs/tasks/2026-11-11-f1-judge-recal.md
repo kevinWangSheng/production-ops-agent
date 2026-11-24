@@ -1,7 +1,7 @@
 # F1 第 5 步：校准结果页的判分流程（#295，路径 B1）
 
-- 状态：进行中（盲标包就绪、门槛与盲标说明已冻结登记；盲标等 Q5 数据出口的用户同意）
-- 更新日期：2026-11-11
+- 状态：已出结论，**未达成**（2026-11-24）。一致 95–96/102、误通过 4–5，门槛 ≥98、0；F1 第 5 步照实写「未达成」，F1 `passes` 维持 false，按 R4 收尾，#295 由 lead 关闭
+- 更新日期：2026-11-24
 - 依据：feature_list.json F1 `steps[4]`；合同预审 `~/.agent/handoffs/opspilot-prereview-judge-recal-2026-11-11.md`（仓库外，路径 B1、Q1–Q8）；[#295](https://github.com/kevinWangSheng/production-ops-agent/issues/295)；[已公布判分](../evidence/f1-s10-scoring-2026-11-06/README.md)；[结果页](../results/f1-same-condition-comparison-2026-11.md)；[P7 校准](2026-10-18-eval-p7-calibration.md)
 - 工作区：分支 `chore/295-judge-recal`，worktree `/Users/shenghuikevin/dev/AI/poa-295-judge-recal`（起点 `origin/main` `08318c0f`）
 
@@ -34,7 +34,7 @@
 | Q2 | 门槛只看流程：两家一致的 102 份对照标准答案；两家各自的一致率照算、照公布，只作参考 | 预审 Q2 推荐 |
 | Q3 | 111 份全部盲标、不抽样。分母 102；9 份已裁的沿用裁决、标「非盲」、不进分母。裁判逐字节不变，改了即作废，111 份转为调参材料 | 预审 Q3 推荐 |
 | Q4 | 门槛如下节，先冻结登记再出标签；判词翻转另跑一遍作稳定性参考，不进门槛 | 预审 Q4 推荐 |
-| Q5 | 两个全新 Agent（Claude Opus 5.5 全新进程、Codex `gpt-6-astra`）互相不可见、不看判词，各给 pass/fail；分歧交用户裁，简报不附裁判和盲标者意见。**数据出口（考试报告含 HolmesGPT 输出、期望要素含保留集、注入 canary，发往 Anthropic 与 OpenAI）待用户明确同意** | 预审 Q5 推荐；出口未授权 |
+| Q5 | 两个全新 Agent（Claude Opus 5.5 全新进程、Codex `gpt-6-astra`）互相不可见、不看判词，各给 pass/fail；分歧交用户裁，简报不附裁判和盲标者意见。数据出口 2026-11-24 由用户按 R3 同意；盲标者实际为 Claude Opus 5.5 与 Claude Fable 5.2（同属 Anthropic，见「2026-11-24 执行」） | 预审 Q5 推荐；R3 |
 | Q6 | 盲标分歧照常算数，由用户裁；公布两位盲标者之间的一致率；不剔题 | 预审 Q6 推荐 |
 | Q7 | 结果页原数字不改，加更正段，列出被推翻的份数，附按标准答案重算的一行；不达标就照实写，F1 保持未通过；允许改一次裁判（111 份转调参，新出题新跑），再不达标就收尾 | 预审 Q7 推荐 |
 | Q8 | 达标且前提 3 两句各有证据后，提翻 `passes` 的 PR 由用户合并；对外措辞见下 | 预审 Q8 推荐 |
@@ -66,9 +66,14 @@
 - 盲标说明原样沿用标准第 2 条，其中 "Applied to both systems" 一句会让盲标者知道有两套系统。
 - 盲标说明不含上游 strict 提示词里「要素不必逐字出现」的说明（预审限定说明只含 Q9 两句加三条标准）。
 
+## 2026-11-24 执行（R3–R5，[收尾轮](2026-11-24-open-issues-round.md)）
+
+- 同步：`git merge origin/main`（不 rebase），`SPEC.md` 相邻段落冲突保留两边，F1 第 5 步段落改写数据出口为 R3–R5 裁决。合并后 `reconstruct_check.py` 仍为 111 份 0 不一致、提示词 hash 不变；`tests/unit/test_eval_judge_recal.py` 26 通过。
+- 盲标者：本会话进程环境里没有 OpenAI judge 密钥，读不到私有密钥文件，按 R3 改用 Opus 5.5 + Fable 5.2，结果页与证据写明同一厂商。实现者自定：每份报告每位盲标者一个全新 `claude -p` 进程（[label_driver.py](../evidence/f1-judge-recal-2026-11/label_driver.py)）。理由：盲标包约 1.4 MB，一个上下文放不下，说明要求逐份独立判断。
+- 结果：[result.md](../evidence/f1-judge-recal-2026-11/result.md)。盲标者一致 109/111；1 份分歧待用户裁，但两种裁法都不达标，所以不等这份裁决就收尾。结果页加更正段，原数字不改（Q7）。
+- R5：恢复观察引用 F6 现有证据；考试真实 Run 扫描见 [answer-isolation-scan.md](../evidence/f1-judge-recal-2026-11/answer-isolation-scan.md)，89 个有录制的 Run 的场景 ID、期望要素命中 0，canary 只经工具结果进入 prompt-injection Run，按设计如此；10 个无录制的尝试与 LangSmith trace 未单独比对。
+- 未执行：Q4 稳定性复跑（要 OpenAI 密钥，A295-6 默认不跑）；全量 `tests/acceptance` 本机未跑（swap 将满），以 PR CI 为准。
+
 ## 下一步与交接
 
-1. 用户同意 Q5 数据出口，并确认是否连同 canary 一起发送。
-2. lead 安排两位盲标者，各自只拿 `pack-v1/pack/`，返回填好的 `label-template.json`。
-3. 运行 `labels`，用户按简报裁决分歧，再运行 `compare --published …`，结果另建证据目录。
-4. 按 Q7、Q8 处置。稳定性复跑（Q4）要调用裁判，单独安排。
+1. 已完成到出结论。剩余：lead 关闭 #295；待裁的 1 份分歧（简报在私有目录 `labels-v1/adjudication-brief.md`）只影响区间，不影响结论，是否请用户裁由 lead 定。
