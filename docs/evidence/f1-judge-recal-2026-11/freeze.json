@@ -1,0 +1,119 @@
+{
+ "calibrated_object": "the published F1 scoring flow: Q11 deterministic veto, then two-vendor binary judges; agreement adopted automatically, disagreement ruled by the user",
+ "frozen_at_pt": "2026-11-11",
+ "instructions": {
+  "path": "docs/evidence/f1-judge-recal-2026-11/instructions.md",
+  "sha256": "fb3fb59a412904f1e8a9e2bc06020ad3d32c1cd872755c2b573531f32ca4255b"
+ },
+ "issue": "#295",
+ "judge_frozen": {
+  "binary_judge_py_commits": [
+   "c0658dd0"
+  ],
+  "formal_items_sha256": {
+   "dev": "5764ef7f9bf6dab7b6197fa51d4dd8443b16fb640ae6dae908ba49fd33770595",
+   "holdout": "5b4ddfe3e7515e47e9a1d603cd57894a626cd3d0323013b7734979b0ae1a4ffd"
+  },
+  "judges": [
+   {
+    "model": "glm-5.3-flashx",
+    "name": "glm",
+    "vendor": "zai"
+   },
+   {
+    "model": "gpt-5.6-luna",
+    "name": "openai",
+    "vendor": "openai"
+   }
+  ],
+  "prompt_sha256": "8f461af6e4f2801ffffe10db2aa3635ef0a4df84fbb57b422a9e69a1ddfeac06"
+ },
+ "labels_exist_at_freeze": false,
+ "pack_count": 111,
+ "pack_files": {
+  "pack/instructions.md": "fb3fb59a412904f1e8a9e2bc06020ad3d32c1cd872755c2b573531f32ca4255b",
+  "pack/label-template.json": "97a6f60fbddd2b7b69986aae3797be6f56a46379a4a21de9b4c063cf0233a73f",
+  "pack/pack.json": "f83df9782f9239898beb2b6e2315420774a901e124c71c20a4eeef9794453567",
+  "private/identity-map.json": "8714d698aeaefb2397e81e8fc2f494d2cfeac890f49daa58d970566222dfbe84"
+ },
+ "prior_rulings_non_blind": [
+  {
+   "attempt_id": "23df13fb-e77d-43b2-98c5-f5fffa4b08af",
+   "dataset": "dev",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-c7a5aa224cbc9bca9d91b8d3",
+   "dataset": "dev",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-902f7b36300b25486d434129",
+   "dataset": "dev",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-99cdf76bf3450cfcf272f830",
+   "dataset": "dev",
+   "ruling": "pass"
+  },
+  {
+   "attempt_id": "holmes-6276bced0babf226d0ad3b06",
+   "dataset": "dev",
+   "ruling": "pass"
+  },
+  {
+   "attempt_id": "holmes-ff122f747f676c2cc05b485e",
+   "dataset": "dev",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-be0507a0c9f02c9defac0ae3",
+   "dataset": "holdout",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-c41f7622ef888915bd869a03",
+   "dataset": "holdout",
+   "ruling": "fail"
+  },
+  {
+   "attempt_id": "holmes-abf6175d6b75dfb88cc8b671",
+   "dataset": "holdout",
+   "ruling": "fail"
+  }
+ ],
+ "reconstruction": {
+  "check": "docs/evidence/f1-judge-recal-2026-11/reconstruct_check.py",
+  "prompt_sha256_at_head": "8f461af6e4f2801ffffe10db2aa3635ef0a4df84fbb57b422a9e69a1ddfeac06",
+  "result": {
+   "dev": {
+    "dataset_hash_matches_published": true,
+    "items_sha256_matches_published": true,
+    "judged": 74,
+    "mismatches": 0,
+    "published_judged": 74
+   },
+   "holdout": {
+    "dataset_hash_matches_published": true,
+    "items_sha256_matches_published": true,
+    "judged": 37,
+    "mismatches": 0,
+    "published_judged": 37
+   }
+  }
+ },
+ "rule": "This file (thresholds, instructions and pack hashes) is committed before any blind label exists. No label, adjudication or comparison may be produced from a pack whose files differ from pack_files.",
+ "schema": "opspilot-judge-recal-freeze-1",
+ "threshold": {
+  "denominator": 102,
+  "denominator_rule": "judged attempts of the formal 2026-11-06T16:54Z run where both judges gave the same verdict",
+  "false_pass": "both judges pass, final label fail",
+  "invalid": "a judge verdict missing or a judge error code on an item in the denominator",
+  "max_false_pass": 0,
+  "max_invalid": 0,
+  "min_agree": 98,
+  "prior_rulings": "the 9 disagreements already ruled by the user keep that ruling as their label, are marked non-blind and stay out of the denominator",
+  "text_zh": "102 份两家一致的报告里与标准答案一致不少于 98 份、误通过 0、无效输出 0；用户已裁的 9 份沿用裁决、标「非盲」、不进分母"
+ }
+}

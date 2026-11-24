@@ -78,6 +78,8 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 - 新增前提：judge 未按独立标注校准前不记录基线（C3 第 388–398 行）。judge 模型（是否与被测模型分开）、标注来源、校准样本与一致率门槛留给 PR-A 预审。
 - 费用前提更新：DeepSeek 余额 202.15 CNY（2026-10-12 充值后）。
 
+> 2026-11-11 标注：r5、r6 的逐条因果判据（由 judge 逐条判定）对 F1 第 5 步的用途被 2026-11-11 裁决取代：第 5 步改为校准结果页实际使用的二值判分流程，见 [#295 任务记录](2026-11-11-f1-judge-recal.md)。原文保留。
+
 ### r7（2026-10-13，PR-A 合同预审，用户裁决）
 
 预审者 Codex GPT-6 Astra（high，全新上下文，只读），核查版本 `8f221b5`；lead 复核了四项关键事实（`opspilot/acceptance.py:421` 持久化权限含 `human_control`；`opspilot/investigation/loop.py:550-556` incomplete 报告仍返回执行 completed；`scripts/kind_lab.py:100` 只有 `paymentFailure`；上游 `tests/llm/utils/test_env_vars.py` 的 `CLASSIFIER_MODEL` 默认同被测模型）。用户 2026-10-13 裁决：P1–P4、P6–P10 按推荐；P5 改为 GLM 5.3 作 judge。P5 改判带来的推论：judge 调用不占 DeepSeek 并发（P9 中「共用并发 1」改为 judge 单独串行）；评测证据（报告与引用的可见证据）发往第二家供应商，仅限开发评测；GLM 凭据与端点在接入 judge 的步骤前核查。预审全文如下（标题降级嵌入）。
@@ -145,6 +147,8 @@ U `.claude/skills/create-eval/references/test-case-format.md:23–32` 明确 exp
 **P4 的冻结清单：** code/upstream；场景、expected answer、证据规则；模型请求名及预期响应身份；prompt、tool/schema、projection、registry、profile、adapter、evaluator；judge 配置与校准包；权限；预算/超时/大小保护；kind/chart/images/config；主体初态、session、人工反馈、workload、知识快照；replay fixture；N、seed、命令、时钟策略。轮次配置在执行前冻结；每 Run 另绑定实际窗口、主体状态、注入前后 hash、实际响应模型名与录制身份。`none` 表示明确不适用，不能表示尚未取得。
 
 **P7 验证样本必须覆盖：** 正常报告的隐蔽归因、summary 与 claims 不一致、额外错误归因、借用其他诊断引用、纯假设、故障无正面诊断、证据不足。标签保留逐条因果片段、引用支持与最终二值结果；先冻结标签/裁决，再读取 judge 输出。两次 judge 调用用于校准稳定性检查，不形成生产评测投票机制。
+
+> 2026-11-11 标注：P6（逐诊断 judge 输入输出）、P7（校准标签、数量、门槛与失败处置）及上面的验证样本要求，对 F1 第 5 步的用途被 2026-11-11 裁决取代：第 5 步改为校准结果页实际使用的二值判分流程，门槛数字沿用 P7（折算为 102 份里至少 98 份一致、误通过 0），见 [#295 任务记录](2026-11-11-f1-judge-recal.md)。原文保留。
 
 ### 可逆默认：Agent 自定并记录理由
 
