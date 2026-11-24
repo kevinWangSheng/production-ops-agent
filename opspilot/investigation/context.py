@@ -60,7 +60,10 @@ from opspilot.knowledge.catalog import (
     visible_entries,
 )
 from opspilot.knowledge.hints import valid_knowledge
-from opspilot.knowledge.standing import valid_standing_instructions
+from opspilot.knowledge.standing import (
+    is_standing_instructions,
+    valid_standing_instructions,
+)
 from opspilot.tools.registry import canonical, redact_credentials
 
 INITIAL_SEGMENT = "ctx0"
@@ -928,7 +931,8 @@ def initial_messages(
             }
         )
     standing = input.scope_facts.get(STANDING_INSTRUCTIONS)
-    if standing is not None:
+    if is_standing_instructions(standing):
+        # #851 (851-8): the unavailable marker sends nothing.
         # #780 (B4-9, 780-3): before the runbook list.
         messages.append(standing_instructions_message(standing))
     catalog = input.scope_facts.get(RUNBOOK_CATALOG)

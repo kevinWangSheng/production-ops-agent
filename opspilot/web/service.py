@@ -110,7 +110,10 @@ from opspilot.investigation.todo import REFUSAL as TODO_REFUSAL
 from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
 from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
-from opspilot.knowledge.standing import standing_instructions_for_target
+from opspilot.knowledge.standing import (
+    standing_instructions_for_target,
+    unavailable_standing_instructions,
+)
 from opspilot.observation.release_commands import (
     ReleaseCommandReceipt,
     ReleaseConsumption,
@@ -2032,15 +2035,15 @@ class Workbench:
         """The target's approved standing instructions a new Run starts with
         (#780, 780-5/780-7), read per Run in its own snapshot with the
         runbook list's switch; ``None`` -- no fact, the input as before --
-        when the target has none. A storage failure starts the Run without
-        them, logged, as the runbook list records ``unavailable``."""
+        when the target has none. A storage failure is logged and recorded
+        as the ``unavailable`` marker (#851), as the runbook list does."""
         try:
             return standing_instructions_for_target(
                 self.runbook_catalog, request.target_id
             )
         except (PersistenceError, DatabaseError, OSError, TimeoutError):
             _log.warning("standing instructions retrieval unavailable")
-            return None
+            return unavailable_standing_instructions()
 
     def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
         """The approved knowledge a new Run of ``request`` starts with (F13
