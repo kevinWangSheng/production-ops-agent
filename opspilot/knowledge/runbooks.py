@@ -30,8 +30,19 @@ Error codes (``PersistenceError``): ``INVALID_INPUT``,
 ``RUNBOOK_CONTENT_INVALID``, ``RUNBOOK_SOURCE_INVALID``, ``REASON_REQUIRED``,
 ``NOT_FOUND``, ``IDEMPOTENCY_CONFLICT``, ``GENERATION_CONFLICT``,
 ``RUNBOOK_NAME_TAKEN``, ``SUPERSEDE_TARGET_INACTIVE``,
-``SUPERSEDE_MISMATCH``, ``REVISION_NOT_ACTIVE``, ``INTEGRITY_REFUSED``, plus the transient codes of
+``SUPERSEDE_MISMATCH``, ``REVISION_NOT_ACTIVE``, ``INTEGRITY_REFUSED``,
+``STANDING_INSTRUCTIONS_EXISTS``, plus the transient codes of
 ``_StoreBase``. Nothing here reads or writes a postmortem table.
+
+Standing instructions (#780, B4-U3=a, migration 0029): a second ``kind`` of
+the same rows and the same review. Its name is fixed
+(``STANDING_INSTRUCTIONS_NAME``), reserved for that kind, so a target has at
+most one active standing-instructions revision; a second new one is refused
+``STANDING_INSTRUCTIONS_EXISTS`` (replace it by superseding instead). Its
+content is at most 4096 bytes; a blank description gets
+``STANDING_INSTRUCTIONS_DESCRIPTION``. The runbook list and ``fetch_skill``
+read only ``kind = 'runbook'``; ``active_standing_instructions`` reads the
+other kind.
 """
 
 from __future__ import annotations
@@ -40,7 +51,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -57,6 +68,14 @@ RESOURCE_UID_MAX_CHARS = 512
 #: The label the HolmesGPT eval fixtures are imported under (R8-14 as
 #: revised by r11).
 HOLMES_FIXTURE_LABEL = "HolmesGPT 评测夹具"
+RUNBOOK_KIND = "runbook"
+STANDING_INSTRUCTIONS_KIND = "standing_instructions"
+KINDS = (RUNBOOK_KIND, STANDING_INSTRUCTIONS_KIND)
+#: The one name a standing-instructions entry has (780-2).
+STANDING_INSTRUCTIONS_NAME = "standing-instructions"
+#: B4-9: 1-4096 bytes of plain text.
+STANDING_INSTRUCTIONS_MAX_BYTES = 4096
+STANDING_INSTRUCTIONS_DESCRIPTION = "Standing operator instructions"
 
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _SEPARATORS = re.compile(r"[\s_]+")
@@ -66,13 +85,14 @@ _SUBMISSION_LOCK = "opspilot_runbook_submission:"
 # Explicit column lists: product SQL never reads ``*``
 # (``tests/test_sql_column_order_independence.py``).
 _SUBMISSION_COLUMNS = (
-    "submission_id, resource_uid, name, description, content, content_sha256, "
+    "submission_id, resource_uid, kind, name, description, content, content_sha256, "
     "source_label, source_ref, supersedes_entry_id, submitted_by, event_id, "
     "submitted_at"
 )
 _REVISION_COLUMNS = (
-    "entry_id, revision, submission_id, resource_uid, name, description, content, "
-    "content_sha256, source_label, source_ref, supersedes_revision, approved_by, "
+    "entry_id, revision, submission_id, resource_uid, kind, name, description, "
+    "content, content_sha256, source_label, source_ref, supersedes_revision, "
+    "approved_by, "
     "event_id, approved_at"
 )
 _ENTRY_COLUMNS = (
@@ -85,6 +105,7 @@ _AUDIT_COLUMNS = (
 
 ObjectKind = Literal["runbook_submission", "runbook_entry"]
 Action = Literal["submit", "approve", "reject", "revoke"]
+Kind = Literal["runbook", "standing_instructions"]
 
 
 def normalize_name(raw: object) -> str:
@@ -135,7 +156,9 @@ def _require_reason(value: object) -> str:
 
 @dataclass(frozen=True)
 class RunbookDraft:
-    """What a user submits. ``name`` is normalized by ``submit``."""
+    """What a user submits. ``name`` is normalized by ``submit``; a
+    standing-instructions draft's name is always
+    ``STANDING_INSTRUCTIONS_NAME``."""
 
     resource_uid: str
     name: str
@@ -144,6 +167,7 @@ class RunbookDraft:
     source_label: str
     source_ref: str = ""
     supersedes_entry_id: UUID | None = None
+    kind: Kind = "runbook"
 
 
 @dataclass(frozen=True)
@@ -179,12 +203,25 @@ class RunbookResult:
 
 
 def _validated(draft: object) -> tuple[RunbookDraft, str]:
+    """The checked draft and its normalized name. A standing-instructions
+    draft takes the fixed name and, when its description is blank, the fixed
+    description; a runbook cannot take that name."""
     if not isinstance(draft, RunbookDraft):
+        raise PersistenceError("INVALID_INPUT")
+    if draft.kind not in KINDS:
         raise PersistenceError("INVALID_INPUT")
     resource_uid = _require_text(draft.resource_uid)
     if len(resource_uid) > RESOURCE_UID_MAX_CHARS:
         raise PersistenceError("INVALID_INPUT")
-    name = normalize_name(draft.name)
+    standing = draft.kind == STANDING_INSTRUCTIONS_KIND
+    if standing:
+        name = STANDING_INSTRUCTIONS_NAME
+        if isinstance(draft.description, str) and not draft.description.strip():
+            draft = replace(draft, description=STANDING_INSTRUCTIONS_DESCRIPTION)
+    else:
+        name = normalize_name(draft.name)
+        if name == STANDING_INSTRUCTIONS_NAME:
+            raise PersistenceError("RUNBOOK_NAME_INVALID")
     description = draft.description
     if (
         not isinstance(description, str)
@@ -194,10 +231,11 @@ def _validated(draft: object) -> tuple[RunbookDraft, str]:
     ):
         raise PersistenceError("RUNBOOK_DESCRIPTION_INVALID")
     content = draft.content
+    limit = STANDING_INSTRUCTIONS_MAX_BYTES if standing else CONTENT_MAX_BYTES
     if (
         not isinstance(content, str)
         or not content.strip()
-        or len(content.encode("utf-8")) > CONTENT_MAX_BYTES
+        or len(content.encode("utf-8")) > limit
         # PostgreSQL text cannot hold NUL: refused here (400), not as a
         # storage failure (C2a review, C2b interface)
         or "\x00" in content
@@ -260,6 +298,10 @@ class RunbookStore(_StoreBase):
             "supersedes_entry_id": None if supersedes is None else str(supersedes),
             "actor_id": actor_id,
         }
+        if draft.kind != RUNBOOK_KIND:
+            # Only then: a runbook request recorded before 0029 replays
+            # under the same fingerprint.
+            request["kind"] = draft.kind
         with self.transaction() as conn:
             self._lock(conn, _TARGET_LOCK, draft.resource_uid)
             replay = self._replay(conn, idempotency_key, "submit", request)
@@ -267,9 +309,11 @@ class RunbookStore(_StoreBase):
                 return replay
             if supersedes is None:
                 if self._active_named(conn, draft.resource_uid, name) is not None:
-                    raise PersistenceError("RUNBOOK_NAME_TAKEN")
+                    raise PersistenceError(_taken_code(draft.kind))
             else:
-                self._check_supersede(conn, supersedes, draft.resource_uid, name)
+                self._check_supersede(
+                    conn, supersedes, draft.resource_uid, name, kind=draft.kind
+                )
             submission_id = uuid4()
             event_id = self._audit(
                 conn,
@@ -282,12 +326,13 @@ class RunbookStore(_StoreBase):
             )
             conn.execute(
                 "INSERT INTO opspilot_runbook_submissions(submission_id, resource_uid, "
-                "name, description, content, content_sha256, source_label, source_ref, "
-                "supersedes_entry_id, submitted_by, event_id) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "kind, name, description, content, content_sha256, source_label, "
+                "source_ref, supersedes_entry_id, submitted_by, event_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     submission_id,
                     draft.resource_uid,
+                    draft.kind,
                     name,
                     draft.description,
                     draft.content,
@@ -349,18 +394,21 @@ class RunbookStore(_StoreBase):
                 self._submission_generation(conn, submission_id), expected
             )
             uid, name = submission["resource_uid"], submission["name"]
+            kind = submission["kind"]
             self._lock(conn, _TARGET_LOCK, uid)
             supersedes = submission["supersedes_entry_id"]
             if supersedes is None:
                 if entry_generation is not None:
                     raise PersistenceError("INVALID_INPUT")
                 if self._active_named(conn, uid, name) is not None:
-                    raise PersistenceError("RUNBOOK_NAME_TAKEN")
+                    raise PersistenceError(_taken_code(kind))
                 entry_id, entry_expected, revision = uuid4(), 0, 1
             else:
                 if entry_generation is None:
                     raise PersistenceError("INVALID_INPUT")
-                head = self._check_supersede(conn, supersedes, uid, name, lock=True)
+                head = self._check_supersede(
+                    conn, supersedes, uid, name, kind=kind, lock=True
+                )
                 self._check_generation(head["generation"], entry_generation)
                 entry_id = supersedes
                 entry_expected = head["generation"]
@@ -404,14 +452,15 @@ class RunbookStore(_StoreBase):
             )
             conn.execute(
                 "INSERT INTO opspilot_runbook_revisions(entry_id, revision, submission_id, "
-                "resource_uid, name, description, content, content_sha256, source_label, "
-                "source_ref, supersedes_revision, approved_by, event_id) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "resource_uid, kind, name, description, content, content_sha256, "
+                "source_label, source_ref, supersedes_revision, approved_by, event_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     entry_id,
                     revision,
                     submission_id,
                     uid,
+                    kind,
                     name,
                     submission["description"],
                     submission["content"],
@@ -573,9 +622,10 @@ class RunbookStore(_StoreBase):
     # --- the catalog a Run starts with (C2b, ``opspilot.knowledge.catalog``)
 
     def active_catalog(self, resource_uid: str) -> dict[str, Any]:
-        """Every active runbook of one target, read in its own snapshot with
-        the database clock: name, entry, revision, description, approval
-        time and age in seconds since approval."""
+        """Every active runbook of one target (not its standing
+        instructions), read in its own snapshot with the database clock:
+        name, entry, revision, description, approval time and age in seconds
+        since approval."""
         _require_text(resource_uid)
         with self.transaction(snapshot=True) as conn:
             clock = conn.execute("SELECT clock_timestamp() AS now").fetchone()
@@ -586,10 +636,28 @@ class RunbookStore(_StoreBase):
                 "floor(extract(epoch FROM (%s - r.approved_at)))::bigint AS age_seconds "
                 "FROM opspilot_runbook_revisions r "
                 "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
-                "WHERE r.resource_uid=%s AND s.state='active' ORDER BY r.name",
+                "WHERE r.resource_uid=%s AND r.kind='runbook' AND s.state='active' "
+                "ORDER BY r.name",
                 (now, resource_uid),
             ).fetchall()
         return {"retrieved_at": now, "rows": rows}
+
+    def active_standing_instructions(self, resource_uid: str) -> dict[str, Any] | None:
+        """The active standing-instructions revision of one target (#780,
+        780-5/780-7), read in its own snapshot: entry, revision, approval
+        time and approver, and the content as stored (unredacted); ``None``
+        when the target has none."""
+        _require_text(resource_uid)
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT r.entry_id, r.revision, r.approved_at, r.approved_by, r.content "
+                "FROM opspilot_runbook_revisions r "
+                "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
+                "WHERE r.resource_uid=%s AND r.kind='standing_instructions' "
+                "AND s.state='active' ORDER BY r.approved_at DESC, r.entry_id LIMIT 1",
+                (resource_uid,),
+            ).fetchone()
+        return None if row is None else dict(row)
 
     # --- reads (workbench pages; review history, not a knowledge read)
 
@@ -599,8 +667,8 @@ class RunbookStore(_StoreBase):
         with self.transaction(snapshot=True) as conn:
             entries = conn.execute(
                 "SELECT e.entry_id, e.resource_uid, e.generation, e.latest_revision, "
-                "r.name, r.description, r.source_label, r.approved_by, r.approved_at, "
-                "s.state FROM opspilot_runbook_entries e "
+                "r.kind, r.name, r.description, r.source_label, r.approved_by, "
+                "r.approved_at, s.state FROM opspilot_runbook_entries e "
                 "JOIN opspilot_runbook_revisions r ON r.entry_id=e.entry_id "
                 "AND r.revision=e.latest_revision "
                 "JOIN opspilot_runbook_revision_states s ON s.entry_id=r.entry_id "
@@ -608,7 +676,7 @@ class RunbookStore(_StoreBase):
                 "ORDER BY e.resource_uid, r.name, e.created_at DESC"
             ).fetchall()
             submissions = conn.execute(
-                "SELECT s.submission_id, s.resource_uid, s.name, s.description, "
+                "SELECT s.submission_id, s.resource_uid, s.kind, s.name, s.description, "
                 "s.source_label, s.supersedes_entry_id, s.submitted_by, s.submitted_at, "
                 "d.decision, d.decided_by, d.decided_at, d.reason "
                 "FROM opspilot_runbook_submissions s "
@@ -725,11 +793,12 @@ class RunbookStore(_StoreBase):
         resource_uid: str,
         name: str,
         *,
+        kind: str = RUNBOOK_KIND,
         lock: bool = False,
     ) -> dict[str, Any]:
         head = conn.execute(
             "SELECT e.entry_id, e.resource_uid, e.generation, e.latest_revision, "
-            "r.name, s.state FROM opspilot_runbook_entries e "
+            "r.kind, r.name, s.state FROM opspilot_runbook_entries e "
             "LEFT JOIN opspilot_runbook_revisions r ON r.entry_id=e.entry_id "
             "AND r.revision=e.latest_revision "
             "LEFT JOIN opspilot_runbook_revision_states s ON s.entry_id=e.entry_id "
@@ -739,7 +808,11 @@ class RunbookStore(_StoreBase):
         ).fetchone()
         if head is None or head["state"] != "active":
             raise PersistenceError("SUPERSEDE_TARGET_INACTIVE")
-        if head["resource_uid"] != resource_uid or head["name"] != name:
+        if (
+            head["resource_uid"] != resource_uid
+            or head["name"] != name
+            or head["kind"] != kind
+        ):
             raise PersistenceError("SUPERSEDE_MISMATCH")
         return head
 
@@ -823,6 +896,14 @@ class RunbookStore(_StoreBase):
                 _canonical(result.payload()),
             ),
         )
+
+
+def _taken_code(kind: str) -> str:
+    """The refusal of a new entry whose name an active one already has: for
+    standing instructions, the target already has them (780-2)."""
+    if kind == STANDING_INSTRUCTIONS_KIND:
+        return "STANDING_INSTRUCTIONS_EXISTS"
+    return "RUNBOOK_NAME_TAKEN"
 
 
 def _submission_state(decision: str | None) -> str:

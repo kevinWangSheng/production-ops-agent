@@ -537,6 +537,7 @@ def prompt_revision(
     knowledge_template: str = "",
     release_context_template: str = "",
     runbook_catalog_template: str | None = None,
+    standing_instructions_template: str | None = None,
 ) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
@@ -553,6 +554,10 @@ def prompt_revision(
     ``runbook_catalog_template``（C2b，#566）只在 runbook 目录开关打开时由
     调用方传入；为 ``None`` 时哈希字典里没有这个键（不是空串），开关关闭的
     部署取值逐字节不变（照 #722「未设时字节不变」）。
+
+    ``standing_instructions_template``（#780，预审 780-4）只在本 Run 输入里
+    带 ``standing_instructions`` 事实时传入；与 runbook 目录分开，为 ``None``
+    时同样没有这个键，没有常驻说明的 Run 取值逐字节不变。
     """
     hashed: dict[str, object] = {
         "discipline": template_projection(variant_id),
@@ -565,6 +570,8 @@ def prompt_revision(
     }
     if runbook_catalog_template is not None:
         hashed["runbook_catalog_template"] = runbook_catalog_template
+    if standing_instructions_template is not None:
+        hashed["standing_instructions_template"] = standing_instructions_template
     return "prompt-{}-{}".format(variant_id, _short(hashed))
 
 

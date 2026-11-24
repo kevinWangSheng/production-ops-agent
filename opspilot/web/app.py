@@ -911,7 +911,12 @@ def create_app(
             principal,
             "runbook_new.html",
             known_targets=service.known_targets(),
-            fields={},
+            # A replacement link pre-fills these (#780); nothing is submitted.
+            fields={
+                key: value
+                for key, value in request.query_params.items()
+                if key in ("kind", "resource_uid", "name", "supersedes_entry_id")
+            },
         )
 
     @app.post("/runbooks")

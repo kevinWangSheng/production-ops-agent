@@ -12,7 +12,9 @@ Interface: ``docs/tasks/2026-11-19-tool-expansion-c2.md`` sections 5 and
   transport is built per Run with the Run's own target.
 * The worker runtime role reads ``opspilot_runbook_revisions`` and its state
   view, and the postmortem knowledge it already reads, in one read-only
-  snapshot transaction. Nothing here writes.
+  snapshot transaction. Nothing here writes. Standing instructions (#780,
+  ``kind = 'standing_instructions'``) are not fetchable: every Run is
+  already given them.
 * What comes back is reviewed troubleshooting steps, not an observation of
   this Run: the registration is not citable as a fact
   (``ToolRegistration.citable_as_fact=False``).
@@ -116,7 +118,7 @@ class KnowledgeReader(_StoreBase):
             if entry is not None:
                 runbook = conn.execute(
                     _RUNBOOK_SQL + "WHERE r.entry_id=%s AND r.resource_uid=%s "
-                    "ORDER BY r.revision DESC",
+                    "AND r.kind='runbook' ORDER BY r.revision DESC",
                     (entry, resource_uid),
                 ).fetchall()
                 found = _pick(runbook, "runbook_import", now)
@@ -138,6 +140,7 @@ class KnowledgeReader(_StoreBase):
                 if name is not None:
                     named = conn.execute(
                         _RUNBOOK_SQL + "WHERE r.name=%s AND r.resource_uid=%s "
+                        "AND r.kind='runbook' "
                         "ORDER BY (s.state = 'active') DESC, r.approved_at DESC, "
                         "r.revision DESC",
                         (name, resource_uid),
@@ -148,7 +151,8 @@ class KnowledgeReader(_StoreBase):
             available = conn.execute(
                 "SELECT r.name FROM opspilot_runbook_revisions r "
                 "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
-                "WHERE r.resource_uid=%s AND s.state='active' ORDER BY r.name LIMIT %s",
+                "WHERE r.resource_uid=%s AND r.kind='runbook' AND s.state='active' "
+                "ORDER BY r.name LIMIT %s",
                 (resource_uid, AVAILABLE_SHOWN),
             ).fetchall()
             return {"status": "not_found", "available": [r["name"] for r in available]}
