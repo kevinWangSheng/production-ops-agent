@@ -44,7 +44,7 @@ class Job:
     project_name: str | None = None
     evidence_hint: None = None
     diagnosis_wait_s: float = 900.0
-    submit_margin_s: float = 120.0
+    submit_margin_s: float = 240.0
     done_wait_s: float = 600.0
 
     def as_json(self) -> dict[str, Any]:

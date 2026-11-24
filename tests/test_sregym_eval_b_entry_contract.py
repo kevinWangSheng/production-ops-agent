@@ -674,7 +674,7 @@ def test_deadline_is_remaining_seconds_minus_margin(make, remaining: float) -> N
     s.harness.fake.advance("diagnosis")
     assert _run(s) == 0
     assert _submits(s) == [{"stage": "diagnosis", "solution": ""}]
-    deadline = MONO0 + remaining - 120
+    deadline = MONO0 + remaining - 240
     (at,) = s.harness.submit_at
     assert deadline <= at <= deadline + 30, at - MONO0
     assert "worker" in s.harness.stopped
@@ -689,7 +689,7 @@ def test_run_finishing_before_deadline_is_submitted_without_waiting_for_it(
     s.harness.fake.advance("diagnosis")
     assert _run(s) == 0
     (at,) = s.harness.submit_at
-    assert at < MONO0 + 1800 - 120
+    assert at < MONO0 + 1800 - 240
     sub = _submits(s)[0]
     assert REPORT_SUMMARY in sub["solution"]
 
@@ -811,5 +811,5 @@ def test_unknown_remaining_seconds_counts_as_1800(make) -> None:  # noqa: ANN001
     s.harness.fake.advance("diagnosis")
     assert _run(s) == 0
     (at,) = s.harness.submit_at
-    deadline = MONO0 + 1800 - 120
+    deadline = MONO0 + 1800 - 240
     assert deadline <= at <= deadline + 30
