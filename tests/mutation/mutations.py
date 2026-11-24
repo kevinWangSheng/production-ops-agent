@@ -531,4 +531,21 @@ MUTATIONS: tuple[Mutation, ...] = (
         "        glued = _redact_glued(redacted, mark)\n",
         '        glued = redacted.replace(mark, "")\n',
     ),
+    # #818: killed by tests/safety/test_safety_redis_credentials.py.
+    Mutation(
+        "M61",
+        "credentials: requirepass is a credential name (#818)",
+        # Mutated: ``--requirepass v`` and ``requirepass=v`` keep the value.
+        "opspilot/redaction.py",
+        '    "requirepass",\n',
+        "",
+    ),
+    Mutation(
+        "M62",
+        "credentials: a requirepass/masterauth config line hides its value (#818)",
+        # Mutated: ``requirepass v`` in a redis.conf keeps the value.
+        "opspilot/redaction.py",
+        "    flagged = _redact_directives(_redact_flag_values(redacted))\n",
+        "    flagged = _redact_flag_values(redacted)\n",
+    ),
 )

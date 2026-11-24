@@ -90,7 +90,10 @@ __all__ = [
 # v18: Kubernetes objects keep ``metadata.managedFieldsSummary`` (manager,
 # operation, time, subresource; no field tree) instead of dropping
 # ``managedFields`` whole (#696).
-PROJECTION_REVISION = "m1-01-tool-view-v18"
+# v19: Redis/Valkey password directives are credential names
+# (``--requirepass v``, ``masterauth=v``) and their config-line form
+# (``requirepass v`` in a redis.conf) hides the value (#818).
+PROJECTION_REVISION = "m1-01-tool-view-v19"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

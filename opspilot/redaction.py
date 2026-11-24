@@ -54,10 +54,15 @@ _AUTHENTICATION_SUBSTRINGS = (
     "credential",
     "keypair",
     "keystore",
+    # Redis/Valkey password directives (#818): ``--requirepass v``,
+    # ``masterauth v``; ``primaryauth`` is Valkey's name for ``masterauth``.
+    "masterauth",
     "passwd",
     "password",
+    "primaryauth",
     "privatekey",
     "publickey",
+    "requirepass",
     "secret",
     "signature",
     "sshkey",
@@ -1006,6 +1011,41 @@ def _redact_flag_values(text: str) -> str:
     return "".join(parts)
 
 
+# A Redis/Valkey password directive written as a config line (#818):
+# ``requirepass v`` / ``masterauth v`` / ``primaryauth v`` in a redis.conf
+# ConfigMap, a log or ``CONFIG SET`` text. The directive word stands alone
+# (not glued to a preceding letter, digit, ``_``/``.``/``-``; a JSON-escaped
+# ``\n``/``\t`` before it counts as a line break) and is followed by blanks
+# on the same line; the value is then read like a joined flag value (#802):
+# a quoted value whole, otherwise up to whitespace, also when it starts
+# with ``-``. Fail closed: the word after ``requirepass`` in ordinary prose
+# is hidden too. The ``--requirepass v`` and ``requirepass=v`` forms are the
+# flag and assignment rules' (the names are credential names). Runs with
+# the flag rule, after every other rule, and only replaces more.
+_DIRECTIVE = re.compile(
+    r"(?:(?<![A-Za-z0-9_.\-])|(?<=\\[nt]))"
+    r"(?P<name>requirepass|masterauth|primaryauth)[ \t]++",
+    re.IGNORECASE,
+)
+
+
+def _redact_directives(text: str) -> str:
+    parts: list[str] = []
+    pos = 0
+    for match in _DIRECTIVE.finditer(text):
+        start = match.end()
+        if start < pos:
+            continue  # inside a value already hidden
+        redaction = _flag_value(text, match.group("name"), start, False, True)
+        if redaction is None:
+            continue
+        marker, end = redaction
+        parts.append(text[pos:start] + marker + _glue_mark(text, start, end))
+        pos = end
+    parts.append(text[pos:])
+    return "".join(parts)
+
+
 def _credential_flag(item: object) -> str | None:
     """The name of ``item`` when it is a whole credential-named flag, one
     element of a command list."""
@@ -1211,11 +1251,11 @@ def _redact_rules(text: str) -> str:
     # Flag values last (#802): they only hide more of the result. A hidden
     # value changes what the rules read around it (a key's quotes, a list's
     # commas), so when it hid anything all rules run once more on the result.
-    flagged = _redact_flag_values(redacted)
+    flagged = _redact_directives(_redact_flag_values(redacted))
     if flagged == redacted:
         return redacted
     again = _redact_userinfo(_redact_prose(flagged), *_ENCODED_AUTHORITY_USERINFO)
-    return _redact_flag_values(again)
+    return _redact_directives(_redact_flag_values(again))
 
 
 # Kubernetes reference names that point at a Secret without holding any of

@@ -82,7 +82,7 @@ NP_PATH = re.compile(
 # Pinned on origin/main 067d2c18 with the minimal base env below; #679 must
 # not move them (B4-1, U5 a: the report rule sentence is unchanged).
 BASE_PROMPT_REVISION = "prompt-replay-candidate-f3c3018f981b"
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-a9d431ec0dfb"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-75925b8f2e3d"
 REPORT_CONTRACT_SHA256 = (
     "373f5030175c5a34999d6e9a72ba9f7af3a9197ffa8f2d990d0761184fc67b55"
 )
