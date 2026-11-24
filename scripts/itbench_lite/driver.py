@@ -85,13 +85,11 @@ from scripts.itbench_lite.shift import (
     snapshot_end_times,
 )
 from scripts.itbench_lite.snapshot import (
-    ALERTS_DIR,
-    METRICS_DIR,
-    TSV_FILES,
     AnswerFilePresent,
     Snapshot,
     UnsafeSnapshot,
-    _is_answer_name,
+    is_answer_name,
+    is_whitelisted,
     load_snapshot,
 )
 
@@ -166,21 +164,6 @@ def _walk_error(error: OSError) -> None:
     raise DeterministicError("UNSAFE_SNAPSHOT", "source tree cannot be listed")
 
 
-def _whitelisted_rel(rel: Path) -> bool:
-    """Whether a path relative to the scenario root is on the loader's list."""
-    parts = rel.parts
-    if len(parts) == 1:
-        name = parts[0]
-        return name in TSV_FILES.values() or (
-            name.startswith("alerts") and name.endswith(".json")
-        )
-    if len(parts) == 2:
-        return (parts[0] == METRICS_DIR and parts[1].endswith(".tsv")) or (
-            parts[0] == ALERTS_DIR and parts[1].endswith(".json")
-        )
-    return False
-
-
 def scan_source(source: Path) -> list[tuple[Path, Path]]:
     """The whole source tree checked by name, fail-closed; the whitelisted
     ``(source file, relative path)`` pairs.
@@ -204,9 +187,9 @@ def scan_source(source: Path) -> list[tuple[Path, Path]]:
         for name in filenames:
             path = base / name
             rel = path.relative_to(source)
-            if not _whitelisted_rel(rel):
+            if not is_whitelisted(rel):
                 continue
-            if _is_answer_name(name) or _is_answer_name(path.resolve().name):
+            if is_answer_name(name) or is_answer_name(path.resolve().name):
                 raise DeterministicError("ANSWER_FILE_PRESENT", "whitelisted name")
             if not path.is_file():
                 raise DeterministicError("UNSAFE_SNAPSHOT", "not a regular file")
@@ -222,10 +205,10 @@ def verify_copy(copy: Path) -> None:
             path = base / name
             if path.is_symlink():
                 raise DeterministicError("UNSAFE_SNAPSHOT", "link in the clean copy")
-            if _is_answer_name(name):
+            if is_answer_name(name):
                 raise DeterministicError("ANSWER_FILE_PRESENT", "in the clean copy")
         for name in filenames:
-            if not _whitelisted_rel((base / name).relative_to(copy)):
+            if not is_whitelisted((base / name).relative_to(copy)):
                 raise DeterministicError("UNSAFE_SNAPSHOT", "unexpected file in copy")
 
 
@@ -1444,6 +1427,8 @@ def rescore_round(
     them.  No model call, no service start; the source round is only read.
     A trial that did not complete is left out, as it has no scores there.
     """
+    check_round(source.round)
+    check_round(target.round)
     into = target.round_dir.resolve()
     for kept in (source.round_dir.resolve(), source.evidence_dir.resolve()):
         if into == kept or kept in into.parents or into in kept.parents:
@@ -1544,13 +1529,18 @@ def check_input_file(path: Path | None, what: str) -> None:
     names = [path.name]
     if path.exists() or path.is_symlink():
         names.append(path.resolve().name)
-    if any(_is_answer_name(name) for name in names):
+    if any(is_answer_name(name) for name in names):
         raise RoundAbort("ANSWER_FILE_AS_INPUT", what)
 
 
+def check_round(name: str) -> None:
+    """A round label is one path component under the tmp and evidence roots."""
+    if not _ROUND.match(name):
+        raise RoundAbort("BAD_ROUND", name)
+
+
 def prepare_round(cfg: Config, backends: Backends) -> None:
-    if not _ROUND.match(cfg.round):
-        raise RoundAbort("BAD_ROUND", cfg.round)
+    check_round(cfg.round)
     check_input_file(cfg.env_file, "env-file")
     check_input_file(cfg.prometheus_account, "prometheus-account")
     cfg.git = git_state(cfg.allow_dirty)
@@ -1673,9 +1663,6 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
     backends = backends or Backends()
 
     if args.command == "rescore":
-        if not _ROUND.match(args.into):
-            print(json.dumps({"status": "aborted", "code": "BAD_ROUND"}))
-            return 2
         source = Config(
             round=args.round,
             dataset=Path(),
@@ -1706,6 +1693,15 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
         return 0 if any(r["status"] == "converted" for r in rows) else 1
 
     if args.command in ("judge", "scores"):
+        try:
+            check_round(args.round)
+        except RoundAbort as error:
+            print(
+                json.dumps(
+                    {"status": "aborted", "code": error.code, "detail": error.detail}
+                )
+            )
+            return 2
         cfg = Config(
             round=args.round,
             dataset=Path(),
