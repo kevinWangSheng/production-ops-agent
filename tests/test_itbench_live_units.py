@@ -1,0 +1,693 @@
+"""Unit tests of the ITBench live harness (#564) on synthetic data only.
+
+No cluster, no ITBench checkout, no model: the host is a fake. The synthetic
+answer files are placeholders written by the test, never upstream answers.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import subprocess
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from scripts.itbench_lite.services import Started
+from scripts.itbench_live import (
+    alerts,
+    driver,
+    judge_trial,
+    live_match,
+    upstream,
+    vocabulary,
+)
+from scripts.sregym_eval.boundary import CAN_I_CHECKS
+
+# -- upstream ------------------------------------------------------------------------
+
+
+def _library(root: Path, ids: Sequence[str], *, answer: bool = True) -> Path:
+    for sid in ids:
+        d = root / "library" / "scenarios" / sid
+        d.mkdir(parents=True)
+        (d / "scenario.yaml").write_text("x: 1\n")
+        if answer:
+            (d / "ground_truth.yaml").write_text("entities: []\n")
+    return root
+
+
+def test_scenario_ids_by_name_only_without_opening_files(tmp_path: Path) -> None:
+    checkout = _library(tmp_path / "itb", ["102", "20", "37", "38", "23"])
+    (checkout / "library" / "scenarios" / "notes").mkdir()
+    _library(tmp_path / "itb2", ["5"], answer=False)
+    # Unreadable files: listing must not open them.
+    for path in (checkout / "library" / "scenarios").rglob("*.yaml"):
+        path.chmod(0)
+    try:
+        assert upstream.scenario_ids(checkout) == ["20", "23", "102"]
+    finally:
+        for path in (checkout / "library" / "scenarios").rglob("*.yaml"):
+            path.chmod(0o600)
+    upstream.check_scenario(checkout, "20")
+    for bad, code in (
+        ("37", "SCENARIO_FINOPS"),
+        ("21", "SCENARIO_UNKNOWN"),
+        ("x", "SCENARIO_ID_INVALID"),
+    ):
+        with pytest.raises(upstream.UpstreamError) as info:
+            upstream.check_scenario(checkout, bad)
+        assert info.value.code == code
+
+
+def test_cli_argv_and_env(tmp_path: Path) -> None:
+    kube = tmp_path / "kc"
+    assert upstream.cli_argv("deploy", kube, "20")[4:] == [
+        "deploy",
+        "environment",
+        "--scenario",
+        "20",
+        "--kubeconfig",
+        str(kube),
+    ]
+    assert upstream.cli_argv("inject", kube, "20") == [
+        "uv",
+        "run",
+        "--no-dev",
+        "itbench",
+        "inject",
+        "faults",
+        "--scenario",
+        "20",
+        "--kubeconfig",
+        str(kube),
+    ]
+    assert upstream.cli_argv("undeploy", kube)[-1] == "--yes"
+    with pytest.raises(ValueError):
+        upstream.cli_argv("inject", kube)
+    env = upstream.cli_env(
+        {
+            "PATH": "/bin",
+            "KUBECONFIG": "/x",
+            "DEEPSEEK_API_KEY": "k",
+            "ZAI_API_KEY": "z",
+        }
+    )
+    assert (
+        "KUBECONFIG" not in env
+        and "DEEPSEEK_API_KEY" not in env
+        and "ZAI_API_KEY" not in env
+    )
+    assert env["PATH"] == "/bin"
+
+
+def test_run_cli_output_goes_to_log_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_run(
+        argv: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        seen.update(argv=list(argv), cwd=kwargs["cwd"])
+        kwargs["stdout"].write(b"ANSWER-BEARING ANSIBLE TEXT\n")
+        return subprocess.CompletedProcess(list(argv), 2, "", "")
+
+    result = upstream.run_cli(
+        tmp_path,
+        "inject",
+        tmp_path / "kc",
+        tmp_path / "logs" / "inject.log",
+        scenario="20",
+        run=fake_run,
+    )
+    assert result.returncode == 2 and seen["cwd"] == tmp_path
+    assert "ANSWER-BEARING" in (tmp_path / "logs" / "inject.log").read_text()
+    assert "ANSWER-BEARING" not in capsys.readouterr().out
+    with pytest.raises(upstream.UpstreamError) as info:
+        upstream.require_ok(result)
+    assert info.value.code == "ITBENCH_INJECT_FAILED"
+
+
+def _git_head(head: str) -> Any:
+    def run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, head + "\n", "")
+
+    return run
+
+
+def test_check_pinned() -> None:
+    ok = _git_head(upstream.ITBENCH_COMMIT)
+    assert upstream.check_pinned(Path("/x"), ok) == upstream.ITBENCH_COMMIT
+    with pytest.raises(upstream.UpstreamError):
+        upstream.check_pinned(Path("/x"), _git_head("deadbeef"))
+
+
+# -- alerts --------------------------------------------------------------------------
+
+
+def _alert(
+    name: str, active: str, state: str = "firing", **labels: str
+) -> dict[str, Any]:
+    return {
+        "labels": {"alertname": name, **labels},
+        "annotations": {"summary": "untrusted text"},
+        "state": state,
+        "activeAt": active,
+        "value": "1",
+    }
+
+
+def _body(*items: dict[str, Any]) -> dict[str, Any]:
+    return {"status": "success", "data": {"alerts": list(items)}}
+
+
+def test_entry_alert_skips_baseline_and_prefault() -> None:
+    noise = _alert(
+        "KubePodNotReady", "2026-11-24T10:00:00Z", namespace="otel-demo", pod="a-1"
+    )
+    pending = _alert(
+        "Other", "2026-11-24T10:00:30Z", state="pending", namespace="otel-demo"
+    )
+    excluded = alerts.prefault_keys(alerts.parse_alerts(_body(noise, pending)))
+    assert len(excluded) == 2
+    watchdog = _alert("Watchdog", "2026-11-24T09:00:00Z")
+    late = _alert(
+        "KubeDeploymentRolloutStuck",
+        "2026-11-24T10:06:00Z",
+        namespace="otel-demo",
+        deployment="cart",
+    )
+    early = _alert(
+        "RequestErrorRate",
+        "2026-11-24T10:05:00Z",
+        namespace="otel-demo",
+        service_name="cart",
+    )
+    still_pending = _alert(
+        "X", "2026-11-24T10:01:00Z", state="pending", namespace="otel-demo"
+    )
+    now = alerts.parse_alerts(
+        _body(noise, pending, watchdog, late, early, still_pending)
+    )
+    chosen = alerts.entry_alert(now, excluded)
+    assert chosen is not None and chosen["labels"]["alertname"] == "RequestErrorRate"
+    assert (
+        alerts.entry_alert(alerts.parse_alerts(_body(noise, watchdog)), excluded)
+        is None
+    )
+    with pytest.raises(alerts.AlertsUnreadable):
+        alerts.parse_alerts({"status": "error"})
+
+
+def test_webhook_keeps_environment_active_at() -> None:
+    entry = _alert(
+        "RequestErrorRate",
+        "2026-11-24T10:05:00.123Z",
+        namespace="otel-demo",
+        service_name="cart",
+    )
+    body = alerts.webhook(entry, {"service_name": "cart"})
+    assert body["version"] == "4" and body["status"] == "firing"
+    (item,) = body["alerts"]
+    assert item["startsAt"].startswith("2026-11-24T10:05:00")
+    assert item["labels"]["service_name"] == "cart"
+    with pytest.raises(ValueError):
+        alerts.webhook(entry, {"service_name": "other"})
+    kept = alerts.summary_of(entry)
+    assert "annotations" not in kept and kept["alertname"] == "RequestErrorRate"
+
+
+# -- vocabulary ----------------------------------------------------------------------
+
+
+def _items(*objs: tuple[str, str | None]) -> dict[str, Any]:
+    return {
+        "items": [
+            {"metadata": {"name": n, **({"namespace": ns} if ns else {})}}
+            for n, ns in objs
+        ]
+    }
+
+
+def test_vocabulary_rules() -> None:
+    before = {
+        "pods": _items(("cart-7d9f-abc", "otel-demo"), ("coredns-1", "kube-system")),
+        "deployments": _items(("cart", "otel-demo")),
+        "services": _items(("cart", "otel-demo"), ("default", "otel-demo")),
+        "secrets": _items(("cart-password", "otel-demo")),
+        "namespaces": _items(("otel-demo", None), ("kube-system", None)),
+        "nodes": _items(("kind-environment-worker", None)),
+    }
+    after = {"pods": _items(("cart-7d9f-xyz", "otel-demo"))}
+    names = vocabulary.build([before, after], ["frontend", "otel-demo"])
+    assert names == sorted(names, key=str.casefold)
+    assert {
+        "cart",
+        "cart-7d9f-abc",
+        "cart-7d9f-xyz",
+        "frontend",
+        "kind-environment-worker",
+    } <= set(names)
+    for absent in ("cart-password", "coredns-1", "otel-demo", "default", "kube-system"):
+        assert absent not in names
+    kinds = vocabulary.build_kinds([before, after])
+    assert kinds["cart"] == [["Deployment", "otel-demo"], ["Service", "otel-demo"]]
+    assert kinds["kind-environment-worker"] == [["Node", None]]
+    assert vocabulary.jaeger_service_names({"data": ["a", 3]}) == ["a"]
+    assert (
+        "secrets" not in vocabulary.LIST_PLURALS
+        and "namespaces" in vocabulary.LIST_PLURALS
+    )
+
+
+# -- deterministic check -------------------------------------------------------------
+
+
+def _output(*names: str, extra: Sequence[str] = ()) -> dict[str, Any]:
+    entities = [{"name": n, "contributing_factor": True} for n in names]
+    entities += [{"name": n, "contributing_factor": False} for n in extra]
+    return {"entities": entities, "propagations": [], "alerts_explained": []}
+
+
+def test_live_match_flat_and_wrapped_answers() -> None:
+    flat = {
+        "entities": [
+            {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "svc-a",
+                "namespace": "ns",
+            }
+        ]
+    }
+    wrapped = {
+        "entities": [
+            {"kubernetes": [{"kind": "Deployment", "name": "svc-a", "namespace": "ns"}]}
+        ]
+    }
+    for gt in (flat, wrapped):
+        hit = live_match.score(_output("ns/Deployment/svc-a"), gt)
+        assert hit["any_hit"] is True and hit["f1"] == 1.0
+        wrong_kind = live_match.score(_output("ns/Pod/svc-a"), gt)
+        assert wrong_kind["any_hit"] is False and wrong_kind["f1"] == 0.0
+        prefix = live_match.score(_output("ns/Deployment/svc-ab"), gt)
+        assert prefix["any_hit"] is False
+    assert (
+        live_match.score(_output(extra=["ns/Deployment/svc-a"]), flat)["any_hit"]
+        is False
+    )
+
+
+def test_judge_trial_deterministic_only(tmp_path: Path) -> None:
+    gt_root = tmp_path / "gt"
+    (gt_root / "20").mkdir(parents=True)
+    (gt_root / "20" / "ground_truth.yaml").write_text(
+        "# comment\nentities:\n  - {kind: Deployment, name: svc-a, namespace: ns}\nalerts: []\nsolutions: []\n"
+    )
+    trial = tmp_path / "outputs" / "20" / "1"
+    (trial / "outputs").mkdir(parents=True)
+    (trial / "outputs" / "agent_output.json").write_text(
+        json.dumps(_output("ns/Deployment/svc-a"))
+    )
+    (trial / "conversion_meta.json").write_text(json.dumps({"report_present": True}))
+    out = tmp_path / "scores.json"
+    code = judge_trial.main(
+        [
+            "--ground-truth",
+            str(gt_root),
+            "--scenario",
+            "20",
+            "--outputs",
+            str(tmp_path / "outputs"),
+            "--trial",
+            "1",
+            "--work-dir",
+            str(tmp_path / "w"),
+            "--out",
+            str(out),
+        ]
+    )
+    data = json.loads(out.read_text())
+    assert code == 0 and data["official"] is None and data["judged"] is False
+    assert data["det"]["det_any_hit"] == 1.0 and data["det"]["det_f1"] == 1.0
+    assert "svc-a" not in out.read_text()
+
+
+# -- driver --------------------------------------------------------------------------
+
+
+CA = base64.b64encode(
+    b"-----BEGIN CERTIFICATE-----\nx\n-----END CERTIFICATE-----\n"
+).decode()
+
+
+class FakeHost(driver.Host):
+    """The machine, synthetically: kubectl, the CLI, forwards, the product."""
+
+    def __init__(
+        self, alert_bodies: list[dict[str, Any]], *, judge_rc: int = 0
+    ) -> None:
+        self.calls: list[list[str]] = []
+        self.cli: list[list[str]] = []
+        self.alert_bodies = alert_bodies
+        self.stopped: list[str] = []
+        self.delivered: list[Mapping[str, Any]] = []
+        self.envs: dict[str, Mapping[str, str]] = {}
+        self.clock = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+        self.judge_rc = judge_rc
+        self.jobs: list[Mapping[str, Any]] = []
+        super().__init__(
+            run=self._run, kubectl_fn=self._kubectl, port_forward=self._forward,
+            get_json=self._get, start_pg=lambda d, p: SimpleNamespace(
+                web_dsn="postgresql://web@127.0.0.1:29610/x",
+                runtime_dsn="postgresql://rt@127.0.0.1:29610/x",
+                owner_dsn="postgresql://own@127.0.0.1:29610/x"),
+            stop_pg=lambda pg: self.stopped.append("pg"),
+            start_web=self._web, start_worker=self._worker, deliver=self._deliver,
+            run_state=lambda dsn, rid: "succeeded",
+            collect=lambda dsn, rid: ({"run_id": rid, "report": None, "outcome": None}, {"rows": []}),
+            trace_roots=lambda project, rid, env: {"read_back": "skipped"},
+            judge=self._judge, port_in_use=lambda p: False, memory_reading=lambda: None,
+            now=self._now, monotonic=lambda: 0.0, sleep=self._sleep,
+        )  # fmt: skip
+
+    def _now(self) -> datetime:
+        return self.clock
+
+    def _sleep(self, seconds: float) -> None:
+        self.clock += timedelta(seconds=seconds)
+
+    def _run(
+        self, argv: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.cli.append(list(argv))
+        if "stdout" in kwargs and hasattr(kwargs["stdout"], "write"):
+            kwargs["stdout"].write(b"upstream output\n")
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
+
+    def _kubectl(
+        self, argv: Sequence[str], env: Mapping[str, str], timeout: float
+    ) -> Any:
+        argv = list(argv)
+        self.calls.append(argv)
+        out = ""
+        if argv[1:3] == ["config", "view"]:
+            out = json.dumps(
+                {
+                    "clusters": [
+                        {
+                            "cluster": {
+                                "server": "https://127.0.0.1:43210",
+                                "certificate-authority-data": CA,
+                            }
+                        }
+                    ]
+                }
+            )
+        elif argv[1:3] == ["config", "current-context"]:
+            out = "kind-kind-environment\n"
+        elif argv[1:3] == ["auth", "can-i"]:
+            verb, resource = argv[3], argv[4]
+            sub = next(
+                (a.split("=", 1)[1] for a in argv if a.startswith("--subresource=")), ""
+            )
+            full = f"{resource}/{sub}" if sub else resource
+            out = (
+                next(
+                    c.expect
+                    for c in CAN_I_CHECKS
+                    if c.verb == verb and c.resource == full
+                )
+                + "\n"
+            )
+        elif "create" in argv and "token" in argv:
+            out = "synthetic-readonly-token\n"
+        elif argv[1:4] == ["get", "namespace", "kube-system"]:
+            out = "uid-kube-system"
+        elif argv[1] == "get" and argv[3:] == ["-A", "-o", "json"]:
+            plural = argv[2]
+            data = {
+                "deployments": _items(("cart", "otel-demo")),
+                "pods": _items(("cart-1", "otel-demo")),
+                "namespaces": _items(("otel-demo", None)),
+            }
+            out = json.dumps(data.get(plural, {"items": []}))
+        return subprocess.CompletedProcess(argv, 0, out, "")
+
+    def _forward(
+        self,
+        ns: str,
+        resource: str,
+        local: int,
+        remote: int,
+        env: Mapping[str, str],
+        log: Path,
+    ) -> Started:
+        return Started(f"pf:{local}", lambda: self.stopped.append(f"pf:{local}"))
+
+    def _get(self, url: str) -> tuple[int, Any]:
+        if url.endswith("/api/v1/alerts"):
+            body = (
+                self.alert_bodies[0]
+                if len(self.alert_bodies) == 1
+                else self.alert_bodies.pop(0)
+            )
+            return 200, body
+        if url.endswith("/api/services"):
+            return 200, {"data": ["cart", "frontend"]}
+        return 404, None
+
+    def _web(self, env: Mapping[str, str], port: int, log: Path) -> Started:
+        self.envs["web"] = env
+        return Started("web", lambda: self.stopped.append("web"))
+
+    def _worker(
+        self, env: Mapping[str, str], log: Path, *, settle_seconds: float
+    ) -> Started:
+        self.envs["worker"] = env
+        return Started(
+            "worker", lambda: self.stopped.append("worker"), alive=lambda: True
+        )
+
+    def _deliver(
+        self, url: str, token: str, body: Mapping[str, Any]
+    ) -> tuple[int, Any]:
+        self.delivered.append(body)
+        return 200, {
+            "results": [{"outcome": "created", "run_id": "run-1", "reason": None}]
+        }
+
+    def _judge(self, job: Mapping[str, Any]) -> int:
+        self.jobs.append(job)
+        Path(job["out"]).write_text(json.dumps({
+            "report_present": False, "det": {"det_any_hit": 0.0, "det_f1": 0.0},
+            "official": {"root_cause_entity_f1": 0.0}, "judged": True, "labels": {},
+        }))  # fmt: skip
+        return self.judge_rc
+
+
+def _cfg(tmp_path: Path) -> driver.Config:
+    itbench = _library(tmp_path / "itbench", ["20", "23"])
+    kube = tmp_path / "admin" / "kubeconfig"
+    kube.parent.mkdir()
+    kube.write_text("users:\n- user:\n    token: admin-secret-token-value\n")
+    return driver.Config(
+        round="unit", itbench=itbench, kubeconfig=kube, trace="off",
+        tmp_root=tmp_path / "repo" / "tmp", evidence_root=tmp_path / "repo" / "evidence",
+        alert_wait=timedelta(minutes=2), poll_seconds=15.0, worker_settle_seconds=0.0,
+        secrets_env={"DEEPSEEK_API_KEY": "sk-synthetic"},
+    )  # fmt: skip
+
+
+@pytest.fixture(autouse=True)
+def _ledger_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import lab_evidence
+
+    monkeypatch.setenv(lab_evidence.LEDGER_DIR_ENV, str(tmp_path / "ledgers"))
+
+
+def test_trial_end_to_end(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    noise = _alert(
+        "KubePodNotReady", "2026-11-24T09:59:00Z", namespace="otel-demo", pod="x-1"
+    )
+    entry = _alert(
+        "RequestErrorRate",
+        "2026-11-24T10:03:00Z",
+        namespace="otel-demo",
+        service_name="cart",
+    )
+    host = FakeHost([_body(noise), _body(noise), _body(noise, entry)])
+    block = driver.Trial(cfg, host, "20", 1).run()
+
+    assert block["status"] == "completed", block
+    commands = [a[4:6] for a in host.cli]
+    assert commands == [
+        ["deploy", "environment"],
+        ["inject", "faults"],
+        ["remove", "faults"],
+        ["undeploy", "environment"],
+    ]
+    assert block["cleanup"]["errors"] == []
+    order = block["cleanup"]["order"]
+    assert order[0] == "worker" and order[-1] == "undeploy"
+    assert order.index("pg") < order.index("remove-faults") < order.index("undeploy")
+    (delivered,) = host.delivered
+    assert delivered["alerts"][0]["labels"]["alertname"] == "RequestErrorRate"
+    identities = json.loads(
+        (cfg.trial_dir("20", 1) / "target_identities.json").read_text()
+    )
+    (entry_cfg,) = identities.values()
+    assert (
+        entry_cfg["cluster_uid"] == "uid-kube-system"
+        and entry_cfg["workload"] == "cart"
+    )
+    assert entry_cfg["match"]["labels"] == {"service_name": "cart"}
+    # Isolation: the admin kubeconfig, the ITBench path and the judge never reach the product.
+    for role in ("web", "worker"):
+        values = " ".join(host.envs[role].values())
+        assert (
+            "admin-secret-token-value" not in values and str(cfg.itbench) not in values
+        )
+    assert "DEEPSEEK_API_KEY" not in host.envs["web"]
+    assert host.envs["worker"]["OPSPILOT_K8S_TOKEN"] == "synthetic-readonly-token"
+    assert host.envs["worker"]["OPSPILOT_K8S_NAMESPACE"] == "otel-demo"
+    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
+    assert summary["status"] == "completed" and summary["run_id"] == "run-1"
+    live = summary["itbench_live"]
+    assert live["fault_start_proxy"] == driver.FAULT_START_PROXY
+    assert set(live["diagnosis"]) == {
+        "from_fault_start_proxy_seconds",
+        "from_delivery_seconds",
+    }
+    assert "annotations" not in json.dumps(live["entry_alert"])
+    assert (
+        cfg.trial_dir("20", 1)
+        / "outputs"
+        / "20"
+        / "1"
+        / "outputs"
+        / "agent_output.json"
+    ).is_file()
+    # No kubectl call ever reads a Secret.
+    assert not any("secrets" in a[2:3] for a in host.calls if a[1:2] == ["get"])
+
+    scores = driver.judge_one(cfg, host, "20", 1)
+    (job,) = host.jobs
+    assert (
+        job["ground_truth"] == cfg.itbench / "library" / "scenarios"
+        and job["scenario"] == "20"
+    )
+    assert scores["status"] == "ok"
+    table = driver.aggregate(cfg.evidence_dir)
+    assert table["trials"] == 1 and table["scored"] == 1
+    assert table["rows"][0]["root_cause_entity_f1"] == 0.0
+
+
+def test_trial_without_entry_alert_is_recorded_and_cleaned(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    noise = _alert(
+        "KubePodNotReady", "2026-11-24T09:59:00Z", namespace="otel-demo", pod="x-1"
+    )
+    host = FakeHost([_body(noise)])
+    block = driver.Trial(cfg, host, "23", 1).run()
+    assert block["status"] == "stopped" and block["reason"] == "NO_ENTRY_ALERT"
+    assert host.delivered == [] and "web" not in host.envs
+    assert [a[4] for a in host.cli][-2:] == ["remove", "undeploy"]
+    summary = json.loads((cfg.evidence_trial("23", 1) / "summary.json").read_text())
+    assert summary["status"] == "stopped" and summary["reason"] == "NO_ENTRY_ALERT"
+    assert driver.aggregate(cfg.evidence_dir)["scored"] == 0
+
+
+def test_can_i_mismatch_stops_before_fault(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    original = host.kubectl_fn
+
+    def wide(argv: Sequence[str], env: Mapping[str, str], timeout: float) -> Any:
+        done = original(argv, env, timeout)
+        if list(argv[1:3]) == ["auth", "can-i"] and argv[4] == "secrets":
+            return subprocess.CompletedProcess(list(argv), 0, "yes\n", "")
+        return done
+
+    host.kubectl_fn = wide
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "stopped" and block["reason"] == "CAN_I_MISMATCH"
+    assert [a[4] for a in host.cli] == ["deploy", "undeploy"]
+
+
+def test_failed_undeploy_aborts_round(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    real = host.run
+
+    def failing(argv: Sequence[str], **kwargs: Any) -> Any:
+        done = real(argv, **kwargs)
+        if "undeploy" in argv:
+            return subprocess.CompletedProcess(list(argv), 1, "", "")
+        return done
+
+    host.run = failing
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "CLEANUP_FAILED"
+
+
+def test_preflight_refuses_other_kind_clusters(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    host.run = lambda *a, **k: subprocess.CompletedProcess(
+        [], 0, upstream.ITBENCH_COMMIT, ""
+    )
+    original = host.kubectl_fn
+
+    def kind(argv: Sequence[str], env: Mapping[str, str], timeout: float) -> Any:
+        if list(argv[:3]) == ["kind", "get", "clusters"]:
+            return subprocess.CompletedProcess(
+                list(argv), 0, "kind-environment\nopspilot-m1\n", ""
+            )
+        return original(argv, env, timeout)
+
+    host.kubectl_fn = kind
+    cfg.judge = False
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.preflight(cfg, host)
+    assert info.value.code == "OTHER_KIND_CLUSTERS"
+    cfg.allow_other_clusters = True
+    out = driver.preflight(cfg, host)
+    assert out["scenarios"] == ["20", "23"] and out["other_kind_clusters"] == [
+        "opspilot-m1"
+    ]
+
+
+def test_resolvers() -> None:
+    assert driver.resolve_trials("3") == (1, 2, 3)
+    assert driver.resolve_trials("2-3") == (2, 3)
+    assert driver.resolve_scenarios("S20, 23") == ("20", "23")
+    with pytest.raises(Exception):
+        driver.resolve_scenarios("20,x")
+
+
+def test_judge_env_excludes_product_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.itbench_lite.driver import judge_env
+
+    env = judge_env(
+        {
+            "PATH": "/bin",
+            "ZAI_API_KEY": "z",
+            "DEEPSEEK_API_KEY": "d",
+            "KUBECONFIG": "/k",
+        }
+    )
+    assert (
+        "DEEPSEEK_API_KEY" not in env
+        and "KUBECONFIG" not in env
+        and env["ZAI_API_KEY"] == "z"
+    )
+    assert os.environ is not env
