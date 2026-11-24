@@ -41,6 +41,7 @@ from typing import Any
 
 from opspilot.tools.redis_inspect import (
     RedisConfig,
+    RedisReplyError,
     _SocketConnection,
     account_problem,
 )
@@ -164,6 +165,16 @@ def valkey_admin(
         return connection.command(list(argv))
     finally:
         connection.close()
+
+
+VALKEY_REPLY_MAX_CHARS = 200
+
+
+def valkey_reply_text(message: str, password: str) -> str:
+    """#830: an error reply as recorded. Some ACL errors echo the offending
+    rule (``>password``), so the pass's password is masked before the text is
+    cut to a fixed length."""
+    return message.replace(password, "<redacted>")[:VALKEY_REPLY_MAX_CHARS]
 
 
 @dataclass
@@ -679,6 +690,7 @@ class Entry:
             return VALKEY_USER, password
         port = VALKEY_PORT
         code: str | None = None
+        reply_text: str | None = None
         if "valkey" in missing:
             code = "FORWARD_MISSING"
         else:
@@ -698,11 +710,16 @@ class Entry:
                         code = "ACCOUNT_NOT_READ_ONLY"
             except Exception as error:  # noqa: BLE001 - recorded, pass goes on
                 code = "ADMIN_FAILED:" + type(error).__name__
+                if isinstance(error, RedisReplyError):
+                    reply_text = valkey_reply_text(error.message, password)
         self.record["valkey_account"] = {
             "user": VALKEY_USER,
             "status": "created" if code is None else "failed",
             "code": code,
         }
+        if reply_text is not None:
+            # #830: the server's error text, so the cause can be read
+            self.record["valkey_account"]["reply"] = reply_text
         if code is not None:
             self.record["disclosures"].append(VALKEY_ACCOUNT_FAILED)
         return VALKEY_USER, password

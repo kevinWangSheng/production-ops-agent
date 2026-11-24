@@ -36,3 +36,34 @@ def test_p12_account_failure_is_disclosed_and_the_pass_goes_on(
     assert "intake" in s.harness.events
     (worker,) = s.harness.worker_envs
     assert worker["OPSPILOT_REDIS_USERNAME"] and worker["OPSPILOT_REDIS_PASSWORD"]
+
+
+def test_p12_error_reply_text_is_recorded_without_the_password(
+    tmp_path: Path,
+) -> None:
+    """#830: the reply text is kept; a rule echoed back is masked."""
+    from opspilot.tools.redis_inspect import RedisReplyError
+
+    s = _setup(
+        tmp_path, app=ASTRONOMY, seq=12,
+        problem_digest=mod("boundary").problem_id_digest(P12),
+    )  # fmt: skip
+    sent: list[str] = []
+
+    def refuse(*args: Any, argv: list[str], **kwargs: Any) -> Any:
+        (rule,) = [a for a in argv if a.startswith(">")]
+        sent.append(rule[1:])
+        raise RedisReplyError(f"ERR Error in ACL SETUSER modifier '{rule}': x")
+
+    s.harness.valkey_admin = refuse  # type: ignore[attr-defined]
+    try:
+        s.harness.fake.advance("diagnosis")
+        assert _run(s) == 0
+    finally:
+        s.harness.server.shutdown()
+        s.harness.server.server_close()
+    account = _record(s)["valkey_account"]
+    assert account["code"] == "ADMIN_FAILED:RedisReplyError"
+    assert account["reply"] == ("ERR Error in ACL SETUSER modifier '><redacted>': x")
+    (password,) = sent
+    assert password not in str(_record(s))

@@ -312,7 +312,7 @@ def _driver_host(tmp_path: Path, can_i: dict[str, str]) -> driver.Host:
             server.shutdown()
             server.server_close()
         run_dir = cwd / "results" / "1119_1200" / "opspilot" / PID
-        run_dir.mkdir(parents=True)
+        run_dir.mkdir(parents=True, exist_ok=True)
         with (run_dir / f"{PID}_opspilot_results.csv").open("w", newline="") as handle:
             w = csv.DictWriter(
                 handle,
@@ -725,3 +725,21 @@ def test_write_identities_passes_product_loader(tmp_path: Path) -> None:
     assert entry["match"]["labels"] == {"namespace": "astronomy-shop"}
     registry = MappingTargetRegistry.from_file(str(path))
     assert registry.keys() == (agent_entry.TARGET_ID,)
+
+
+def test_redo_of_a_completed_pass_freezes_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#829: ``--redo`` sets the old evidence aside and the rerun freezes."""
+    monkeypatch.setattr(driver, "verify_upstream", lambda root: None)
+    monkeypatch.setenv("OPSPILOT_LEDGER_DIR", str(tmp_path / "ledger"))
+    cfg = _cfg(tmp_path)
+    host = _driver_host(tmp_path, {c.label: c.expect for c in CAN_I_CHECKS})
+    assert [o.status for o in driver.run_round(cfg, host, (1,))] == ["completed"]
+    first = cfg.summary_path(PID, 1).read_text()
+    driver.set_aside(cfg, PID, 1)
+    assert not cfg.summary_path(PID, 1).exists()
+    (aside,) = (cfg.round_dir / "set-aside").iterdir()
+    assert (aside / "summary.json").read_text() == first
+    assert [o.status for o in driver.run_round(cfg, host, (1,))] == ["completed"]
+    assert cfg.summary_path(PID, 1).exists()

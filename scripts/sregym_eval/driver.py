@@ -727,6 +727,8 @@ def set_aside(cfg: Config, problem_id: str, trial: int) -> None:
         dest.mkdir(parents=True, exist_ok=True)
         for item in path.parent.iterdir():
             shutil.move(str(item), str(dest / item.name))
+        # #829: freeze creates the trial directory itself (exist_ok=False).
+        path.parent.rmdir()
 
 
 def run_round(
