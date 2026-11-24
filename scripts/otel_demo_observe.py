@@ -22,15 +22,19 @@ usage: otel_demo_observe.py <start_iso> <end_iso> <out.json> [--expect fault|nor
 from __future__ import annotations
 
 import json
-import os
 import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-PROM = os.environ.get("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090")
-JAEGER = os.environ.get("OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import kind_lab  # noqa: E402
+from scripts.kind_lab import OPENER, lab_authorization  # noqa: E402
+
+# Follow OPSPILOT_LAB_INSTANCE (and the URL overrides) through kind_lab.
+PROM = kind_lab.PROMETHEUS
+JAEGER = kind_lab.JAEGER
 # The dependency services the v4 packet question names for checkout.
 AUTHORIZED_DEPENDENCIES = frozenset(
     {"payment", "product-catalog", "cart", "currency", "shipping", "email"}
@@ -41,8 +45,6 @@ STATUS_KEYS = (
     "rpc.grpc.status_code",
     "error",
 )
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from scripts.kind_lab import OPENER, lab_authorization  # noqa: E402
 
 
 def get(url: str, timeout: int = 30) -> dict:

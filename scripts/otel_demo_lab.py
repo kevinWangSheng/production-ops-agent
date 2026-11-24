@@ -35,6 +35,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import kind_lab  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -57,13 +60,13 @@ def default_lab() -> Path:
 PROFILE = "m0-otel"
 CONTEXT = f"colima-{PROFILE}"
 PROJECT = "opspilot-m0"
-PROMETHEUS = os.environ.get("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090")
+# Host ports follow OPSPILOT_LAB_INSTANCE through kind_lab (instance 0 keeps
+# the original ports); the URL variables override them as before.
+PROMETHEUS = kind_lab.PROMETHEUS
 # Same variable and meaning as the product profile: the Jaeger UI base.
-JAEGER = os.environ.get(
-    "OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui"
-).rstrip("/")
+JAEGER = kind_lab.JAEGER
 # The lab's frontend-proxy; only used to report that the workload answers.
-FRONTEND = "http://127.0.0.1:18080/"
+FRONTEND = kind_lab.FRONTEND
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
