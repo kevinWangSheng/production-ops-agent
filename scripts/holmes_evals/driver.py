@@ -787,6 +787,16 @@ class Backends:
     revoke_runbooks: Callable[..., list[str]] = knowledge_mod.revoke_runbooks
     active_runbooks: Callable[[str, str], list[str]] = knowledge_mod.active_runbooks
     run_catalog: Callable[[str, str], dict[str, Any] | None] = knowledge_mod.run_catalog
+    # #780 (162's global instructions as standing instructions).
+    import_standing_instructions: Callable[
+        ..., tuple[list[dict[str, Any]], list[str]]
+    ] = knowledge_mod.import_standing_instructions
+    active_standing_instructions: Callable[[str, str], list[str]] = (
+        knowledge_mod.active_standing_instructions
+    )
+    run_standing_instructions: Callable[[str, str], dict[str, Any] | None] = (
+        knowledge_mod.run_standing_instructions
+    )
     # PR-E (C1 task list).
     run_tool_names: Callable[[str, str], list[str]] = task_list.run_tool_names
     task_list_stats: Callable[[str, str], dict[str, Any]] = task_list.task_list_stats
@@ -859,12 +869,16 @@ def disclosures(
     if qid in KNOWLEDGE_QUESTIONS:
         codes.append("RUNBOOKS_IMPORTED_REVIEWED")
         if qid in GLOBAL_INSTRUCTIONS_QUESTIONS:
-            codes.append("GLOBAL_INSTRUCTIONS_NOT_IMPORTED")
+            codes.append(GLOBAL_INSTRUCTIONS_IMPORTED)
     return codes
 
 
-#: PR-D: C2 questions whose directory holds ``global_instructions.json``,
-#: which is not imported (no OpsPilot channel for global instructions).
+GLOBAL_INSTRUCTIONS_IMPORTED = "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED"
+#: An upstream text over the store's 4096-byte limit: skipped, not truncated.
+GLOBAL_INSTRUCTIONS_TOO_LARGE = "GLOBAL_INSTRUCTIONS_TOO_LARGE_NOT_IMPORTED"
+#: PR-D: C2 questions whose directory holds ``global_instructions.json``;
+#: #780 (780-10, B4-12) imports it as the target's standing instructions
+#: through the workbench's submit and approve, revoked after the question.
 GLOBAL_INSTRUCTIONS_QUESTIONS = frozenset({"162_get_skills"})
 
 
@@ -961,6 +975,7 @@ class Attempt:
         self.db: db_mod.DbQuestionSpec | None = db_mod.DB_QUESTIONS.get(qid)
         self.db_env: dict[str, str] = {}
         self._imported: list[dict[str, Any]] = []
+        self._standing: list[dict[str, Any]] = []
         self._owner_dsn: str | None = None
         self._revoked = False
         self.block: dict[str, Any] = {
@@ -1129,6 +1144,47 @@ class Attempt:
         block["active_after_import"] = after
         if sorted(after) != sorted(f["name"] for f in fixtures):
             raise InfraFailure("RUNBOOK_IMPORT_MISMATCH", ",".join(after))
+        if self.qid in GLOBAL_INSTRUCTIONS_QUESTIONS:
+            self._import_standing(owner_dsn, directory)
+
+    def _import_standing(self, owner_dsn: str, directory: Path) -> None:
+        """#780: the question's global instructions as the target's standing
+        instructions, after its runbooks (revoked with them)."""
+        cfg, b = self.cfg, self.b
+        assert cfg.import_account is not None
+        block: dict[str, Any] = {
+            "fixture": knowledge_mod.standing_fixture_row(directory)
+        }
+        self._knowledge_block()["standing_instructions"] = block
+        fixture = block["fixture"]
+        if fixture is None:
+            raise DeterministicError("GLOBAL_INSTRUCTIONS_MISSING")
+        if not fixture["fits"]:
+            codes = self.block["disclosures"]
+            codes[codes.index(GLOBAL_INSTRUCTIONS_IMPORTED)] = (
+                GLOBAL_INSTRUCTIONS_TOO_LARGE
+            )
+            return
+        before = b.active_standing_instructions(owner_dsn, TARGET_ID)
+        block["active_before_import"] = before
+        if before:
+            raise RoundAbort("RUNBOOK_RESIDUE", "standing-instructions")
+        rows, refusals = b.import_standing_instructions(
+            f"http://127.0.0.1:{cfg.ports.web}",
+            cfg.import_account,
+            directory,
+            TARGET_ID,
+        )
+        self._standing = list(rows)
+        block["imported"] = [
+            {k: row.get(k) for k in ("name", "entry_id", "revision")} for row in rows
+        ]
+        if refusals:
+            raise InfraFailure("STANDING_INSTRUCTIONS_IMPORT_FAILED", refusals[0])
+        after = b.active_standing_instructions(owner_dsn, TARGET_ID)
+        block["active_after_import"] = after
+        if after != [str(row.get("entry_id")) for row in rows]:
+            raise InfraFailure("STANDING_INSTRUCTIONS_IMPORT_MISMATCH", ",".join(after))
 
     def _check_run_catalog(self, owner_dsn: str, run_id: str) -> None:
         catalog = self.b.run_catalog(owner_dsn, run_id)
@@ -1141,6 +1197,14 @@ class Attempt:
                 "RUNBOOK_CATALOG_MISMATCH",
                 json.dumps(knowledge_mod.catalog_summary(catalog)),
             )
+        if not self._standing:
+            return
+        fact = self.b.run_standing_instructions(owner_dsn, run_id)
+        self._knowledge_block()["standing_instructions"]["run_fact"] = fact
+        (row,) = self._standing
+        if fact != {"entry_id": row.get("entry_id"), "revision": row.get("revision")}:
+            # The model was not given the imported instructions.
+            raise InfraFailure("STANDING_INSTRUCTIONS_MISMATCH", json.dumps(fact))
 
     def _revoke_knowledge(self, *, after_run: bool) -> None:
         """Revoke what this attempt imported and check nothing stays active.
@@ -1154,11 +1218,15 @@ class Attempt:
         assert cfg.import_account is not None
         block = self._knowledge_block()
         try:
+            # #780: the standing instructions are revoked with the runbooks.
+            rows = [*self._imported, *self._standing]
             refusals = b.revoke_runbooks(
-                f"http://127.0.0.1:{cfg.ports.web}", cfg.import_account, self._imported
+                f"http://127.0.0.1:{cfg.ports.web}", cfg.import_account, rows
             )
-            block["revoked"] = len(self._imported) - len(refusals)
+            block["revoked"] = len(rows) - len(refusals)
             left = b.active_runbooks(self._owner_dsn, TARGET_ID)
+            if self._standing:
+                left += b.active_standing_instructions(self._owner_dsn, TARGET_ID)
         except Exception as error:  # noqa: BLE001 - classified below
             block["revoke_error"] = type(error).__name__
             if after_run:

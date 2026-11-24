@@ -24,8 +24,8 @@ Rules under test:
   185 2024-01-01..10 at 12:00 (9 d), 189 2024-01-14T00..15T23 (47 h),
   235 relative, oldest batch ``days=45`` (45 d), 280 2026-05-14T12:00:01 to
   2026-06-03T08:02:05 (about 19 d 20 h; index C is keyword, not date);
-* R2-3: standing instructions are still not imported (162 keeps
-  ``GLOBAL_INSTRUCTIONS_NOT_IMPORTED``).
+* #780 (780-10, B4-12) supersedes R2-3: 162's global instructions are
+  imported as standing instructions (``GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED``).
 
 Assumptions beyond the interface (also marked ``# ASSUMPTION:``):
 
@@ -173,15 +173,15 @@ def test_trial_records_carry_the_derived_flag(qid: str, limited: bool) -> None:
     assert driver.trial_record(_completed(qid, 1, "pass")).time_box_limited is limited
 
 
-# -- R2-3: standing instructions stay out ----------------------------------------
+# -- #780 (780-10): standing instructions imported ------------------------------
 
 
-def test_162_still_discloses_global_instructions_not_imported() -> None:
+def test_162_discloses_global_instructions_imported_reviewed() -> None:
     driver, questions = mod("driver"), mod("questions")
     q = questions.Question(user_prompt="x")
     shift = driver.ShiftRecord(
         applied=False, reason="RELATIVE_TIME", backend="kubernetes"
     )
     codes = driver.disclosures(Q162, q, shift, k8s_namespace="otel-demo")
-    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" in codes
-    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" not in codes
+    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" in codes
+    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" not in codes
