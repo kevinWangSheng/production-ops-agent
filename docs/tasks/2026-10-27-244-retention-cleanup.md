@@ -10,7 +10,7 @@
 
 产品目前没有任何清理任务。本轮按 C3 §11「关闭后原始资料默认 30 天」做最小交付：清理五类原始载荷——`opspilot_evidence.raw`、`opspilot_observation_signal_readings.raw`、`opspilot_release_query_results.raw`、`opspilot_release_comparison_queries.raw`、`opspilot_alert_deliveries.alert_json`。原列置 NULL 并记 `payload_state`，行、哈希、时间与 `evidence.view` 保留。
 
-不在范围：`opspilot_steps.response/tool_results`、`opspilot_inputs.content`、`opspilot_runs.input`（恢复合同 #375）；报告、审计、知识 90 天或归档（#374）；LangSmith 外部副本删除（归 #243 后续）。
+不在范围：`opspilot_steps.response/tool_results`、`opspilot_inputs.content`、`opspilot_runs.input`（恢复合同 #375）；报告、审计、知识 90 天或归档（#374）；LangSmith 外部副本删除（归 #243 后续）。#374、#375 于 2026-11-24 按现状关闭为已知偏离（C3 §11，[收尾轮记录](2026-11-24-open-issues-round.md) R1）。
 
 ## 前提与完成条件
 
