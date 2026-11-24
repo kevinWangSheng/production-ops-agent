@@ -703,7 +703,7 @@ def _redact_quoted(text: str) -> str:
         pos = end
         if (hidden := tail.value(start, end)) is not None:
             after, tail_marker, pos = hidden
-            if after == end and marker == REDACTED_CREDENTIAL:
+            if after == end:  # joined to the hidden value: one marker
                 parts[-1] = (
                     text[parts_start:start] + marker + _glue_mark(text, start, pos)
                 )
@@ -763,9 +763,13 @@ class _FlagTail:
             blanks = _FLAG_BLANKS.match(text, start)
             start = start if blanks is None else blanks.end()
             if rest and start < len(text) and text[start] in ",;&?#}]":
-                # The hidden value stopped there; the name rules read the
-                # rest as text, as the flag rule on their output would.
-                return None
+                # The hidden value stopped there; hide the flag's joined
+                # value up to whitespace, as the flag rule does on the text
+                # the names left (review of #840).
+                stop = start
+                while stop < len(text) and not text[stop].isspace():
+                    stop += 1
+                return start, REDACTED_CREDENTIAL, stop
         else:
             if self._newline is None:
                 self._newline = _NextNewline(text)

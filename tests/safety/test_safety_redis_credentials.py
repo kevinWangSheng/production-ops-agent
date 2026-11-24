@@ -114,6 +114,8 @@ FLAG_AS_VALUE = [
     "password: --token {v}",
     "requirepass: --db-password {v}",
     "masterauth=--api-key {v}",
+    "requirepass: --token=,--{v}",
+    "masterauth: --token=,--{v}",
 ]
 
 
