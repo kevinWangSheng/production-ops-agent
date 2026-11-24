@@ -51,8 +51,27 @@ class NotWhitelisted(PermissionError):
     """A read outside the loader's whitelist."""
 
 
-def _is_answer_name(name: str) -> bool:
+def is_answer_name(name: str) -> bool:
     return name.casefold() in ANSWER_FILE_NAMES
+
+
+def is_whitelisted(rel: Path) -> bool:
+    """Whether a path relative to the scenario root is on the loader's list.
+
+    The one name rule for the loader and the driver's clean copy; each keeps
+    its own refusal checks (answer names, links, non-regular files).
+    """
+    parts = rel.parts
+    if len(parts) == 1:
+        name = parts[0]
+        return name in TSV_FILES.values() or (
+            name.startswith("alerts") and name.endswith(".json")
+        )
+    if len(parts) == 2:
+        return (parts[0] == METRICS_DIR and parts[1].endswith(".tsv")) or (
+            parts[0] == ALERTS_DIR and parts[1].endswith(".json")
+        )
+    return False
 
 
 def _walk_error(error: OSError) -> None:
@@ -71,7 +90,7 @@ def refuse_answer_files(root: Path) -> None:
     """
     for dirpath, dirnames, filenames in os.walk(root, onerror=_walk_error):
         for name in (*filenames, *dirnames):
-            if _is_answer_name(name):
+            if is_answer_name(name):
                 raise AnswerFilePresent(
                     "scenario directory holds an answer file; refusing to start"
                 )
@@ -139,7 +158,7 @@ def _whitelisted_file(path: Path) -> bool:
     """A regular file whose symlink target, if any, is not an answer file."""
     if not path.is_file():
         return False
-    if _is_answer_name(path.resolve().name):
+    if is_answer_name(path.resolve().name):
         raise AnswerFilePresent(
             "a whitelisted name points at an answer file; refusing to start"
         )
@@ -153,22 +172,24 @@ def load_snapshot(root: str | os.PathLike[str]) -> Snapshot:
         raise FileNotFoundError(str(base))
     refuse_answer_files(base)
 
-    metrics_dir = base / METRICS_DIR
-    metrics: tuple[Path, ...] = ()
-    if metrics_dir.is_dir():
-        metrics = tuple(
-            sorted(p for p in metrics_dir.glob("*.tsv") if _whitelisted_file(p))
+    listed = [
+        path
+        for folder in (base, base / METRICS_DIR, base / ALERTS_DIR)
+        if folder.is_dir()
+        for path in folder.iterdir()
+    ]
+    chosen = [
+        (path, path.relative_to(base))
+        for path in listed
+        if is_whitelisted(path.relative_to(base)) and _whitelisted_file(path)
+    ]
+    metrics = tuple(sorted(path for path, rel in chosen if rel.parts[0] == METRICS_DIR))
+    alerts = tuple(
+        sorted(
+            (path for path, rel in chosen if rel.parts[-1].endswith(".json")),
+            key=lambda p: (p.name, str(p)),
         )
-
-    alert_files = [p for p in base.glob("alerts*.json") if _whitelisted_file(p)]
-    alerts_dir = base / ALERTS_DIR
-    if alerts_dir.is_dir():
-        alert_files += [p for p in alerts_dir.glob("*.json") if _whitelisted_file(p)]
-    alerts = tuple(sorted(alert_files, key=lambda p: (p.name, str(p))))
-
-    tsv = {
-        kind: base / name
-        for kind, name in TSV_FILES.items()
-        if _whitelisted_file(base / name)
-    }
+    )
+    names = {path.name for path, rel in chosen if len(rel.parts) == 1}
+    tsv = {kind: base / name for kind, name in TSV_FILES.items() if name in names}
     return Snapshot(root=base, metrics=metrics, alerts=alerts, tsv=tsv)
