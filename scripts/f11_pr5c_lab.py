@@ -307,8 +307,9 @@ def wait(
 
 
 def prom(query: str) -> Any:
-    url = "http://127.0.0.1:19090/api/v1/query?" + urllib.parse.urlencode(
-        {"query": query}
+    url = (
+        f"http://127.0.0.1:{kind_lab.PROMETHEUS_PORT}/api/v1/query?"
+        + urllib.parse.urlencode({"query": query})
     )
     status, body = kind_lab.get_json(url, authorization=kind_lab.lab_authorization())
     if status != 200 or not isinstance(body, dict):

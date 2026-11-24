@@ -71,6 +71,7 @@ from opspilot.tools.otel_demo import (
     scope_window,
 )
 from scripts import f11_pr5c_lab as lab
+from scripts import kind_lab
 from scripts.f11_u2_harness import resolve_ledger_root
 
 BATCH = "358-live"
@@ -458,8 +459,8 @@ def gateway_judgment(
             evidence=_Sink(),
             clock=_Clock(frame.end + timedelta(seconds=1)),
             config=OtelDemoConfig(
-                prometheus_url="http://127.0.0.1:19090",
-                jaeger_url="http://127.0.0.1:16686/jaeger/ui",
+                prometheus_url=f"http://127.0.0.1:{kind_lab.PROMETHEUS_PORT}",
+                jaeger_url=f"http://127.0.0.1:{kind_lab.JAEGER_PORT}/jaeger/ui",
             ),
         )
         outcome = factory(lease, parsed).execute(
