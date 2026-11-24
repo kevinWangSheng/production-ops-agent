@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeGuard
 from uuid import UUID
 
 from opspilot.tools.registry import redact_credentials
@@ -57,7 +57,7 @@ def unavailable_standing_instructions() -> dict[str, Any]:
     return dict(UNAVAILABLE)
 
 
-def is_standing_instructions(value: object) -> bool:
+def is_standing_instructions(value: object) -> TypeGuard[Mapping[str, Any]]:
     """A normal fact (sent to the model), as opposed to the marker."""
     return isinstance(value, Mapping) and "content" in value
 
