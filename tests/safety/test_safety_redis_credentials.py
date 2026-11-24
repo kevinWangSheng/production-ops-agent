@@ -101,3 +101,40 @@ def test_redis_conf_configmap_lines_are_hidden():
     conf = out["data"]["redis.conf"]
     assert FAKE not in conf and FAKE2 not in conf
     assert conf.startswith("port 6379\nrequirepass ")
+
+
+# A value that is itself a credential flag keeps that flag's value hidden
+# (review of #840: the new names must not show what main hid; the old-name
+# ``password:`` form had the same gap).
+FLAG_AS_VALUE = [
+    "requirepass: --token {v}",
+    "requirepass:--token {v}",
+    "requirepass=--token {v}",
+    "password:--token {v}",
+    "password: --token {v}",
+    "requirepass: --db-password {v}",
+    "masterauth=--api-key {v}",
+]
+
+
+@pytest.mark.parametrize("template", FLAG_AS_VALUE)
+def test_a_credential_flag_as_a_credential_value_keeps_its_value_hidden(template):
+    text = template.format(v=FAKE)
+    redacted = redact_credentials(text)
+    assert FAKE not in redacted, redacted
+    assert redact_credentials(redacted) == redacted
+
+
+def test_a_directive_element_in_a_list_hides_the_next_element():
+    probe = {
+        "livenessProbe": {
+            "exec": {"command": ["redis-cli", "CONFIG", "SET", "requirepass", FAKE]}
+        }
+    }
+    out = redact_payload(probe)
+    command = out["livenessProbe"]["exec"]["command"]
+    assert command == ["redis-cli", "CONFIG", "SET", "requirepass", REDACTED_CREDENTIAL]
+    assert redact_payload(["MasterAuth", FAKE]) == ["MasterAuth", REDACTED_CREDENTIAL]
+    # The same list as JSON text (a last-applied-configuration annotation).
+    text = redact_credentials(json.dumps(probe))
+    assert FAKE not in text and '"requirepass"' in text
