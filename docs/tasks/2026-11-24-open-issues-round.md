@@ -1,6 +1,6 @@
 # 剩余开放 issue 收尾轮（2026-11-24 起）
 
-- 状态：实施中。R1+R2 文档 PR（`chore/round-known-limitations`，worktree `../poa-round-docs`）已提交待合并，合并后关 7 个 issue；其余项实施中
+- 状态：实施中。R1+R2 文档 PR（`chore/round-known-limitations`，worktree `../poa-round-docs`）已提交待合并，合并后关 7 个 issue；其余项实施中；#498 基线已出（`docs/evidence/perf-baseline-2026-11-24/`，PR 待合并，无明显热点，建议关闭）
 - 更新日期：2026-11-24
 - 依据：2026-11-24 开放 issue 重新同步（13 个）；四份独立预审（见「合同」）；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)；[C3](../design/technical-proposal-2026-09-07.md) §3、§4、§10、§11；[后续四批](2026-11-22-next-batches.md)（#780 的方向、存储、审核流程、大小上限已在 B4-U3/U4/U6 裁决）
 - 工作区：每个 PR 一个 worktree（`../poa-<issue>-<名>`），开工时填写
