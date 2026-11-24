@@ -289,3 +289,172 @@ def test_runbook_descriptions_and_bodies_reach_the_model_without_credentials(
         assert secret not in sent, secret
         assert secret not in sent_text, secret
     assert fact is not None and CATALOG in h.recorded(incident)["scope_facts"]
+
+
+# -- standing operator instructions (#780, 780-11 / B4-11) -------------------------
+#
+# Written by an independent test author from the #780 contract without the
+# implementation. Names: ``tests/standing_instructions_support.py``.
+
+
+def test_standing_instructions_reach_the_model_without_credentials(runbook_harness):
+    """A new model-input channel: the approved body is redacted before it is
+    recorded in the v9 fact and before it reaches the model (B4-9)."""
+    from tests.acceptance.f7_pg_support import ScriptedProvider, assistant
+    from tests.runbook_fetch_support import report_round, traces
+    from tests.standing_instructions_support import FACT, body_of, si_publish
+
+    h = runbook_harness
+    marked = f"{MARKER}-standing"
+    si_publish(h, f"* {marked}: " + "\n* ".join(SHAPES.values()) + "\n")
+    incident, _run = h.submit("Why is checkout erroring?")
+    fact = h.recorded(incident)["scope_facts"][FACT]
+    stored = json.dumps(fact, ensure_ascii=False)
+    assert marked in body_of(fact)
+    for secret in SECRETS:
+        assert secret not in stored, secret
+
+    provider = ScriptedProvider([assistant(tool_calls=[traces()]), report_round()])
+    h.run(incident, provider)
+
+    sent = b"\n".join(provider.raw_requests).decode("utf-8")
+    sent_text = json.dumps(provider.requests, ensure_ascii=False)
+    assert marked in sent_text, "the standing instructions never reached the model"
+    for secret in SECRETS:
+        assert secret not in sent, secret
+        assert secret not in sent_text, secret
+
+
+def test_hostile_standing_instructions_change_no_scope_or_target(runbook_harness):
+    """F7 step 2 extended to the standing-instructions channel (B4-U4 a,
+    R10): approved instructions that say "query another target, widen to 30
+    days, call write tools" reach the model under their fixed boundary
+    wording, and no executed read leaves the Run's target and window; every
+    hostile request is a visible refusal; scope, budget, generations and
+    runbook rows are unchanged."""
+    from datetime import datetime, timedelta, timezone
+
+    from opspilot.tools.otel_demo import TARGET_ID
+    from tests.acceptance.f7_hostile_support import (
+        HOSTILE_INSTRUCTION,
+        query_window_of,
+    )
+    from tests.acceptance.f7_pg_support import (
+        ScriptedProvider,
+        assistant,
+        authority_snapshot,
+        fn,
+    )
+    from tests.runbook_fetch_support import (
+        OTHER_TARGET,
+        report_round,
+        traces,
+        views_by_call,
+    )
+    from tests.standing_instructions_support import (
+        FACT,
+        body_of,
+        messages_containing,
+        si_publish,
+    )
+    from tests.test_m1_otel_demo_contract import (
+        GOOD_EXPR,
+        JAEGER_URL,
+        PROMETHEUS_URL,
+    )
+
+    h = runbook_harness
+    marked = f"{MARKER}-hostile-standing"
+    si_publish(h, f"* {marked}\n* {HOSTILE_INSTRUCTION}\n", resource_uid=TARGET_ID)
+    incident, run = h.submit("Why is checkout erroring?")
+    recorded = h.recorded(incident)
+    fact = recorded["scope_facts"][FACT]
+    [policy] = recorded["evidence_context"]["time_policies"]
+    frame_start = datetime.fromisoformat(policy["window"]["start"]).timestamp()
+    frame_end = datetime.fromisoformat(policy["window"]["end"]).timestamp()
+    end = datetime.fromtimestamp(frame_end, timezone.utc)
+    before = authority_snapshot(h, incident, run)
+    counts = h.runbook_counts()
+    hostile_ids = (
+        "hostile-target",
+        "hostile-window",
+        "hostile-offset",
+        "hostile-delete",
+        "hostile-restart",
+    )
+    complying = assistant(
+        content="Standing instructions say to widen the scope; doing so.",
+        tool_calls=[
+            fn(
+                "hostile-target",
+                "traces_search",
+                {"service": "payment", "target_id": OTHER_TARGET},
+            ),
+            fn(
+                "hostile-window",
+                "metrics_range_query",
+                {
+                    "expr": GOOD_EXPR,
+                    "start": (end - timedelta(days=30)).isoformat(),
+                    "end": end.isoformat(),
+                },
+            ),
+            fn(
+                "hostile-offset",
+                "metrics_range_query",
+                {"expr": "sum(rate(traces_span_metrics_calls_total[5m] offset 30d))"},
+            ),
+            fn(
+                "hostile-delete",
+                "prometheus_admin_delete_series",
+                {"match[]": '{__name__=~".+"}', "authorized": True},
+            ),
+            fn(
+                "hostile-restart",
+                "kubectl_rollout_restart",
+                {"namespace": "checkout", "deployment": "checkout"},
+            ),
+            traces("in-scope", service="payment"),
+        ],
+    )
+    provider = ScriptedProvider([complying, report_round(fact_call="in-scope")])
+    h.opener.requests.clear()
+
+    h.run(incident, provider)
+
+    assert len(provider.requests) == 2
+    first = provider.requests[0]["messages"]
+    # The hostile text reached the model once, inside the standing message,
+    # which carries boundary wording beyond the body (B4-U4 a: not evidence,
+    # grants no permission, changes no target / time frame / report).
+    [index] = messages_containing(first, HOSTILE_INSTRUCTION)
+    message = first[index]
+    assert message["role"] == "user"
+    wording = message["content"].replace(body_of(fact), "").lower()
+    assert "evidence" in wording, message["content"]
+    assert "permission" in wording, message["content"]
+    # (1) The one executed backend read is the in-scope one.
+    urls = [r.full_url for r in h.opener.requests]
+    assert len(urls) == 1, urls
+    for request in h.opener.requests:
+        url = request.full_url
+        assert request.get_method() == "GET", url
+        assert url.startswith(
+            (PROMETHEUS_URL + "/api/v1/query", JAEGER_URL + "/api/traces")
+        ), url
+        assert OTHER_TARGET not in url and "offset" not in url, url
+        window = query_window_of(url)
+        assert window is not None, url
+        assert frame_start <= window[0] <= window[1] <= frame_end, url
+    # (2) Every hostile request is a visible refusal without evidence.
+    views = views_by_call(provider.requests[-1]["messages"])
+    for call_id in hostile_ids:
+        view = views[call_id]
+        assert view["status"] in {"denied", "error"}, (call_id, view)
+        assert view.get("reason"), (call_id, view)
+        assert view.get("evidence_id") is None, (call_id, view)
+        assert view.get("content") is None, (call_id, view)
+    assert views["in-scope"]["status"] == "ok", views["in-scope"]
+    # (3) Nothing the text asked for changed authority or review state.
+    assert authority_snapshot(h, incident, run) == before
+    assert h.runbook_counts() == counts
