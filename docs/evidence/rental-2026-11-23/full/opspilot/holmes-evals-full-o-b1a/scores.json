@@ -1,0 +1,438 @@
+{
+  "track": "HolmesGPT 公开评测集（竞品自评集）",
+  "main": {
+    "passes": 51,
+    "denominator": 51,
+    "rate": 1.0
+  },
+  "per_question": {
+    "183a_elasticsearch_cluster_health": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183b_elasticsearch_index_discovery": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183c_elasticsearch_log_search": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183d_elasticsearch_aggregation": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183e_elasticsearch_field_mappings": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183f_elasticsearch_shard_filtering": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "183g_elasticsearch_index_stats": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "184_elasticsearch_index_explosion": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "185_elasticsearch_cross_region_search": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "186_elasticsearch_shard_explosion": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "187_elasticsearch_disk_space": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "188_elasticsearch_mapping_explosion": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "189_elasticsearch_timeseries_gap": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "190_elasticsearch_cross_service_correlation": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "191_elasticsearch_query_profile": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "193_elasticsearch_large_mapping_search": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    },
+    "235_elasticsearch_cluster_mismatch": {
+      "passes": 3,
+      "denominator": 3,
+      "rate": 1.0,
+      "trials": {
+        "1": {
+          "passed": true,
+          "category": "ok"
+        },
+        "2": {
+          "passed": true,
+          "category": "ok"
+        },
+        "3": {
+          "passed": true,
+          "category": "ok"
+        }
+      },
+      "swing": false,
+      "rerun_passes": 0,
+      "rerun_trials": 0
+    }
+  },
+  "swing_questions": [],
+  "rerun": {
+    "questions": {},
+    "passes": 0,
+    "trials": 0,
+    "rate": null,
+    "in_main_score": false
+  },
+  "zero_scored": {
+    "no_report": [],
+    "judge_exhausted": [],
+    "env_broken": []
+  },
+  "missing_trials": [],
+  "multi_cluster": {
+    "questions": [],
+    "passes": 0,
+    "denominator": 0,
+    "rate": null
+  },
+  "time_box_limited": {
+    "questions": [
+      "184_elasticsearch_index_explosion",
+      "235_elasticsearch_cluster_mismatch"
+    ],
+    "passes": 6,
+    "denominator": 6,
+    "rate": 1.0
+  },
+  "excluding_env_broken": {
+    "questions": [
+      "183a_elasticsearch_cluster_health",
+      "183b_elasticsearch_index_discovery",
+      "183c_elasticsearch_log_search",
+      "183d_elasticsearch_aggregation",
+      "183e_elasticsearch_field_mappings",
+      "183f_elasticsearch_shard_filtering",
+      "183g_elasticsearch_index_stats",
+      "184_elasticsearch_index_explosion",
+      "185_elasticsearch_cross_region_search",
+      "186_elasticsearch_shard_explosion",
+      "187_elasticsearch_disk_space",
+      "188_elasticsearch_mapping_explosion",
+      "189_elasticsearch_timeseries_gap",
+      "190_elasticsearch_cross_service_correlation",
+      "191_elasticsearch_query_profile",
+      "193_elasticsearch_large_mapping_search",
+      "235_elasticsearch_cluster_mismatch"
+    ],
+    "passes": 51,
+    "denominator": 51,
+    "rate": 1.0,
+    "excluded": []
+  }
+}

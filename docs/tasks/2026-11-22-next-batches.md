@@ -1,6 +1,6 @@
 # 四批后续实施（部署健壮性 → 凭据脱敏 → 工作台 → 数据面与补分）
 
-- 状态：批 3、批 1 完成（2026-11-22）；第二轮完成（2026-11-23）：批 2、加固、批 4 代码已合并，只剩 R2-4 的 PR #825、#827、#826 写好未合，等收尾租机真实 Run
+- 状态：四批全部完成（2026-11-23）。收尾租机跑完了检查点 1、冒烟和全量，#825、#827、#826 已合并；租机主机等用户 Destroy
 - 更新日期：2026-11-23
 - 依据：2026-11-22 开放 issue 重新分诊（23 个关闭、0 个须立即修）；四份独立预审（见「合同」）；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)；[C3](../design/technical-proposal-2026-09-07.md)
 - 工作区：每个 PR 一个 worktree（`../poa-<issue>-<名>`），合并后已删除
@@ -131,14 +131,31 @@ Agent 自定、比裁决更严的可逆细节（都是多隐藏）：`session` �
 | B #696 managedFields 视图 | #822 | `managedFieldsSummary`，升 v18 |
 | B #808 ES cluster 5 个工具 | #823 | `elasticsearch_cat` 参数名用 `api` 不用上游 `endpoint`（C3 §8 保留键，lead 决定）；node stats 含节点地址，仅限实验环境 |
 | B #809 评测驱动 | #824 | lookback=30d；`TIME_BOX_LIMITED` = {184, 235}，按投递起算的固定时长判定（审查纠正了预审「184 移出」的预期）；B1 名单 34 题；p12 建只读 Valkey 账号并披露，可能 NOAUTH 失败 |
-| B #701 重试反馈列全部失败检查 | #825 | 未合（R2-4）。发布说明：升级时在途、已提交回复有多项检查失败的 Run 以 `INCOMPATIBLE_STATE` 干净拦下 |
-| B #679 空 K8s 列表可支持「不存在」 | #827 | 未合（R2-4），加固中；不升 `PROJECTION_REVISION`（base 档无 K8s 工具），ext 钉值移动，K8s 列表注册版本升 v2 |
-| B #744 第 4 项 trace 计数 | #826 | 未合（R2-4） |
+| B #701 重试反馈列全部失败检查 | #825 | 租机真实 Run 后合并（`f7d08222`）。发布说明：升级时在途、已提交回复有多项检查失败的 Run 以 `INCOMPATIBLE_STATE` 干净拦下 |
+| B #679 空 K8s 列表可支持「不存在」 | #827 | 租机真实 Run 后合并（`fdec7b08`）；不升 `PROJECTION_REVISION`（base 档无 K8s 工具），ext 钉值移动，K8s 列表注册版本升 v2 |
+| B #744 第 4 项 trace 计数 | #826 | 租机真实 Run 后合并（`51257e79`） |
 
 已合并 PR 均在 CI 全绿 + `CLEAN` 后 squash 合并；#825–#827 CI 绿、已独立审查，保持未合。新 issue：#818（redis `requirepass`/`masterauth` 不算凭据名）、#819（CI kafka-backend broker 抖动）；另有 log-backends 端口冲突、Loki 启动 503 两类 CI 抖动，各重跑一次通过。
 
 偏离：本轮没有真实 Run，全部按 R2-4、R2-5 挪到租机（含 #574 Pod env Run，B1-D15）；本地只跑定向测试，全量交给 CI（swap 约 10.5/12 GB）；GitHub 故障约 1.5 h；一个 Agent 误把部分 #802 钉值改动写进主检出（备份在会话临时目录，待用户决定恢复）。
 
+## 收尾租机结果（2026-11-23）
+
+有界真实运行，不是生产证明。主机：Vultr `opspilot-tool-1`，8 vCPU / 31 GB，06:28 PT 开机。全部阶段 21:26 PT 跑完，比 24 h 硬停提前。提示词与产品代码在租机期间未改。证据：[run.md](../evidence/rental-2026-11-23/run.md)。
+
+| 阶段 | 结果 |
+|---|---|
+| 检查点 1（提交 `e199727e` + 三个未合 PR） | 8/8 条款各一次真实 Run 通过；之后按租机前裁决，CI 绿后合并 #827、#825、#826 |
+| 冒烟（冻结提交 F `51257e79`） | 7 个 Run 都 completed；R2-3 成立（162 题加上常驻说明后从 B 变 A，记在 #780，下一轮做） |
+| Holmes 题集 OpsPilot 侧 57 题 × 3 | **163/171（95.3%）**；同一 53 题 151/159，对比 11-20 的 133/159；Holmes 侧 150/159 + 新 4 题 12/12 = 162/171。[记录](../evidence/rental-2026-11-23/full/run.md) |
+| SREGym Lite 17 × 3 | **38/51（74.5%）**，11-20 为 43/51；p01、p05、p14 下降，原因未确认（#831）。[记录](../evidence/rental-2026-11-23/full/sregym/run.md) |
+
+- 披露：Z.ai judge 10:00–12:44 PT 余额耗尽，70 遍事后补判；`/home/opspilot/.config` 在 lead 准备主机时被建成 root 所有，导致 SREGym p01 t1 两次 env_broken，改了属主后重跑；`--redo` 冻结崩溃（#829），p01 t1 共跑 4 次，只计最后一次；p12 只读 Valkey 账号 3 遍都建失败（#830）；检查点 1 第 1–3 项的原始 ledger 被 `git worktree remove` 删掉，summary 还在；没做摇摆题补跑。
+- 凭据扫描：证据 293 个文件、27 个值，0 命中（阳性对照 1）。
+- 费用：DeepSeek prompt 208.40M（缓存命中 194.36M）、completion 3.87M，按 11-21 闲时价约 $5.0（当前价未确认）；Holmes 侧与 judge 用量没有统计；主机租金看用户账单。
+- main 上 kafka-backend CI 抖动三次（#819），各 PR 上都过了，待修。
+
 ## 待决
 
-- 收尾租机（8 vCPU / 32 GB amd64，约 18–21 h，按 24 h 预算），按批 4 预审「租机范围」执行，需用户开通：真实 Run 后合并 #825、#827、#826；补 #779、#696、#808、#809 与 #574 的真实 Run 证据；162 题 15 分钟验证（R2-3）。
+- 用户在 Vultr 控制台 Destroy `opspilot-tool-1`，之后删本地 `~/.config/opspilot/rental.env`。
+- 后续：#780 常驻说明、#829、#830、#831、#819。

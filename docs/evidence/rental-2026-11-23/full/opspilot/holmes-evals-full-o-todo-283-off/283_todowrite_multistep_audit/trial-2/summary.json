@@ -1,0 +1,1655 @@
+{
+  "schema": "holmes-eval-trial-1",
+  "experiment": "holmes-evals-full-o-todo-283-off",
+  "run_id": "2df52838-f12c-557f-adda-82f515399748",
+  "frozen_at": "2026-11-23T19:18:58.772998+00:00",
+  "status": "completed",
+  "run": {
+    "run_id": "2df52838-f12c-557f-adda-82f515399748",
+    "incident_id": "96d691a1-1407-586a-bd6b-042c18350769",
+    "run": {
+      "state": "completed",
+      "control_generation": 0,
+      "budget_limit": 100,
+      "model_requests_used": 3,
+      "deadline": "2026-11-23T21:18:20.057297+00:00",
+      "bound_target_id": "m0-otel-20260909",
+      "question": "Run a configuration audit across every namespace that starts with 'app-283': in each one, find the ConfigMap named 'service-manifest' and report its 'audit_code' value. Work through the namespaces one by one and finish with a summary listing every namespace and its code.",
+      "authorized_window": {
+        "end": "2026-11-23T19:18:20+00:00",
+        "start": "2026-10-24T19:18:20+00:00"
+      }
+    },
+    "incident": {
+      "incident_id": "96d691a1-1407-586a-bd6b-042c18350769",
+      "target_id": "ed065989-0f27-46bb-baa3-ea0adb7c75c8",
+      "lifecycle": "open",
+      "state": "queued",
+      "mode": "automatic",
+      "control_generation": 0,
+      "current_run_id": "2df52838-f12c-557f-adda-82f515399748",
+      "created_at": "2026-11-23T19:18:20.072724+00:00"
+    },
+    "incident_runs": [
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "control_generation": 0,
+        "state": "completed"
+      }
+    ],
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-a882bbc5425e",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "report": {
+      "schema_version": "m0-report-v3",
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "Configuration audit across namespaces whose name starts with 'app-283': the cluster had 4 such namespaces (app-283-billing, app-283-ledger, app-283-media, app-283-search) out of 11 namespaces total, and each one contains a ConfigMap named 'service-manifest'. Its 'audit_code' value was read for each namespace: app-283-billing = TDW283-BLX94Q, app-283-ledger = TDW283-QGF48V, app-283-media = TDW283-MDP61Z, app-283-search = TDW283-SRK27M. Each of these ConfigMaps has exactly the data keys audit_code, owner and tier. The values were read as the cluster state at query time (observed_at 2026-11-23T19:18:21Z–19:18:24Z), so they are current readings and not a proven history across the authorized window 2026-10-24T19:18:20Z–2026-11-23T19:18:20Z.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Four namespaces whose names start with 'app-283' exist at query time, out of 11 namespaces in the cluster: app-283-billing, app-283-ledger, app-283-media, app-283-search.",
+          "evidence_ids": [
+            "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "In namespace app-283-billing the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-BLX94Q; its data keys are audit_code, owner, tier.",
+          "evidence_ids": [
+            "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "In namespace app-283-ledger the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-QGF48V; its data keys are audit_code, owner, tier.",
+          "evidence_ids": [
+            "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "In namespace app-283-media the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-MDP61Z; its data keys are audit_code, owner, tier.",
+          "evidence_ids": [
+            "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "In namespace app-283-search the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-SRK27M; its data keys are audit_code, owner, tier.",
+          "evidence_ids": [
+            "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "The audit_code values are the cluster's state at the moment of the queries (observed_at 2026-11-23T19:18:21Z to 2026-11-23T19:18:24Z), not a proven record for the historical authorized window 2026-10-24T19:18:20Z to 2026-11-23T19:18:20Z; earlier or intermediate values are unknown.",
+        "The 'change_history' integration is not available in this Run, so no ConfigMap edit history (who set audit_code, or when) could be checked.",
+        "Only the data keys audit_code, owner and tier were read; the ConfigMap's owner and tier values were not inspected because they were out of scope for the requested audit."
+      ],
+      "next_steps": [
+        "If historical audit_code values matter, confirm them against a configuration change-history source, which is not integrated in this Run.",
+        "If the owner and tier fields are part of the audit, read .data.owner and .data.tier from the same four ConfigMaps."
+      ],
+      "root_cause": null
+    },
+    "report_present": true,
+    "conclusion_step": {
+      "sequence": 3,
+      "logical_key": "conclusion:g0:ctx0:round-3",
+      "status": "response_committed",
+      "observed_at": "2026-11-23T19:18:30.708478+00:00"
+    },
+    "steps": [
+      {
+        "sequence": 0,
+        "logical_key": "ctx0:round-1",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T19:18:21.593190+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 1,
+        "logical_key": "ctx0:round-2",
+        "status": "tool_result_committed",
+        "observed_at": "2026-11-23T19:18:24.144313+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 2,
+        "logical_key": "ctx0:round-3",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T19:18:30.701660+00:00",
+        "kind": null
+      },
+      {
+        "sequence": 3,
+        "logical_key": "conclusion:g0:ctx0:round-3",
+        "status": "response_committed",
+        "observed_at": "2026-11-23T19:18:30.708478+00:00",
+        "kind": "conclusion"
+      }
+    ],
+    "tokens": {
+      "model_rounds_with_usage": 3,
+      "prompt_tokens": 45212,
+      "completion_tokens": 2192,
+      "total_tokens": 47404,
+      "prompt_cache_hit_tokens": 40704,
+      "prompt_cache_miss_tokens": 4508
+    },
+    "tool_requests": [
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "operation_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      },
+      {
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3",
+        "epoch": 1,
+        "tool": "kubernetes_jq_query",
+        "target_id": "m0-otel-20260909",
+        "result_code": "ok",
+        "reason": null,
+        "outbound": true,
+        "source_contact": null,
+        "time_basis": "tool_event",
+        "record_kind": "result"
+      }
+    ],
+    "observations": [
+      {
+        "evidence_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+        "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "namespaces",
+          "jq_expr": ".items[] | select(.metadata.name | startswith(\"app-283\")) | .metadata.name"
+        },
+        "window": {
+          "end": "2026-11-23T19:18:20+00:00",
+          "start": "2026-10-24T19:18:20+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T19:18:21.649185+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+        "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "configmaps",
+          "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+          "namespace": "app-283-billing"
+        },
+        "window": {
+          "end": "2026-11-23T19:18:20+00:00",
+          "start": "2026-10-24T19:18:20+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T19:18:24.212683+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+        "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "configmaps",
+          "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+          "namespace": "app-283-ledger"
+        },
+        "window": {
+          "end": "2026-11-23T19:18:20+00:00",
+          "start": "2026-10-24T19:18:20+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T19:18:24.220719+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+        "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "configmaps",
+          "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+          "namespace": "app-283-media"
+        },
+        "window": {
+          "end": "2026-11-23T19:18:20+00:00",
+          "start": "2026-10-24T19:18:20+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T19:18:24.295566+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+        "run_id": "2df52838-f12c-557f-adda-82f515399748",
+        "status": "ok",
+        "adopted": true,
+        "tool": "kubernetes_jq_query",
+        "tool_version": "v2",
+        "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+        "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+        "source": "otel-demo",
+        "target_id": "m0-otel-20260909",
+        "query": {
+          "kind": "configmaps",
+          "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+          "namespace": "app-283-search"
+        },
+        "window": {
+          "end": "2026-11-23T19:18:20+00:00",
+          "start": "2026-10-24T19:18:20+00:00"
+        },
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-23T19:18:24.306922+00:00",
+        "data_as_of": null,
+        "freshness_seconds": null,
+        "projection_revision": "m1-01-tool-view-v18",
+        "resolvable": true,
+        "missing_fields": []
+      }
+    ],
+    "investigation_evidence": {
+      "incident_id": "96d691a1-1407-586a-bd6b-042c18350769",
+      "observations": [
+        {
+          "evidence_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+          "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "namespaces",
+            "jq_expr": ".items[] | select(.metadata.name | startswith(\"app-283\")) | .metadata.name"
+          },
+          "window": {
+            "end": "2026-11-23T19:18:20+00:00",
+            "start": "2026-10-24T19:18:20+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T19:18:21.649185+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+          "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "configmaps",
+            "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+            "namespace": "app-283-billing"
+          },
+          "window": {
+            "end": "2026-11-23T19:18:20+00:00",
+            "start": "2026-10-24T19:18:20+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T19:18:24.212683+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+          "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "configmaps",
+            "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+            "namespace": "app-283-ledger"
+          },
+          "window": {
+            "end": "2026-11-23T19:18:20+00:00",
+            "start": "2026-10-24T19:18:20+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T19:18:24.220719+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+          "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "configmaps",
+            "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+            "namespace": "app-283-media"
+          },
+          "window": {
+            "end": "2026-11-23T19:18:20+00:00",
+            "start": "2026-10-24T19:18:20+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T19:18:24.295566+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        },
+        {
+          "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "status": "ok",
+          "adopted": true,
+          "tool": "kubernetes_jq_query",
+          "tool_version": "v2",
+          "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+          "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265",
+          "source": "otel-demo",
+          "target_id": "m0-otel-20260909",
+          "query": {
+            "kind": "configmaps",
+            "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+            "namespace": "app-283-search"
+          },
+          "window": {
+            "end": "2026-11-23T19:18:20+00:00",
+            "start": "2026-10-24T19:18:20+00:00"
+          },
+          "lookback_seconds": null,
+          "lookback_start_at": null,
+          "observed_at": "2026-11-23T19:18:24.306922+00:00",
+          "data_as_of": null,
+          "freshness_seconds": null,
+          "projection_revision": "m1-01-tool-view-v18",
+          "resolvable": true,
+          "missing_fields": []
+        }
+      ],
+      "refused_operations": [],
+      "reports": [
+        {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "claims": {
+            "fact": [
+              {
+                "text": "Four namespaces whose names start with 'app-283' exist at query time, out of 11 namespaces in the cluster: app-283-billing, app-283-ledger, app-283-media, app-283-search.",
+                "evidence": [
+                  {
+                    "evidence_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "In namespace app-283-billing the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-BLX94Q; its data keys are audit_code, owner, tier.",
+                "evidence": [
+                  {
+                    "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "In namespace app-283-ledger the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-QGF48V; its data keys are audit_code, owner, tier.",
+                "evidence": [
+                  {
+                    "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "In namespace app-283-media the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-MDP61Z; its data keys are audit_code, owner, tier.",
+                "evidence": [
+                  {
+                    "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              },
+              {
+                "text": "In namespace app-283-search the ConfigMap 'service-manifest' exists and its data.audit_code value is TDW283-SRK27M; its data keys are audit_code, owner, tier.",
+                "evidence": [
+                  {
+                    "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+                    "resolvable": true,
+                    "ok": true,
+                    "citable_as_fact": true
+                  }
+                ]
+              }
+            ],
+            "hypothesis": [],
+            "recommendation": [],
+            "counter_evidence": [],
+            "rejected_hypothesis": []
+          },
+          "collection_truncated": false
+        }
+      ],
+      "coverage": [
+        {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "sources_recorded": true,
+          "sources": [
+            {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "kubernetes",
+              "ok": 5,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "all_ok",
+              "gap": false
+            },
+            {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_queried",
+              "gap": true
+            },
+            {
+              "name": "change_history",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 0,
+              "reasons": {},
+              "state": "not_integrated",
+              "gap": true
+            }
+          ],
+          "duplicates_skipped": 0
+        }
+      ]
+    },
+    "cited_evidence": [
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "subject_id": "96d691a1-1407-586a-bd6b-042c18350769",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "configmaps",
+              "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+              "namespace": "app-283-billing"
+            },
+            "scope": {
+              "kind": "configmaps",
+              "api_group": "",
+              "namespace": "app-283-billing",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T19:18:20+00:00",
+              "start": "2026-10-24T19:18:20+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "keys": [
+                  "audit_code",
+                  "owner",
+                  "tier"
+                ],
+                "namespace": "app-283-billing",
+                "audit_code": "TDW283-BLX94Q"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+            "observed_at": "2026-11-23T19:18:24.212683+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+            "dispatch_started_at": "2026-11-23T19:18:24.154644+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 2,
+            "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265"
+          }
+        }
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "subject_id": "96d691a1-1407-586a-bd6b-042c18350769",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "configmaps",
+              "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+              "namespace": "app-283-ledger"
+            },
+            "scope": {
+              "kind": "configmaps",
+              "api_group": "",
+              "namespace": "app-283-ledger",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T19:18:20+00:00",
+              "start": "2026-10-24T19:18:20+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "keys": [
+                  "audit_code",
+                  "owner",
+                  "tier"
+                ],
+                "namespace": "app-283-ledger",
+                "audit_code": "TDW283-QGF48V"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+            "observed_at": "2026-11-23T19:18:24.220719+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+            "dispatch_started_at": "2026-11-23T19:18:24.163348+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 2,
+            "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265"
+          }
+        }
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "subject_id": "96d691a1-1407-586a-bd6b-042c18350769",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "configmaps",
+              "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+              "namespace": "app-283-media"
+            },
+            "scope": {
+              "kind": "configmaps",
+              "api_group": "",
+              "namespace": "app-283-media",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T19:18:20+00:00",
+              "start": "2026-10-24T19:18:20+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "keys": [
+                  "audit_code",
+                  "owner",
+                  "tier"
+                ],
+                "namespace": "app-283-media",
+                "audit_code": "TDW283-MDP61Z"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+            "observed_at": "2026-11-23T19:18:24.295566+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+            "dispatch_started_at": "2026-11-23T19:18:24.243453+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 2,
+            "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265"
+          }
+        }
+      },
+      {
+        "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "subject_id": "96d691a1-1407-586a-bd6b-042c18350769",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "configmaps",
+              "jq_expr": ".items[] | select(.metadata.name == \"service-manifest\") | {namespace: .metadata.namespace, keys: (.data | keys), audit_code: .data.audit_code}",
+              "namespace": "app-283-search"
+            },
+            "scope": {
+              "kind": "configmaps",
+              "api_group": "",
+              "namespace": "app-283-search",
+              "all_namespaces": false,
+              "cluster_scoped": false,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T19:18:20+00:00",
+              "start": "2026-10-24T19:18:20+00:00"
+            },
+            "adopted": true,
+            "content": [
+              {
+                "keys": [
+                  "audit_code",
+                  "owner",
+                  "tier"
+                ],
+                "namespace": "app-283-search",
+                "audit_code": "TDW283-SRK27M"
+              }
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+            "observed_at": "2026-11-23T19:18:24.306922+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3",
+            "result_count": 1,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 1,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+            "dispatch_started_at": "2026-11-23T19:18:24.249172+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 2,
+            "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265"
+          }
+        }
+      },
+      {
+        "evidence_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+        "resolvable": true,
+        "tool": "kubernetes_jq_query",
+        "status": "ok",
+        "stored": {
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "subject_id": "96d691a1-1407-586a-bd6b-042c18350769",
+          "status": "ok",
+          "view": {
+            "tool": "kubernetes_jq_query",
+            "notes": [],
+            "query": {
+              "kind": "namespaces",
+              "jq_expr": ".items[] | select(.metadata.name | startswith(\"app-283\")) | .metadata.name"
+            },
+            "scope": {
+              "kind": "namespaces",
+              "api_group": "",
+              "namespace": null,
+              "all_namespaces": false,
+              "cluster_scoped": true,
+              "field_selector": null,
+              "label_selector": null,
+              "application_namespace": "otel-demo"
+            },
+            "trust": "untrusted-evidence",
+            "source": "otel-demo",
+            "status": "ok",
+            "window": {
+              "end": "2026-11-23T19:18:20+00:00",
+              "start": "2026-10-24T19:18:20+00:00"
+            },
+            "adopted": true,
+            "content": [
+              "app-283-billing",
+              "app-283-ledger",
+              "app-283-media",
+              "app-283-search"
+            ],
+            "target_id": "m0-otel-20260909",
+            "truncated": false,
+            "data_as_of": null,
+            "incomplete": false,
+            "pages_read": 1,
+            "evidence_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+            "observed_at": "2026-11-23T19:18:21.649185+00:00",
+            "cannot_prove": "Objects are the cluster's state when the query ran, not during the incident window: they cannot prove what was true earlier, and an object missing now may have existed then. Events cover only their own timestamps inside the window; an event that is not returned is unknown, not proof nothing happened (events expire and timestamps are often null). A jq result is what the expression selected, not a full picture of the kind. When the API server returns zero objects of a kind other than events (every page read), the result is ok with total_items_processed 0: it proves only that there were no objects matching this kind, namespace and selectors at query time, not that none existed during the incident. Zero events, or a list your filter reduced to nothing, stays no_data. metadata.managedFieldsSummary gives each manager's last write time only: it is not a full change history (earlier writes by the same manager are gone) and it does not say which fields that write changed.",
+            "omitted_rows": 0,
+            "operation_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0",
+            "result_count": 4,
+            "tool_version": "v2",
+            "omitted_bytes": 0,
+            "source_end_at": null,
+            "returned_count": 4,
+            "citable_as_fact": true,
+            "source_start_at": null,
+            "lookback_seconds": null,
+            "freshness_seconds": null,
+            "lookback_start_at": null,
+            "registry_revision": "ddb7d97b01706185b196f1b422e1925881f3ae18a46cbee4f289d5b2dc8b7ac1",
+            "dispatch_started_at": "2026-11-23T19:18:21.601951+00:00",
+            "projection_revision": "m1-01-tool-view-v18",
+            "total_items_processed": 11,
+            "tool_registry_revision": "4f452bd3bd294bb8f7e7976c32ef6334407815c7afc3e969f6ca140ee9be5265"
+          }
+        }
+      }
+    ],
+    "audit": {
+      "incident_id": "96d691a1-1407-586a-bd6b-042c18350769",
+      "entries": [
+        {
+          "recorded_at": "2026-11-23T19:18:20.079535+00:00",
+          "sequence": 0,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "1",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "intake_accepted",
+            "sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:20.079535+00:00",
+          "sequence": 1,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "2df52838-f12c-557f-adda-82f515399748:1",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "action": "created",
+            "time_basis": "subject_event",
+            "event_sequence": 1
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:20.369605+00:00",
+          "sequence": 2,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "2",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "run_claimed",
+            "sequence": 2
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:21.593190+00:00",
+          "sequence": 3,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "2df52838-f12c-557f-adda-82f515399748:a5becbbe-68de-4e41-bcc4-b84adb34f560",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:21.597112+00:00",
+          "sequence": 4,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "3",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 3
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:21.679951+00:00",
+          "sequence": 5,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "operation_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:21.679951+00:00",
+          "sequence": 6,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:21.679951+00:00",
+          "sequence": 7,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "4",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 4
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.144313+00:00",
+          "sequence": 8,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "2df52838-f12c-557f-adda-82f515399748:1190fc5f-3172-472a-abfe-1a3b34e173c7",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.147813+00:00",
+          "sequence": 9,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "5",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 5
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.263695+00:00",
+          "sequence": 10,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.263695+00:00",
+          "sequence": 11,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.263695+00:00",
+          "sequence": 12,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "6",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 6
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.296299+00:00",
+          "sequence": 13,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "e28b1de3-9b9c-41a6-8656-85345575bee4",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.296299+00:00",
+          "sequence": 14,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.296299+00:00",
+          "sequence": 15,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "7",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 7
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.324955+00:00",
+          "sequence": 16,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "61b45049-54c7-41c3-ab84-e658af861e99",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.324955+00:00",
+          "sequence": 17,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.324955+00:00",
+          "sequence": 18,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "8",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 8
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.333369+00:00",
+          "sequence": 19,
+          "category": "query",
+          "source": "opspilot_tool_charges",
+          "record_id": "17392176-0a2a-4cd6-87f9-a5137da79698",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "operation_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3",
+            "epoch": 1,
+            "tool": "kubernetes_jq_query",
+            "target_id": "m0-otel-20260909",
+            "result_code": "ok",
+            "reason": null,
+            "outbound": true,
+            "source_contact": null,
+            "time_basis": "tool_event",
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.333369+00:00",
+          "sequence": 20,
+          "category": "evidence",
+          "source": "opspilot_evidence",
+          "record_id": "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "time_basis": "tool_event",
+            "status": "ok",
+            "adopted": true,
+            "committed": true,
+            "record_kind": "result"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:24.333369+00:00",
+          "sequence": 21,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "9",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "tool_committed",
+            "sequence": 9
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:30.701660+00:00",
+          "sequence": 22,
+          "category": "input",
+          "source": "opspilot_input_rounds",
+          "record_id": "2df52838-f12c-557f-adda-82f515399748:a058242e-7323-4558-9102-77a8fbcf5024",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "control_generation": 0,
+            "input_watermark": 0,
+            "committed": true,
+            "time_basis": "step_recorded"
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:30.704945+00:00",
+          "sequence": 23,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "10",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "step_committed",
+            "sequence": 10
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:30.718299+00:00",
+          "sequence": 24,
+          "category": "state_change",
+          "source": "opspilot_subject_events",
+          "record_id": "11",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "kind": "run_completed",
+            "sequence": 11
+          }
+        },
+        {
+          "recorded_at": "2026-11-23T19:18:30.718299+00:00",
+          "sequence": 25,
+          "category": "state_change",
+          "source": "opspilot_runs",
+          "record_id": "2df52838-f12c-557f-adda-82f515399748:11",
+          "run_id": "2df52838-f12c-557f-adda-82f515399748",
+          "actor": null,
+          "detail": {
+            "action": "ended",
+            "time_basis": "subject_event",
+            "event_sequence": 11
+          }
+        }
+      ],
+      "counts": {
+        "input": 3,
+        "query": 5,
+        "evidence": 5,
+        "state_change": 13,
+        "human_correction": 0,
+        "recovery_observation": 0,
+        "postmortem_review": 0
+      },
+      "missing": [
+        "human_correction",
+        "recovery_observation",
+        "postmortem_review"
+      ]
+    },
+    "audit_undated": {},
+    "alert_delivery_outcomes": [],
+    "alert_deliveries": [],
+    "outcome": {
+      "available": true,
+      "run_id": "2df52838-f12c-557f-adda-82f515399748",
+      "scenario_id": "frozen-run",
+      "final_state": "completed",
+      "evidence_ids": [
+        "a5becbbe-68de-4e41-bcc4-b84adb34f560-t0:8f1b3074-9e2f-469e-add8-1d6bde9936c3",
+        "1190fc5f-3172-472a-abfe-1a3b34e173c7-t0:6ee94f81-c369-4b42-a27f-6fc64a3a9fc9",
+        "1190fc5f-3172-472a-abfe-1a3b34e173c7-t1:e28b1de3-9b9c-41a6-8656-85345575bee4",
+        "1190fc5f-3172-472a-abfe-1a3b34e173c7-t2:61b45049-54c7-41c3-ab84-e658af861e99",
+        "1190fc5f-3172-472a-abfe-1a3b34e173c7-t3:17392176-0a2a-4cd6-87f9-a5137da79698"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "collected_at_db": "2026-11-23T19:18:35.505026+00:00"
+  },
+  "trace": {
+    "project": "opspilot-lab-holmes-evals-full-o-todo-283-off",
+    "project_id": "a59145c0-95f4-4bd1-8996-7acb231cf4e3",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-e050-aacfd91bbfb2",
+        "start_time": "2026-11-23T19:18:20.370280+00:00",
+        "end_time": "2026-11-23T19:18:30.719467+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a59145c0-95f4-4bd1-8996-7acb231cf4e3/r/00000000-0000-0000-e050-aacfd91bbfb2?poll=true"
+      },
+      {
+        "langsmith_run_id": "00000000-0000-0000-79a9-5d84591772d4",
+        "start_time": "2026-11-21T09:16:17.995196+00:00",
+        "end_time": "2026-11-21T09:16:29.855549+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a59145c0-95f4-4bd1-8996-7acb231cf4e3/r/00000000-0000-0000-79a9-5d84591772d4?poll=true"
+      }
+    ]
+  },
+  "holmes_eval": {
+    "schema": "holmes-eval-trial-1",
+    "track": "HolmesGPT 公开评测集（竞品自评集）",
+    "round": "full-o-todo-283-off",
+    "qid": "283_todowrite_multistep_audit",
+    "upstream_commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "trial": 2,
+    "chance": 1,
+    "git": {
+      "commit": "51257e79a6eba6872b5435c23086f6ea7aec1f33",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 30010,
+      "web": 30080,
+      "es": 30092,
+      "prometheus": 30090,
+      "jaeger_query": 30086,
+      "k8s": 30043,
+      "loki_gateway": 30031,
+      "loki_fake": 30032,
+      "victorialogs_gateway": 30033,
+      "victorialogs": 30028
+    },
+    "cluster_name": {
+      "value": null,
+      "env_set": false
+    },
+    "setup": {
+      "cleanup_before": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T19:18:11.357957+00:00",
+        "ended_at": "2026-11-23T19:18:11.623007+00:00",
+        "seconds": 0.265,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "skipped": false
+      },
+      "released": {
+        "before": {
+          "namespace": null,
+          "namespaces_left": 0,
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        },
+        "after": {
+          "namespace": null,
+          "namespaces_left": 0,
+          "namespace_gone": true,
+          "busy_ports": [],
+          "ok": true
+        }
+      },
+      "purged": {
+        "before": [],
+        "after": []
+      },
+      "before_test": {
+        "operation": "before_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T19:18:11.694512+00:00",
+        "ended_at": "2026-11-23T19:18:12.912385+00:00",
+        "seconds": 1.218,
+        "log_sha256": "4c5236c14613e639811e6035fe88e55d43205b001788ae212aef61d73f1c164c",
+        "skipped": false
+      },
+      "ended_at": "2026-11-23T19:18:12.912656+00:00",
+      "cleanup_after": {
+        "operation": "after_test",
+        "exit_code": 0,
+        "timed_out": false,
+        "started_at": "2026-11-23T19:18:35.559173+00:00",
+        "ended_at": "2026-11-23T19:18:56.588055+00:00",
+        "seconds": 21.029,
+        "log_sha256": "923cee93279ce6507051465ef67c76861247eea3fade155cf1267401cc921664",
+        "skipped": false
+      }
+    },
+    "time_box_limited": false,
+    "shift": {
+      "applied": false,
+      "reason": "RELATIVE_TIME",
+      "seconds": 0,
+      "anchor": null,
+      "original_min": null,
+      "original_max": null,
+      "shifted_min": null,
+      "shifted_max": null,
+      "question_rewrites": [],
+      "time_only_phrases": 0,
+      "backend": "kubernetes",
+      "anchor_source": null,
+      "fixed_entries": 0,
+      "pushed": 0,
+      "dropped_future": 0,
+      "line_stamps_rewritten": 0,
+      "streams": []
+    },
+    "shift_timing": {
+      "started_at": "2026-11-23T19:18:12.912656+00:00",
+      "ended_at": "2026-11-23T19:18:12.912725+00:00",
+      "seconds": 0.0
+    },
+    "question": {
+      "sha256_original": "c356ec565dc88ef626f7a225a769dd81329dea1b7d7599f0d9b5a0034011c166",
+      "sha256_delivered": "c356ec565dc88ef626f7a225a769dd81329dea1b7d7599f0d9b5a0034011c166",
+      "rewrites": [],
+      "time_only_phrases": 0
+    },
+    "disclosures": [
+      "TOOL_FACE_FIXED",
+      "NO_INTERMEDIATE_OUTPUT",
+      "JUDGE_DIFFERS_FROM_UPSTREAM",
+      "K8S_SCOPE_DIFFERS",
+      "TODO_FORCED"
+    ],
+    "todo": {
+      "mode": "off",
+      "enabled": false,
+      "source": "forced",
+      "offered": false,
+      "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+      "tool_schema_revision": "otel-demo-ext-a882bbc5425e"
+    },
+    "data_plane": {
+      "backend": "kubernetes",
+      "mode": "none",
+      "product_url": null,
+      "gateway_upstream": null,
+      "port_forwards": [],
+      "victorialogs_image": null
+    },
+    "delivery": {
+      "at": "2026-11-23T19:18:20.002967+00:00",
+      "setup_to_delivery_seconds": 7.09,
+      "data_written_to_delivery_seconds": 8.309,
+      "status": 201,
+      "code": null,
+      "incident_id": "96d691a1-1407-586a-bd6b-042c18350769",
+      "run_id": "2df52838-f12c-557f-adda-82f515399748",
+      "idempotency_label": "holmes-full-o-todo-283-off-283_todowrite_multistep_audit-t2-c1",
+      "responded_at": "2026-11-23T19:18:20.082207+00:00"
+    },
+    "run_wait": {
+      "terminal_state": "completed",
+      "timed_out": false,
+      "seconds": 15.038
+    },
+    "conversion": {
+      "with_tool_calls": true,
+      "tool_calls": 5,
+      "tool_calls_sha256": "59a43e26d1f22cf56582b44235a0937d1245df5ccb548704c770464203db9949",
+      "deshift_count": 0,
+      "reason": null,
+      "text_sha256": "4c5fa4b534aa42b1ec5490db841b2a3448ba3defc9909e210c05d166491b3d26"
+    },
+    "history": [],
+    "judge": {
+      "receiver": "zai",
+      "model": "glm-5.3-flashx",
+      "mode": "strict",
+      "prompt_sha256": "d663a9061a1691b96fb0df179bac948d3803e86f4cc9dea689b3f7b55a154b9a",
+      "choice": "B",
+      "passed": false,
+      "error_code": null,
+      "attempts": 1,
+      "request_bytes": 21402
+    },
+    "category": "ok"
+  },
+  "raw_ledger": {
+    "sha256": "ca18d3d0d94f0c12b7029f753da6b9f47a3792ecdafc4e5bd91c4c82535f3913",
+    "bytes": 105064,
+    "path": "tmp/lab-ledgers/holmes-evals-full-o-todo-283-off/2df52838-f12c-557f-adda-82f515399748/ledger.json",
+    "in_repository": false
+  }
+}
