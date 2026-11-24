@@ -1504,6 +1504,14 @@ def _status_facts(
     return facts
 
 
+#: Per-status wording where an action does something different. Under human
+#: ownership Resume changes only the pause mirror, never the Run
+#: (persistence/controls.py), and takeover is irreversible (C3 §10).
+STATUS_HINT: dict[tuple[str, str], str] = {
+    ("human_owned", "resume"): "Lifts the pause only; the Agent stays stopped.",
+}
+
+
 def _actions(
     status: IncidentStatus, offered: Sequence[str], snapshot: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -1518,7 +1526,7 @@ def _actions(
         return {
             "action": action,
             "button": BUTTON.get(action, action),
-            "hint": HINT.get(action, ""),
+            "hint": STATUS_HINT.get((status.key, action), HINT.get(action, "")),
             "lead": action == lead or (lead == "reinvestigate" and action == "new_run"),
             "input": action in ("register_remediation", "rebind_target", "merge_into"),
         }
