@@ -148,6 +148,18 @@ condition = "AND"
 paths = ['(^|/)docs/evidence/rental-2026-11-20/cp2/sregym/sregym-lite-cp2-smoke/p10/trial-1/summary\\.json$']
 regexTarget = "secret"
 regexes = ['^sregym-cp2-smoke-p10-t1$']
+[[rules.allowlists]]
+description = "valkey image tag in the 2026-11-24 rental SREGym swing evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-24/swing/(swing-f|p12-main)/p[0-9]+/trial-[0-9]+/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^9\\.0\\.1-alpine3\\.23$']
+[[rules.allowlists]]
+description = "idempotency labels in the 2026-11-24 rental SREGym swing evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/rental-2026-11-24/swing/(swing-f|p12-main)/p[0-9]+/trial-[0-9]+/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^sregym-swing1124-p[0-9]{2}-t[1-3]$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
