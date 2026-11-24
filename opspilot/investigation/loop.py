@@ -197,18 +197,41 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
 # Halt reasons that mean the store itself refused this attempt's writes; no
 # conclusion step is attempted after them (it would only become late history).
 def investigation_versions(
-    variant_id: str = DISCIPLINE_VARIANT, *, knowledge_tool: bool = False
+    variant_id: str = DISCIPLINE_VARIANT,
+    *,
+    knowledge_tool: bool = False,
+    standing_instructions: bool = False,
 ) -> dict[str, str]:
     """Every ``versions`` key the loop's behaviour depends on (C3 §5).
 
     ``prompt_revision`` (L1a + L2) and ``context_policy_revision`` (the
     compaction path). ``tool_schema_revision`` belongs to the tool registry and
     is merged in by the caller that builds the Run's ``versions``.
+    ``standing_instructions`` (#780, 780-12): the variant a Run whose input
+    carries a real standing-instructions fact is created and claimed under.
     """
     return {
-        **prompt_revision_versions(variant_id, knowledge_tool=knowledge_tool),
+        **prompt_revision_versions(
+            variant_id,
+            knowledge_tool=knowledge_tool,
+            standing_instructions=standing_instructions,
+        ),
         **context_policy_versions(),
     }
+
+
+def input_prompt_revision(input: InvestigationInput) -> str:
+    """The ``prompt_revision`` a Run's own input implies (780-12): the same
+    computation ``resume`` opens its state with, so a claimed Run whose row
+    records another value is refused ``INCOMPATIBLE_STATE`` before any
+    request."""
+    return prompt_revision_versions(
+        input.variant_id,
+        knowledge_tool=RUNBOOK_CATALOG in input.scope_facts,
+        standing_instructions=is_standing_instructions(
+            input.scope_facts.get(STANDING_INSTRUCTIONS)
+        ),
+    )["prompt_revision"]
 
 
 _STORE_REFUSALS = frozenset(

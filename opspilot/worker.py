@@ -237,10 +237,32 @@ class Worker:
     store: DurableStore
     versions: dict[str, str]
     owner: UUID
+    #: #780 (780-12): the variant a Run carrying a real standing-instructions
+    #: fact is created under; ``None`` where the profile has none.
+    standing_versions: dict[str, str] | None = None
 
     @classmethod
-    def create(cls, store: DurableStore, versions: dict[str, str]) -> "Worker":
-        return cls(store, dict(versions), uuid4())
+    def create(
+        cls,
+        store: DurableStore,
+        versions: dict[str, str],
+        standing_versions: dict[str, str] | None = None,
+    ) -> "Worker":
+        return cls(
+            store,
+            dict(versions),
+            uuid4(),
+            None if standing_versions is None else dict(standing_versions),
+        )
+
+    @property
+    def accepted_versions(self) -> dict[str, str] | tuple[dict[str, str], ...]:
+        """What the claim barrier compares the Run row with: ``versions``
+        alone (unchanged for every profile without the variant), or both
+        code-determined dicts."""
+        if self.standing_versions is None or self.standing_versions == self.versions:
+            return self.versions
+        return (self.versions, self.standing_versions)
 
     def recover(self, incident_id: UUID) -> RecoveryPlan:
         return recover(self.store, incident_id)
@@ -253,7 +275,7 @@ class Worker:
         lease_seconds: int = DEFAULT_LEASE_SECONDS,
     ) -> Lease:
         return self.store.claim(
-            incident_id, run_id, self.owner, self.versions, lease_seconds
+            incident_id, run_id, self.owner, self.accepted_versions, lease_seconds
         )
 
     def _gate_versions(self, incident_id: UUID, lease_seconds: int) -> None:
@@ -267,7 +289,10 @@ class Worker:
         if metadata_reader is None:
             return
         metadata = metadata_reader(incident_id)
-        if metadata["versions"] != self.versions:
+        accepted = self.accepted_versions
+        if metadata["versions"] not in (
+            (accepted,) if isinstance(accepted, dict) else accepted
+        ):
             self.claim(incident_id, metadata["run_id"], lease_seconds=lease_seconds)
             raise PersistenceError("INCOMPATIBLE_STATE")
 

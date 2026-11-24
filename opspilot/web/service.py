@@ -111,6 +111,7 @@ from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
 from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.knowledge.standing import (
+    is_standing_instructions,
     standing_instructions_for_target,
     unavailable_standing_instructions,
 )
@@ -514,6 +515,11 @@ class Workbench:
     #: list from (input v7); ``None`` -- the switch off -- leaves every input
     #: as before.
     runbook_catalog: Any = None
+    #: #780 (780-12): the ``versions`` a Run whose input carries a real
+    #: standing-instructions fact is created and claimed under (the
+    #: profile's ``standing_versions``); ``None`` records every Run under
+    #: ``run_versions``.
+    standing_run_versions: dict[str, str] | None = None
     #: The ``ReleaseStore`` the anomaly consumption pass and release
     #: rebuilds use (F11 PR-4b); ``None`` derives one on first use from the
     #: durable incident store's DSN and pool settings, as the release intake
@@ -579,14 +585,15 @@ class Workbench:
         # contract, kept by user decision 2026-10-07); the rest of the
         # identity is completed when a remediation is registered. The tool
         # gateway still resolves authorization from its own registry.
+        run_input = self._fresh_input(envelope.request, run_id, deadline)
         self.incidents.accept(
             incident_id,
             run_id,
             key,
             deadline=deadline,
             budget_limit=self.budget_limit,
-            versions=dict(self.run_versions),
-            input=self._fresh_input(envelope.request, run_id, deadline),
+            versions=self._versions_for(run_input),
+            input=run_input,
             target_id=self.incidents.register_target(envelope.request.target_id),
         )
         if not inserted:
@@ -765,6 +772,18 @@ class Workbench:
             else {"namespace": resolution.namespace, "workload": resolution.workload}
         )
         deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        run_input = self._fresh_input(
+            request,
+            run_id,
+            deadline,
+            affected_service=service,
+            alert=AlertAnchor(
+                received_at=received_at,
+                starts_at=alert.starts_at_time,
+                original=alert.starts_at_raw,
+            ),
+            alert_context=alert_context(alert.labels, alert.annotations),
+        )
         return {
             "incident_id": incident_id,
             "intake_key": intake_key,
@@ -774,21 +793,10 @@ class Workbench:
             "workload": resolution.workload,
             "deadline": deadline,
             "budget_limit": self.budget_limit,
-            "versions": dict(self.run_versions),
+            "versions": self._versions_for(run_input),
             # U-B1-2: the incident's claim priority, set once from severity.
             "priority": priority_of(alert.labels),
-            "input": self._fresh_input(
-                request,
-                run_id,
-                deadline,
-                affected_service=service,
-                alert=AlertAnchor(
-                    received_at=received_at,
-                    starts_at=alert.starts_at_time,
-                    original=alert.starts_at_raw,
-                ),
-                alert_context=alert_context(alert.labels, alert.annotations),
-            ),
+            "input": run_input,
             "ledger": [
                 (
                     "intake",
@@ -1224,15 +1232,16 @@ class Workbench:
             return generation, None
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
+        run_input = self._successor_input(summary, run_id, deadline)
         generation = self.incidents.new_run(
             summary.incident_id,
             run_id,
             expected_generation=expected,
             deadline=deadline,
             budget_limit=self.budget_limit,
-            versions=dict(self.run_versions),
+            versions=self._versions_for(run_input),
             actor=actor_id,
-            input=self._successor_input(summary, run_id, deadline),
+            input=run_input,
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
@@ -1257,15 +1266,16 @@ class Workbench:
             raise PersistenceError("CONTROL_CONFLICT")
         run_id = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{generation + 1}")
         deadline = self.incidents.now() + timedelta(seconds=self.run_seconds)
+        run_input = self._successor_input(summary, run_id, deadline)
         generation = self.incidents.new_run(
             summary.incident_id,
             run_id,
             expected_generation=generation,
             deadline=deadline,
             budget_limit=self.budget_limit,
-            versions=dict(self.run_versions),
+            versions=self._versions_for(run_input),
             actor=actor_id,
-            input=self._successor_input(summary, run_id, deadline),
+            input=run_input,
             payload=payload,
         )
         return generation, run_id
@@ -1417,7 +1427,7 @@ class Workbench:
                     basis=basis,
                     deadline=deadline,
                     budget_limit=self.budget_limit,
-                    versions=dict(self.run_versions),
+                    versions=self._versions_for(run_input),
                     input=run_input,
                 )
             except PersistenceError as exc:
@@ -1937,6 +1947,40 @@ class Workbench:
         )
 
     # -- investigation inputs -------------------------------------------
+
+    def _accepted_versions(self) -> dict[str, str] | tuple[dict[str, str], ...]:
+        """What the claim barrier compares a Run row with (780-12): the base
+        alone, or both code-determined dicts."""
+        if (
+            self.standing_run_versions is None
+            or self.standing_run_versions == self.run_versions
+        ):
+            return dict(self.run_versions)
+        return (dict(self.run_versions), dict(self.standing_run_versions))
+
+    def _claimed_versions_fit(self, incident_id: UUID, run_id: UUID) -> bool:
+        """Whether the claimed Run's row records the dict its own input
+        implies (780-12). Only checked where the variant exists: without it
+        the claim's single dict already decides."""
+        if self._accepted_versions() == dict(self.run_versions):
+            return True
+        run = self.incidents.rebuild(incident_id)["run"]
+        if str(run.get("run_id")) != str(run_id):
+            return True
+        return bool(run.get("versions") == self._versions_for(run.get("input")))
+
+    def _versions_for(self, run_input: Mapping[str, Any] | None) -> dict[str, str]:
+        """The ``versions`` a new Run row records, chosen from its own input
+        (780-12): the standing variant iff the input carries a real
+        standing-instructions fact; the base for every other Run, including
+        one with the #851 ``unavailable`` marker."""
+        if self.standing_run_versions is not None and run_input is not None:
+            facts = run_input.get("scope_facts")
+            if isinstance(facts, Mapping) and is_standing_instructions(
+                facts.get(STANDING_INSTRUCTIONS)
+            ):
+                return dict(self.standing_run_versions)
+        return dict(self.run_versions)
 
     def _fresh_input(
         self,
@@ -2510,23 +2554,24 @@ class Workbench:
         anchor = ReleaseAnchor(
             released_at=plan.release.released_at, consumed_at=plan.consumed_at
         )
+        run_input = self._fresh_input(
+            request,
+            plan.run_id,
+            deadline,
+            affected_service=service,
+            release=anchor,
+            release_fact=release_observation_fact(
+                plan.release.model_dump(mode="json"),
+                plan.ending.model_dump(mode="json"),
+                plan.comparison,
+                anchor,
+            ),
+        )
         return {
             "deadline": deadline,
             "budget_limit": self.budget_limit,
-            "versions": dict(self.run_versions),
-            "input": self._fresh_input(
-                request,
-                plan.run_id,
-                deadline,
-                affected_service=service,
-                release=anchor,
-                release_fact=release_observation_fact(
-                    plan.release.model_dump(mode="json"),
-                    plan.ending.model_dump(mode="json"),
-                    plan.comparison,
-                    anchor,
-                ),
-            ),
+            "versions": self._versions_for(run_input),
+            "input": run_input,
             "ledger": [
                 (
                     "intake",
@@ -3956,7 +4001,7 @@ class Workbench:
             seconds = int(self.run_seconds)
         try:
             lease = self.incidents.claim(
-                incident_id, run_id, self._owner, dict(self.run_versions), seconds
+                incident_id, run_id, self._owner, self._accepted_versions(), seconds
             )
         except PersistenceError as exc:
             # A still-valid lease held elsewhere is the normal state while
@@ -3964,6 +4009,23 @@ class Workbench:
             # polling worker would otherwise append one event per poll.
             if str(exc) != "LEASE_ACTIVE":
                 announce_claim_refused(self.events, incident_id, run_id, str(exc))
+            return None
+        if not self._claimed_versions_fit(incident_id, run_id):
+            # 780-12: the row holds one of this process's dicts but not the
+            # one the Run's own input implies; C3 §7: block, never guess.
+            try:
+                self.incidents.block(lease)
+            except PersistenceError:
+                return None
+            announce_handoff(
+                self.events,
+                incident_id,
+                run_id,
+                "blocked",
+                ("INCOMPATIBLE_STATE",),
+                parked=False,
+                control_generation=lease.control_generation,
+            )
             return None
         try:
             return self._attempt(

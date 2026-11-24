@@ -98,6 +98,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 
 from opspilot.instructions.discipline import valid_cluster_name
 from opspilot.intake import DEFAULT_LOOKBACK, LOOKBACK_SECONDS
@@ -166,6 +167,11 @@ class ToolProfile:
     #: C2b: whether new Runs carry the approved-runbook list (input v7);
     #: only ``otel-demo-ext`` with ``OPSPILOT_KNOWLEDGE_TOOL=1``.
     runbook_catalog: bool = False
+    #: #780 (780-12): the ``versions`` a Run whose input carries a real
+    #: standing-instructions fact is created and claimed under; only where
+    #: the fact is possible (``otel-demo-ext`` with the knowledge switch).
+    #: ``None`` elsewhere: every Run uses ``versions``.
+    standing_versions: Callable[[], dict[str, str]] | None = None
 
 
 def _fixture() -> ToolProfile:
@@ -326,6 +332,23 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 raise SystemExit(code) from None
             raise
 
+    ext_versions = partial(
+        otel_demo_ext_versions,
+        elasticsearch=elasticsearch,
+        loki=loki,
+        victorialogs=victorialogs,
+        live_metrics=live_metrics,
+        knowledge=knowledge,
+        todo=todo,
+        sql=sql,
+        kafka=kafka,
+        mongodb=mongodb,
+        redis=redis,
+        helm=helm,
+        argocd=argocd,
+        cluster_name=cluster_name,
+        window_seconds=window_seconds,
+    )
     return ToolProfile(
         name="otel-demo-ext",
         face=lambda clock: otel_demo_ext_face(
@@ -345,22 +368,10 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
             cluster_name=cluster_name,
             window_seconds=window_seconds,
         ),
-        versions=lambda: otel_demo_ext_versions(
-            elasticsearch=elasticsearch,
-            loki=loki,
-            victorialogs=victorialogs,
-            live_metrics=live_metrics,
-            knowledge=knowledge,
-            todo=todo,
-            sql=sql,
-            kafka=kafka,
-            mongodb=mongodb,
-            redis=redis,
-            helm=helm,
-            argocd=argocd,
-            cluster_name=cluster_name,
-            window_seconds=window_seconds,
-        ),
+        versions=ext_versions,
+        standing_versions=partial(ext_versions, standing_instructions=True)
+        if knowledge
+        else None,
         runbook_catalog=knowledge,
         executor_factory=executor_factory,
     )

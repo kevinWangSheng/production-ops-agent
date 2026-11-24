@@ -229,7 +229,13 @@ class FetchHarness:
         clock = DurableClock(store)
         runner = InvestigationRunner(
             store=store,
-            worker=Worker.create(store, self.profile.versions()),
+            worker=Worker.create(
+                store,
+                self.profile.versions(),
+                None
+                if self.profile.standing_versions is None
+                else self.profile.standing_versions(),
+            ),
             model=DeepSeekClient(MODEL_KEY, opener=provider),
             executor_factory=self.profile.executor_factory(store, evidence, clock),
             clock=clock,
@@ -360,6 +366,9 @@ def _workbench(store, events, evidence, profile, knowledge, catalog) -> Workbenc
         evidence=evidence,
         ledger=DurableWebLedger(store),
         run_versions=profile.versions(),
+        standing_run_versions=None
+        if profile.standing_versions is None
+        else profile.standing_versions(),
         run_seconds=600,
         # The face clock fixes the policy frame to end at the recorded window
         # the replayed backend bodies answer for; the worker keeps real time.

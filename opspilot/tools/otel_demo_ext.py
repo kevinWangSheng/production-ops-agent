@@ -673,6 +673,7 @@ def otel_demo_ext_versions(
     argocd: bool = False,
     cluster_name: str | None = None,
     window_seconds: int = otel_demo.OBSERVATION_SECONDS,
+    standing_instructions: bool = False,
 ) -> dict[str, str]:
     """``elasticsearch`` / ``loki`` / ``victorialogs``: whether
     ``OPSPILOT_ES_URL`` / ``OPSPILOT_LOKI_URL`` /
@@ -682,10 +683,15 @@ def otel_demo_ext_versions(
     boundary wording to ``prompt_revision``; ``todo``: whether
     ``OPSPILOT_TODO_WRITE=1`` (C1), which adds ``TodoWrite`` and the
     ``-todo`` variant; ``cluster_name``: the operator's local cluster name
-    (#722), of which only whether it is set matters here."""
+    (#722), of which only whether it is set matters here;
+    ``standing_instructions``: the variant for a Run whose input carries a
+    real standing-instructions fact (#780, 780-12), only meaningful with
+    ``knowledge``."""
     return {
         **investigation_versions(
-            _variant(todo, cluster_name), knowledge_tool=knowledge
+            _variant(todo, cluster_name),
+            knowledge_tool=knowledge,
+            standing_instructions=standing_instructions,
         ),
         "tool_schema_revision": tool_schema_revision(
             elasticsearch=elasticsearch,

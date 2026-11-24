@@ -498,6 +498,11 @@ def build_loop(
     tool_parallelism = _tool_parallelism()
     profile = profile or select_profile(os.environ)
     versions = profile.versions()
+    # 780-12: Runs carrying a real standing-instructions fact are created
+    # under this variant; the claim accepts it beside ``versions``.
+    standing = (
+        None if profile.standing_versions is None else profile.standing_versions()
+    )
     events = DurableEventLog(store)
     events.install()
     evidence = DurableEvidenceStore(store)
@@ -510,7 +515,7 @@ def build_loop(
         clock = DurableClock(store)
         runner = InvestigationRunner(
             store=store,
-            worker=Worker.create(store, versions),
+            worker=Worker.create(store, versions, standing),
             model=health.ModelCallCounter(DeepSeekClient(api_key, clock=clock), stats),
             executor_factory=profile.executor_factory(store, evidence, clock),
             clock=clock,
