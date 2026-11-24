@@ -444,6 +444,8 @@ def _check_entry(doc: dict, repo_root: Path) -> None:
     assert a["install_script"] is None
     assert a["agent_version"] is None
     assert a["container_isolation"] is False
+    # #830 (R6): the stand-alone pre-fault hook module, never ``scripts.*``.
+    assert a["hooks"] == "opspilot_sregym_hooks:HOOKS"
 
 
 def test_registry_document(tmp_path: Path) -> None:
