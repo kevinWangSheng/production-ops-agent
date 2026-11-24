@@ -12,7 +12,7 @@
 | 去向 | issue | 做什么 |
 |---|---|---|
 | 实施 | #295 + PR #551 | 解 SPEC 冲突，盲标 111 份考试报告校准二值 judge 流程，出结论；F1 第 5 步按结论处理 |
-| 实施 | #780 | 每目标常驻操作员说明作为模型输入（新输入通道，进 tests/safety 加变异） |
+| 实施 | #780 | 每目标常驻操作员说明作为模型输入（新输入通道，进 tests/safety 加变异）。PR #847 实现、独立测试与审查已完成、CI 绿；有界真实 Run 与 trace 挪到下次租机与 162 复查一起跑（用户 2026-11-24，本机内存不足 `kind_lab.py up` 拒绝启动），此前 PR 保持 Draft；运行步骤见 PR 正文「未完成」 |
 | 实施 | #830 | SREGym p12 在故障注入前建 Valkey 只读账号 |
 | 实施 | #498 | 用近期租机 Run 的产品内时间戳出性能基线，只测量 |
 | 实施（Agent 自定） | 无 issue | 工作台 Human-owned 状态 Resume 提示语改为「解除暂停」语义（`opspilot/web/incident_view.py`）；`docs/portfolio/architecture.md` 过时的工具列表 |
