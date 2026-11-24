@@ -574,7 +574,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         # exactly once there, on the body; the runner reports ``stale``
         # otherwise and the implementer pins the exact path and line (an
         # edit that makes the body reach the fact and the model unredacted).
-        "opspilot/knowledge/standing_instructions.py",
+        "opspilot/knowledge/standing.py",
         "redact_credentials(",
         "str(",
         pg=True,
@@ -587,7 +587,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         # context.py; the mutation sends the body without the wording. The
         # runner reports ``stale`` otherwise and the implementer pins it.
         "opspilot/investigation/context.py",
-        "{STANDING_INSTRUCTIONS_BOUNDARY}\n",
+        "{STANDING_INSTRUCTIONS_BOUNDARY}\\n",
         "",
         pg=True,
     ),
