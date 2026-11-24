@@ -33,7 +33,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,6 +65,7 @@ from scripts.itbench_lite.driver import (
     run_state,
 )
 from scripts.itbench_lite.services import Started
+from scripts.sregym_eval import opspilot_sregym_hooks as hooks
 from scripts.sregym_eval.boundary import (
     BoundaryError,
     check_no_problem_id_digest,
@@ -113,22 +114,19 @@ KAFKA_SECURITY_PROTOCOL = "PLAINTEXT"
 #: listen there or does the account exist. (Not a ``Ports`` field: the
 #: track's port set is a fixed contract.)
 VALKEY_PORT = 29563
-VALKEY_PROBLEM = "valkey_auth_disruption"
-VALKEY_SEQ = 12
+VALKEY_PROBLEM = hooks.VALKEY_PROBLEM
+VALKEY_SEQ = hooks.VALKEY_SEQ
 #: (name, service, remote port, local port).
 VALKEY_FORWARD: tuple[str, str, int, int] = ("valkey", "valkey-cart", 6379, VALKEY_PORT)
-VALKEY_USER = "opspilot_ro"
+VALKEY_USER = hooks.VALKEY_USER
 #: The documented lab grant of #773 (``.github/workflows/ci.yml``); it passes
-#: ``redis_inspect.account_problem``. ``>`` + the pass's fresh password is
-#: inserted after ``on``.
-VALKEY_GRANT: tuple[str, ...] = (
-    "~*", "resetchannels", "-@all", "+@read", "+info", "+ping", "+hello",
-    "+auth", "+select", "+client|setname", "+config|get", "+slowlog|get",
-    "+slowlog|len", "+acl|whoami", "+acl|getuser",
-)  # fmt: skip
+#: ``redis_inspect.account_problem``. Sent by the pre-fault hook (#830).
+VALKEY_GRANT: tuple[str, ...] = hooks.VALKEY_GRANT
 VALKEY_ACCOUNT_DISCLOSURE = "VALKEY_READONLY_ACCOUNT_BY_HARNESS"
 VALKEY_ACCOUNT_FAILED = "VALKEY_READONLY_ACCOUNT_FAILED"
 VALKEY_ADMIN_TIMEOUT_S = 10.0
+#: #830 (830-7): the hook's result file is absent in p12.
+HOOK_RESULT_MISSING = "HOOK_RESULT_MISSING"
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 LOKI_ACCOUNT_KEYS = (
@@ -147,22 +145,23 @@ class EntryFailure(RuntimeError):
         super().__init__(code)
 
 
-def valkey_admin(
-    argv: Sequence[str], *, port: int, timeout: float = VALKEY_ADMIN_TIMEOUT_S
-) -> Any:
-    """One command over the p12 port-forward as Valkey's ``default`` user
-    (no AUTH is sent; the config's account fields are only there because the
-    type requires them). Returns the decoded RESP reply; an error reply
+def valkey_check(
+    *, port: int, username: str, password: str,
+    timeout: float = VALKEY_ADMIN_TIMEOUT_S,
+) -> Any:  # fmt: skip
+    """#830 (830-6): over the p12 port-forward, ``AUTH`` as the read-only
+    account, then its own ``ACL GETUSER``. Returns that reply; an error reply
     raises ``RedisReplyError``."""
     config = RedisConfig(
         url=f"redis://127.0.0.1:{port}",
-        username="harness-admin",
-        password="not-sent",
+        username=username,
+        password=password,
         tls="disable",
     )
     connection = _SocketConnection(config, timeout)
     try:
-        return connection.command(list(argv))
+        connection.command(["AUTH", username, password])
+        return connection.command(["ACL", "GETUSER", username])
     finally:
         connection.close()
 
@@ -196,8 +195,8 @@ class EntryHost:
     sleep: Callable[[float], None] = time.sleep
     monotonic: Callable[[], float] = time.monotonic
     kill: Callable[[int, int], None] = os.kill
-    #: #809: one Valkey command as the system-under-test's admin.
-    valkey_admin: Callable[..., Any] = valkey_admin
+    #: #830: the read-only account's own check (``AUTH`` + ``ACL GETUSER``).
+    valkey_check: Callable[..., Any] = valkey_check
 
 
 # -- SIGTERM path ----------------------------------------------------------------------------------
@@ -679,43 +678,57 @@ class Entry:
         return missing
 
     def _valkey_account(self, missing: set[str]) -> tuple[str, str]:
-        """#809 (B4-U6 = a): the worker's Redis account. A fresh password per
-        pass, held in memory only. In p12 the harness creates the read-only
-        user on the system-under-test's Valkey (after ``/get_app``, before
-        the product starts) and checks it with the tool's own account check;
-        a failure is recorded and the pass goes on. Elsewhere no account
-        exists and nothing is sent to any Valkey."""
-        password = _secrets.token_hex(24)
+        """#809 (B4-U6 = a), #830 (R6): the worker's Redis account. Elsewhere
+        than p12 a fresh in-memory password, no account and nothing sent to
+        any Valkey. In p12 the account was made before the fault by the
+        SREGym hook (``opspilot_sregym_hooks``) with the driver's per-pass
+        password; the entry reads that password and the hook's result, then
+        checks the account as itself (``AUTH`` + ``ACL GETUSER``, the tool's
+        own account check). A failure is recorded and the pass goes on."""
         if not self._is_valkey_problem():
-            return VALKEY_USER, password
-        port = VALKEY_PORT
+            return VALKEY_USER, _secrets.token_hex(24)
+        work = Path(self.job.work_dir)
         code: str | None = None
         reply_text: str | None = None
-        if "valkey" in missing:
+        hook: Any = None
+        try:
+            password = (work / hooks.SECRET_FILE).read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError):
+            password = ""
+        try:
+            hook = json.loads((work / hooks.RESULT_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError):
+            hook = None
+        if not password:
+            code = "SECRET_MISSING"
+            password = _secrets.token_hex(24)
+        elif not isinstance(hook, dict):
+            code = HOOK_RESULT_MISSING
+        elif hook.get("status") != "created":
+            code = f"HOOK_FAILED:{hook.get('code')}"
+            if isinstance(hook.get("reply"), str):
+                reply_text = valkey_reply_text(hook["reply"], password)
+        elif "valkey" in missing:
             code = "FORWARD_MISSING"
         else:
             try:
-                reply = self.host.valkey_admin(
-                    argv=["ACL", "SETUSER", VALKEY_USER, "reset", "on",
-                          f">{password}", *VALKEY_GRANT],
-                    port=port,
-                )  # fmt: skip
-                if reply not in ("OK", b"OK"):
-                    code = "SETUSER_NOT_OK"
-                else:
-                    got = self.host.valkey_admin(
-                        argv=["ACL", "GETUSER", VALKEY_USER], port=port
-                    )
-                    if account_problem(got) is not None:
-                        code = "ACCOUNT_NOT_READ_ONLY"
+                got = self.host.valkey_check(
+                    port=VALKEY_PORT, username=VALKEY_USER, password=password
+                )
+                if account_problem(got) is not None:
+                    code = "ACCOUNT_NOT_READ_ONLY"
             except Exception as error:  # noqa: BLE001 - recorded, pass goes on
-                code = "ADMIN_FAILED:" + type(error).__name__
+                code = "CHECK_FAILED:" + type(error).__name__
                 if isinstance(error, RedisReplyError):
                     reply_text = valkey_reply_text(error.message, password)
+        hook_created = isinstance(hook, dict) and hook.get("status") == "created"
         self.record["valkey_account"] = {
             "user": VALKEY_USER,
             "status": "created" if code is None else "failed",
             "code": code,
+            # 830-U2: the account is made by the harness before the fault.
+            "created_before_fault_injection": hook_created
+            and hook.get("before_fault_injection") is True,
         }
         if reply_text is not None:
             # #830: the server's error text, so the cause can be read

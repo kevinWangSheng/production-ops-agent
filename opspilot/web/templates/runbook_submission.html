@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% set nav = "runbooks" %}
 {% set s = page %}
-{% block title %}Runbook submission {{ s.name }}{% endblock %}
+{% set standing = s.kind == "standing_instructions" %}
+{% block title %}{% if standing %}Standing instructions submission{% else %}Runbook submission {{ s.name }}{% endif %}{% endblock %}
 {% block body %}
-<h1>Runbook submission <code>{{ s.name }}</code></h1>
-<p>target <code>{{ s.resource_uid }}</code> · state <strong id="submission-state">{{ s.state }}</strong>
+<h1>{% if standing %}Standing instructions submission{% else %}Runbook submission <code>{{ s.name }}</code>{% endif %}</h1>
+<p>category <strong id="submission-kind">{% if standing %}standing instructions{% else %}runbook{% endif %}</strong> · target <code>{{ s.resource_uid }}</code> · state <strong id="submission-state">{{ s.state }}</strong>
   · submitted {{ s.submitted_at }} by <code>{{ s.submitted_by }}</code>
   {% if s.decision %}· {{ s.decision }} {{ s.decided_at }} by <code>{{ s.decided_by }}</code>{% if s.reason %}: {{ s.reason }}{% endif %}{% endif %}
   {% if s.approved_entry_id %}· <a href="/runbooks/{{ s.approved_entry_id }}">entry, revision {{ s.approved_revision }}</a>{% endif %}</p>
@@ -12,6 +13,11 @@
 <p class="muted">Source: {{ s.source_label }}{% if s.source_ref %} · <code>{{ s.source_ref }}</code>{% endif %} · sha256 <code>{{ s.content_sha256 }}</code></p>
 {% if s.supersedes_entry_id %}<p>Replaces <a href="/runbooks/{{ s.supersedes_entry_id }}">entry <code>{{ s.supersedes_entry_id }}</code></a>{% if s.supersedes %} (latest revision {{ s.supersedes.latest_revision }}, {{ s.supersedes.state }}){% endif %}.</p>{% endif %}
 {% include "_runbook_error.html" %}
+{% if standing %}
+<div id="standing-notice" class="unknown"><p><strong>Once approved, the full text below is given to every investigation of <code>{{ s.resource_uid }}</code></strong>, before the runbook list, until it is replaced or revoked. The model is told to make these checks and report on each; the text grants no permissions and cannot change the target, time frame or report requirements. Read all of it before approving.</p></div>
+<h2>Full text</h2>
+<pre id="submission-content">{{ s.content }}</pre>
+{% endif %}
 {% if s.state == "pending" %}
 <h2>Review</h2>
 <form method="post" action="/runbooks/submissions/{{ s.submission_id }}/review" id="form-approve">
@@ -29,8 +35,10 @@
   <button type="submit">reject</button>
 </form>
 {% endif %}
+{% if not standing %}
 <h2>Content</h2>
 <pre id="submission-content">{{ s.content }}</pre>
+{% endif %}
 <h2>Audit</h2>
 <table id="submission-audit">
   <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Generation</th><th>Reason</th></tr></thead>

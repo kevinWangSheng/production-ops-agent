@@ -65,6 +65,7 @@ from opspilot.investigation.context import (
     PRIOR_REPLIES,
     RELEASE_OBSERVATION,
     RUNBOOK_CATALOG,
+    STANDING_INSTRUCTIONS,
     ContextError,
     conclusion_answered,
     conclusion_publishable,
@@ -109,6 +110,7 @@ from opspilot.investigation.todo import REFUSAL as TODO_REFUSAL
 from opspilot.investigation.todo import TOOL_NAME as TODO_TOOL_NAME
 from opspilot.knowledge.catalog import catalog_for_target, unavailable_catalog
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
+from opspilot.knowledge.standing import standing_instructions_for_target
 from opspilot.observation.release_commands import (
     ReleaseCommandReceipt,
     ReleaseConsumption,
@@ -2002,13 +2004,14 @@ class Workbench:
                 scope_facts={**fresh.scope_facts, KNOWLEDGE: self._knowledge(request)},
             )
         if self.runbook_catalog is not None:
-            fresh = replace(
-                fresh,
-                scope_facts={
-                    **fresh.scope_facts,
-                    RUNBOOK_CATALOG: self._runbook_catalog(request),
-                },
-            )
+            facts = {
+                **fresh.scope_facts,
+                RUNBOOK_CATALOG: self._runbook_catalog(request),
+            }
+            standing = self._standing_instructions(request)
+            if standing is not None:
+                facts[STANDING_INSTRUCTIONS] = standing
+            fresh = replace(fresh, scope_facts=facts)
         return fresh.as_json()
 
     def _runbook_catalog(self, request: IntakeRequest) -> dict[str, Any]:
@@ -2024,6 +2027,20 @@ class Workbench:
         except (PersistenceError, DatabaseError, OSError, TimeoutError):
             _log.warning("runbook catalog retrieval unavailable")
             return unavailable_catalog(self.knowledge_max_age_seconds)
+
+    def _standing_instructions(self, request: IntakeRequest) -> dict[str, Any] | None:
+        """The target's approved standing instructions a new Run starts with
+        (#780, 780-5/780-7), read per Run in its own snapshot with the
+        runbook list's switch; ``None`` -- no fact, the input as before --
+        when the target has none. A storage failure starts the Run without
+        them, logged, as the runbook list records ``unavailable``."""
+        try:
+            return standing_instructions_for_target(
+                self.runbook_catalog, request.target_id
+            )
+        except (PersistenceError, DatabaseError, OSError, TimeoutError):
+            _log.warning("standing instructions retrieval unavailable")
+            return None
 
     def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
         """The approved knowledge a new Run of ``request`` starts with (F13
@@ -2150,8 +2167,13 @@ class Workbench:
             # C2b: re-read like knowledge, never carried; with the switch off
             # an earlier Run's list does not reach the successor.
             facts.pop(RUNBOOK_CATALOG, None)
+            facts.pop(STANDING_INSTRUCTIONS, None)
             if self.runbook_catalog is not None:
                 facts[RUNBOOK_CATALOG] = self._runbook_catalog(request)
+                # #780 (780-7): re-read like the runbook list, never carried.
+                standing = self._standing_instructions(request)
+                if standing is not None:
+                    facts[STANDING_INSTRUCTIONS] = standing
             return replace(fresh, scope_facts=facts).as_json()
         except ContextError as exc:
             if exc.code != "INPUT_MISSING":

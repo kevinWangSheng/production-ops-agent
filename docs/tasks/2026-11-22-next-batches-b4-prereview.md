@@ -50,7 +50,7 @@
 | B4-8 | #696 不改调查纪律 | issue 里「L1 再据此允许把窗口内改动且与重启同刻的设置定为 supported」**这批不做**。那是为 ITBench 调结论强度的提示词改动，会动基础提示词版本和 F3 证据 | 用户方向：不为 ITBench/F3 调提示词；issue 的前提（回放快照带不带 `managedFields`）因此不再需要先确认【未确认，也不需要】 |
 | B4-9 | #780 上限与形式 | 每目标最多一份生效的常驻说明；正文 1–4096 字节，纯文本；进模型前过同一套凭据脱敏；作为一条单独的用户消息放在 runbook 清单之前；固定说明文字见 U4 a | 上游 5 条共约 280 字符；`catalog.py:41` 清单上限 8 KiB 的先例 |
 | B4-10 | #780 开关 | 沿用 `OPSPILOT_KNOWLEDGE_TOOL=1`（runbook 清单的开关）；没有已批准的常驻说明时，模型输入与今天逐字节相同，提示词版本不变 | `profiles.py:156-157`；B1-U2「没用到就字节不变」规则 |
-| B4-11 | #780 安全测试 | `tests/safety/test_safety_model_inputs_postgres.py` 加一条：带凭据形状的常驻说明进模型前被脱敏；`test_safety_report_validation` 或 F7 第 4 步同款：说明里写「改查别的目标／扩大时间范围」不产生越权查询。各配一个变异（去掉脱敏、去掉固定说明） | 任务书「新模型输入通道必须进 tests/safety 加变异」 |
+| B4-11 | #780 安全测试 | `tests/safety/test_safety_model_inputs_postgres.py` 加一条：带凭据形状的常驻说明进模型前被脱敏；`test_safety_report_validation` 或 F7 第 2 步（原误写第 4 步，2026-11-24 更正）同款：说明里写「改查别的目标／扩大时间范围」不产生越权查询。各配一个变异（去掉脱敏、去掉固定说明） | 任务书「新模型输入通道必须进 tests/safety 加变异」 |
 | B4-12 | 评测驱动 | 每题提交时带最大回看；`TIME_BOX_LIMITED` 按 U2 的上限和数据跨度重新机械判定；导入 162 的 `global_instructions.json`（走工作台自己的提交与批准接口，和 runbook 导入同一做法），披露码 `GLOBAL_INSTRUCTIONS_NOT_IMPORTED` 换成 `GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED`；`import_skills.py` 文件头「从不打开该文件」那句同步改 | `shift.py:93-102`、`driver.py:857-864`、`import_skills.py:20-22` |
 | B4-13 | #679 实现位置 | `TransportResponse` 加布尔标记，只有 K8s 列表传输在「API 返回 200、翻页读完、零个对象、不是事件」时置位；执行器据此给 `ok`。开工时用 3–4 个其他工具的空结果实测仍是 `no_data` | `executor.py:1181` 是共享函数（预审规则要求实测误伤） |
 | B4-14 | #679 按列查询与 count | 三个工具同一规则；count 在零对象时返回 `count: 0`、状态正常 | `kubernetes_core.py:1407-1419`、`kubernetes_tabular.py:639` |

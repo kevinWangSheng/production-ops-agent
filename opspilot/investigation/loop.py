@@ -32,6 +32,8 @@ from opspilot.investigation.context import (
     RELEASE_CONTEXT_BOUNDARY,
     RUNBOOK_CATALOG,
     RUNBOOK_CATALOG_BOUNDARY,
+    STANDING_INSTRUCTIONS,
+    STANDING_INSTRUCTIONS_BOUNDARY,
     InvestigationInput,
     Transcript,
     calibrated,
@@ -116,6 +118,7 @@ def prompt_revision_versions(
     *,
     report_contract: str = REPORT_CONTRACT,
     knowledge_tool: bool = False,
+    standing_instructions: bool = False,
 ) -> dict[str, str]:
     """``ModelProfile.prompt_revision``'s entry in the ``versions`` a caller's
     ``DurableStore.accept``/``claim`` must compare (C3 §5, "指令分层与版本").
@@ -154,6 +157,13 @@ def prompt_revision_versions(
             release_context_template=RELEASE_CONTEXT_BOUNDARY,
             runbook_catalog_template=RUNBOOK_CATALOG_BOUNDARY
             if knowledge_tool
+            else None,
+            # #780 (780-4): only for a Run whose input carries the fact, never
+            # for the deployment: a Run without standing instructions, and
+            # the ``versions`` every Run is created and claimed under, keep
+            # their values.
+            standing_instructions_template=STANDING_INSTRUCTIONS_BOUNDARY
+            if standing_instructions
             else None,
         )
     }
@@ -505,6 +515,7 @@ class InvestigationLoop:
         compactions: int = 0,
         compaction_attempts: int = 0,
         runbook_catalog: bool = False,
+        standing_instructions: bool = False,
     ) -> _State:
         usage = self.store.usage()
         floor, mode = conversation_of(
@@ -532,7 +543,9 @@ class InvestigationLoop:
             # C2b: a Run whose input carries the runbook list was created
             # with the switch on, so its revision includes that wording.
             revision=prompt_revision_versions(
-                request.variant_id, knowledge_tool=runbook_catalog
+                request.variant_id,
+                knowledge_tool=runbook_catalog,
+                standing_instructions=standing_instructions,
             )["prompt_revision"],
             face=hashlib.sha256(system.encode("utf-8")).hexdigest(),
             question_sha=hashlib.sha256(request.question.encode("utf-8")).hexdigest(),
@@ -616,6 +629,7 @@ class InvestigationLoop:
             compactions=transcript.compactions,
             compaction_attempts=transcript.compaction_attempts,
             runbook_catalog=RUNBOOK_CATALOG in input.scope_facts,
+            standing_instructions=STANDING_INSTRUCTIONS in input.scope_facts,
         )
         state.last_step_id = transcript.last_step_id
         state.message_sequences = set(transcript.message_sequences)

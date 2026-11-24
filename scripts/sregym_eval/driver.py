@@ -34,6 +34,7 @@ import argparse
 import json
 import os
 import re
+import secrets as _secrets
 import shutil
 import subprocess
 import sys
@@ -51,7 +52,7 @@ from scripts.holmes_evals.log_backends import start_gateway
 from scripts.itbench_lite import services
 from scripts.itbench_lite.driver import DriverError, RoundAbort
 from scripts.itbench_lite.services import Started
-from scripts.sregym_eval import filter_proxy, identity
+from scripts.sregym_eval import filter_proxy, identity, opspilot_sregym_hooks
 from scripts.sregym_eval.agent_entry import (
     KAFKA_SECURITY_PROTOCOL,
     LEDGER_FILE,
@@ -274,15 +275,38 @@ def main_command(problem_id: str) -> list[str]:
     ]  # fmt: skip
 
 
+HOOKS_DIR = "hooks"
+
+
+def install_hooks(round_dir: Path) -> Path:
+    """#830: copy the stand-alone hook module into the round directory; that
+    directory alone goes on ``main.py``'s ``PYTHONPATH``."""
+    target = round_dir / HOOKS_DIR
+    target.mkdir(parents=True, exist_ok=True)
+    source = Path(opspilot_sregym_hooks.__file__)
+    shutil.copyfile(source, target / source.name)
+    return target
+
+
+def write_valkey_secret(work: Path) -> Path:
+    """#830 (830-5): the pass's read-only Valkey password, mode 600 in the
+    trial directory, read by the hook and the entry; removed after the pass."""
+    path = work / opspilot_sregym_hooks.SECRET_FILE
+    identity.private_write(path, _secrets.token_hex(24) + "\n")
+    return path
+
+
 def main_env(cfg: Config, judge_key: str, job_path: Path) -> dict[str, str]:
     """``main.py``'s environment: the engineer's kubeconfig, the judge key and
-    the job path; no model or LangSmith key."""
+    the job path; no model or LangSmith key. ``PYTHONPATH`` is the round's
+    hook directory only (#830)."""
     if not judge_key:
         raise RoundAbort("JUDGE_KEY_MISSING")
     return services.base_env() | {
         "KUBECONFIG": str(cfg.kubeconfig),
         "KIND_CLUSTER_NAME": KIND_CLUSTER_NAME,
         "SREGYM_AGENT_REGISTRY": str(cfg.round_dir / "agents.yaml"),
+        "PYTHONPATH": str(cfg.round_dir / HOOKS_DIR),
         "API_PORT": str(cfg.ports.conductor),
         "MCP_SERVER_PORT": str(cfg.ports.mcp),
         "K8S_PROXY_PORT": str(cfg.ports.sregym_proxy),
@@ -434,6 +458,7 @@ def prepare_round(cfg: Config, host: Host) -> list[Started]:
         raise RoundAbort("RBAC_MANIFEST_VIOLATION")
     cfg.round_dir.mkdir(parents=True, exist_ok=True)
     write_registry(cfg.round_dir / "agents.yaml", cfg.python, ROOT)
+    install_hooks(cfg.round_dir)
     secrets_file = cfg.round_dir / "entry-secrets.env"
     identity.private_write(
         secrets_file, "".join(f"{k}={v}\n" for k, v in sorted(cfg.secrets.items()))
@@ -531,6 +556,8 @@ def run_trial(cfg: Config, host: Host, problem_id: str, trial: int) -> TrialOutc
             )
             job_path = work / "job.json"
             write_job(job_path, job)
+            if problem_id == VALKEY_PROBLEM:
+                write_valkey_secret(work)
             before = run_dirs(cfg.results_root)
             timings["main_started_at"] = host.now().isoformat()
             exit_code = host.run_main(
@@ -544,6 +571,7 @@ def run_trial(cfg: Config, host: Host, problem_id: str, trial: int) -> TrialOutc
         finally:
             if proxy is not None:
                 proxy.stop()
+            (work / opspilot_sregym_hooks.SECRET_FILE).unlink(missing_ok=True)
         csv_path = new_result_csv(cfg.results_root, problem_id, before)
     return _freeze(
         cfg, host, problem_id, trial, work, csv_path, exit_code, boundary, timings

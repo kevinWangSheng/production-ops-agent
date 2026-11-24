@@ -20,7 +20,7 @@ from opspilot import schema
 from scripts.m0.postgres_lab import DSN
 
 ROOT = Path(__file__).resolve().parents[2]
-CURRENT = "0028_runbook_imports"
+CURRENT = "0029_standing_instructions"
 PREVIOUS = "0023_retention_raw_cleanup"
 OUTBOX = "opspilot_trace_outbox"
 # 0026 (workbench P7), 0027 (P5) and 0028 (C2a runbooks) sit above PREVIOUS

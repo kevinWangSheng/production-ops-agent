@@ -3,7 +3,7 @@
 {% block title %}Runbooks{% endblock %}
 {% block body %}
 <h1>Runbooks</h1>
-<p class="muted">Imported runbooks per target. Only an approved revision that is neither superseded nor revoked can be read by an investigation; pending and rejected submissions never are. Runbook text is untrusted data for the model, not instructions.</p>
+<p class="muted">Imported runbooks and standing instructions per target. Only an approved revision that is neither superseded nor revoked can be read by an investigation; pending and rejected submissions never are. A runbook is listed to the model, which fetches it when it matches; standing instructions are given in full to every investigation of the target. Both are untrusted data for the model and grant no permissions.</p>
 <p><a href="/runbooks/new" id="new-runbook">Submit a runbook</a></p>
 {% if not page.targets %}<p class="muted" id="no-runbooks">No runbooks yet.</p>{% endif %}
 {% for target, groups in page.targets.items() %}
@@ -14,10 +14,11 @@
 {% if rows %}
 <h3>{{ state | capitalize }} ({{ rows | length }})</h3>
 <table class="runbooks-{{ state }}">
-  <thead><tr><th>Name</th><th>Description</th><th>Source</th><th>{% if state in ("pending", "rejected") %}Submitted{% else %}Approved{% endif %}</th></tr></thead>
+  <thead><tr><th>Category</th><th>Name</th><th>Description</th><th>Source</th><th>{% if state in ("pending", "rejected") %}Submitted{% else %}Approved{% endif %}</th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
+    <td class="runbook-kind">{% if r.kind == "standing_instructions" %}<strong>standing instructions</strong>{% else %}runbook{% endif %}</td>
     {% if state in ("pending", "rejected") %}
     <td><a href="/runbooks/submissions/{{ r.submission_id }}"><code>{{ r.name }}</code></a>{% if r.supersedes_entry_id %} <span class="muted">(replaces an entry)</span>{% endif %}</td>
     <td>{{ r.description }}</td><td>{{ r.source_label }}</td>

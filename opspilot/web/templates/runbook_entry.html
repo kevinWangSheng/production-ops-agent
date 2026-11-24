@@ -3,7 +3,9 @@
 {% set e = page %}
 {% block title %}Runbook {{ e.entry_id }}{% endblock %}
 {% block body %}
-<h1>Runbook entry <code>{{ e.entry_id }}</code></h1>
+{% set head = e.revisions[0] if e.revisions else none %}
+{% set standing = head and head.kind == "standing_instructions" %}
+<h1>{% if standing %}Standing instructions{% else %}Runbook{% endif %} entry <code>{{ e.entry_id }}</code></h1>
 <p>target <code>{{ e.resource_uid }}</code> · entry generation <strong id="entry-generation">{{ e.generation }}</strong>
   · latest revision {{ e.latest_revision }}
   · {% if e.active %}active revision <strong id="active-revision">{{ e.active.revision }}</strong>{% else %}<strong id="no-active">no active revision</strong> <span class="muted">(an investigation reads nothing from this entry)</span>{% endif %}</p>
@@ -17,7 +19,7 @@
   <input name="reason" placeholder="why revoke revision {{ e.active.revision }}" required maxlength="8192">
   <button type="submit">revoke revision {{ e.active.revision }}</button>
 </form>
-<p class="muted">Revocation cannot be undone; the revision and its history are kept. To use the runbook again, submit it again. To change it, <a href="/runbooks/new">submit a replacement</a> with this entry id.</p>
+<p class="muted">Revocation cannot be undone; the revision and its history are kept. To use the runbook again, submit it again. To change it, <a href="/runbooks/new?{{ {'kind': head.kind if head else 'runbook', 'resource_uid': e.resource_uid, 'name': head.name if head else '', 'supersedes_entry_id': e.entry_id} | urlencode }}" id="replace-link">submit a replacement</a> with this entry id.</p>
 {% endif %}
 <h2>Revisions</h2>
 <table id="revisions">
