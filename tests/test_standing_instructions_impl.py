@@ -137,3 +137,37 @@ def test_the_boundary_counts_only_when_the_run_carries_the_fact(
     )
     assert without == default
     assert carried != without
+
+
+# Dense low-entropy synthetic tokens: 4096 bytes that redact to 14336 chars.
+DENSE = "token=a " * 512
+
+
+def test_a_body_that_redacts_past_the_fact_cap_is_refused_at_submit() -> None:
+    from opspilot.knowledge.runbooks import RunbookDraft, _validated
+    from opspilot.knowledge.standing import MAX_CONTENT_CHARS, fits_after_redaction
+    from opspilot.persistence import PersistenceError
+
+    assert len(DENSE.encode("utf-8")) == 4096
+    assert not fits_after_redaction(DENSE)
+    assert not valid_standing_instructions(
+        build_standing_instructions({**ROW, "content": DENSE})
+    )
+    draft = RunbookDraft(
+        resource_uid="t",
+        name="",
+        description="",
+        content=DENSE,
+        source_label="operator",
+        kind="standing_instructions",
+    )
+    with pytest.raises(PersistenceError, match="RUNBOOK_CONTENT_INVALID"):
+        _validated(draft)
+    fitting = "token=a " * (MAX_CONTENT_CHARS // 28)
+    _validated(RunbookDraft(**{**draft.__dict__, "content": fitting}))
+    # A runbook keeps its own limit: redaction length is not its concern.
+    _validated(
+        RunbookDraft(
+            **{**draft.__dict__, "kind": "runbook", "name": "dense", "description": "d"}
+        )
+    )

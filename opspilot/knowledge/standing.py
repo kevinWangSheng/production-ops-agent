@@ -46,6 +46,18 @@ class StandingInstructionsSource(Protocol):
         ...
 
 
+def redacted_content(content: str) -> str:
+    """What the fact and the model get of a stored body. The store refuses a
+    body whose redaction is longer than ``MAX_CONTENT_CHARS`` at submit and
+    approve (``fits_after_redaction``), so an approved revision always builds
+    a valid fact."""
+    return redact_credentials(content)
+
+
+def fits_after_redaction(content: str) -> bool:
+    return len(redacted_content(content)) <= MAX_CONTENT_CHARS
+
+
 def build_standing_instructions(row: Mapping[str, Any]) -> dict[str, Any]:
     """The fact for one active revision; the content is redacted here, once,
     so the input snapshot never holds a credential the model must not see."""
@@ -58,7 +70,7 @@ def build_standing_instructions(row: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(approved_at, datetime)
         else str(approved_at),
         "approved_by": str(row["approved_by"]),
-        "content": redact_credentials(str(row["content"])),
+        "content": redacted_content(str(row["content"])),
     }
 
 

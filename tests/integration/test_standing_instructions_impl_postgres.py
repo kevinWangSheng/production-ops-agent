@@ -176,3 +176,42 @@ def test_the_database_binds_kind_name_and_size(scratch: str) -> None:
                 "'other','d','x',encode(sha256('x'),'hex'),'l','','a',%s)",
                 (uuid4(), uuid4()),
             )
+
+
+DENSE = "token=a " * 512  # synthetic: 4096 bytes, redacts to 14336 chars
+
+
+def _submission_count(scratch: str, target: str) -> int:
+    with psycopg.connect(scratch) as conn:
+        row = conn.execute(
+            "SELECT count(*) FROM opspilot_runbook_submissions WHERE resource_uid=%s",
+            (target,),
+        ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
+def test_a_body_that_redacts_past_the_cap_is_refused_and_writes_nothing(
+    store: RunbookStore, scratch: str
+) -> None:
+    target = _target()
+    with pytest.raises(PersistenceError, match="RUNBOOK_CONTENT_INVALID"):
+        store.submit(_standing(target, DENSE), idempotency_key=_key(), actor_id="a")
+    assert _submission_count(scratch, target) == 0
+
+
+def test_approve_rechecks_the_redacted_size(
+    store: RunbookStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from opspilot.knowledge import runbooks
+
+    target = _target()
+    sub = store.submit(_standing(target), idempotency_key=_key(), actor_id="a")
+    monkeypatch.setattr(runbooks, "fits_after_redaction", lambda _content: False)
+    with pytest.raises(PersistenceError, match="RUNBOOK_CONTENT_INVALID"):
+        store.approve(
+            sub.object_id, expected_generation=1, idempotency_key=_key(), actor_id="b"
+        )
+    monkeypatch.undo()
+    assert store.active_standing_instructions(target) is None
+    assert store.submission(sub.object_id)["state"] == "pending"

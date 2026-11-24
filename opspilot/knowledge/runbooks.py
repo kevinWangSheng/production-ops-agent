@@ -57,6 +57,7 @@ from uuid import UUID, uuid4
 
 from psycopg import errors
 
+from opspilot.knowledge.standing import fits_after_redaction
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 NAME_MAX_CHARS = 100
@@ -239,6 +240,9 @@ def _validated(draft: object) -> tuple[RunbookDraft, str]:
         # PostgreSQL text cannot hold NUL: refused here (400), not as a
         # storage failure (C2a review, C2b interface)
         or "\x00" in content
+        # #780 B1: the redacted body must still fit the v9 fact, or every
+        # new Run of the target would fail INPUT_INVALID.
+        or (standing and not fits_after_redaction(content))
     ):
         raise PersistenceError("RUNBOOK_CONTENT_INVALID")
     label, ref = draft.source_label, draft.source_ref
@@ -395,6 +399,12 @@ class RunbookStore(_StoreBase):
             )
             uid, name = submission["resource_uid"], submission["name"]
             kind = submission["kind"]
+            if kind == STANDING_INSTRUCTIONS_KIND and not fits_after_redaction(
+                submission["content"]
+            ):
+                # Checked again: the redaction rules may have grown since
+                # the submission (#780 B1).
+                raise PersistenceError("RUNBOOK_CONTENT_INVALID")
             self._lock(conn, _TARGET_LOCK, uid)
             supersedes = submission["supersedes_entry_id"]
             if supersedes is None:
