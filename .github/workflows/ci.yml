@@ -1337,6 +1337,9 @@ jobs:
           };
           JAAS
           chmod 755 "$jaas_dir"; chmod 644 "$jaas_dir/server_jaas.conf"
+          # Ports are published on 127.0.0.1 only, so clients and advertised
+          # listeners use 127.0.0.1: "localhost" also resolves to ::1, where
+          # every connect is refused and librdkafka loses time cycling (#819).
           docker run -d --name opspilot-ci-kafka --cpus=1 --memory=768m \
             -p 127.0.0.1:19092:19092 -p 127.0.0.1:19094:19094 \
             -v "$jaas_dir:/etc/kafka/opspilot:ro" \
@@ -1347,7 +1350,7 @@ jobs:
             -e KAFKA_PROCESS_ROLES=broker,controller \
             -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:19093 \
             -e KAFKA_LISTENERS=SASL_PLAINTEXT://:19092,NOAUTH://:19094,CONTROLLER://:19093 \
-            -e KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://localhost:19092,NOAUTH://localhost:19094 \
+            -e KAFKA_ADVERTISED_LISTENERS=SASL_PLAINTEXT://127.0.0.1:19092,NOAUTH://127.0.0.1:19094 \
             -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=SASL_PLAINTEXT:SASL_PLAINTEXT,NOAUTH:PLAINTEXT,CONTROLLER:PLAINTEXT \
             -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
             -e KAFKA_INTER_BROKER_LISTENER_NAME=NOAUTH \
@@ -1390,9 +1393,9 @@ jobs:
         if: steps.scope.outputs.full != 'false'
         env:
           OPSPILOT_KAFKA_BACKEND: "1"
-          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
-          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
-          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_SASL_BOOTSTRAP: 127.0.0.1:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: 127.0.0.1:19094
+          KAFKA_IT_UNREACHABLE: 127.0.0.1:19099
           KAFKA_IT_ADMIN_USER: admin
           KAFKA_IT_ADMIN_PASSWORD: admin-pass
           KAFKA_IT_READONLY_USER: opspilot
@@ -1407,9 +1410,9 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         env:
           OPSPILOT_KAFKA_BACKEND: "1"
-          KAFKA_IT_SASL_BOOTSTRAP: localhost:19092
-          KAFKA_IT_NOAUTH_BOOTSTRAP: localhost:19094
-          KAFKA_IT_UNREACHABLE: localhost:19099
+          KAFKA_IT_SASL_BOOTSTRAP: 127.0.0.1:19092
+          KAFKA_IT_NOAUTH_BOOTSTRAP: 127.0.0.1:19094
+          KAFKA_IT_UNREACHABLE: 127.0.0.1:19099
           KAFKA_IT_ADMIN_USER: admin
           KAFKA_IT_ADMIN_PASSWORD: admin-pass
           KAFKA_IT_READONLY_USER: opspilot
@@ -1426,4 +1429,5 @@ jobs:
         if: failure()
         run: |
           docker inspect -f 'status={{.State.Status}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}}' opspilot-ci-kafka 2>&1 || true
+          docker stats --no-stream opspilot-ci-kafka 2>&1 || true
           docker logs --tail 300 opspilot-ci-kafka 2>&1 || true
