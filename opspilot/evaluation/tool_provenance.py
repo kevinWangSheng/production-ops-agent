@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from opspilot.evaluation.codec import (
+    UNRECORDED,
     StorageError,
     canonical_bytes,
     encode,
@@ -81,10 +82,37 @@ def same(actual: Any, expected: Any) -> None:
 
 
 @dataclass(frozen=True)
+class LegacyQueryScope(QueryScope):
+    """A scope recorded before #730 (2026-11-19) retired the two Run budgets.
+
+    Only archived recordings decode to this. The two values are kept so the
+    scope re-encodes to its recorded bytes and every recorded hash still
+    matches; nothing enforces them (they were not ceilings since M1-01).
+    """
+
+    max_operations: int = field(kw_only=True)
+    max_tool_seconds: int | float = field(kw_only=True)
+
+
+@dataclass(frozen=True)
+class LegacyToolRegistration(ToolRegistration):
+    """A registration recorded before #741 (2026-11-20) added ``citable_as_fact``.
+
+    The key is absent from the recording and must stay absent from its
+    encoding (the recorded registry hashes predate it); it reads as True,
+    the value every registration had then.
+    """
+
+    citable_as_fact: bool = field(default=True, metadata={UNRECORDED: True})
+
+
+@dataclass(frozen=True)
 class ToolSnapshot:
-    tools: tuple[ToolRegistration, ...]
+    # Union order matters: the current shapes are tried first, and the legacy
+    # shapes accept exactly the #730/#741 differences, nothing else (#839).
+    tools: tuple[ToolRegistration | LegacyToolRegistration, ...]
     targets: tuple[RegisteredTarget, ...]
-    scope: QueryScope
+    scope: QueryScope | LegacyQueryScope
 
 
 def _registries(snapshot: ToolSnapshot) -> tuple[ToolRegistry, TargetRegistry]:

@@ -28,13 +28,23 @@ class StorageError(ValueError):
         super().__init__(code)
 
 
+#: Field metadata for a legacy DTO (#839): the field did not exist when the
+#: artifact was written, so it is never encoded or accepted as a key and always
+#: takes its declared default; its hashes therefore stay as recorded.
+UNRECORDED = "unrecorded"
+
+
 def invalid() -> NoReturn:
     raise StorageError("SCHEMA_INVALID")
 
 
 def encode(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
-        return {f.name: encode(getattr(value, f.name)) for f in fields(value)}
+        return {
+            f.name: encode(getattr(value, f.name))
+            for f in fields(value)
+            if not f.metadata.get(UNRECORDED)
+        }
     if isinstance(value, datetime):
         if value.utcoffset() != timedelta(0):
             return invalid()
@@ -168,7 +178,7 @@ def decode(annotation: Any, value: Any) -> Any:
             return frozenset(values)
         return tuple(values) if origin is tuple else values
     if isinstance(annotation, type) and is_dataclass(annotation):
-        names = {f.name for f in fields(annotation)}
+        names = {f.name for f in fields(annotation) if not f.metadata.get(UNRECORDED)}
         # Only fields explicitly marked absent_ok may be missing (legacy artifacts);
         # they then take their declared default.
         optional = {f.name for f in fields(annotation) if f.metadata.get("absent_ok")}
