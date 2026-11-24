@@ -349,7 +349,7 @@ def _job(tmp_path: Path, **over: Any) -> Any:
 def test_job_defaults(tmp_path: Path) -> None:
     job = _job(tmp_path)
     assert job.diagnosis_wait_s == 900
-    assert job.submit_margin_s == 120
+    assert job.submit_margin_s == 240
     assert job.done_wait_s == 600
 
 
