@@ -24,6 +24,7 @@ from tests.acceptance.test_780_standing_instructions_postgres import (  # noqa: 
     _body,
     _catalog_index,
     _harness,
+    _marker,
     _revision_of,
     _run_once,
     _target,
@@ -126,7 +127,7 @@ def test_without_approved_instructions_the_input_messages_and_revision_are_uncha
     assert canonical(rebuilt) == canonical(first[:4])
     text = sent_text(provider)
     for label in ("none-other", "none-rej", "none-rev", "none-pending"):
-        assert _body(label) not in text, label
+        assert _marker(label) not in text, label
     assert _revision_of(outcome) == EXT_SWITCH_ON_PROMPT_REVISION
 
 

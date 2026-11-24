@@ -100,6 +100,13 @@ def _body(label: str) -> str:
     )
 
 
+def _marker(label: str) -> str:
+    """A single-line token of ``_body(label)``: the body has real newlines,
+    which ``canonical`` (JSON) escapes, so containment checks on canonical
+    text use this marker instead of the whole body."""
+    return f"si-body-{label}-{U}"
+
+
 def _instant(value: object) -> datetime:
     if isinstance(value, datetime):
         return value
@@ -198,7 +205,7 @@ def test_only_an_approved_unrevoked_revision_reaches_the_run_input(h):
     recorded = h.recorded(pending)
     assert FACT not in recorded["scope_facts"]
     assert recorded["version"] == V7
-    assert body not in canonical(recorded)
+    assert _marker("life") not in canonical(recorded)
 
     # Approved: in the next Run, with its provenance (780-5).
     approved = h.rb_review(sid)
@@ -237,7 +244,7 @@ def test_a_rejected_submission_never_reaches_a_run(h):
     incident, _ = h.submit(QUESTION, target_id=target)
     recorded = h.recorded(incident)
     assert FACT not in recorded["scope_facts"]
-    assert body not in canonical(recorded)
+    assert _marker("rej") not in canonical(recorded)
 
 
 def test_a_submission_without_kind_stays_a_runbook(h):
@@ -291,9 +298,10 @@ def test_another_target_keeps_its_own_instructions(h):
     si_publish(h, _body("own-a"), resource_uid=mine)
     si_publish(h, _body("own-b"), resource_uid=other)  # not refused: other target
     incident, _ = h.submit(QUESTION, target_id=mine)
+    assert body_of(standing(h, incident)) == _body("own-a")
     recorded = canonical(h.recorded(incident))
-    assert _body("own-a") in recorded
-    assert _body("own-b") not in recorded
+    assert _marker("own-a") in recorded
+    assert _marker("own-b") not in recorded
 
 
 def test_superseding_the_fixed_name_entry_moves_new_runs_to_the_new_revision(h):
@@ -314,7 +322,7 @@ def test_superseding_the_fixed_name_entry_moves_new_runs_to_the_new_revision(h):
     assert fact is not None
     assert (str(fact["entry_id"]), fact["revision"]) == (str(first["entry_id"]), 2)
     assert body_of(fact) == _body("super-2")
-    assert _body("super-1") not in canonical(h.recorded(incident))
+    assert _marker("super-1") not in canonical(h.recorded(incident))
 
 
 # -- 1-4096 bytes of plain text (B4-9) --------------------------------------------
@@ -376,7 +384,7 @@ def test_a_switch_off_web_neither_reads_nor_carries_instructions(h):
     recorded = h.recorded(incident)
     assert FACT not in recorded["scope_facts"]
     assert recorded["version"] != V9
-    assert _body("off") not in canonical(recorded)
+    assert _marker("off") not in canonical(recorded)
 
     on_incident, _ = h.submit(QUESTION, target_id=target)
     assert standing(h, on_incident) is not None
