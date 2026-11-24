@@ -417,7 +417,8 @@ def registry_voided_attempts(
     the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
     ``VOID_CYCLE``); an attempt voided twice across the checks and the
     registry is ``VOID_DUPLICATE``, a rerun named twice ``RERUN_DUPLICATE``. Entries of scenarios outside this
-    dataset are skipped.
+    dataset are skipped, and so are check rows outside this dataset or of
+    a system not scored here.
     """
     from scripts.eval_dev_round import void_registry_entries
 
@@ -442,10 +443,16 @@ def registry_voided_attempts(
         successor[voided] = rerun
         replacements.add(rerun)
 
+    # only the scored systems' rows of this dataset's scenarios (#520): a
+    # check covers every dataset of its plan, and rows outside the scored
+    # set must neither collide with the registry nor extend its chains
+    systems = {a["system"] for a in attempts}
     for check in checks:
         for row in check.get("voided_attempts") or []:
             if (
                 isinstance(row, Mapping)
+                and row.get("system") in systems
+                and row.get("scenario_id") in scenarios
                 and row.get("voided_attempt_id")
                 and row.get("rerun_attempt_id")
             ):
