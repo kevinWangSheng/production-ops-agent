@@ -17,13 +17,20 @@ catalog per question.
 Read, in the question directory only: ``*/SKILL.md`` (frontmatter ``name``
 and ``description``, the body as content), or ``runbook_catalog.json`` with
 ``runbook_content_<id>.json`` (``title`` as name, ``symptom`` as
-description, ``instruction`` as content). ``test_case.yaml`` and every other
-file (``global_instructions.json`` included) are never opened. Runbook text
-is never printed.
+description, ``instruction`` as content). ``import-instructions`` (#780,
+780-10/B4-12) reads ``global_instructions.json`` and nothing else: its
+``instructions`` list, one ``* item`` line each as upstream formats them
+(780-6), submitted and approved the same way as the target's standing
+instructions (``kind=standing_instructions``); a text over the 4096-byte
+limit is skipped with ``GLOBAL_INSTRUCTIONS_TOO_LARGE``, never truncated.
+``import`` never opens that file. ``test_case.yaml`` and every other file are
+never opened. Runbook and instruction text is never printed.
 
 Usage::
 
     python -m scripts.holmes_evals.import_skills import \
+        --question-dir <dir> --target <resource_uid> --manifest <path>
+    python -m scripts.holmes_evals.import_skills import-instructions \
         --question-dir <dir> --target <resource_uid> --manifest <path>
     python -m scripts.holmes_evals.import_skills revoke --manifest <path>
 
@@ -61,6 +68,14 @@ TIMEOUT_S = 30
 DESCRIPTION_MAX = 300
 _SEPARATORS = re.compile(r"[^a-z0-9]+")
 _CONTENT_FILE = re.compile(r"runbook_content_[A-Za-z0-9-]+\.json")
+#: #780: the upstream question's standing operator instructions.
+GLOBAL_INSTRUCTIONS_FILE = "global_instructions.json"
+STANDING_INSTRUCTIONS_KIND = "standing_instructions"
+#: The store's fixed name and byte limit for that kind (780-2, B4-9).
+STANDING_INSTRUCTIONS_NAME = "standing-instructions"
+STANDING_INSTRUCTIONS_MAX_BYTES = 4096
+STANDING_INSTRUCTIONS_DESCRIPTION = "HolmesGPT global instructions"
+TOO_LARGE = "GLOBAL_INSTRUCTIONS_TOO_LARGE"
 
 
 @dataclass(frozen=True)
@@ -178,6 +193,36 @@ def _dal_runbooks(question_dir: Path) -> list[Fixture]:
     return found
 
 
+def read_global_instructions(question_dir: Path) -> Fixture | None:
+    """The question's ``global_instructions.json`` as one standing-instructions
+    text: each non-blank ``instructions`` string as a ``* item`` line, as
+    upstream's ``_format_instructions_block`` joins them; None without the
+    file or without any item."""
+    path = question_dir / GLOBAL_INSTRUCTIONS_FILE
+    if not path.is_file():
+        return None
+    data = path.read_bytes()
+    loaded = json.loads(data.decode("utf-8"))
+    items = loaded.get("instructions") if isinstance(loaded, dict) else None
+    lines = [
+        f"* {item}"
+        for item in (items if isinstance(items, list) else [])
+        if isinstance(item, str) and item.strip()
+    ]
+    if not lines:
+        return None
+    return Fixture(
+        name=STANDING_INSTRUCTIONS_NAME,
+        description=STANDING_INSTRUCTIONS_DESCRIPTION,
+        content="\n".join(lines) + "\n",
+        source_ref=_ref(question_dir, path, data),
+    )
+
+
+def fits_standing_limit(fixture: Fixture) -> bool:
+    return len(fixture.content.encode("utf-8")) <= STANDING_INSTRUCTIONS_MAX_BYTES
+
+
 # -- the workbench -------------------------------------------------------------
 
 
@@ -241,14 +286,48 @@ def import_question(
     opener: urllib.request.OpenerDirector | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Submit and approve every fixture; returns (manifest rows, refusals)."""
+    return _submit_and_approve(
+        account, read_fixtures(question_dir), target, opener=opener
+    )
+
+
+def import_global_instructions(
+    account: Account,
+    question_dir: Path,
+    target: str,
+    *,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Submit and approve the question's global instructions as the target's
+    standing instructions; (manifest rows, refusals). Nothing is sent when
+    the file is absent or empty, or the text exceeds the limit (the caller
+    records ``TOO_LARGE`` from ``fits_standing_limit``)."""
+    fixture = read_global_instructions(question_dir)
+    if fixture is None or not fits_standing_limit(fixture):
+        return [], []
+    return _submit_and_approve(
+        account, [fixture], target, kind=STANDING_INSTRUCTIONS_KIND, opener=opener
+    )
+
+
+def _submit_and_approve(
+    account: Account,
+    fixtures: Sequence[Fixture],
+    target: str,
+    *,
+    kind: str | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
     rows: list[dict[str, Any]] = []
     refusals: list[str] = []
-    for fixture in read_fixtures(question_dir):
+    for fixture in fixtures:
         submitted = post(
             account,
             "/runbooks",
             {
                 "idempotency_key": f"holmes-import-{uuid.uuid4().hex}",
+                # ``None`` is not sent: a runbook submission stays as before.
+                "kind": kind,
                 "resource_uid": target,
                 "name": fixture.name,
                 "description": fixture.description,
@@ -323,17 +402,34 @@ def main(argv: Sequence[str] | None = None, env: Mapping[str, str] = os.environ)
     importing.add_argument("--question-dir", type=Path, required=True)
     importing.add_argument("--target", required=True)
     importing.add_argument("--manifest", type=Path, required=True)
+    instructions = commands.add_parser("import-instructions")
+    instructions.add_argument("--question-dir", type=Path, required=True)
+    instructions.add_argument("--target", required=True)
+    instructions.add_argument("--manifest", type=Path, required=True)
     revoking = commands.add_parser("revoke")
     revoking.add_argument("--manifest", type=Path, required=True)
     revoking.add_argument("--reason", default=REVOKE_REASON)
     args = parser.parse_args(argv)
     account = Account.from_env(env)
-    if args.command == "import":
-        rows, refusals = import_question(account, args.question_dir, args.target)
+    if args.command in ("import", "import-instructions"):
+        if args.command == "import":
+            rows, refusals = import_question(account, args.question_dir, args.target)
+            message = f"imported {len(rows)} runbooks"
+        else:
+            fixture = read_global_instructions(args.question_dir)
+            rows, refusals = [], []
+            if fixture is not None and not fits_standing_limit(fixture):
+                size = len(fixture.content.encode("utf-8"))
+                print(f"{TOO_LARGE}: {size} bytes, not imported", file=sys.stderr)
+            elif fixture is not None:
+                rows, refusals = _submit_and_approve(
+                    account, [fixture], args.target, kind=STANDING_INSTRUCTIONS_KIND
+                )
+            message = f"imported {len(rows)} standing instructions"
         with args.manifest.open("a", encoding="utf-8") as handle:
             for row in rows:
                 handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-        print(f"imported {len(rows)} runbooks")
+        print(message)
     else:
         rows = [
             json.loads(line)
