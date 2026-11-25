@@ -169,9 +169,13 @@ class _RunOps(_StoreBase):
         incident_id: UUID,
         run_id: UUID,
         owner: UUID,
-        versions: dict[str, str],
+        versions: dict[str, str] | tuple[dict[str, str], ...],
         lease_seconds: int = 30,
     ) -> Lease:
+        """``versions``: the one dict this process runs under, or (#780,
+        780-12) the code-determined dicts it accepts -- the base and the
+        standing-instructions variant; a row matching none is blocked."""
+        accepted = (versions,) if isinstance(versions, dict) else tuple(versions)
         incompatible = False
         lease = None
         with self.transaction() as conn:
@@ -203,7 +207,7 @@ class _RunOps(_StoreBase):
                 raise PersistenceError("CONTROL_DENIED")
             if row["global_suspended"] or row["target_suspended"]:
                 raise PersistenceError("CONTROL_DENIED")
-            if row["versions"] != versions:
+            if row["versions"] not in accepted:
                 conn.execute(
                     "UPDATE opspilot_runs SET state='blocked' WHERE run_id=%s AND state IN ('queued','running')",
                     (run_id,),

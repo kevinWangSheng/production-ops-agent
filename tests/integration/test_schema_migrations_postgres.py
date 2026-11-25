@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0028_runbook_imports"
+HEAD = "0029_standing_instructions"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
@@ -40,7 +40,7 @@ HEAD = "0028_runbook_imports"
 # identities, deliveries) + 1 of 0013 (self-heal authorizations) + the later
 # release tables + 1 of 0024 (trace outbox) + 2 of 0026 (chat sessions, turns)
 # + 1 of 0027 (investigation feedback) + 7 of 0028 (runbook requests, audit,
-# submissions, decisions, entries, revisions, revocations).
+# submissions, decisions, entries, revisions, revocations); 0029 adds none.
 TABLES_AT_HEAD = 54
 
 

@@ -52,6 +52,7 @@ from opspilot.investigation.loop import (
     InvestigationLoop,
     LoopOutcome,
     ModelClient,
+    input_prompt_revision,
     todo_view,
     tool_request_for,
 )
@@ -214,11 +215,38 @@ class InvestigationRunner:
         # One root span per attempt (``opspilot.tracing``): a no-op unless the
         # process is in ``lab`` mode and re-proves the lab target right now.
         with tracer().run(
-            incident_id=incident_id, run_id=lease.run_id, versions=self.worker.versions
+            incident_id=incident_id,
+            run_id=lease.run_id,
+            versions=self._run_versions(lease, snapshot),
         ) as span:
             outcome = self._attempt(incident_id, session, snapshot)
             span.settle(outcome.status, outcome.reason)
             return outcome
+
+    def _run_versions(
+        self, lease: Lease, snapshot: Mapping[str, Any]
+    ) -> Mapping[str, str]:
+        """The leased Run row's own ``versions`` (780-12), which the claim
+        accepted: the snapshot's when it is that Run, else a fresh identity
+        read; this worker's base dict only when neither says."""
+        run = snapshot["run"]
+        if str(run.get("run_id")) == str(lease.run_id) and isinstance(
+            run.get("versions"), Mapping
+        ):
+            return dict(run["versions"])
+        reader = getattr(self.store, "recovery_metadata", None)
+        if reader is not None:
+            try:
+                metadata = reader(lease.incident_id)
+            except PersistenceError:
+                metadata = None
+            if (
+                metadata is not None
+                and str(metadata["run_id"]) == str(lease.run_id)
+                and isinstance(metadata["versions"], Mapping)
+            ):
+                return dict(metadata["versions"])
+        return self.worker.versions
 
     def _attempt(
         self, incident_id: UUID, session: RecoverySession, snapshot: Mapping[str, Any]
@@ -273,6 +301,17 @@ class InvestigationRunner:
         if recorded is None:
             raise ContextError("INPUT_MISSING")
         input = InvestigationInput.from_json(recorded)
+        # 780-12: the claim accepted the row's ``versions`` as one of this
+        # process's dicts; the Run's own input must imply the same
+        # ``prompt_revision`` (a real standing-instructions fact with the
+        # standing variant, anything else with the base), or it is blocked.
+        versions = snapshot["run"].get("versions")
+        if (
+            isinstance(versions, Mapping)
+            and "prompt_revision" in versions
+            and versions["prompt_revision"] != input_prompt_revision(input)
+        ):
+            raise ContextError("INCOMPATIBLE_STATE")
         if not input.limits.within(M1_FROZEN_LIMITS):
             # The product boundary: a Run admitted with ceilings above the
             # frozen ones does not run, whatever its row says.

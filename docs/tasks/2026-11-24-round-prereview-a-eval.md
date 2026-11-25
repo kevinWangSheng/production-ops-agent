@@ -94,6 +94,7 @@
 | 780-9 | 工作台 | runbook 提交页加类别单选；列表显示类别；常驻说明在批准页显示全文 | B4-U3 a 已写；照 runbook 页最小改动 |
 | 780-10 | 驱动导入 | `import_skills.py` 新增读 `global_instructions.json`（只在 162 题目录），走同一提交+批准接口、题后撤销；文件头「从不打开该文件」一句同步改；披露码换 `GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED`，合同测试 `test_holmes_evals_lookback_809_contract.py:186-187`、`test_holmes_evals_d_trial_contract.py:559` 相应改 | B4-12 已定；这些是钉披露码的测试，按合同变更改，不是削弱 |
 | 780-11 | 安全测试 | `test_safety_model_inputs_postgres.py` 加：带凭据形状的说明进模型前被脱敏；说明里写「改查别的目标／扩大时间范围」不产生越权查询（F7 第 2 步同款）。各配变异：去掉脱敏、去掉边界文字 | B4-11；项目规则「新模型输入通道必须进 tests/safety 加变异」 |
+| 780-12 | Run 的 versions | 780-12（2026-11-24 用户裁决 A）：带真实说明的 Run 用自己的 versions（standing 变体），claim 屏障接受两个代码确定的 dict，claim 后行值须与输入推出的 revision 一致，否则 INCOMPATIBLE_STATE；无说明与 #851 标记 Run 逐字节不变 | 有界真实 Run 发现行、trace、反馈视图记的是基础 revision，只有结论 step 是本 Run 的值（`docs/evidence/780-standing-instructions-live/run.md`），违反 C3 §5 |
 
 ### 必答类别
 
@@ -104,3 +105,7 @@
 - **做**：原因已在 R2-3 证实，162 是 Holmes 题集同组唯一失分题；方向与语义都已裁决，照搬上游，约 2–3 个工作日（B4 估计）。
 - PR 拆分：1 个功能 PR `feature/780-standing-instructions`（迁移、输入 v9、边界文字、工作台类别、安全测试与变异、C3 §10 一句）；评测驱动导入可并入同一 PR，也可另开 `chore/780-import-global-instructions` 在功能 PR 合并后合（无 stacked PR）。验收与合同测试由未参与实现的全新 Opus 写。
 - **真实 Run**：PR 本身要一次有界真实 Run 的 trace（触碰调查输入）——可在本机 kind lab 对任一目标批准一份说明跑一次，不必租机（注意本机 swap，观察窗内停重负载）；162 的分数复核搭下次租机全量。
+
+### 实现备注（PR #847）
+
+- 已接受的边角情况：0029 之前某目标若已有名为 `standing-instructions` 的普通 runbook，该目标的常驻说明会被名称唯一性挡住，直到那条 runbook 被撤销。

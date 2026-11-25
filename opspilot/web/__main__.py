@@ -357,6 +357,11 @@ def _serve() -> int:
         # claims and runs with: a Run recorded under other versions is
         # blocked on claim (C3 §5), and without the face it has no input.
         run_versions=profile.versions(),
+        # 780-12: the variant a Run carrying a real standing-instructions
+        # fact is recorded under, the same one the worker accepts.
+        standing_run_versions=None
+        if profile.standing_versions is None
+        else profile.standing_versions(),
         tool_face=profile.face(clock),
         run_seconds=_run_seconds(),
     )

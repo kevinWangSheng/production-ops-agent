@@ -216,8 +216,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_runbook_revision_states": S,
         "opspilot_runbook_revisions": _g(
             "SELECT",
+            # 0029 (#780): + kind (standing instructions)
             "INSERT(approved_by,content,content_sha256,description,entry_id,event_id,"
-            "name,resource_uid,revision,source_label,source_ref,submission_id,"
+            "kind,name,resource_uid,revision,source_label,source_ref,submission_id,"
             "supersedes_revision)",
         ),
         "opspilot_runbook_revocations": _g(
@@ -225,7 +226,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_runbook_submissions": _g(
             "SELECT",
-            "INSERT(content,content_sha256,description,event_id,name,resource_uid,"
+            "INSERT(content,content_sha256,description,event_id,kind,name,resource_uid,"
             "source_label,source_ref,submission_id,submitted_by,supersedes_entry_id)",
         ),
         "opspilot_runs": _g(

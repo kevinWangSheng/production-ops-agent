@@ -9,6 +9,10 @@ refused, 400 invalid, 404 not found, 503 unavailable).
 Who is a known target: with a target registry configured, one of its keys
 (``UNKNOWN_TARGET`` otherwise); without one, any identifier the intake
 accepts -- the same targets a Run can be started on.
+
+The submit form's ``kind`` (#780, 780-9): ``runbook`` (the default when the
+field is absent) or ``standing_instructions``; a standing-instructions
+submission's name is fixed by the store, so the form's name is ignored.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from uuid import UUID
 
 from opspilot.intake import _reject_ambiguous_identifier, _reject_ambiguous_text
 from opspilot.knowledge.contract import ReviewErrorClass
-from opspilot.knowledge.runbooks import RunbookDraft, RunbookResult
+from opspilot.knowledge.runbooks import KINDS, RUNBOOK_KIND, RunbookDraft, RunbookResult
 from opspilot.persistence import PersistenceError
 from opspilot.web.review import ReviewError, check_key, check_reason
 
@@ -35,6 +39,7 @@ RUNBOOK_ERROR_CLASSES: Mapping[str, ReviewErrorClass] = {
     "GENERATION_CONFLICT": "conflict",
     "IDEMPOTENCY_CONFLICT": "conflict",
     "RUNBOOK_NAME_TAKEN": "conflict",
+    "STANDING_INSTRUCTIONS_EXISTS": "conflict",
     "SUPERSEDE_TARGET_INACTIVE": "refused",
     "SUPERSEDE_MISMATCH": "refused",
     "REVISION_NOT_ACTIVE": "refused",
@@ -186,6 +191,9 @@ class RunbookReview:
                 # The field's own code (C2b interface: NUL and other control
                 # characters are that field's ``*_INVALID``, 400).
                 raise RunbookError(_FIELD_CODES[name], fields=(name,)) from None
+        kind = fields.get("kind") or RUNBOOK_KIND
+        if kind not in KINDS:
+            raise RunbookError("INVALID_INPUT", fields=("kind",))
         raw_supersedes = fields.get("supersedes_entry_id", "")
         try:
             supersedes = UUID(raw_supersedes) if raw_supersedes else None
@@ -201,6 +209,7 @@ class RunbookReview:
             source_label=fields.get("source_label", ""),
             source_ref=fields.get("source_ref", ""),
             supersedes_entry_id=supersedes,
+            kind=kind,  # type: ignore[arg-type]
         )
         result = _act(self.store.submit, draft, idempotency_key=key, actor_id=actor_id)
         return _result(result)

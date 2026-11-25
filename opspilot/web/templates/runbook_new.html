@@ -1,16 +1,24 @@
 {% extends "base.html" %}
 {% set nav = "runbooks" %}
+{% set standing = fields.kind == "standing_instructions" %}
 {% block title %}Submit a runbook{% endblock %}
 {% block body %}
 <h1>Submit a runbook</h1>
-<p class="muted">The submission waits for review. Only after a signed-in user approves it can an investigation of this target read it. Content is stored as written (Markdown, at most 32 KiB) and shown to the reviewer unredacted; it is redacted before it reaches a model.</p>
+<p class="muted">The submission waits for review. Only after a signed-in user approves it can an investigation of this target read it. Content is stored as written and shown to the reviewer unredacted; it is redacted before it reaches a model.</p>
 {% include "_runbook_error.html" %}
 <form method="post" action="/runbooks" id="form-submit">
   <input type="hidden" name="idempotency_key" value="submit-{{ form_nonce }}">
+  <fieldset id="kind">
+    <legend>Category</legend>
+    <p><label><input type="radio" name="kind" value="runbook"{% if not standing %} checked{% endif %}> <strong>Runbook</strong></label>
+      <span class="muted">— listed by name and description at the start of an investigation; the model fetches the content only when it matches the problem. Markdown, at most 32 KiB.</span></p>
+    <p><label><input type="radio" name="kind" value="standing_instructions"{% if standing %} checked{% endif %}> <strong>Standing instructions</strong></label>
+      <span class="muted">— given in full to every investigation of this target, before the runbook list: checks to make every time. One per target (replace it to change it); plain text, at most 4 KiB; the name is always <code>standing-instructions</code> and the description is optional. Like a runbook it grants no permissions and changes no target, time frame or report requirements.</span></p>
+  </fieldset>
   <p><label>Target <input name="resource_uid" required maxlength="256" list="known-targets" value="{{ fields.resource_uid or '' }}"></label></p>
   {% if known_targets %}<datalist id="known-targets">{% for t in known_targets %}<option value="{{ t }}">{% endfor %}</datalist>{% endif %}
-  <p><label>Name <input name="name" required maxlength="100" placeholder="e.g. database-troubleshooting" value="{{ fields.name or '' }}"></label> <span class="muted">lowercase letters, digits and hyphens; spaces and underscores become hyphens</span></p>
-  <p><label>Description <input name="description" required maxlength="300" value="{{ fields.description or '' }}"></label></p>
+  <p><label>Name <input name="name" maxlength="100" placeholder="e.g. database-troubleshooting" value="{{ fields.name or '' }}"></label> <span class="muted">runbooks only: lowercase letters, digits and hyphens; spaces and underscores become hyphens</span></p>
+  <p><label>Description <input name="description" maxlength="300" value="{{ fields.description or '' }}"></label> <span class="muted">required for a runbook</span></p>
   <p><label>Source <input name="source_label" required maxlength="100" value="{{ fields.source_label or '' }}"></label>
      <label>Reference <input name="source_ref" maxlength="500" value="{{ fields.source_ref or '' }}"></label></p>
   <p><label>Replaces entry (optional) <input name="supersedes_entry_id" maxlength="36" value="{{ fields.supersedes_entry_id or '' }}"></label></p>

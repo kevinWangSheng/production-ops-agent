@@ -314,7 +314,7 @@ class IncidentStore(Protocol):
         incident_id: UUID,
         run_id: UUID,
         owner: UUID,
-        versions: dict[str, str],
+        versions: dict[str, str] | tuple[dict[str, str], ...],
         lease_seconds: int = 30,
     ) -> Lease: ...
 
@@ -327,6 +327,10 @@ class IncidentStore(Protocol):
         ...
 
     def abandon(self, lease: Lease) -> None: ...
+
+    def block(self, lease: Lease) -> None:
+        """Move the leased Run to ``blocked`` (C3 §7); ``CONTROL_DENIED`` if fenced."""
+        ...
 
     def hand_off(self, lease: Lease) -> None:
         """Park the leased Run for a human (ADR-0005); ``CONTROL_DENIED`` if fenced."""
@@ -821,7 +825,7 @@ class DurableIncidentStore:
         incident_id: UUID,
         run_id: UUID,
         owner: UUID,
-        versions: dict[str, str],
+        versions: dict[str, str] | tuple[dict[str, str], ...],
         lease_seconds: int = 30,
     ) -> Lease:
         return self._store.claim(incident_id, run_id, owner, versions, lease_seconds)
@@ -836,6 +840,9 @@ class DurableIncidentStore:
 
     def abandon(self, lease: Lease) -> None:
         self._store.abandon(lease)
+
+    def block(self, lease: Lease) -> None:
+        self._store.block(lease)
 
     def hand_off(self, lease: Lease) -> None:
         self._store.hand_off(lease)

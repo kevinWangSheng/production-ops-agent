@@ -564,4 +564,31 @@ MUTATIONS: tuple[Mutation, ...] = (
         "        text = self._text\n        last = None\n",
         "        return None\n        text = self._text\n        last = None\n",
     ),
+    # #780 (780-11 / B4-11): killed by the two standing-instructions tests in
+    # tests/safety/test_safety_model_inputs_postgres.py.
+    Mutation(
+        "M65",
+        "credentials: standing instructions are redacted before the v9 fact and the model (#780)",
+        # ASSUMPTION (test author, implementation unseen): one module builds
+        # the ``standing_instructions`` fact and calls ``redact_credentials(``
+        # exactly once there, on the body; the runner reports ``stale``
+        # otherwise and the implementer pins the exact path and line (an
+        # edit that makes the body reach the fact and the model unredacted).
+        "opspilot/knowledge/standing.py",
+        "redact_credentials(",
+        "str(",
+        pg=True,
+    ),
+    Mutation(
+        "M66",
+        "boundary: standing instructions reach the model under their fixed wording (#780 B4-U4 a)",
+        # ASSUMPTION (test author, implementation unseen): the message is
+        # built as ``f"{STANDING_INSTRUCTIONS_BOUNDARY}\n{...}"`` in
+        # context.py; the mutation sends the body without the wording. The
+        # runner reports ``stale`` otherwise and the implementer pins it.
+        "opspilot/investigation/context.py",
+        "{STANDING_INSTRUCTIONS_BOUNDARY}\\n",
+        "",
+        pg=True,
+    ),
 )
