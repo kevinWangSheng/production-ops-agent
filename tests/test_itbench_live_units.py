@@ -362,6 +362,11 @@ class FakeHost(driver.Host):
         self.clock = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
         self.judge_rc = judge_rc
         self.jobs: list[Mapping[str, Any]] = []
+        self.nodes: dict[str, Any] = {"items": [
+            {"metadata": {"name": "kind-environment-worker"}, "spec": {}},
+            {"metadata": {"name": "kind-environment-worker2"}, "spec": {"taints": [
+                {"key": "itbench.io/sandbox", "value": "true", "effect": "NoSchedule"}]}},
+        ]}  # fmt: skip
         super().__init__(
             run=self._run, kubectl_fn=self._kubectl, port_forward=self._forward,
             get_json=self._get, start_pg=lambda d, p: SimpleNamespace(
@@ -428,6 +433,8 @@ class FakeHost(driver.Host):
             )
         elif "create" in argv and "token" in argv:
             out = "synthetic-readonly-token\n"
+        elif argv[1:] == ["get", "nodes", "-o", "json"]:
+            out = json.dumps(self.nodes)
         elif argv[1:4] == ["get", "namespace", "kube-system"]:
             out = "uid-kube-system"
         elif argv[1] == "get" and argv[3:] == ["-A", "-o", "json"]:
@@ -529,12 +536,14 @@ def test_trial_end_to_end(tmp_path: Path) -> None:
     assert block["status"] == "completed", block
     commands = [a[4:6] for a in host.cli]
     assert commands == [
+        ["configure", "environment"],
         ["deploy", "environment"],
         ["inject", "faults"],
         ["remove", "faults"],
         ["undeploy", "environment"],
     ]
     assert block["cleanup"]["errors"] == []
+    assert block["sandbox_nodes"] == ["kind-environment-worker2"]
     order = block["cleanup"]["order"]
     assert order[0] == "worker" and order[-1] == "undeploy"
     assert order.index("pg") < order.index("remove-faults") < order.index("undeploy")
@@ -619,7 +628,7 @@ def test_can_i_mismatch_stops_before_fault(tmp_path: Path) -> None:
     host.kubectl_fn = wide
     block = driver.Trial(cfg, host, "20", 1).run()
     assert block["status"] == "stopped" and block["reason"] == "CAN_I_MISMATCH"
-    assert [a[4] for a in host.cli] == ["deploy", "undeploy"]
+    assert [a[4] for a in host.cli] == ["configure", "deploy", "undeploy"]
 
 
 def test_failed_undeploy_aborts_round(tmp_path: Path) -> None:
@@ -719,3 +728,24 @@ def test_jaeger_v3_only_is_disclosed_and_feeds_vocabulary(tmp_path: Path) -> Non
     assert "JAEGER_QUERY_UNANSWERED" not in block["disclosures"]
     vocab = (cfg.trial_dir("20", 1) / "vocabulary.txt").read_text().split()
     assert "frontend-proxy" in vocab
+
+
+def test_missing_sandbox_taint_stops_before_deploy(tmp_path: Path) -> None:
+    """Smoke 2026-11-25: without ``itbench configure environment`` taking
+    effect, a scenario's inject stops at upstream's worker-node check."""
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    host.nodes = {"items": [{"metadata": {"name": "w"}, "spec": {"taints": [
+        {"key": "itbench.io/sandbox", "value": "true", "effect": "NoExecute"}]}}]}  # fmt: skip
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "infra_failed"
+    assert block["reason"] == "SANDBOX_TAINT_MISSING"
+    assert [a[4] for a in host.cli] == ["configure"]
+    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
+    assert summary["reason"] == "SANDBOX_TAINT_MISSING"
+
+
+def test_configure_argv() -> None:
+    assert upstream.cli_argv("configure", Path("/k"))[4:] == [
+        "configure", "environment", "--kubeconfig", "/k",
+    ]  # fmt: skip
