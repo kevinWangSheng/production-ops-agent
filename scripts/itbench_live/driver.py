@@ -143,7 +143,11 @@ SCRAPE_PATCH_DISCLOSURE = "EVAL_SCRAPE_NAMESPACE_PATCH"
 #: pre-fault snapshot so they are excluded from the entry choice.
 SETTLE = timedelta(minutes=6)
 #: Consecutive ``infra_failed``/``crashed`` trials that stop the round.
-INFRA_STREAK_LIMIT = 2
+#: Three, not two: scenario-specific upstream inject failures count too, and
+#: two in a row would stop an unattended run for hours.
+INFRA_STREAK_LIMIT = 3
+#: Free space on the repository's filesystem required before each trial.
+MIN_FREE_GIB = 15.0
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 _ROUND = re.compile(r"^[a-z0-9][a-z0-9.-]{0,40}$")
@@ -187,6 +191,8 @@ class Config:
     namespace_wait: timedelta = NAMESPACE_WAIT
     scrape_namespace_patch: bool = True
     settle: timedelta = SETTLE
+    min_free_gib: float = MIN_FREE_GIB
+    infra_streak_limit: int = INFRA_STREAK_LIMIT
     git: dict[str, Any] = field(default_factory=dict)
     secrets_env: dict[str, str] = field(default_factory=dict)
 
@@ -1321,7 +1327,8 @@ def run_round(
 ) -> list[dict[str, Any]]:
     """Scenarios in order, one trial at a time (§5 item 7); done trials are
     skipped (a completed one without scores is judged now); a trial without
-    a Run is recorded and not judged; ``INFRA_STREAK_LIMIT`` consecutive
+    a Run is recorded and not judged; less than ``min_free_gib`` free disk
+    before a trial stops the round; ``infra_streak_limit`` consecutive
     ``infra_failed``/``crashed`` trials stop the round."""
     for scenario in scenarios:
         try:
@@ -1337,6 +1344,7 @@ def run_round(
                 if unjudged(cfg, scenario, trial):
                     judge_one(cfg, host, scenario, trial)
                 continue
+            check_disk(cfg, host)
             block = Trial(cfg, host, scenario, trial).run()
             entry: dict[str, Any] = {
                 "scenario": scenario,
@@ -1348,9 +1356,19 @@ def run_round(
             results.append(entry)
             print(json.dumps(entry), flush=True)
             streak = streak + 1 if block["status"] in ("infra_failed", "crashed") else 0
-            if streak >= INFRA_STREAK_LIMIT:
+            if streak >= cfg.infra_streak_limit:
                 raise RoundAbort("INFRA_FAILURE_STREAK", f"{scenario}/{trial}")
     return results
+
+
+def check_disk(cfg: Config, host: Host) -> None:
+    """Before a trial: enough free space on the repository's filesystem."""
+    reading = host.disk_reading()
+    if not reading:
+        raise RoundAbort("DISK_UNREADABLE")
+    free_gib = reading["free"] / 1024
+    if free_gib < cfg.min_free_gib:
+        raise RoundAbort("DISK_LOW", f"{free_gib:.1f} GiB free")
 
 
 def unjudged(cfg: Config, scenario: str, trial: int) -> bool:
@@ -1408,6 +1426,7 @@ def _config(args: argparse.Namespace) -> Config:
         settle=timedelta(
             seconds=getattr(args, "settle_seconds", SETTLE.total_seconds())
         ),
+        min_free_gib=getattr(args, "min_free_gib", MIN_FREE_GIB),
     )
 
 
@@ -1439,6 +1458,10 @@ def main(argv: Sequence[str] | None = None, host: Host | None = None) -> int:
     p_round.add_argument(
         "--no-scrape-namespace-patch", action="store_true",
         help="run without the eval-side scrape-class patch (#866)",
+    )  # fmt: skip
+    p_round.add_argument(
+        "--min-free-gib", type=float, default=MIN_FREE_GIB,
+        help="free disk required before each trial",
     )  # fmt: skip
     p_round.add_argument(
         "--settle-seconds", type=float, default=SETTLE.total_seconds(),

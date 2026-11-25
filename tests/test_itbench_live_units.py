@@ -385,6 +385,7 @@ class FakeHost(driver.Host):
         self.span_body: Any = {"status": "success", "data": {"result": [
             {"metric": {"namespace": "otel-demo", "service_name": "cart"}, "value": [1.0, "4"]}]}}  # fmt: skip
         self.sleeps: list[tuple[float, int]] = []
+        self.free_mib = 100 * 1024
         self.jobs: list[Mapping[str, Any]] = []
         self.nodes: dict[str, Any] = {"items": [
             {"metadata": {"name": "kind-environment-worker"}, "spec": {}},
@@ -405,6 +406,10 @@ class FakeHost(driver.Host):
             judge=self._judge, port_in_use=lambda p: False, memory_reading=lambda: None,
             now=self._now, monotonic=lambda: 0.0, sleep=self._sleep,
         )  # fmt: skip
+        self.disk_reading = lambda: {
+            "unit": "MiB", "total": 200 * 1024, "used": 200 * 1024 - self.free_mib,
+            "free": self.free_mib,
+        }  # fmt: skip
 
     def _now(self) -> datetime:
         return self.clock
@@ -960,13 +965,34 @@ def test_infra_failure_streak_aborts_round(
 ) -> None:
     cfg = _cfg(tmp_path)
     monkeypatch.setattr(driver, "prepare_round", lambda cfg, host: None)
+    _library(cfg.itbench, ["24", "25"])
     host = CrashingForward([_body()])
+    assert cfg.infra_streak_limit == 3
     with pytest.raises(driver.RoundAbort) as info:
-        driver.run_round(cfg, host, ["20", "23"], [1])
-    assert info.value.code == "INFRA_FAILURE_STREAK"
-    for sid in ("20", "23"):
+        driver.run_round(cfg, host, ["20", "23", "24", "25"], [1])
+    assert info.value.code == "INFRA_FAILURE_STREAK" and "24/1" in str(info.value)
+    for sid in ("20", "23", "24"):
         summary = json.loads((cfg.evidence_trial(sid, 1) / "summary.json").read_text())
         assert summary["status"] == "crashed"
+    assert not cfg.evidence_trial("25", 1).exists()
+
+
+def test_low_disk_aborts_round_before_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(driver, "prepare_round", lambda cfg, host: None)
+    host = FakeHost([_body()])
+    host.free_mib = 14 * 1024
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.run_round(cfg, host, ["20"], [1])
+    assert info.value.code == "DISK_LOW" and host.cli == []
+    assert not cfg.evidence_trial("20", 1).exists()
+    cfg.min_free_gib = 10.0
+    assert driver.run_round(cfg, host, ["20"], [1])[0]["status"] == "stopped"
+    args = SimpleNamespace(itbench=str(tmp_path), min_free_gib=20.0)
+    assert driver._config(args).min_free_gib == 20.0
+    assert driver._config(SimpleNamespace(itbench=str(tmp_path))).min_free_gib == 15.0
 
 
 def test_killed_driver_unwinds_and_rerun_starts_fresh(tmp_path: Path) -> None:
