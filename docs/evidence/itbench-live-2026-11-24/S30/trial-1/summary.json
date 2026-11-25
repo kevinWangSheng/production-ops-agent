@@ -2,7 +2,7 @@
   "schema": "itbench-live-trial-1",
   "status": "stopped",
   "reason": "NO_ENTRY_ALERT",
-  "frozen_at": "2026-11-25T10:05:02.338846+00:00",
+  "frozen_at": "2026-11-25T12:19:35.225128+00:00",
   "itbench_live": {
     "round": "2026-11-24",
     "scenario": "30",
@@ -10,7 +10,7 @@
     "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
     "itbench_commit": "5ed31cc4bef041af7f61120811ebff7f36612e4b",
     "git": {
-      "commit": "7d0d49ef5a7c10827b4436acc597f4403d65e3e7",
+      "commit": "9105aa3e402193f6d6e5834b423bb6a3030023ed",
       "dirty": false,
       "allow_dirty": false
     },
@@ -28,39 +28,43 @@
       "LIST_FAILED:limitranges"
     ],
     "steps": {
+      "configure": {
+        "returncode": 0,
+        "seconds": 0.766
+      },
       "deploy": {
         "returncode": 0,
-        "seconds": 435.803
+        "seconds": 418.663
       },
       "inject": {
         "returncode": 0,
-        "seconds": 4.428
+        "seconds": 4.424
       },
       "remove": {
         "returncode": 0,
-        "seconds": 4.426
+        "seconds": 4.123
       },
       "undeploy": {
         "returncode": 0,
-        "seconds": 406.645
+        "seconds": 401.789
       }
     },
     "times": {
-      "deploy_started": "2026-11-25T09:30:44.052137+00:00",
-      "environment_ready": "2026-11-25T09:38:02.553969+00:00",
-      "inject_started": "2026-11-25T09:38:06.474101+00:00",
-      "inject_done": "2026-11-25T09:38:10.902220+00:00",
-      "cleaned_up": "2026-11-25T10:05:02.338794+00:00"
+      "deploy_started": "2026-11-25T11:45:39.133058+00:00",
+      "environment_ready": "2026-11-25T11:52:40.499109+00:00",
+      "inject_started": "2026-11-25T11:52:44.495526+00:00",
+      "inject_done": "2026-11-25T11:52:48.919678+00:00",
+      "cleaned_up": "2026-11-25T12:19:35.225078+00:00"
     },
     "memory_before": {
       "unit": "MiB",
       "mem": {
         "total": 32089,
-        "used": 2910,
-        "free": 18087,
+        "used": 3387,
+        "free": 7443,
         "shared": 35,
-        "buff/cache": 11593,
-        "available": 29179
+        "buff/cache": 21760,
+        "available": 28702
       },
       "swap": {
         "total": 8191,
@@ -68,6 +72,9 @@
         "free": 8190
       }
     },
+    "sandbox_nodes": [
+      "kind-environment-worker"
+    ],
     "can_i": {
       "answers": {
         "create deployments.apps": "no",
@@ -90,7 +97,7 @@
       },
       "mismatches": []
     },
-    "prefault_alert_count": 8,
+    "prefault_alert_count": 4,
     "alert_polls": 81,
     "cleanup": {
       "order": [

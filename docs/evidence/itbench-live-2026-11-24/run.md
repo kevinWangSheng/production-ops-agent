@@ -32,18 +32,18 @@ S20：
 - 入口告警是 `KubePodNotReady`。该告警不带 `service_name`，所以目标按 alertname 退回匹配，已标 `TARGET_FALLBACK_ALERTNAME_MATCH`。注入前已在响的告警组合有 7 个，均已排除。
 - 报告结论 `supported`，报告格式为结构化根因，词表 203 个名字。
 
-S23：第 1 次失败后，把它的 summary 移到旁边（本目录 `S23/trial-1/attempt-1-summary.json`），只重跑这一题。第 2 次失败方式完全相同，可以判定是确定性失败，不是偶发。
+S23：第 1 次失败后，把它的 summary 移到旁边（本目录 `S23/trial-1/attempt-1-summary.json`），只重跑这一题。第 2 次失败方式完全相同，可以判定是确定性失败，不是偶发。第 2 次的 summary 现在保存为 `attempt-2-summary.json`；`summary.json` 是补上 configure 之后的重跑。
 
 ## 判分（只报诊断类指标）
 
 | 题 | 官方 root_cause_entity_f1 | 官方 pass | root_cause_reasoning | propagation_chain | fault_localization | 旁证精确匹配 any_hit / F1 |
 |---|---|---|---|---|---|---|
 | S20 | 1.0 | 1.0 | 1.0 | 0.0（受转换限制） | 0.0 | 1.0 / 1.0 |
-| S23 | 未判分（没有 Run） | — | — | — | — | — |
-| S30（替补 1） | 未判分（没有入口告警，没有 Run） | — | — | — | — | — |
+| S23（补上 configure 后重跑） | 1.0 | 1.0 | 1.0 | 0.0（受转换限制） | 0.0 | 1.0 / 1.0 |
+| S30（替补 1，补上 configure 前后各一次） | 未判分（两次都没有入口告警，没有 Run） | — | — | — | — | — |
 | S31（替补 2） | 未判分（没有入口告警，没有 Run） | — | — | — | — | — |
 
-计数：冒烟目标 2 题，**最终 1/2 有分**（`scores.json` 记了 4 遍，其中 1 遍有分）。替补额度（至多 2 个）已经用完。修复类指标不适用于只读产品，没有计算。
+计数：冒烟目标 2 题（S20 + S23），**2/2 有分**（`scores.json` 记了 4 题，其中 2 题有分）。S23 原来的失败原因是设施流程缺了一步，补上后重跑通过，见文末。修复类指标不适用于只读产品，没有计算。
 
 ## 替补题（2026-11-25）
 
@@ -61,7 +61,7 @@ S30 跑完后已删除 ITBench 集群，停掉了本任务的 cloud-provider-kin
 
 ## 失败与修复
 
-1. **S23 注入失败（未归类）。** 上游 `itbench inject faults --scenario 23` 两次都在约 4 秒内返回 1。原因写在 CLI 日志里，但按答案隔离规定不读那份日志，只按模式归类的做法也被本会话的权限拒绝了，所以目前无法判定是环境问题还是上游问题。排除了设施本身的问题：同一流程 S20 注入成功，部署和清理都成功，can-i 探针也没有不符。
+1. **S23 注入失败（当时未归类；后来查明是设施缺了 configure 步骤，见文末）。** 上游 `itbench inject faults --scenario 23` 两次都在约 4 秒内返回 1。原因写在 CLI 日志里，但按答案隔离规定不读那份日志，只按模式归类的做法也被本会话的权限拒绝了，所以目前无法判定是环境问题还是上游问题。排除了设施本身的问题：同一流程 S20 注入成功，部署和清理都成功，can-i 探针也没有不符。
 2. **Jaeger 只提供 v3 查询接口（环境与产品的集成缺口，设施已修正记录方式）。** 上游 Jaeger v2 用 ClickHouse 存储，`/api/services`、`/api/traces` 返回 404，只有 `/api/v3/services` 能应答；`/jaeger` 前缀下返回的是界面 HTML。产品的 trace 工具调用 v1 接口，所以 S20 的 `traces_list_services` 和 `traces_search` 都报 error。trace 在本轨记为「未集成」（A564-9）。设施的修改已推到 PR #852：识别到只有 v3 时记 `JAEGER_V1_API_ABSENT_V3_ONLY`，并从 v3 取服务名补进词表。产品没改。
 3. **只读身份不能列 endpointslices 和 limitranges（环境，不扩权）。** kind lab 的 RBAC 清单没有这两类资源，词表少了这两类对象名，已记 `LIST_FAILED`。
 
@@ -97,3 +97,25 @@ S31 与 S30 情况相同：注入成功，等待期内没有出现「注入前�
 结论：两个替补都是同一种失败，即注入后设施没有拿到入口告警。这是设施的入口告警规则和这些场景之间的问题，不是注入失败。全量（24 × 3）之前，应先让设施记录被排除的告警标签组合以及它们注入后 `activeAt` 是否变化，以判断是排除规则误伤还是告警规则根本没有触发。这一项由 lead 决定是否开 issue。
 
 S31 跑完后已删除 ITBench 集群，检查并停掉了本任务的 cloud-provider-kind 进程（PID 1733478、1733421）。`opspilot-m1` 仍处于停止状态，没有动过。
+
+## 补上 `itbench configure environment` 后重跑 S23 与 S30（2026-11-25）
+
+- **原因（lead 经用户授权，由隔离 Agent 诊断）：** 设施流程在建好 kind 集群之后没有执行上游的 `itbench configure environment`。这一步负责给 sandbox worker 节点打 `itbench.io/sandbox=true:NoSchedule` 污点。少了它，S23 的注入会停在上游通用的 worker 节点检查上，什么都还没应用。这是环境配置缺口，与故障内容无关。之前的「失败与修复」第 1 条据此更正为：原因已查明，属于设施问题，已修复。
+- **修复：** PR #863（分支 `chore/564-itbench-configure-env`，`9105aa3e`）让设施在每遍部署之前先执行 `itbench configure environment`，再核对至少有一个节点带这个污点，没有就停在部署前，记 `SANDBOX_TAINT_MISSING`。子命令的依据只有上游 CLI 的 `--help`。两遍都标记了 `kind-environment-worker`。
+- **版本：** 主机新克隆该分支。集群先导出 `KUBECONFIG` 再按上游任务新建，一次成功（11:03 UTC）。`main` 里已经合并了 S23 和 S30 的证据，会被驱动当作已完成而跳过，所以先在主机上把这两份移到 `tmp/.../set-aside/`，在同一轮次里重跑。本目录保留旧 summary，作为 `attempt-*-summary.json`。
+
+| 题 | configure | 部署 | 注入 | 告警到达（自注入结束） | Run | 清理 | 状态 |
+|---|---|---|---|---|---|---|---|
+| S23 | 0.7 s，rc 0 | 471 s | 5 s，rc 0 | 5 分 15 秒 | 110 s，`completed` | 4 s + 408 s | completed |
+| S30 | 0.8 s，rc 0 | 419 s | 4 s，rc 0 | 20 分钟内没有（轮询 81 次） | 没有 | 4 s + 402 s | `stopped: NO_ENTRY_ALERT` |
+
+S23：
+- Run `45a97d03-141a-579d-b77f-da208bab68dc`，[LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/6701a471-5a6e-435f-bd1c-cea93d704682/r/00000000-0000-0000-6d09-99e22c434cf2?poll=true)。
+- 诊断耗时：自故障起点代理 433 s，自投递 110 s。
+- token：prompt 674,379，其中缓存命中 623,104；completion 19,795。
+- 入口告警是 `KubePodNotReady`，按 alertname 退回匹配。
+- 官方 judge 的分数见上方判分表。这次 judge 耗时约 22 分钟，比 S20 慢。
+
+S30：补上 configure 之后仍然没有入口告警。注入前已在响的告警组合有 4 个，均已排除。缺这一步解释不了 S30 和 S31 没有入口告警；原因仍未核实，是排除规则误伤还是告警规则没有触发，尚无定论。
+
+主机：跑完后已删除 ITBench 集群，检查并停掉了本任务的 cloud-provider-kind 进程（PID 1781721、1781679）。`opspilot-m1` 仍处于停止状态，没有动过。
