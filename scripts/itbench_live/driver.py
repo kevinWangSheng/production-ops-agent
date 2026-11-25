@@ -5,7 +5,8 @@ separate from ITBench-Lite (R8-1): own rounds, evidence and scores. One trial
 of one scenario, end to end, on the rental host's ``kind-environment``
 cluster (upstream ``clusters/kind``)::
 
-    ports free -> ITBench ``deploy environment --scenario N`` (fresh environment)
+    ports free -> ITBench ``configure environment`` (sandbox taint on a worker,
+    checked) -> ``deploy environment --scenario N`` (fresh environment)
     -> app Deployments available -> OpsPilot's read-only identity (the kind
     lab RBAC, get/list, no Secrets) + can-i probe (fails closed) + fresh token
     -> port-forwards (Prometheus pod, Jaeger query) -> pre-fault alert set and
@@ -522,6 +523,16 @@ class Trial:
             raise TrialStop("KUBECTL_FAILED", args[0] if args else "")
         return str(done.stdout or "")
 
+    def _check_sandbox_taint(self) -> None:
+        try:
+            nodes = json.loads(self._kubectl_ok("get", "nodes", "-o", "json"))
+        except ValueError:
+            raise TrialStop("NODES_UNREADABLE") from None
+        tainted = upstream.sandbox_tainted_nodes(nodes)
+        self.block["sandbox_nodes"] = tainted
+        if not tainted:
+            raise UpstreamError("SANDBOX_TAINT_MISSING")
+
     def _lists(self, kubeconfig: Path) -> dict[str, Any]:
         """Object lists with the read-only identity (``vocabulary.LIST_PLURALS``)."""
         env = identity.kubectl_env(kubeconfig)
@@ -607,6 +618,11 @@ class Trial:
 
         # 1. a fresh environment (§5 item 3); undeploy is pushed first so it
         # runs last, also after a failed deploy.
+        # 0. upstream cluster setup (smoke 2026-11-25, S23): ``itbench configure
+        # environment`` taints the sandbox worker nodes; idempotent, so run
+        # before every deploy, then check at least one node carries the taint.
+        self._cli("configure")
+        self._check_sandbox_taint()
         self._mark("deploy_started")
         self.cleanup.push("undeploy", lambda: self._cli("undeploy"))
         self._cli("deploy", scenario=self.scenario)

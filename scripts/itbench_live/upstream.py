@@ -45,6 +45,10 @@ DEPLOY_TIMEOUT_S = 3600.0
 INJECT_TIMEOUT_S = 1800.0
 REMOVE_TIMEOUT_S = 1800.0
 UNDEPLOY_TIMEOUT_S = 3600.0
+CONFIGURE_TIMEOUT_S = 600.0
+#: ``itbench configure environment`` (upstream ``utils/cluster.py``) taints the
+#: sandbox worker nodes with this key (``=true:NoSchedule``).
+SANDBOX_TAINT_KEY = "itbench.io/sandbox"
 _ID = re.compile(r"^[1-9][0-9]{0,3}$")
 
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
@@ -111,9 +115,11 @@ def check_pinned(checkout: Path, run: Runner = subprocess.run) -> str:
 
 
 def cli_argv(command: str, kubeconfig: Path, scenario: str | None = None) -> list[str]:
-    """``uv run --no-dev itbench`` argv for the four lifecycle commands."""
+    """``uv run --no-dev itbench`` argv for the lifecycle commands."""
     base = ["uv", "run", "--no-dev", "itbench"]
     kube = ["--kubeconfig", str(kubeconfig)]
+    if command == "configure":
+        return [*base, "configure", "environment", *kube]
     if command == "deploy":
         if scenario is None:
             raise ValueError("deploy needs a scenario")
@@ -130,6 +136,7 @@ def cli_argv(command: str, kubeconfig: Path, scenario: str | None = None) -> lis
 
 
 TIMEOUTS: Mapping[str, float] = {
+    "configure": CONFIGURE_TIMEOUT_S,
     "deploy": DEPLOY_TIMEOUT_S,
     "inject": INJECT_TIMEOUT_S,
     "remove": REMOVE_TIMEOUT_S,
@@ -200,3 +207,27 @@ def leaks_upstream_paths(values: Sequence[str], checkout: Path) -> list[str]:
     """Values that point into the scenario library or name an answer file."""
     library = str(scenarios_root(checkout))
     return [v for v in values if library in v or GT_FILE in v or DEFINITION_FILE in v]
+
+
+def sandbox_tainted_nodes(nodes: object) -> list[str]:
+    """Worker nodes of a ``kubectl get nodes -o json`` body that carry the
+    ITBench sandbox taint ``itbench.io/sandbox=true:NoSchedule``."""
+    items = nodes.get("items") if isinstance(nodes, Mapping) else None
+    found: list[str] = []
+    for node in items if isinstance(items, list) else []:
+        if not isinstance(node, Mapping):
+            continue
+        meta = node.get("metadata") if isinstance(node.get("metadata"), Mapping) else {}
+        spec = node.get("spec") if isinstance(node.get("spec"), Mapping) else {}
+        taints = spec.get("taints") if isinstance(spec, Mapping) else None
+        for taint in taints if isinstance(taints, list) else []:
+            if (
+                isinstance(taint, Mapping)
+                and taint.get("key") == SANDBOX_TAINT_KEY
+                and taint.get("value") == "true"
+                and taint.get("effect") == "NoSchedule"
+            ):
+                name = meta.get("name") if isinstance(meta, Mapping) else None
+                found.append(str(name))
+                break
+    return found
