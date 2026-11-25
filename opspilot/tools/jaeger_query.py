@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 import urllib.parse
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
@@ -44,7 +46,7 @@ from hashlib import sha256
 from typing import Any
 
 from opspilot.redaction import has_duplicate_keys, redact_credentials
-from opspilot.tools import otel_demo
+from opspilot.tools import jaeger_v3, otel_demo
 from opspilot.tools.executor import (
     TransportError,
     TransportRequest,
@@ -367,6 +369,10 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
     dropped here and no ``Authorization`` header is ever sent -- neither the
     Prometheus basic auth (``_get`` sends it only for Prometheus tools) nor a
     bearer token. A slot must still be registered (``CREDENTIAL_REF_UNKNOWN``).
+
+    #859: a Jaeger that answers only the v3 query API (2.21 and later) is
+    read through ``/api/v3/*`` once ``probe`` has decided so (D1); the v1
+    path and its bytes are unchanged.
     """
 
     def __init__(
@@ -376,21 +382,77 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         # ``urllib.request.OpenerDirector | None``, typed loosely so this
         # module imports no network library itself.
         opener: Any = None,
+        probe: jaeger_v3.JaegerApiProbe | None = None,
     ) -> None:
         super().__init__(credentials=dict.fromkeys(credentials), opener=opener)
+        self._probe = probe if probe is not None else jaeger_v3.JaegerApiProbe()
+        #: #859 review F1: the running call's deadline, per calling thread.
+        self._call = threading.local()
+
+    def _get(self, url: str, request: TransportRequest, *, max_bytes: int) -> Any:
+        """The parent's GET with only the time left of this call's one
+        deadline (probe and read share it); none is sent once it is gone."""
+        deadline = getattr(self._call, "deadline", None)
+        if deadline is not None:
+            request = jaeger_v3.remaining_request(request, deadline)
+        return super()._get(url, request, max_bytes=max_bytes)
+
+    def _v3(self, request: TransportRequest) -> bool:
+        """#859 D1: whether this endpoint answers only the v3 query API.
+        Called after a call's own checks, so a refusal still sends nothing."""
+        base = self._base(request)
+        mode = self._probe.mode(
+            base, lambda url: self._get(url, request, max_bytes=SOURCE_READ_BYTES)
+        )
+        return mode == jaeger_v3.V3
+
+    def _read_v3(
+        self, url: str, request: TransportRequest, *, key: str | None = None
+    ) -> tuple[Any, bytes, TransportResponse | None]:
+        """GET a v3 ``url``: ``(payload, body, None)`` on a readable 200,
+        otherwise ``(None, body, response)``. ``key`` names the list a listing
+        body carries; without it the body is OTLP ``TracesData``, returned in
+        the v1 ``{"data": [...]}`` shape (D5)."""
+        fetched = self._get(url, request, max_bytes=SOURCE_READ_BYTES)
+        if fetched.status != 200:
+            return (
+                None,
+                fetched.body,
+                jaeger_v3.v3_source_error(fetched.status, fetched.body),
+            )
+        try:
+            parsed = json.loads(fetched.body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            return (
+                None,
+                fetched.body,
+                TransportResponse(body=fetched.body[: request.max_result_bytes]),
+            )
+        if key is not None:
+            if not isinstance(parsed, Mapping) or not isinstance(parsed.get(key), list):
+                return None, fetched.body, _MALFORMED
+            return parsed, fetched.body, None
+        payload = jaeger_v3.traces_data(parsed)
+        if payload is None:
+            return None, fetched.body, _MALFORMED
+        return payload, fetched.body, None
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.credential_ref not in self._credentials:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
-        if request.tool == SEARCH_BY_TAGS_TOOL:
-            return self._search(request)
-        if request.tool == TRACE_BY_ID_TOOL:
-            return self._by_id(request)
-        if request.tool == LIST_SERVICES_TOOL:
-            return self._services(request)
-        if request.tool == LIST_OPERATIONS_TOOL:
-            return self._operations(request)
-        raise TransportError("TOOL_NOT_SUPPORTED")
+        self._call.deadline = time.monotonic() + request.timeout_seconds
+        try:
+            if request.tool == SEARCH_BY_TAGS_TOOL:
+                return self._search(request)
+            if request.tool == TRACE_BY_ID_TOOL:
+                return self._by_id(request)
+            if request.tool == LIST_SERVICES_TOOL:
+                return self._services(request)
+            if request.tool == LIST_OPERATIONS_TOOL:
+                return self._operations(request)
+            raise TransportError("TOOL_NOT_SUPPORTED")
+        finally:
+            self._call.deadline = None
 
     @staticmethod
     def _base(request: TransportRequest) -> str:
@@ -475,26 +537,51 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         if refusal is not None:
             return refusal
         assert window is not None
-        query: list[tuple[str, str]] = [("service", service)]
+        v3 = self._v3(request)
+        query: list[tuple[str, str]] = [
+            ("query.serviceName" if v3 else "service", service)
+        ]
         if isinstance(operation, str):
-            query.append(("operation", operation))
+            query.append(("query.operationName" if v3 else "operation", operation))
         if tags:
-            query.append(("tags", json.dumps(tags, separators=(",", ":"))))
+            query.append(
+                (
+                    "query.attributes" if v3 else "tags",
+                    json.dumps(tags, separators=(",", ":")),
+                )
+            )
         # Sent as written: Jaeger parses Go durations itself, and every
         # string ``parse_duration`` accepts is one Go's parser accepts.
-        for name, wire in (
-            ("min_duration", "minDuration"),
-            ("max_duration", "maxDuration"),
+        for name, wire, wire_v3 in (
+            ("min_duration", "minDuration", "query.durationMin"),
+            ("max_duration", "maxDuration", "query.durationMax"),
         ):
             if name in durations:
-                query.append((wire, str(params[name])))
-        query += [
-            ("start", str(int(window.start.timestamp() * 1_000_000))),
-            ("end", str(int(window.end.timestamp() * 1_000_000))),
-            ("limit", str(limit)),
-        ]
-        url = f"{self._base(request)}/api/traces?" + urllib.parse.urlencode(query)
-        payload, raw, early = self._read_json(url, request)
+                query.append((wire_v3 if v3 else wire, str(params[name])))
+        if v3:
+            # #859 D7: RFC 3339 bounds (the end is exclusive in v3) and
+            # ``limit`` as the search depth.
+            query += [
+                ("query.startTimeMin", jaeger_v3.rfc3339(window.start)),
+                ("query.startTimeMax", jaeger_v3.rfc3339(window.end)),
+                ("query.searchDepth", str(limit)),
+            ]
+            url = f"{self._base(request)}/api/v3/traces?" + urllib.parse.urlencode(
+                query
+            )
+            payload, raw, early = self._read_v3(url, request)
+            if early is not None and early.http_status == 404:
+                # #859 D8: v3 answers an empty search with 404 "No traces
+                # found"; that is an empty result, not an error.
+                payload, early = {"data": []}, None
+        else:
+            query += [
+                ("start", str(int(window.start.timestamp() * 1_000_000))),
+                ("end", str(int(window.end.timestamp() * 1_000_000))),
+                ("limit", str(limit)),
+            ]
+            url = f"{self._base(request)}/api/traces?" + urllib.parse.urlencode(query)
+            payload, raw, early = self._read_json(url, request)
         if early is not None:
             return early
         traces = payload.get("data") if isinstance(payload, Mapping) else None
@@ -522,6 +609,8 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             "limit": limit,
             "window": window.as_json(),
         }
+        if v3:
+            record["query"]["jaeger_api"] = jaeger_v3.V3
         record["backend_traces_dropped_over_limit"] = backend_traces - len(traces)
         full = bool(record["incomplete"])
         record["backend_errors"] = errors
@@ -563,13 +652,25 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         if refusal is not None:
             return refusal
         assert window is not None
-        url = f"{self._base(request)}/api/traces/{urllib.parse.quote(trace_id)}"
+        v3 = self._v3(request)
+        path = "/api/v3/traces/" if v3 else "/api/traces/"
+        url = f"{self._base(request)}{path}{urllib.parse.quote(trace_id)}"
         fetched = self._get(url, request, max_bytes=SOURCE_READ_BYTES)
         found = fetched.status == 200
         if fetched.status == 404:
             payload: Any = {"data": []}
         elif not found:
+            if v3:
+                return jaeger_v3.v3_source_error(fetched.status, fetched.body)
             return _source_error(fetched.status, fetched.body)
+        elif v3:
+            try:
+                parsed = json.loads(fetched.body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError, RecursionError):
+                return TransportResponse(body=fetched.body[: request.max_result_bytes])
+            payload = jaeger_v3.traces_data(parsed)
+            if payload is None:
+                return _MALFORMED
         else:
             try:
                 payload = json.loads(fetched.body.decode("utf-8"))
@@ -620,6 +721,8 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             "window": window.as_json(),
             "window_is_authorized_window": window == request.window,
         }
+        if v3:
+            record["query"]["jaeger_api"] = jaeger_v3.V3
         record["trace_found"] = found and bool(traces)
         record["backend_returned_span_count"] = total
         record["spans_outside_window"] = dropped
@@ -641,7 +744,7 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             end_at = _utc_us(max(s["start_us"] + s["duration_us"] for s in spans))
         notes: list[str] = []
         if not record["trace_found"]:
-            notes.append(_RING_NOTE)
+            notes.append(jaeger_v3.V3_NOTE if v3 else _RING_NOTE)
         if dropped:
             notes.append(
                 f"{dropped} span(s) of this trace lie outside the query window "
@@ -667,6 +770,21 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
     # -- traces_list_services / traces_list_operations -----------------------
 
     def _services(self, request: TransportRequest) -> TransportResponse:
+        if self._v3(request):
+            payload, raw, early = self._read_v3(
+                f"{self._base(request)}/api/v3/services", request, key="services"
+            )
+            if early is not None:
+                return early
+            return self._listing(
+                request,
+                raw=raw,
+                payload=payload,
+                key="services",
+                rows=self._service_names(payload["services"]),
+                query={"jaeger_api": jaeger_v3.V3},
+                notes=[jaeger_v3.V3_NOTE],
+            )
         url = f"{self._base(request)}/api/services"
         # Jaeger v1.53.0: the in-memory store returns a nil slice when it has
         # seen no service, and the handler puts that slice into ``data``
@@ -677,20 +795,23 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         if early is not None:
             return early
         data = payload.get("data") if isinstance(payload, Mapping) else None
-        names = sorted(
-            {
-                redact_credentials(item)[:MAX_NAME_CHARS]
-                for item in (data if isinstance(data, list) else [])
-                if isinstance(item, str)
-            }
-        )
         return self._listing(
             request,
             raw=raw,
             payload=payload,
             key="services",
-            rows=names,
+            rows=self._service_names(data),
             query={},
+        )
+
+    @staticmethod
+    def _service_names(data: object) -> list[str]:
+        return sorted(
+            {
+                redact_credentials(item)[:MAX_NAME_CHARS]
+                for item in (data if isinstance(data, list) else [])
+                if isinstance(item, str)
+            }
         )
 
     def _operations(self, request: TransportRequest) -> TransportResponse:
@@ -704,11 +825,24 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         query = [("service", service)]
         if isinstance(span_kind, str):
             query.append(("spanKind", span_kind))
-        url = f"{self._base(request)}/api/operations?" + urllib.parse.urlencode(query)
-        payload, raw, early = self._read_json(url, request)
+        v3 = self._v3(request)
+        if v3:
+            url = f"{self._base(request)}/api/v3/operations?" + urllib.parse.urlencode(
+                query
+            )
+            payload, raw, early = self._read_v3(url, request, key="operations")
+        else:
+            url = f"{self._base(request)}/api/operations?" + urllib.parse.urlencode(
+                query
+            )
+            payload, raw, early = self._read_json(url, request)
         if early is not None:
             return early
-        data = payload.get("data") if isinstance(payload, Mapping) else None
+        data = (
+            payload.get("operations" if v3 else "data")
+            if isinstance(payload, Mapping)
+            else None
+        )
         rows: list[dict[str, Any]] = []
         seen: set[tuple[str, str | None]] = set()
         for item in data if isinstance(data, list) else []:
@@ -738,7 +872,9 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             payload=payload,
             key="operations",
             rows=rows,
-            query={"service": service, "span_kind": span_kind},
+            query={"service": service, "span_kind": span_kind}
+            | ({"jaeger_api": jaeger_v3.V3} if v3 else {}),
+            notes=[jaeger_v3.V3_NOTE] if v3 else None,
         )
 
     def _listing(
@@ -750,6 +886,7 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         key: str,
         rows: Sequence[object],
         query: Mapping[str, object],
+        notes: Sequence[str] | None = None,
     ) -> TransportResponse:
         errors = _errors_count(payload)
         record = {
@@ -768,7 +905,7 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             backend_rows_returned=len(rows),
             view_fields={
                 "incomplete_reason": _ERRORS_REASON if errors else None,
-                "notes": [_LIST_NOTE],
+                "notes": list(notes) if notes is not None else [_LIST_NOTE],
             },
         )
 

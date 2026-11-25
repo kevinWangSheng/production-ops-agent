@@ -126,6 +126,7 @@ from opspilot.tools import (
     elasticsearch_logs,
     helm_releases,
     jaeger_query,
+    jaeger_v3,
     kafka_admin,
     knowledge_fetch,
     kubernetes_core,
@@ -1026,9 +1027,13 @@ def otel_demo_ext_executor_factory(
         | prometheus_ext.PROMETHEUS_EXT_TOOLS,
     )
     prometheus = prometheus_ext.PrometheusExtTransport(sources)
+    # #859 D1: one probe per worker process decides, per traces_endpoint,
+    # whether Jaeger answers v1 or only v3; both trace transports share it.
+    jaeger_api = jaeger_v3.JaegerApiProbe()
     # A4: anonymous, like the lab Jaeger's query port; the slot is named only.
     traces = jaeger_query.JaegerQueryTransport(
         credentials={otel_demo.CREDENTIAL_REF: None},
+        probe=jaeger_api,
     )
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
@@ -1043,6 +1048,8 @@ def otel_demo_ext_executor_factory(
     routes: dict[str, Any] = {
         **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
         **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
+        # #859 D3: v1 delegates to ``sources`` unchanged, v3 reads /api/v3.
+        otel_demo.TRACES_TOOL: jaeger_v3.ExtTracesTransport(sources, jaeger_api),
         # A3: served by the cluster transport, routed by name.
         **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
         # A6: likewise.

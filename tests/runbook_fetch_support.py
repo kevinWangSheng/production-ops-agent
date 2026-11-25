@@ -95,7 +95,11 @@ OTHER_TARGET = "payments-prod"
 def opener() -> FakeOpener:
     return FakeOpener(
         by_query={GOOD_EXPR: prometheus_payload()},
-        routes={"/api/traces": jaeger_payload()},
+        routes={
+            "/api/traces": jaeger_payload(),
+            # #859 D1: the ext profile's first trace call probes the v1 API.
+            "/api/services": json.dumps({"data": ["checkout"]}).encode(),
+        },
     )
 
 

@@ -83,12 +83,12 @@ RUN_ID = "c5a-run"
 # below against main before any C5 code existed: otel-demo, otel-demo-ext
 # with no log backend, and otel-demo-ext with only OPSPILOT_ES_URL must stay
 # byte-identical when C5a lands.
-BASE_TOOL_SCHEMA_REVISION = "otel-demo-75925b8f2e3d"
-EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-e00b0e7d95c9"
-ES_TOOL_SCHEMA_REVISION = "otel-demo-ext-bd3bc6f91e49"
-BASE_SURFACE_SHA256 = "c87ddb19be698be332361bbaa6d1ea8e8fc09fd8cf1f019e2466a803b3993273"
-EXT_SURFACE_SHA256 = "0684c7203be5b8d287000ec7907b02ea16d8012e58909345b0c57644c412f74a"
-ES_SURFACE_SHA256 = "17f1a60924475b604815fc8b556c1ca33ad49bd254c45aaa93781bcb2dab1ca2"
+BASE_TOOL_SCHEMA_REVISION = "otel-demo-0c468be85e4d"
+EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-9971436dc9da"
+ES_TOOL_SCHEMA_REVISION = "otel-demo-ext-939ad4e5d6b0"
+BASE_SURFACE_SHA256 = "feb76dcdc93eef276bc8283aa07f4465b6a211c8f95b05545a9d2ac7bad1f0cb"
+EXT_SURFACE_SHA256 = "5b7f25b3725bbb4e1686a304ee1b44ad3bb392af419ddb17a60e2b3fb39a707c"
+ES_SURFACE_SHA256 = "6e26dec98abf88fd1bc3d2e48b0bc65c67bdd8f7f46709a78dac9fa51bd75650"
 
 LOKI_ENV_NAMES = (
     "OPSPILOT_LOKI_URL",

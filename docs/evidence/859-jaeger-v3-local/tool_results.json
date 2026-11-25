@@ -1,0 +1,103 @@
+[
+ {
+  "backend_spans_returned": null,
+  "backend_traces_returned": null,
+  "notes": 1,
+  "params": [],
+  "reason": null,
+  "rows": 2,
+  "status": "ok",
+  "tool": "traces_list_services",
+  "trace_found": null
+ },
+ {
+  "backend_spans_returned": null,
+  "backend_traces_returned": null,
+  "notes": 1,
+  "params": [
+   "service"
+  ],
+  "reason": null,
+  "rows": 2,
+  "status": "ok",
+  "tool": "traces_list_operations",
+  "trace_found": null
+ },
+ {
+  "backend_spans_returned": 6,
+  "backend_traces_returned": 1,
+  "child_of_refs": 4,
+  "detail_fields": 6,
+  "error_spans": 4,
+  "notes": 0,
+  "params": [
+   "service"
+  ],
+  "reason": null,
+  "rows": 6,
+  "status": "ok",
+  "tool": "traces_search",
+  "trace_found": null
+ },
+ {
+  "backend_spans_returned": 6,
+  "backend_traces_returned": 1,
+  "child_of_refs": 4,
+  "detail_fields": 6,
+  "error_spans": 4,
+  "notes": 0,
+  "params": [
+   "min_duration",
+   "service",
+   "tags"
+  ],
+  "reason": null,
+  "rows": 6,
+  "status": "ok",
+  "tool": "traces_search_by_tags",
+  "trace_found": null
+ },
+ {
+  "backend_spans_returned": 0,
+  "backend_traces_returned": 0,
+  "notes": 1,
+  "params": [
+   "service",
+   "tags"
+  ],
+  "reason": "NO_DATA",
+  "rows": 0,
+  "status": "no_data",
+  "tool": "traces_search_by_tags",
+  "trace_found": null
+ },
+ {
+  "backend_spans_returned": 6,
+  "backend_traces_returned": null,
+  "child_of_refs": 4,
+  "detail_fields": 6,
+  "error_spans": 4,
+  "notes": 0,
+  "params": [
+   "trace_id"
+  ],
+  "reason": null,
+  "rows": 6,
+  "status": "ok",
+  "tool": "traces_query_trace_by_id",
+  "trace_found": true
+ },
+ {
+  "backend_spans_returned": 0,
+  "backend_traces_returned": null,
+  "notes": 1,
+  "params": [
+   "trace_id"
+  ],
+  "reason": "NO_DATA",
+  "rows": 0,
+  "status": "no_data",
+  "tool": "traces_query_trace_by_id",
+  "trace_found": false
+ }
+]
