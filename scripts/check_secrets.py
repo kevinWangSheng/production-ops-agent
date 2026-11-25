@@ -172,6 +172,12 @@ condition = "AND"
 paths = ['(^|/)docs/evidence/rental-2026-11-24b/sregym/sregym-lite-r1124/p12/trial-[1-3]/summary\\.json$']
 regexTarget = "secret"
 regexes = ['^sregym-r1124-p12-t[1-3]$']
+[[rules.allowlists]]
+description = "valkey image tag in the 2026-11-24 ITBench live smoke evidence (not a credential)"
+condition = "AND"
+paths = ['(^|/)docs/evidence/itbench-live-2026-11-24/S20/trial-1/summary\\.json$']
+regexTarget = "secret"
+regexes = ['^9\\.0\\.4-alpine3\\.23$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
