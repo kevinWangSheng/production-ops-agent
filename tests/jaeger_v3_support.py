@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -448,20 +449,21 @@ class JaegerDouble:
 
 
 def parse_rfc3339(text: str) -> datetime | None:
-    """RFC3339Nano to an aware datetime (fraction cut to microseconds)."""
-    if not text:
+    """RFC3339Nano (``Z`` or a numeric offset, fraction optional, up to 9
+    digits) to an aware datetime, the fraction cut to microseconds."""
+    match = re.fullmatch(
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})",
+        text or "",
+    )
+    if match is None:
         return None
-    value = text.replace("Z", "+00:00")
-    if "." in value:
-        head, rest = value.split(".", 1)
-        digits = "".join(ch for ch in rest if ch.isdigit())
-        zone = rest[len(digits) :]
-        value = f"{head}.{digits[:6].ljust(6, '0')}{zone}"
+    head, fraction, zone = match.groups()
+    micros = f".{(fraction or '').ljust(6, '0')[:6]}"
+    zone = "+00:00" if zone == "Z" else zone
     try:
-        parsed = datetime.fromisoformat(value)
+        return datetime.fromisoformat(f"{head}{micros}{zone}")
     except ValueError:
         return None
-    return parsed if parsed.tzinfo is not None else None
 
 
 _PORTS = iter(range(26000, 27000))

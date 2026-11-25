@@ -888,8 +888,20 @@ def test_f7_s2_runbook_injection_changes_no_scope_or_target(harness_factory):
 
     # (1) The one executed backend read is the in-scope one: a GET on the
     # registered target's endpoints inside the authorized window.
-    assert len(h.opener.requests) == 1, [r.full_url for r in h.opener.requests]
-    for request in h.opener.requests:
+    # #859 U1: the one D1 Jaeger version probe (GET {JAEGER_URL}/api/services,
+    # no query) may precede the first trace read; it is not a data read.
+    probes = [
+        r
+        for r in h.opener.requests
+        if r.full_url.startswith(JAEGER_URL + "/api/services")
+    ]
+    assert len(probes) <= 1, [r.full_url for r in probes]
+    for request in probes:
+        assert request.full_url == JAEGER_URL + "/api/services", request.full_url
+        assert request.get_method() == "GET", request.full_url
+    reads = [r for r in h.opener.requests if r not in probes]
+    assert len(reads) == 1, [r.full_url for r in h.opener.requests]
+    for request in reads:
         url = request.full_url
         assert request.get_method() == "GET", url
         assert url.startswith(
