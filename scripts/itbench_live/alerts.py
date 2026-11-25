@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from scripts.itbench_lite.alerts import (
+    BASELINE_ALERTNAMES,
     EntryTarget,
     NoEntryAlert,
     build_webhook,
@@ -108,3 +109,159 @@ def summary_of(alert: Mapping[str, Any]) -> dict[str, Any]:
 
 def dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+# -- diagnostics (#866) ----------------------------------------------------------------------
+#
+# Environment alerts, the same input the product receives; never answers. The
+# details go to the trial's git-ignored ``trial.json``; the summary keeps the
+# counts of ``AlertTimeline.counts`` only.
+
+QUERY_RANGE_PATH = "/api/v1/query_range"
+#: Prometheus' own series of every pending or firing alert.
+ALERTS_SERIES = "ALERTS"
+
+
+def observation(alert: Mapping[str, Any]) -> dict[str, Any] | None:
+    key = label_key(alert)
+    if key is None:
+        return None
+    labels = alert.get("labels")
+    assert isinstance(labels, Mapping)
+    return {
+        "labels": dict(labels),
+        "state": alert.get("state"),
+        "activeAt": alert.get("activeAt"),
+    }
+
+
+class AlertTimeline:
+    """Every distinct ``(label set, state, activeAt)`` seen at the pre-fault
+    snapshot (poll 0) and at each poll, with the first and last poll that
+    saw it."""
+
+    def __init__(self) -> None:
+        self.prefault: dict[str, dict[str, Any]] = {}
+        self.seen: dict[tuple[str, str, str], dict[str, Any]] = {}
+        self.polls: list[dict[str, Any]] = []
+
+    def record_prefault(
+        self, alerts: Sequence[Mapping[str, Any]], at: str | None
+    ) -> None:
+        for alert in alerts:
+            item = observation(alert)
+            if item is not None and item["state"] in ("pending", "firing"):
+                self.prefault[label_key(alert) or ""] = {**item, "at": at}
+
+    def record_poll(
+        self, poll: int, at: str | None, alerts: Sequence[Mapping[str, Any]]
+    ) -> None:
+        self.polls.append({"poll": poll, "at": at, "alerts": len(alerts)})
+        for alert in alerts:
+            item = observation(alert)
+            if item is None:
+                continue
+            key = (label_key(alert) or "", str(item["state"]), str(item["activeAt"]))
+            entry = self.seen.get(key)
+            if entry is None:
+                self.seen[key] = {**item, "first_poll": poll, "first_at": at,
+                                  "last_poll": poll, "last_at": at}  # fmt: skip
+            else:
+                entry.update(last_poll=poll, last_at=at)
+
+    def counts(self) -> dict[str, int]:
+        """Sanitised codes for the summary (no labels)."""
+        pre = self.prefault
+        new_keys = {k for k, _, _ in self.seen if k not in pre}
+        firing_new = {k for k, s, _ in self.seen if k not in pre and s == "firing"}
+        baseline_new = {
+            k for k, s, _ in self.seen
+            if k in firing_new and self._name(k) in BASELINE_ALERTNAMES
+        }  # fmt: skip
+        turned = {
+            k for k, s, _ in self.seen
+            if k in pre and pre[k]["state"] == "pending" and s == "firing"
+        }  # fmt: skip
+        refired = {
+            k for k, s, a in self.seen
+            if k in pre and a != str(pre[k]["activeAt"])
+        }  # fmt: skip
+        still = {k for k, _, _ in self.seen if k in pre}
+        return {
+            "prefault_sets": len(pre),
+            "prefault_pending_sets": sum(
+                1 for v in pre.values() if v["state"] == "pending"
+            ),
+            "prefault_pending_turned_firing": len(turned),
+            "prefault_sets_reactivated": len(refired),
+            "prefault_sets_gone": len(set(pre) - still),
+            "new_sets_seen": len(new_keys),
+            "new_sets_firing": len(firing_new),
+            "new_sets_firing_baseline_name": len(baseline_new),
+            "new_sets_pending_only": len(new_keys - firing_new),
+            "polls": len(self.polls),
+        }
+
+    def _name(self, key: str) -> str | None:
+        for item in (*self.prefault.values(), *self.seen.values()):
+            if canonical_labels(item["labels"]) == key:
+                name = item["labels"].get("alertname")
+                return name if isinstance(name, str) else None
+        return None
+
+    def details(self) -> dict[str, Any]:
+        return {
+            "prefault": list(self.prefault.values()),
+            "observations": sorted(
+                self.seen.values(), key=lambda v: (v["first_poll"], dumps(v["labels"]))
+            ),
+            "polls": self.polls,
+        }
+
+
+def range_series(body: object) -> list[dict[str, Any]]:
+    """``ALERTS`` range result -> per-series labels with first and last sample
+    time (unix seconds) and sample count; an unreadable body is no series."""
+    data = body.get("data") if isinstance(body, Mapping) else None
+    result = data.get("result") if isinstance(data, Mapping) else None
+    out: list[dict[str, Any]] = []
+    for series in result if isinstance(result, list) else []:
+        if not isinstance(series, Mapping):
+            continue
+        metric = series.get("metric")
+        values = series.get("values")
+        if (
+            not isinstance(metric, Mapping)
+            or not isinstance(values, list)
+            or not values
+        ):
+            continue
+        stamps = [float(v[0]) for v in values if isinstance(v, list) and v]
+        if not stamps:
+            continue
+        out.append({
+            "labels": {str(k): str(v) for k, v in metric.items() if k != "__name__"},
+            "first": min(stamps), "last": max(stamps), "samples": len(stamps),
+        })  # fmt: skip
+    return out
+
+
+def range_counts(
+    series: Sequence[Mapping[str, Any]], prefault: Mapping[str, Any], inject_ts: float
+) -> dict[str, int]:
+    """Firing series (``alertstate="firing"``) whose label set, without
+    ``alertstate``, is new or first fires after injection."""
+    firing = [s for s in series if s["labels"].get("alertstate") == "firing"]
+    after = new = 0
+    for s in firing:
+        labels = {k: v for k, v in s["labels"].items() if k != "alertstate"}
+        key = canonical_labels(labels)
+        if s["first"] >= inject_ts:
+            after += 1
+            if key not in prefault:
+                new += 1
+    return {
+        "range_firing_series": len(firing),
+        "range_firing_first_after_inject": after,
+        "range_firing_new_after_inject": new,
+    }

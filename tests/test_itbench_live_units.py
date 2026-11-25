@@ -749,3 +749,83 @@ def test_configure_argv() -> None:
     assert upstream.cli_argv("configure", Path("/k"))[4:] == [
         "configure", "environment", "--kubeconfig", "/k",
     ]  # fmt: skip
+
+
+def test_alert_timeline_codes() -> None:
+    """#866: pre-fault sets, pending->firing, re-fire and new sets are counted."""
+    pending = _alert(
+        "A", "2026-11-24T10:00:00Z", state="pending", namespace="otel-demo"
+    )
+    firing = _alert("B", "2026-11-24T09:00:00Z", namespace="otel-demo")
+    gone = _alert("C", "2026-11-24T09:00:00Z", namespace="otel-demo")
+    timeline = alerts.AlertTimeline()
+    timeline.record_prefault([pending, firing, gone], "t0")
+    turned = dict(pending, state="firing")
+    refired = dict(firing, activeAt="2026-11-24T10:10:00Z")
+    new_pending = _alert(
+        "D", "2026-11-24T10:11:00Z", state="pending", namespace="otel-demo"
+    )
+    new_watchdog = _alert("Watchdog", "2026-11-24T10:11:00Z")
+    timeline.record_poll(1, "t1", [pending, firing])
+    timeline.record_poll(2, "t2", [turned, refired, new_pending, new_watchdog])
+    timeline.record_poll(3, "t3", [turned, refired, new_pending, new_watchdog])
+    counts = timeline.counts()
+    assert counts == {
+        "prefault_sets": 3,
+        "prefault_pending_sets": 1,
+        "prefault_pending_turned_firing": 1,
+        "prefault_sets_reactivated": 1,
+        "prefault_sets_gone": 1,
+        "new_sets_seen": 2,
+        "new_sets_firing": 1,
+        "new_sets_firing_baseline_name": 1,
+        "new_sets_pending_only": 1,
+        "polls": 3,
+    }
+    details = timeline.details()
+    obs = [
+        o
+        for o in details["observations"]
+        if o["labels"]["alertname"] == "A" and o["state"] == "firing"
+    ]
+    assert obs[0]["first_poll"] == 2 and obs[0]["last_poll"] == 3
+
+
+def test_alert_range_counts() -> None:
+    body = {"status": "success", "data": {"result": [
+        {"metric": {"__name__": "ALERTS", "alertname": "X", "alertstate": "firing", "namespace": "n"},
+         "values": [[1000.0, "1"], [1015.0, "1"]]},
+        {"metric": {"__name__": "ALERTS", "alertname": "Y", "alertstate": "firing"},
+         "values": [[900.0, "1"]]},
+        {"metric": {"__name__": "ALERTS", "alertname": "Z", "alertstate": "pending"},
+         "values": [[1000.0, "1"]]},
+    ]}}  # fmt: skip
+    series = alerts.range_series(body)
+    assert len(series) == 3 and series[0]["samples"] == 2
+    assert alerts.range_counts(series, {}, 950.0) == {
+        "range_firing_series": 2,
+        "range_firing_first_after_inject": 1,
+        "range_firing_new_after_inject": 1,
+    }
+
+
+def test_no_entry_trial_writes_timeline_to_trial_json_only(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    noise = _alert(
+        "KubePodNotReady",
+        "2026-11-24T09:59:00Z",
+        state="pending",
+        namespace="otel-demo",
+        pod="x-1",
+    )
+    host = FakeHost([_body(noise), _body(dict(noise, state="firing"))])
+    block = driver.Trial(cfg, host, "23", 1).run()
+    assert block["reason"] == "NO_ENTRY_ALERT"
+    counts = block["alert_diag_counts"]
+    assert (
+        counts["prefault_pending_turned_firing"] == 1 and counts["new_sets_seen"] == 0
+    )
+    trial = json.loads((cfg.trial_dir("23", 1) / "trial.json").read_text())
+    assert trial["alert_diag"]["prefault"][0]["labels"]["pod"] == "x-1"
+    summary = (cfg.evidence_trial("23", 1) / "summary.json").read_text()
+    assert "alert_diag_counts" in summary and "x-1" not in summary

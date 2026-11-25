@@ -493,6 +493,9 @@ class Trial:
             "steps": {},
             "times": {},
         }
+        #: #866: environment alert timeline; ``trial.json`` only, counts in the summary.
+        self.timeline = alerts.AlertTimeline()
+        self.alert_range: list[dict[str, Any]] = []
 
     @property
     def admin_env(self) -> dict[str, str]:
@@ -596,7 +599,16 @@ class Trial:
         self.block["status"], self.block["reason"] = status, reason
         if "summary_path" not in self.block:
             self._status_summary(status, reason)
-        _write_json(self.dir / "trial.json", self.block)
+        _write_json(
+            self.dir / "trial.json",
+            {
+                **self.block,
+                "alert_diag": {
+                    **self.timeline.details(),
+                    "alerts_range": self.alert_range,
+                },
+            },
+        )
         if errors:
             raise RoundAbort("CLEANUP_FAILED", ",".join(errors))
         return self.block
@@ -663,9 +675,11 @@ class Trial:
 
         # 4. pre-fault state.
         try:
-            excluded = alerts.prefault_keys(self._alerts())
+            prefault = self._alerts()
         except alerts.AlertsUnreadable as error:
             raise TrialStop("PROMETHEUS_ALERTS_UNREADABLE", str(error)) from None
+        excluded = alerts.prefault_keys(prefault)
+        self.timeline.record_prefault(prefault, _iso(h.now()))
         self.block["prefault_alert_count"] = len(excluded)
         lists_before = self._lists(readonly)
 
@@ -677,6 +691,7 @@ class Trial:
 
         # 6. the entry alert.
         entry = self._wait_entry(excluded)
+        self._alert_range(injected)
         if entry is None:
             raise TrialStop("NO_ENTRY_ALERT")
         self.block["entry_alert"] = alerts.summary_of(entry)
@@ -712,7 +727,9 @@ class Trial:
         while True:
             polls += 1
             try:
-                found = alerts.entry_alert(self._alerts(), excluded)
+                seen = self._alerts()
+                self.timeline.record_poll(polls, _iso(self.h.now()), seen)
+                found = alerts.entry_alert(seen, excluded)
             except alerts.AlertsUnreadable:
                 found = None
                 self.block["disclosures"].append("ALERTS_POLL_UNREADABLE")
@@ -724,6 +741,33 @@ class Trial:
                 self.block["alert_polls"] = polls
                 return None
             self.h.sleep(self.cfg.poll_seconds)
+
+    def _alert_range(self, injected: datetime) -> None:
+        """#866: Prometheus' ``ALERTS`` series from 10 minutes before
+        injection to now, so an alert that fired and resolved between two
+        polls is still seen; counts into the summary."""
+        import urllib.parse
+
+        end = self.h.now()
+        start = injected - timedelta(minutes=10)
+        query = urllib.parse.urlencode({
+            "query": alerts.ALERTS_SERIES, "start": f"{start.timestamp():.0f}",
+            "end": f"{end.timestamp():.0f}", "step": "15",
+        })  # fmt: skip
+        status, body = self.h.get_json(
+            f"http://127.0.0.1:{self.cfg.ports.prometheus}{alerts.QUERY_RANGE_PATH}?{query}"
+        )
+        if status != 200:
+            self.block["disclosures"].append("ALERTS_RANGE_UNREADABLE")
+        self.alert_range = alerts.range_series(body)
+        self.block["alert_diag_counts"] = {
+            **self.timeline.counts(),
+            **alerts.range_counts(
+                self.alert_range,
+                self.timeline.prefault,
+                injected.timestamp(),
+            ),
+        }
 
     def _product(
         self, entry: Mapping[str, Any], plan: EntryPlan, cluster_uid: str,
