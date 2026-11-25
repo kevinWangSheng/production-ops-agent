@@ -11,7 +11,10 @@ and forwards the first firing entry alert as a webhook v4 body.
 Selection: the Lite rule (``scripts.itbench_lite.alerts.select_entry_alert``:
 baseline alert names dropped, ``state == firing`` with an ``activeAt``,
 earliest ``activeAt``, ties by sorted labels) applied to the alerts whose
-label set was not already pending or firing before the fault was injected.
+``activeAt`` is not earlier than the start of the inject command, minus the
+label sets that were pending or firing at the pre-fault snapshot while they
+still carry that snapshot's ``activeAt`` (a set re-activated after injection,
+with a new ``activeAt``, is eligible).
 The webhook is Lite's ``build_webhook`` with offset 0: ``startsAt`` is the
 environment's own ``activeAt`` (A564-7).
 """
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from scripts.itbench_lite.alerts import (
@@ -30,8 +34,10 @@ from scripts.itbench_lite.alerts import (
     select_entry_alert,
 )
 from scripts.itbench_lite.alerts import _canonical_labels as canonical_labels
+from scripts.itbench_lite.shift import is_rfc3339, parse_rfc3339_ns
 
 ALERTS_PATH = "/api/v1/alerts"
+_MICROSECOND = timedelta(microseconds=1)
 
 
 class AlertsUnreadable(ValueError):
@@ -68,22 +74,54 @@ def prefault_keys(alerts: Iterable[Mapping[str, Any]]) -> frozenset[str]:
     return frozenset(keys)
 
 
+def prefault_active(alerts: Iterable[Mapping[str, Any]]) -> dict[str, str]:
+    """Pre-fault pending or firing label sets -> their ``activeAt`` then."""
+    out: dict[str, str] = {}
+    for alert in alerts:
+        if alert.get("state") in ("pending", "firing"):
+            key = label_key(alert)
+            if key is not None:
+                out[key] = str(alert.get("activeAt"))
+    return out
+
+
+def _ns(moment: datetime) -> int:
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    return (moment.astimezone(UTC) - epoch) // _MICROSECOND * 1000
+
+
 def new_alerts(
-    alerts: Sequence[Mapping[str, Any]], excluded: frozenset[str]
+    alerts: Sequence[Mapping[str, Any]],
+    prefault: Mapping[str, str],
+    not_before: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    return [
-        dict(a)
-        for a in alerts
-        if (key := label_key(a)) is not None and key not in excluded
-    ]
+    """Alerts not still in their pre-fault activation and, with
+    ``not_before``, activated at or after it."""
+    floor = None if not_before is None else _ns(not_before)
+    out = []
+    for alert in alerts:
+        key = label_key(alert)
+        if key is None:
+            continue
+        active = alert.get("activeAt")
+        if key in prefault and str(active) == prefault[key]:
+            continue
+        if floor is not None and (
+            not is_rfc3339(active) or parse_rfc3339_ns(str(active)) < floor
+        ):
+            continue
+        out.append(dict(alert))
+    return out
 
 
 def entry_alert(
-    alerts: Sequence[Mapping[str, Any]], excluded: frozenset[str]
+    alerts: Sequence[Mapping[str, Any]],
+    prefault: Mapping[str, str],
+    not_before: datetime | None = None,
 ) -> dict[str, Any] | None:
     """The entry alert among the post-fault alerts, or ``None`` yet."""
     try:
-        return select_entry_alert(new_alerts(alerts, excluded))
+        return select_entry_alert(new_alerts(alerts, prefault, not_before))
     except NoEntryAlert:
         return None
 

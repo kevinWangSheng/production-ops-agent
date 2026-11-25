@@ -377,6 +377,7 @@ def run(
     *,
     criteria: Sequence[str] = (),
     max_concurrent: int = 1,
+    timeout: float | None = None,
 ) -> Path:
     """Call the official evaluator; this sends requests to the judge.
 
@@ -411,6 +412,7 @@ def run(
         check=True,
         cwd=work_dir,
         env=subprocess_env(config),
+        timeout=timeout,
     )
     (work_dir / "judge_labels.json").write_text(
         json.dumps(config.labels(), ensure_ascii=False, indent=2) + "\n"
