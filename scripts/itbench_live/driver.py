@@ -121,6 +121,27 @@ JUDGE_PROCESS_TIMEOUT_S = 1800.0 + 300.0
 #: and again after ``undeploy`` (bounded wait for their deletion).
 CLEAN_NAMESPACES = (APP_NAMESPACE, OBSERVABILITY_NAMESPACE)
 NAMESPACE_WAIT = timedelta(minutes=10)
+#: #866 eval-side patch: upstream's request-level alert rules filter on
+#: ``namespace="otel-demo"``, but the gateway collector's scrape lacks
+#: ``honorLabels``, so span metrics carry ``exported_namespace`` instead. The
+#: operator reverts a ServiceMonitor patch; a default scrape class on the
+#: helm-managed Prometheus CR persists. Deviates from upstream; disclosed.
+PROMETHEUS_CR = "kube-prometheus-stack-prometheus"
+GATEWAY_JOB = "itbench-otel-gateway-applications-collector"
+SCRAPE_CLASS_PATCH = {"spec": {"scrapeClasses": [{
+    "name": "opspilot-eval-honor-namespace",
+    "default": True,
+    "metricRelabelings": [
+        {"sourceLabels": ["job", "exported_namespace"], "regex": f"{GATEWAY_JOB};(.+)",
+         "targetLabel": "namespace", "replacement": "$1", "action": "replace"},
+        {"sourceLabels": ["job"], "regex": GATEWAY_JOB,
+         "targetLabel": "exported_namespace", "replacement": "", "action": "replace"},
+    ],
+}]}}  # fmt: skip
+SCRAPE_PATCH_DISCLOSURE = "EVAL_SCRAPE_NAMESPACE_PATCH"
+#: After the patch, steady environment alerts must be firing before the
+#: pre-fault snapshot so they are excluded from the entry choice.
+SETTLE = timedelta(minutes=6)
 #: Consecutive ``infra_failed``/``crashed`` trials that stop the round.
 INFRA_STREAK_LIMIT = 2
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
@@ -164,6 +185,8 @@ class Config:
     run_poll_seconds: float = RUN_POLL_S
     worker_settle_seconds: float = 5.0
     namespace_wait: timedelta = NAMESPACE_WAIT
+    scrape_namespace_patch: bool = True
+    settle: timedelta = SETTLE
     git: dict[str, Any] = field(default_factory=dict)
     secrets_env: dict[str, str] = field(default_factory=dict)
 
@@ -689,8 +712,27 @@ class Trial:
 
     def _post_deploy(self) -> None:
         """Eval-side step after the environment is ready and before OpsPilot's
-        identity and the forwards (#866); none yet, records nothing."""
-        return None
+        identity and the forwards (#866): the scrape-class patch
+        (``SCRAPE_CLASS_PATCH``), unless switched off. Never overwrites
+        scrape classes upstream set. No cleanup: ``undeploy`` deletes the
+        namespace that holds the CR, and ``_undeploy`` waits until it is gone."""
+        if not self.cfg.scrape_namespace_patch:
+            return
+        try:
+            cr = json.loads(self._kubectl_ok(
+                "-n", OBSERVABILITY_NAMESPACE, "get", "prometheus", PROMETHEUS_CR,
+                "-o", "json",
+            ))  # fmt: skip
+        except ValueError:
+            raise TrialStop("PROMETHEUS_CR_UNREADABLE") from None
+        spec = cr.get("spec") if isinstance(cr, Mapping) else None
+        if isinstance(spec, Mapping) and spec.get("scrapeClasses"):
+            raise TrialStop("SCRAPE_CLASSES_PRESENT")
+        self._kubectl_ok(
+            "-n", OBSERVABILITY_NAMESPACE, "patch", "prometheus", PROMETHEUS_CR,
+            "--type=merge", "-p", json.dumps(SCRAPE_CLASS_PATCH),
+        )  # fmt: skip
+        self.block["disclosures"].append(SCRAPE_PATCH_DISCLOSURE)
 
     def _lists(self, kubeconfig: Path) -> dict[str, Any]:
         """Object lists with the read-only identity (``vocabulary.LIST_PLURALS``)."""
@@ -854,7 +896,17 @@ class Trial:
             self._start_forward(name, resource, remote, local)
         jaeger_base = self._jaeger_base()
 
-        # 4. pre-fault state.
+        # 4. pre-fault state; with the scrape patch, settle first so steady
+        # alerts fire before the snapshot, and check the patch took effect.
+        if cfg.scrape_namespace_patch:
+            self._mark("settle_started")
+            h.sleep(cfg.settle.total_seconds())
+        self._span_namespaces()
+        if (
+            cfg.scrape_namespace_patch
+            and not self.block["span_metric_counts"]["span_metric_groups_app_namespace"]
+        ):
+            raise TrialStop("SCRAPE_PATCH_NOT_EFFECTIVE")
         try:
             prefault = self._alerts()
         except alerts.AlertsUnreadable as error:
@@ -862,7 +914,6 @@ class Trial:
         excluded = alerts.prefault_active(prefault)
         self.timeline.record_prefault(prefault, _iso(h.now()))
         self.block["prefault_alert_count"] = len(excluded)
-        self._span_namespaces()
         lists_before = self._lists(readonly)
 
         # 5. the fault (ITBench's own tooling); removal pushed before the call.
@@ -1310,6 +1361,10 @@ def _config(args: argparse.Namespace) -> Config:
         judge=not getattr(args, "no_judge", False),
         allow_dirty=getattr(args, "allow_dirty", False),
         allow_other_clusters=getattr(args, "allow_other_clusters", False),
+        scrape_namespace_patch=not getattr(args, "no_scrape_namespace_patch", False),
+        settle=timedelta(
+            seconds=getattr(args, "settle_seconds", SETTLE.total_seconds())
+        ),
     )
 
 
@@ -1338,6 +1393,14 @@ def main(argv: Sequence[str] | None = None, host: Host | None = None) -> int:
     p_round.add_argument("--trials", default="1", type=resolve_trials)
     p_round.add_argument("--trace", choices=("lab", "off"), default="lab")
     p_round.add_argument("--allow-dirty", action="store_true")
+    p_round.add_argument(
+        "--no-scrape-namespace-patch", action="store_true",
+        help="run without the eval-side scrape-class patch (#866)",
+    )  # fmt: skip
+    p_round.add_argument(
+        "--settle-seconds", type=float, default=SETTLE.total_seconds(),
+        help="wait after the forwards, before the pre-fault snapshot (patch on)",
+    )  # fmt: skip
     p_judge = sub.add_parser("judge")
     common(p_judge, cluster=False)
     p_judge.add_argument("--round", required=True)

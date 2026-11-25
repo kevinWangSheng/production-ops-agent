@@ -373,6 +373,7 @@ class FakeHost(driver.Host):
         self, alert_bodies: list[dict[str, Any]], *, judge_rc: int = 0
     ) -> None:
         self.calls: list[list[str]] = []
+        self.alert_reads: list[str] = []
         self.cli: list[list[str]] = []
         self.alert_bodies = alert_bodies
         self.stopped: list[str] = []
@@ -380,6 +381,10 @@ class FakeHost(driver.Host):
         self.envs: dict[str, Mapping[str, str]] = {}
         self.clock = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
         self.judge_rc = judge_rc
+        self.prometheus_cr: dict[str, Any] = {"spec": {"replicas": 1}}
+        self.span_body: Any = {"status": "success", "data": {"result": [
+            {"metric": {"namespace": "otel-demo", "service_name": "cart"}, "value": [1.0, "4"]}]}}  # fmt: skip
+        self.sleeps: list[tuple[float, int]] = []
         self.jobs: list[Mapping[str, Any]] = []
         self.nodes: dict[str, Any] = {"items": [
             {"metadata": {"name": "kind-environment-worker"}, "spec": {}},
@@ -405,6 +410,7 @@ class FakeHost(driver.Host):
         return self.clock
 
     def _sleep(self, seconds: float) -> None:
+        self.sleeps.append((seconds, len(self.alert_reads)))
         self.clock += timedelta(seconds=seconds)
 
     def _run(
@@ -456,6 +462,8 @@ class FakeHost(driver.Host):
             out = json.dumps(self.nodes)
         elif argv[1:4] == ["get", "namespace", "kube-system"]:
             out = "uid-kube-system"
+        elif argv[3:5] == ["get", "prometheus"]:
+            out = json.dumps(self.prometheus_cr)
         elif argv[1] == "get" and argv[3:] == ["-A", "-o", "json"]:
             plural = argv[2]
             data = {
@@ -480,7 +488,10 @@ class FakeHost(driver.Host):
         return started
 
     def _get(self, url: str) -> tuple[int, Any]:
+        if "/api/v1/query?" in url and "traces_span_metrics_calls_total" in url:
+            return 200, self.span_body
         if url.endswith("/api/v1/alerts"):
+            self.alert_reads.append(url)
             body = (
                 self.alert_bodies[0]
                 if len(self.alert_bodies) == 1
@@ -529,6 +540,7 @@ def _cfg(tmp_path: Path) -> driver.Config:
         round="unit", itbench=itbench, kubeconfig=kube, trace="off",
         tmp_root=tmp_path / "repo" / "tmp", evidence_root=tmp_path / "repo" / "evidence",
         alert_wait=timedelta(minutes=2), poll_seconds=15.0, worker_settle_seconds=0.0,
+        settle=timedelta(seconds=60),
         secrets_env={"DEEPSEEK_API_KEY": "sk-synthetic"},
     )  # fmt: skip
 
@@ -1224,6 +1236,7 @@ class SpanMetricsHost(FakeHost):
 
 def test_span_metric_counts_in_summary_rows_in_trial_json(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
+    cfg.scrape_namespace_patch = False
     host = SpanMetricsHost([_body()])
     block = driver.Trial(cfg, host, "30", 1).run()
     assert block["span_metric_counts"] == {
@@ -1239,4 +1252,88 @@ def test_span_metric_counts_in_summary_rows_in_trial_json(tmp_path: Path) -> Non
     summary = (cfg.evidence_trial("30", 1) / "summary.json").read_text()
     assert (
         "span_metric_counts" in summary and "span_metrics_by_namespace" not in summary
+    )
+
+
+# -- #866 eval-side scrape-class patch -------------------------------------------------
+
+
+def _patches(host: FakeHost) -> list[list[str]]:
+    return [a for a in host.calls if a[3:5] == ["patch", "prometheus"]]
+
+
+def test_scrape_patch_applied_settled_and_disclosed(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    entry = _alert("RequestErrorRate", "2026-11-24T10:09:00Z", service_name="cart")
+    host = FakeHost([_body(), _body(entry)])
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "completed", block
+    (patch,) = _patches(host)
+    assert patch[:6] == ["kubectl", "-n", "itbench-observability", "patch",
+                         "prometheus", "kube-prometheus-stack-prometheus"]  # fmt: skip
+    assert patch[6:8] == ["--type=merge", "-p"]
+    assert json.loads(patch[8]) == {"spec": {"scrapeClasses": [{
+        "name": "opspilot-eval-honor-namespace", "default": True,
+        "metricRelabelings": [
+            {"sourceLabels": ["job", "exported_namespace"],
+             "regex": "itbench-otel-gateway-applications-collector;(.+)",
+             "targetLabel": "namespace", "replacement": "$1", "action": "replace"},
+            {"sourceLabels": ["job"], "regex": "itbench-otel-gateway-applications-collector",
+             "targetLabel": "exported_namespace", "replacement": "", "action": "replace"},
+        ]}]}}  # fmt: skip
+    # The patch precedes OpsPilot's identity; the settle precedes the snapshot.
+    first_can_i = next(
+        i for i, a in enumerate(host.calls) if a[1:3] == ["auth", "can-i"]
+    )
+    assert host.calls.index(patch) < first_can_i
+    assert host.sleeps[0] == (cfg.settle.total_seconds(), 0)
+    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
+    assert driver.SCRAPE_PATCH_DISCLOSURE in summary["itbench_live"]["disclosures"]
+
+
+def test_scrape_patch_refused_when_scrape_classes_present(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    host.prometheus_cr = {"spec": {"scrapeClasses": [{"name": "upstream"}]}}
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "stopped" and block["reason"] == "SCRAPE_CLASSES_PRESENT"
+    assert _patches(host) == [] and host.alert_reads == []
+    assert driver.SCRAPE_PATCH_DISCLOSURE not in block["disclosures"]
+    assert [a[4] for a in host.cli][-1] == "undeploy"
+
+
+def test_scrape_patch_not_effective_stops_before_snapshot(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    host.span_body = {"status": "success", "data": {"result": [
+        {"metric": {"service_name": "cart", "exported_namespace": "otel-demo"}, "value": [1.0, "4"]}]}}  # fmt: skip
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["reason"] == "SCRAPE_PATCH_NOT_EFFECTIVE"
+    assert host.alert_reads == [] and "inject" not in [a[4] for a in host.cli]
+    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
+    assert driver.SCRAPE_PATCH_DISCLOSURE in summary["itbench_live"]["disclosures"]
+
+
+def test_scrape_patch_off_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = _cfg(tmp_path)
+    cfg.scrape_namespace_patch = False
+    host = FakeHost([_body()])
+    host.span_body = None
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["reason"] == "NO_ENTRY_ALERT"
+    assert _patches(host) == [] and not any(
+        a[3:5] == ["get", "prometheus"] for a in host.calls
+    )
+    assert host.sleeps[0][0] == cfg.poll_seconds  # no settle
+    assert driver.SCRAPE_PATCH_DISCLOSURE not in block["disclosures"]
+    args = SimpleNamespace(
+        itbench=str(tmp_path), no_scrape_namespace_patch=True, settle_seconds=12.0
+    )
+    built = driver._config(args)
+    assert built.scrape_namespace_patch is False and built.settle == timedelta(
+        seconds=12
+    )
+    assert (
+        driver._config(SimpleNamespace(itbench=str(tmp_path))).scrape_namespace_patch
+        is True
     )
