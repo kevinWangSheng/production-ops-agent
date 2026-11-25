@@ -4010,7 +4010,14 @@ class Workbench:
             if str(exc) != "LEASE_ACTIVE":
                 announce_claim_refused(self.events, incident_id, run_id, str(exc))
             return None
-        if not self._claimed_versions_fit(incident_id, run_id):
+        try:
+            versions_fit = self._claimed_versions_fit(incident_id, run_id)
+        except PersistenceError as exc:
+            # #853: storage failed after the claim; as below, release this
+            # lease and record it without parking.
+            self._handoff(incident_id, lease, run_id, "failed", (str(exc),), park=False)
+            return None
+        if not versions_fit:
             # 780-12: the row holds one of this process's dicts but not the
             # one the Run's own input implies; C3 §7: block, never guess.
             try:
