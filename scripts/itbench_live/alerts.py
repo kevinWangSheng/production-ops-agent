@@ -265,3 +265,40 @@ def range_counts(
         "range_firing_first_after_inject": after,
         "range_firing_new_after_inject": new,
     }
+
+
+#: #866: do the span metrics the upstream request-level rules filter on carry
+#: the ``namespace`` label?
+SPAN_METRICS_BY_NAMESPACE = (
+    "count by (namespace, service_name) (traces_span_metrics_calls_total)"
+)
+
+
+def span_namespace_rows(body: object) -> list[dict[str, str]]:
+    """Instant-vector result -> ``{namespace, service_name, count}`` rows;
+    a missing ``namespace`` label is the empty string."""
+    data = body.get("data") if isinstance(body, Mapping) else None
+    result = data.get("result") if isinstance(data, Mapping) else None
+    rows: list[dict[str, str]] = []
+    for item in result if isinstance(result, list) else []:
+        if not isinstance(item, Mapping) or not isinstance(item.get("metric"), Mapping):
+            continue
+        metric, value = item["metric"], item.get("value")
+        rows.append({
+            "namespace": str(metric.get("namespace", "")),
+            "service_name": str(metric.get("service_name", "")),
+            "count": str(value[1]) if isinstance(value, list) and len(value) > 1 else "",
+        })  # fmt: skip
+    return rows
+
+
+def span_namespace_counts(
+    rows: Sequence[Mapping[str, str]], app_namespace: str
+) -> dict[str, int]:
+    return {
+        "span_metric_groups": len(rows),
+        "span_metric_groups_with_namespace": sum(1 for r in rows if r["namespace"]),
+        "span_metric_groups_app_namespace": sum(
+            1 for r in rows if r["namespace"] == app_namespace
+        ),
+    }

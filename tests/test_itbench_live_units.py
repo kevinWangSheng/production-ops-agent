@@ -829,3 +829,53 @@ def test_no_entry_trial_writes_timeline_to_trial_json_only(tmp_path: Path) -> No
     assert trial["alert_diag"]["prefault"][0]["labels"]["pod"] == "x-1"
     summary = (cfg.evidence_trial("23", 1) / "summary.json").read_text()
     assert "alert_diag_counts" in summary and "x-1" not in summary
+
+
+def test_span_namespace_counts() -> None:
+    body = {"status": "success", "data": {"result": [
+        {"metric": {"namespace": "otel-demo", "service_name": "cart"}, "value": [1.0, "4"]},
+        {"metric": {"service_name": "frontend"}, "value": [1.0, "2"]},
+        {"metric": {"namespace": "other", "service_name": "x"}, "value": [1.0, "1"]},
+    ]}}  # fmt: skip
+    rows = alerts.span_namespace_rows(body)
+    assert rows[1] == {"namespace": "", "service_name": "frontend", "count": "2"}
+    assert alerts.span_namespace_counts(rows, "otel-demo") == {
+        "span_metric_groups": 3,
+        "span_metric_groups_with_namespace": 2,
+        "span_metric_groups_app_namespace": 1,
+    }
+    assert alerts.span_namespace_counts(
+        alerts.span_namespace_rows(None), "otel-demo"
+    ) == {
+        "span_metric_groups": 0,
+        "span_metric_groups_with_namespace": 0,
+        "span_metric_groups_app_namespace": 0,
+    }
+
+
+class SpanMetricsHost(FakeHost):
+    def _get(self, url: str) -> tuple[int, Any]:
+        if "/api/v1/query?" in url and "traces_span_metrics_calls_total" in url:
+            return 200, {"status": "success", "data": {"result": [
+                {"metric": {"service_name": "frontend"}, "value": [1.0, "3"]}]}}  # fmt: skip
+        return super()._get(url)
+
+
+def test_span_metric_counts_in_summary_rows_in_trial_json(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = SpanMetricsHost([_body()])
+    block = driver.Trial(cfg, host, "30", 1).run()
+    assert block["span_metric_counts"] == {
+        "span_metric_groups": 1,
+        "span_metric_groups_with_namespace": 0,
+        "span_metric_groups_app_namespace": 0,
+    }
+    trial = json.loads((cfg.trial_dir("30", 1) / "trial.json").read_text())
+    assert (
+        trial["alert_diag"]["span_metrics_by_namespace"][0]["service_name"]
+        == "frontend"
+    )
+    summary = (cfg.evidence_trial("30", 1) / "summary.json").read_text()
+    assert (
+        "span_metric_counts" in summary and "span_metrics_by_namespace" not in summary
+    )

@@ -498,6 +498,7 @@ class Trial:
         #: #866: environment alert timeline; ``trial.json`` only, counts in the summary.
         self.timeline = alerts.AlertTimeline()
         self.alert_range: list[dict[str, Any]] = []
+        self.span_rows: list[dict[str, str]] = []
 
     @property
     def admin_env(self) -> dict[str, str]:
@@ -608,6 +609,7 @@ class Trial:
                 "alert_diag": {
                     **self.timeline.details(),
                     "alerts_range": self.alert_range,
+                    "span_metrics_by_namespace": self.span_rows,
                 },
             },
         )
@@ -683,6 +685,7 @@ class Trial:
         excluded = alerts.prefault_keys(prefault)
         self.timeline.record_prefault(prefault, _iso(h.now()))
         self.block["prefault_alert_count"] = len(excluded)
+        self._span_namespaces()
         lists_before = self._lists(readonly)
 
         # 5. the fault (ITBench's own tooling); removal pushed before the call.
@@ -743,6 +746,22 @@ class Trial:
                 self.block["alert_polls"] = polls
                 return None
             self.h.sleep(self.cfg.poll_seconds)
+
+    def _span_namespaces(self) -> None:
+        """#866: before the fault, whether span metrics carry ``namespace``
+        (the upstream request-level alert rules filter on it)."""
+        import urllib.parse
+
+        query = urllib.parse.urlencode({"query": alerts.SPAN_METRICS_BY_NAMESPACE})
+        status, body = self.h.get_json(
+            f"http://127.0.0.1:{self.cfg.ports.prometheus}/api/v1/query?{query}"
+        )
+        if status != 200:
+            self.block["disclosures"].append("SPAN_METRICS_QUERY_UNREADABLE")
+        self.span_rows = alerts.span_namespace_rows(body)
+        self.block["span_metric_counts"] = alerts.span_namespace_counts(
+            self.span_rows, APP_NAMESPACE
+        )
 
     def _alert_range(self, injected: datetime) -> None:
         """#866: Prometheus' ``ALERTS`` series from 10 minutes before
