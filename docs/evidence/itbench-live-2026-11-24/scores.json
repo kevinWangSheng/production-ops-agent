@@ -1,6 +1,6 @@
 {
   "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
-  "trials": 3,
+  "trials": 4,
   "scored": 1,
   "rows": [
     {
@@ -38,6 +38,21 @@
     },
     {
       "scenario": "30",
+      "trial": 1,
+      "status": "stopped",
+      "reason": "NO_ENTRY_ALERT",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    },
+    {
+      "scenario": "31",
       "trial": 1,
       "status": "stopped",
       "reason": "NO_ENTRY_ALERT",
