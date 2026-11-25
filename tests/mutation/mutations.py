@@ -591,4 +591,25 @@ MUTATIONS: tuple[Mutation, ...] = (
         "",
         pg=True,
     ),
+    # #859 (D6): killed by tests/safety/test_safety_jaeger_v3_redaction.py.
+    Mutation(
+        "M67",
+        "credentials: a v3 span status message and exception event are redacted (#859)",
+        # Mutated: span error detail is shown unredacted, both at the trace
+        # projection's clip and at the executor's payload pass (either layer
+        # alone still hides it). ASSUMPTION (test author, implementation
+        # unseen): per D6 the v3 path feeds these fields through
+        # ``otel_demo._clipped`` and adds no redaction of its own; if it does,
+        # the implementer adds that call as a further edit here.
+        "opspilot/tools/otel_demo.py",
+        '    raw = redact_credentials(text).encode("utf-8")\n',
+        '    raw = text.encode("utf-8")\n',
+        more=(
+            (
+                "opspilot/tools/executor.py",
+                "            redacted = redact_payload(payload)\n",
+                "            redacted = payload\n",
+            ),
+        ),
+    ),
 )
