@@ -101,8 +101,10 @@ PROMETHEUS_FORWARD = ("pod/prometheus-kube-prometheus-stack-prometheus-0", 9090)
 JAEGER_FORWARD = ("svc/jaeger-collector", 16686)
 JAEGER_BASES = ("", "/jaeger")
 JAEGER_V3_SERVICES = "/api/v3/services"
-#: The v1 query API (what the product's trace tools call) is absent and the
-#: v3 one answers: traces are "未集成" for this track (A564-9).
+#: An environment fact, not a product gap: the v1 query API is absent and the
+#: v3 one answers. Since #859 (PR #864) the product's trace tools fall back to
+#: ``/api/v3/services`` themselves; the Run's own tool results say whether
+#: they reached it.
 JAEGER_V3_ONLY = "JAEGER_V1_API_ABSENT_V3_ONLY"
 APP_READY_TIMEOUT_S = 900
 ALERT_WAIT = timedelta(minutes=20)
@@ -570,7 +572,7 @@ class Trial:
                 self.block["jaeger_base"] = base
                 return base
         # Smoke 2026-11-24: upstream's Jaeger v2 (ClickHouse storage) serves
-        # only the v3 query API; the product's trace tools speak v1.
+        # only the v3 query API (the product's trace tools handle v3 since #859).
         status, body = self.h.get_json(
             f"http://127.0.0.1:{self.cfg.ports.jaeger}{JAEGER_V3_SERVICES}"
         )
