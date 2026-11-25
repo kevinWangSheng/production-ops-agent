@@ -1,0 +1,105 @@
+{
+  "schema": "itbench-live-trial-1",
+  "status": "infra_failed",
+  "reason": "ITBENCH_INJECT_FAILED",
+  "frozen_at": "2026-11-25T08:31:40.805280+00:00",
+  "itbench_live": {
+    "round": "2026-11-24",
+    "scenario": "23",
+    "trial": 1,
+    "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
+    "itbench_commit": "5ed31cc4bef041af7f61120811ebff7f36612e4b",
+    "git": {
+      "commit": "70ee4ff533601539060fe004b9d5ff3b1465eee7",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 29610,
+      "web": 29680,
+      "prometheus": 29690,
+      "jaeger": 29686
+    },
+    "alert_path": "PROMETHEUS_ALERTS_FORWARDED_AS_WEBHOOK_V4",
+    "fault_start_proxy": "INJECT_COMMAND_END",
+    "disclosures": [
+      "JAEGER_QUERY_UNANSWERED",
+      "LIST_FAILED:endpointslices",
+      "LIST_FAILED:limitranges"
+    ],
+    "steps": {
+      "deploy": {
+        "returncode": 0,
+        "seconds": 418.376
+      },
+      "inject": {
+        "returncode": 1,
+        "seconds": 4.225
+      },
+      "remove": {
+        "returncode": 0,
+        "seconds": 4.073
+      },
+      "undeploy": {
+        "returncode": 0,
+        "seconds": 406.101
+      }
+    },
+    "times": {
+      "deploy_started": "2026-11-25T08:17:41.330161+00:00",
+      "environment_ready": "2026-11-25T08:24:42.406967+00:00",
+      "inject_started": "2026-11-25T08:24:46.388037+00:00",
+      "cleaned_up": "2026-11-25T08:31:40.805231+00:00"
+    },
+    "memory_before": {
+      "unit": "MiB",
+      "mem": {
+        "total": 32089,
+        "used": 3535,
+        "free": 6126,
+        "shared": 35,
+        "buff/cache": 22934,
+        "available": 28554
+      },
+      "swap": {
+        "total": 8191,
+        "used": 1,
+        "free": 8190
+      }
+    },
+    "can_i": {
+      "answers": {
+        "create deployments.apps": "no",
+        "patch deployments.apps": "no",
+        "delete deployments.apps": "no",
+        "create pods": "no",
+        "patch pods": "no",
+        "delete pods": "no",
+        "create configmaps": "no",
+        "patch configmaps": "no",
+        "delete configmaps": "no",
+        "get secrets": "no",
+        "list secrets": "no",
+        "create pods/exec": "no",
+        "create pods/portforward": "no",
+        "create serviceaccounts/token": "no",
+        "list pods": "yes",
+        "list deployments.apps": "yes",
+        "list events": "yes"
+      },
+      "mismatches": []
+    },
+    "prefault_alert_count": 7,
+    "cleanup": {
+      "order": [
+        "remove-faults",
+        "port-forward:jaeger",
+        "port-forward:prometheus",
+        "undeploy"
+      ],
+      "errors": []
+    },
+    "status": "infra_failed",
+    "reason": "ITBENCH_INJECT_FAILED"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
+  "trials": 2,
+  "scored": 1,
+  "rows": [
+    {
+      "scenario": "20",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 467.919,
+        "from_delivery_seconds": 115.244
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "23",
+      "trial": 1,
+      "status": "infra_failed",
+      "reason": "ITBENCH_INJECT_FAILED",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    }
+  ],
+  "means": {
+    "root_cause_entity_f1": {
+      "mean": 1.0,
+      "n": 1
+    },
+    "root_cause_entity_pass": {
+      "mean": 1.0,
+      "n": 1
+    },
+    "propagation_chain": {
+      "mean": 0.0,
+      "n": 1
+    },
+    "fault_localization_component_identification": {
+      "mean": 0.0,
+      "n": 1
+    },
+    "root_cause_reasoning": {
+      "mean": 1.0,
+      "n": 1
+    },
+    "det_any_hit": {
+      "mean": 1.0,
+      "n": 1
+    },
+    "det_f1": {
+      "mean": 1.0,
+      "n": 1
+    }
+  },
+  "not_applicable": "remediation metrics (read-only product)"
+}
