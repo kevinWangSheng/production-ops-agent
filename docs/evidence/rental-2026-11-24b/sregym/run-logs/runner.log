@@ -1,0 +1,13 @@
+2026-11-24T18:23:40+00:00 runner start pid=45421
+2026-11-24T18:24:30+00:00 pre1124 p1 t1 rc=0 {"seq": 1, "trial": 1, "status": "missing", "category": "env_broken"}
+2026-11-24T18:25:13+00:00 pre1124 p1 t1 rc=0 redo {"seq": 1, "trial": 1, "status": "missing", "category": "env_broken"}
+2026-11-24T18:25:13+00:00 hold after precondition
+2026-11-25T06:20:00+00:00 runner start pid=1309743
+2026-11-25T06:34:27+00:00 pre1124 p1 t1 rc=0 {"seq": 1, "trial": 1, "status": "completed", "category": "ok"}
+2026-11-25T06:34:27+00:00 hold after precondition
+2026-11-25T06:35:04+00:00 runner start pid=1367457
+2026-11-25T06:35:07+00:00 pre1124 p1 t1 rc=0 {"seq": 1, "trial": 1, "status": "skipped", "category": null}
+2026-11-25T06:44:27+00:00 r1124 p12 t1 rc=0 {"seq": 12, "trial": 1, "status": "completed", "category": "ok"}
+2026-11-25T06:54:08+00:00 r1124 p12 t2 rc=0 {"seq": 12, "trial": 2, "status": "completed", "category": "ok"}
+2026-11-25T07:02:23+00:00 r1124 p12 t3 rc=0 {"seq": 12, "trial": 3, "status": "completed", "category": "ok"}
+2026-11-25T07:02:23+00:00 runner done
