@@ -93,7 +93,9 @@ __all__ = [
 # v19: Redis/Valkey password directives are credential names
 # (``--requirepass v``, ``masterauth=v``) and their config-line form
 # (``requirepass v`` in a redis.conf) hides the value (#818).
-PROJECTION_REVISION = "m1-01-tool-view-v19"
+# v20: the otel-demo-ext trace tools read a Jaeger that answers only the v3
+# query API; their v3 views carry ``query.jaeger_api`` and a v3 note (#859).
+PROJECTION_REVISION = "m1-01-tool-view-v20"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
