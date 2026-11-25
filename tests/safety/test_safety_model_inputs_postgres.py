@@ -434,9 +434,21 @@ def test_hostile_standing_instructions_change_no_scope_or_target(runbook_harness
     assert "evidence" in wording, message["content"]
     assert "permission" in wording, message["content"]
     # (1) The one executed backend read is the in-scope one.
-    urls = [r.full_url for r in h.opener.requests]
-    assert len(urls) == 1, urls
-    for request in h.opener.requests:
+    # #859 U1: the one D1 Jaeger version probe (GET {JAEGER_URL}/api/services,
+    # no query) may precede the first trace read; it is not a data read.
+    probes = [
+        r
+        for r in h.opener.requests
+        if r.full_url.startswith(JAEGER_URL + "/api/services")
+    ]
+    assert len(probes) <= 1, [r.full_url for r in probes]
+    for request in probes:
+        assert request.full_url == JAEGER_URL + "/api/services", request.full_url
+        assert request.get_method() == "GET", request.full_url
+    reads = [r for r in h.opener.requests if r not in probes]
+    urls = [r.full_url for r in reads]
+    assert len(urls) == 1, [r.full_url for r in h.opener.requests]
+    for request in reads:
         url = request.full_url
         assert request.get_method() == "GET", url
         assert url.startswith(
