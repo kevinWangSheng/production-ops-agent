@@ -314,3 +314,63 @@ def test_revoke_takes_another_reason(tmp_path, bench):
     assert revoked.returncode == 0, revoked.output
     assert front.requests
     assert {r.fields["reason"] for r in front.requests} == {"fixture withdrawn"}
+
+
+# -- #780 (780-10): global instructions as standing instructions ---------------
+
+
+def _import_instructions(tmp_path: Path, front: HttpFront, qdir: Path):
+    manifest = tmp_path / "out" / "manifest.jsonl"
+    manifest.parent.mkdir(exist_ok=True)
+    args = ["import-instructions", "--question-dir", str(qdir), "--target", TARGET,
+            "--manifest", str(manifest)]  # fmt: skip
+    run = run_script(args, _env(front), cwd=tmp_path, log=tmp_path / "open.log")
+    return run, manifest
+
+
+def test_runbook_import_sends_no_kind(tmp_path, bench):
+    _fake, front = bench
+    run, _manifest, _args = _import(tmp_path, front, question_dir(tmp_path / "up"))
+    assert run.returncode == 0, run.output
+    assert all("kind" not in r.fields for r in front.requests)
+
+
+def test_import_instructions_submits_one_standing_instructions_text(tmp_path, bench):
+    fake, front = bench
+    qdir = question_dir(tmp_path / "upstream")
+    (qdir / "global_instructions.json").write_text(
+        json.dumps({"instructions": ["first check", "  ", 7, "second check"]})
+    )
+    run, manifest = _import_instructions(tmp_path, front, qdir)
+    assert run.returncode == 0, run.output
+    inside = opened_inside(run, qdir)
+    assert [p.name for p in inside] == ["global_instructions.json"]
+    for recorded in front.requests:
+        _assert_form_post(recorded)
+    submit, review = front.requests
+    assert submit.path == "/runbooks" and review.path.endswith("/review")
+    fields = submit.fields
+    assert fields["kind"] == "standing_instructions"
+    assert fields["name"] == "standing-instructions"
+    assert fields["resource_uid"] == TARGET
+    assert fields["content"] == "* first check\n* second check\n"
+    assert fields["source_ref"].endswith(
+        "global_instructions.json#sha256="
+        + file_sha256(qdir / "global_instructions.json")
+    )
+    (line,) = manifest_lines(manifest)
+    assert line["entry_id"] in fake.entries and line["name"] == "standing-instructions"
+    assert "first check" not in run.output
+
+
+def test_import_instructions_over_the_limit_is_skipped_not_truncated(tmp_path, bench):
+    _fake, front = bench
+    qdir = question_dir(tmp_path / "upstream")
+    (qdir / "global_instructions.json").write_text(
+        json.dumps({"instructions": ["x" * 2100, "y" * 2100]})
+    )
+    run, manifest = _import_instructions(tmp_path, front, qdir)
+    assert run.returncode == 0, run.output
+    assert front.requests == []
+    assert "GLOBAL_INSTRUCTIONS_TOO_LARGE" in run.output
+    assert manifest_lines(manifest) == []

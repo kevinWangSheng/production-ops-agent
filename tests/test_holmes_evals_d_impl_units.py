@@ -102,10 +102,11 @@ def test_disclosures() -> None:
         applied=False, reason="RELATIVE_TIME", backend="kubernetes"
     )
     codes = driver.disclosures(Q162, q, shift, k8s_namespace="otel-demo")
-    assert {"RUNBOOKS_IMPORTED_REVIEWED", "GLOBAL_INSTRUCTIONS_NOT_IMPORTED",
+    assert {"RUNBOOKS_IMPORTED_REVIEWED", "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED",
             "K8S_SCOPE_DIFFERS"} <= set(codes)  # fmt: skip
+    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" not in codes
     assert "SKILL_ASSERTION_DROPPED" not in codes
-    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" not in driver.disclosures(
+    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" not in driver.disclosures(
         Q94, q, shift, k8s_namespace="otel-demo"
     )
 

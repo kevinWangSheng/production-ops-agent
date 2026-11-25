@@ -12,8 +12,14 @@ after the Run; the checks here are what fail closed:
 * ``run_catalog`` -- the ``runbook_catalog`` fact the Run's input recorded
   (the list the model was shown).
 
-No runbook text is printed or written to evidence; ``fixture_rows`` keeps
-names, kinds, references and byte sizes only.
+#780 (780-10): 162's ``global_instructions.json`` is imported the same way as
+the target's standing instructions and revoked with the runbooks;
+``active_standing_instructions`` and ``run_standing_instructions`` are its
+two checks (residue, and the fact the Run's input recorded).
+
+No runbook or instruction text is printed or written to evidence;
+``fixture_rows`` and ``standing_fixture_row`` keep names, kinds, references
+and byte sizes only.
 """
 
 from __future__ import annotations
@@ -27,8 +33,11 @@ from psycopg.rows import dict_row
 
 from scripts.holmes_evals.import_skills import (
     Account,
+    fits_standing_limit,
+    import_global_instructions,
     import_question,
     read_fixtures,
+    read_global_instructions,
     revoke_manifest,
 )
 from scripts.holmes_evals.intake import UiAccount
@@ -47,6 +56,15 @@ def import_runbooks(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Submit and approve every fixture; (manifest rows, refusals)."""
     return import_question(workbench_account(web_url, account), question_dir, target)
+
+
+def import_standing_instructions(
+    web_url: str, account: UiAccount, question_dir: Path, target: str
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Submit and approve the global instructions; (manifest rows, refusals)."""
+    return import_global_instructions(
+        workbench_account(web_url, account), question_dir, target
+    )
 
 
 def revoke_runbooks(
@@ -68,15 +86,59 @@ def fixture_rows(question_dir: Path) -> list[dict[str, Any]]:
     ]
 
 
+def standing_fixture_row(question_dir: Path) -> dict[str, Any] | None:
+    """What the summary records of the global instructions (no content)."""
+    fixture = read_global_instructions(question_dir)
+    if fixture is None:
+        return None
+    return {
+        "name": fixture.name,
+        "source_ref": fixture.source_ref,
+        "content_bytes": len(fixture.content.encode("utf-8")),
+        "fits": fits_standing_limit(fixture),
+    }
+
+
 def active_runbooks(owner_dsn: str, target: str) -> list[str]:
+    """Active runbook names (``kind = 'runbook'``; #780 standing instructions
+    are checked by ``active_standing_instructions``)."""
     with psycopg.connect(owner_dsn, row_factory=dict_row, autocommit=True) as conn:
         rows = conn.execute(
             "SELECT r.name FROM opspilot_runbook_revisions r "
             "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
-            "WHERE r.resource_uid=%s AND s.state='active' ORDER BY r.name",
+            "WHERE r.resource_uid=%s AND r.kind='runbook' AND s.state='active' "
+            "ORDER BY r.name",
             (target,),
         ).fetchall()
     return [str(row["name"]) for row in rows]
+
+
+def active_standing_instructions(owner_dsn: str, target: str) -> list[str]:
+    """Entry ids of the target's active standing-instructions revisions."""
+    with psycopg.connect(owner_dsn, row_factory=dict_row, autocommit=True) as conn:
+        rows = conn.execute(
+            "SELECT r.entry_id::text AS entry_id FROM opspilot_runbook_revisions r "
+            "JOIN opspilot_runbook_revision_states s USING (entry_id, revision) "
+            "WHERE r.resource_uid=%s AND r.kind='standing_instructions' "
+            "AND s.state='active' ORDER BY r.entry_id",
+            (target,),
+        ).fetchall()
+    return [str(row["entry_id"]) for row in rows]
+
+
+def run_standing_instructions(owner_dsn: str, run_id: str) -> dict[str, Any] | None:
+    """The Run input's ``standing_instructions`` fact's ``entry_id`` and
+    ``revision`` (not its content), or None when the input has none."""
+    with psycopg.connect(owner_dsn, row_factory=dict_row, autocommit=True) as conn:
+        row = conn.execute(
+            "SELECT input -> 'scope_facts' -> 'standing_instructions' AS fact "
+            "FROM opspilot_runs WHERE run_id=%s",
+            (run_id,),
+        ).fetchone()
+    fact = None if row is None else row["fact"]
+    if not isinstance(fact, Mapping):
+        return None
+    return {"entry_id": fact.get("entry_id"), "revision": fact.get("revision")}
 
 
 def run_catalog(owner_dsn: str, run_id: str) -> dict[str, Any] | None:

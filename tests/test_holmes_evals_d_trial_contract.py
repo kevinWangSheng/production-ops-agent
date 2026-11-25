@@ -110,6 +110,11 @@ class Workbench:
         self.stuck_after_revoke = 0  # passes whose revoke leaves one active
         self._stuck: set[str] = set()
         self._just_imported = False
+        # #780: 162's global instructions as the target's standing
+        # instructions, one active row per PG (kept apart from the runbook
+        # names, as the real ``active_runbooks`` reads ``kind='runbook'``).
+        self.standing_by_pg: dict[int, dict[str, int]] = {}
+        self.standing_imports: list[dict[str, Any]] = []
 
     @property
     def active(self) -> set[str]:
@@ -145,6 +150,36 @@ class Workbench:
         self._just_imported = True
         return rows, refusals
 
+    @property
+    def standing(self) -> dict[str, int]:
+        return self.standing_by_pg.setdefault(self.pg, {})
+
+    def import_standing_instructions(self, web_url, account, question_dir, target):
+        self.events.append("import_standing")
+        fixture = mod("import_skills").read_global_instructions(Path(question_dir))
+        self.standing_imports.append(
+            {"web_url": web_url, "account": account, "question_dir": Path(question_dir),
+             "target": target, "content": None if fixture is None else fixture.content}
+        )  # fmt: skip
+        if fixture is None:
+            return [], []
+        entry_id = str(uuid.UUID(int=900 + 1000 * self.pg))
+        self.standing[entry_id] = 1
+        return [
+            {"entry_id": entry_id, "revision": 1, "entry_generation": 2,
+             "name": fixture.name, "source_ref": fixture.source_ref}
+        ], []  # fmt: skip
+
+    def active_standing_instructions(self, owner_dsn, target):
+        self.events.append("active_standing")
+        return sorted(self.standing)
+
+    def run_standing_instructions(self, owner_dsn, run_id):
+        return next(
+            ({"entry_id": e, "revision": r} for e, r in sorted(self.standing.items())),
+            None,
+        )
+
     def revoke_runbooks(self, web_url, account, rows):
         self.events.append("revoke")
         rows = [dict(r) for r in rows]
@@ -154,6 +189,7 @@ class Workbench:
             return [f"revoke {r['name']}: RUNBOOK_GENERATION_CONFLICT" for r in rows]
         for row in rows:
             self.active.discard(row["name"])
+            self.standing.pop(str(row["entry_id"]), None)
         if self.stuck_after_revoke:
             self.stuck_after_revoke -= 1
             self._stuck = {"left-behind-runbook"}
@@ -288,6 +324,9 @@ class C2Harness(Harness):
             "import_runbooks": self.wb.import_runbooks,
             "revoke_runbooks": self.wb.revoke_runbooks,
             "active_runbooks": self.wb.active_runbooks,
+            "import_standing_instructions": self.wb.import_standing_instructions,
+            "active_standing_instructions": self.wb.active_standing_instructions,
+            "run_standing_instructions": self.wb.run_standing_instructions,
             "namespace_gone": self.namespace_gone,
             "start_gateway": self._never("start_gateway"),
             "switch_gateway": self._never("switch_gateway"),
@@ -502,7 +541,7 @@ def test_c2_k8s_trial_end_to_end(world) -> None:
     codes = block["disclosures"]
     assert "RUNBOOKS_IMPORTED_REVIEWED" in codes
     assert "K8S_SCOPE_DIFFERS" in codes  # app-94 is not otel-demo
-    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" not in codes
+    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" not in codes
     assert "SKILL_ASSERTION_DROPPED" not in codes
     for c in (
         "DESHIFT_TIME_ONLY_UNCHANGED",
@@ -519,6 +558,30 @@ def test_c2_k8s_trial_end_to_end(world) -> None:
     # Judged as usual.
     assert h.judge_jobs and summary["status"] == "completed"
     _clean(h, _evidence_text(cfg))
+
+
+def test_162_global_instructions_over_the_limit_are_disclosed_not_imported(
+    world,
+) -> None:
+    """#780: a text over the 4096-byte limit is skipped (never truncated) and
+    the disclosure says so; the runbooks are imported as usual."""
+    driver = mod("driver")
+    h, cfg, upstream = world((Q162,))
+    (upstream / FIXTURES / Q162 / "global_instructions.json").write_text(
+        json.dumps({"instructions": ["x" * 2100, "y" * 2100]})
+    )
+    record = driver.run_trial(cfg, h.backends(), Q162, _load(cfg, Q162), 1)
+    assert record["status"] == "completed", record
+    assert h.wb.standing_imports == []
+    block = _summary(cfg, Q162)[0]["holmes_eval"]
+    s = block["knowledge"]["standing_instructions"]
+    assert s["fixture"]["fits"] is False and s["fixture"]["content_bytes"] > 4096
+    codes = block["disclosures"]
+    assert "GLOBAL_INSTRUCTIONS_TOO_LARGE_NOT_IMPORTED" in codes
+    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" not in codes
+    assert [r["name"] for rev in h.wb.revokes for r in rev["rows"]] == fixture_names(
+        Q162
+    )
 
 
 def test_c2_without_namespace_or_setup(world) -> None:
@@ -555,8 +618,30 @@ def test_162_dal_runbooks_and_global_instructions(world) -> None:
             f["source_ref"],
         ), f["source_ref"]
     assert k["run_catalog"]["skill_ids"] == fixture_names(Q162)
+    # #780 (780-10): the global instructions go through the same submit and
+    # approve as the target's standing instructions, one ``* item`` line
+    # each (780-6), and are revoked after the Run with the runbooks.
+    (si,) = h.wb.standing_imports
+    assert si["question_dir"] == upstream / FIXTURES / Q162
+    assert si["target"] == TARGET and si["account"] is imp["account"]
+    assert si["content"] == f"* {GLOBAL_SENTINEL}\n"
+    s = k["standing_instructions"]
+    assert s["fixture"]["name"] == "standing-instructions"
+    assert s["fixture"]["source_ref"].startswith(
+        f"{SOURCE_PREFIX}{Q162}/global_instructions.json#sha256="
+    )
+    assert s["active_before_import"] == []
+    (row,) = s["imported"]
+    assert s["active_after_import"] == [row["entry_id"]]
+    assert s["run_fact"] == {"entry_id": row["entry_id"], "revision": 1}
+    assert [r["name"] for rev in h.wb.revokes for r in rev["rows"]] == [
+        *fixture_names(Q162),
+        "standing-instructions",
+    ]
+    assert h.wb.standing == {}
     codes = block["disclosures"]
-    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" in codes
+    assert "GLOBAL_INSTRUCTIONS_IMPORTED_REVIEWED" in codes
+    assert "GLOBAL_INSTRUCTIONS_NOT_IMPORTED" not in codes
     assert "RUNBOOKS_IMPORTED_REVIEWED" in codes
     assert "K8S_SCOPE_DIFFERS" in codes
     assert "app-162" in h.ns_checks
