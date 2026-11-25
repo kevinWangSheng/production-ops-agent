@@ -33,8 +33,10 @@ import base64
 import binascii
 import json
 import threading
+import time
 import urllib.parse
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any
@@ -46,6 +48,7 @@ from opspilot.tools.executor import (
     TransportRequest,
     TransportResponse,
     TransportResultTooLarge,
+    TransportTimeout,
 )
 from opspilot.tools.registry import canonical
 
@@ -55,6 +58,7 @@ __all__ = [
     "V3_NOTE",
     "ExtTracesTransport",
     "JaegerApiProbe",
+    "remaining_request",
     "rfc3339",
     "traces_data",
     "v3_error_text",
@@ -74,6 +78,17 @@ V3_NOTE = (
 #: OTLP ``Status.code`` (integer or enum name, D5).
 _STATUS_OK = frozenset({1, "1", "STATUS_CODE_OK"})
 _STATUS_ERROR = frozenset({2, "2", "STATUS_CODE_ERROR"})
+
+
+def remaining_request(request: TransportRequest, deadline: float) -> TransportRequest:
+    """#859 review F1: one deadline per tool call, shared by the probe and the
+    read. Each GET gets only the time left; none is sent once it is gone (the
+    same ``TIMEOUT`` the multi-GET transports raise, e.g.
+    ``elasticsearch_logs._remaining``)."""
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TransportTimeout("TIMEOUT", source_contact="possible")
+    return replace(request, timeout_seconds=left)
 
 
 class JaegerApiProbe:
@@ -390,14 +405,17 @@ class ExtTracesTransport:
         base = request.selector.get("traces_endpoint", "")
         if not base:
             raise TransportError("TRACES_ENDPOINT_MISSING")
+        deadline = time.monotonic() + request.timeout_seconds
 
         def get(url: str) -> Any:
             return self._sources._get(
-                url, request, max_bytes=otel_demo.TRACE_SOURCE_READ_BYTES
+                url,
+                remaining_request(request, deadline),
+                max_bytes=otel_demo.TRACE_SOURCE_READ_BYTES,
             )
 
         if self._probe.mode(base, get) != V3:
-            return self._sources.fetch(request)
+            return self._sources.fetch(remaining_request(request, deadline))
         url = f"{base}/api/v3/traces?" + urllib.parse.urlencode(
             [
                 ("query.serviceName", service),

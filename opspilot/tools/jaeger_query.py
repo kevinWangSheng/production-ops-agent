@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 import urllib.parse
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
@@ -384,6 +386,16 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
     ) -> None:
         super().__init__(credentials=dict.fromkeys(credentials), opener=opener)
         self._probe = probe if probe is not None else jaeger_v3.JaegerApiProbe()
+        #: #859 review F1: the running call's deadline, per calling thread.
+        self._call = threading.local()
+
+    def _get(self, url: str, request: TransportRequest, *, max_bytes: int) -> Any:
+        """The parent's GET with only the time left of this call's one
+        deadline (probe and read share it); none is sent once it is gone."""
+        deadline = getattr(self._call, "deadline", None)
+        if deadline is not None:
+            request = jaeger_v3.remaining_request(request, deadline)
+        return super()._get(url, request, max_bytes=max_bytes)
 
     def _v3(self, request: TransportRequest) -> bool:
         """#859 D1: whether this endpoint answers only the v3 query API.
@@ -428,15 +440,19 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.credential_ref not in self._credentials:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
-        if request.tool == SEARCH_BY_TAGS_TOOL:
-            return self._search(request)
-        if request.tool == TRACE_BY_ID_TOOL:
-            return self._by_id(request)
-        if request.tool == LIST_SERVICES_TOOL:
-            return self._services(request)
-        if request.tool == LIST_OPERATIONS_TOOL:
-            return self._operations(request)
-        raise TransportError("TOOL_NOT_SUPPORTED")
+        self._call.deadline = time.monotonic() + request.timeout_seconds
+        try:
+            if request.tool == SEARCH_BY_TAGS_TOOL:
+                return self._search(request)
+            if request.tool == TRACE_BY_ID_TOOL:
+                return self._by_id(request)
+            if request.tool == LIST_SERVICES_TOOL:
+                return self._services(request)
+            if request.tool == LIST_OPERATIONS_TOOL:
+                return self._operations(request)
+            raise TransportError("TOOL_NOT_SUPPORTED")
+        finally:
+            self._call.deadline = None
 
     @staticmethod
     def _base(request: TransportRequest) -> str:
