@@ -1,7 +1,7 @@
 # 剩余开放 issue 收尾轮（2026-11-24 起）
 
-- 状态：实施中。R1+R2 文档 PR（`chore/round-known-limitations`，worktree `../poa-round-docs`）已提交待合并，合并后关 7 个 issue；其余项实施中；#498 基线已出（`docs/evidence/perf-baseline-2026-11-24/`，PR 待合并，无明显热点，建议关闭）
-- 更新日期：2026-11-24
+- 状态：完成（2026-11-25）。本轮 issue 均已关闭（#564 于证据 PR #857 合并后关闭）。租机项全部跑完：#780 真实 Run 两次（PR #847 已合并，含 780-12 每 Run 版本标记）、#830 p12 ×3（PR #855）、162 复查带常驻说明 0/3（PR #856，按 11-17 裁决不再为题调提示词）、#564 ITBench 现场版冒烟（设施 PR #852，证据 PR #857）。新开 #853（web 端 claim 存储错误时租约要到期才释放，不挡）。租机 DeepSeek 约 $0.55（token×单价估算，未含 judge 与主机租金）；主机等用户 Destroy
+- 更新日期：2026-11-25
 - 依据：2026-11-24 开放 issue 重新同步（13 个）；四份独立预审（见「合同」）；[PRODUCT-CONSTRAINTS](../../PRODUCT-CONSTRAINTS.md)；[C3](../design/technical-proposal-2026-09-07.md) §3、§4、§10、§11；[后续四批](2026-11-22-next-batches.md)（#780 的方向、存储、审核流程、大小上限已在 B4-U3/U4/U6 裁决）
 - 工作区：每个 PR 一个 worktree（`../poa-<issue>-<名>`），开工时填写
 
@@ -12,12 +12,12 @@
 | 去向 | issue | 做什么 |
 |---|---|---|
 | 实施 | #295 + PR #551 | 解 SPEC 冲突，盲标 111 份考试报告校准二值 judge 流程，出结论；F1 第 5 步按结论处理。**2026-11-24 已出结论：未达成**（一致 95–96/102、误通过 4–5；盲标者 Opus 5.5 + Fable 5.2，OpenAI 密钥本会话不可用），F1 维持 false，[结果](../evidence/f1-judge-recal-2026-11/result.md)；PR #551 待合并后关 #295 |
-| 实施 | #780 | 每目标常驻操作员说明作为模型输入（新输入通道，进 tests/safety 加变异）。PR #847 实现、独立测试与审查已完成、CI 绿；有界真实 Run 与 trace 挪到下次租机与 162 复查一起跑（用户 2026-11-24，本机内存不足 `kind_lab.py up` 拒绝启动），此前 PR 保持 Draft；运行步骤见 PR 正文「未完成」 |
-| 实施 | #830 | SREGym p12 在故障注入前建 Valkey 只读账号。PR 已开（`chore/830-valkey-pre-fault-account`，worktree `../poa-830-valkey-hook`）：钩子 `scripts/sregym_eval/opspilot_sregym_hooks.py`，入口改为只读账号自查；本机 Valkey 容器模拟「注入前无口令→注入后设口令」通过；p12 ×3 搭下次租机 |
+| 实施 | #780 | 每目标常驻操作员说明作为模型输入。**已完成**：PR #847 合并（`d45a7ed1`）；租机两次真实 Run，证据 `docs/evidence/780-standing-instructions-live/`；带真实说明的 Run 打常驻版本标记（780-12，用户选 A）；Holmes 评测驱动导入 162 全局说明 PR #854；162 复查 0/3，证据 `docs/evidence/rental-2026-11-24b/holmes-162/` |
+| 实施 | #830 | SREGym p12 在故障注入前建 Valkey 只读账号。**已完成**：钩子 PR 已合并；租机 p12 ×3 验证，证据 `docs/evidence/rental-2026-11-24b/sregym/`（PR #855） |
 | 实施 | #498 | 用近期租机 Run 的产品内时间戳出性能基线，只测量 |
 | 实施（Agent 自定） | 无 issue | 工作台 Human-owned 状态 Resume 提示语改为「解除暂停」语义（`opspilot/web/incident_view.py`）；`docs/portfolio/architecture.md` 过时的工具列表 |
 | 关闭为已知限制 | #374 #375 #197 #124 #134 #159 #391 | 一个文档 PR 改 C3 文字为现状 + AGENTS.md 加一句，合并后关 issue |
-| 下次租机 | #564 | ITBench 现场版冒烟 |
+| 下次租机 | #564 | ITBench 现场版冒烟。**已完成**（2026-11-25）：设施 PR #852；2 题 × 1，S20 完成并判分，S23 上游注入两次确定性失败、未归类（不读上游日志）；trace 本轨未集成（Jaeger 只有 v3 接口）；[记录](2026-11-24-itbench-live-564.md)、证据 `docs/evidence/itbench-live-2026-11-24/`（PR #857） |
 
 不做：#295 的「改 judge 后换新题重跑」；#498 的调查 loop 改动；#564 的 HolmesGPT 同条件对跑与 Chaos Mesh 读权限。
 
