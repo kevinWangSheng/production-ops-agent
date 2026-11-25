@@ -323,16 +323,34 @@ class DriverKilled(BaseException):
         super().__init__(self.code)
 
 
+@dataclass
+class SignalState:
+    """While a trial's cleanup runs, signals are only recorded (raising there
+    would kill an ``undeploy`` half-way); ``Trial.run`` raises afterwards."""
+
+    deferring: bool = False
+    pending: int | None = None
+    fired: bool = False
+
+
+SIGNALS = SignalState()
+
+
 def install_signal_handlers() -> dict[int, Any]:
-    """The first SIGTERM/SIGHUP raises ``DriverKilled``; later ones are
-    ignored so the cleanup it unwinds through can finish (SIGKILL still
-    works). Returns the previous handlers."""
-    fired: list[int] = []
+    """The first SIGTERM/SIGHUP raises ``DriverKilled``, or, during a
+    cleanup, is recorded for ``Trial.run`` to raise once the cleanup is
+    complete; later ones are ignored (SIGKILL still works). Returns the
+    previous handlers."""
+    state = SIGNALS
+    state.deferring, state.pending, state.fired = False, None, False
 
     def handler(signum: int, frame: Any) -> None:
-        if fired:
+        if state.fired or state.pending is not None:
             return
-        fired.append(signum)
+        if state.deferring:
+            state.pending = signum
+            return
+        state.fired = True
         raise DriverKilled(signum)
 
     previous = {}
@@ -557,6 +575,11 @@ class TrialStop(DriverError):
     """The trial ends here with a recorded status (no Run or no score)."""
 
 
+class HarnessFailure(DriverError):
+    """A harness-side step failed (``infra_failed``, counted by the streak
+    guard), as opposed to an outcome of the scenario (``stopped``)."""
+
+
 class Trial:
     def __init__(self, cfg: Config, host: Host, scenario: str, trial: int) -> None:
         self.cfg, self.h, self.scenario, self.trial = cfg, host, scenario, trial
@@ -630,11 +653,12 @@ class Trial:
         upstream.require_ok(result)
 
     def _kubectl_ok(
-        self, *args: str, timeout: float = 120.0, env: Mapping[str, str] | None = None
-    ) -> str:
+        self, *args: str, timeout: float = 120.0, env: Mapping[str, str] | None = None,
+        failure: type[DriverError] = TrialStop,
+    ) -> str:  # fmt: skip
         done = self.h.kubectl(["kubectl", *args], env or self.admin_env, timeout)
         if done.returncode != 0:
-            raise TrialStop("KUBECTL_FAILED", args[0] if args else "")
+            raise failure("KUBECTL_FAILED", args[0] if args else "")
         return str(done.stdout or "")
 
     def _check_sandbox_taint(self) -> None:
@@ -702,13 +726,13 @@ class Trial:
                 continue
             started.stop()
             if name in self.restarted:
-                raise TrialStop("PORT_FORWARD_DIED", name)
+                raise HarnessFailure("PORT_FORWARD_DIED", name)
             self.restarted.add(name)
             self.block["disclosures"].append(f"PORT_FORWARD_RESTARTED:{name}")
             try:
                 self._start_forward(name, resource, remote, local)
             except ServiceError:
-                raise TrialStop("PORT_FORWARD_DIED", name) from None
+                raise HarnessFailure("PORT_FORWARD_DIED", name) from None
 
     def _post_deploy(self) -> None:
         """Eval-side step after the environment is ready and before OpsPilot's
@@ -721,16 +745,17 @@ class Trial:
         try:
             cr = json.loads(self._kubectl_ok(
                 "-n", OBSERVABILITY_NAMESPACE, "get", "prometheus", PROMETHEUS_CR,
-                "-o", "json",
+                "-o", "json", failure=HarnessFailure,
             ))  # fmt: skip
         except ValueError:
-            raise TrialStop("PROMETHEUS_CR_UNREADABLE") from None
+            raise HarnessFailure("PROMETHEUS_CR_UNREADABLE") from None
         spec = cr.get("spec") if isinstance(cr, Mapping) else None
         if isinstance(spec, Mapping) and spec.get("scrapeClasses"):
-            raise TrialStop("SCRAPE_CLASSES_PRESENT")
+            raise HarnessFailure("SCRAPE_CLASSES_PRESENT")
         self._kubectl_ok(
             "-n", OBSERVABILITY_NAMESPACE, "patch", "prometheus", PROMETHEUS_CR,
             "--type=merge", "-p", json.dumps(SCRAPE_CLASS_PATCH),
+            failure=HarnessFailure,
         )  # fmt: skip
         self.block["disclosures"].append(SCRAPE_PATCH_DISCLOSURE)
 
@@ -794,23 +819,35 @@ class Trial:
             interrupt, status, reason = killed, "killed", killed.code
         except TrialStop as stop:
             status, reason = "stopped", stop.code
-        except (UpstreamError, IdentityError, BoundaryError, ServiceError) as error:
+        except (
+            UpstreamError, IdentityError, BoundaryError, ServiceError, HarnessFailure,
+        ) as error:  # fmt: skip
             status, reason = "infra_failed", error.code
         except Exception as error:  # noqa: BLE001 - recorded, round decides
             status, reason = "crashed", type(error).__name__
         finally:
-            errors = self.cleanup.close()
+            before = len(self.block["disclosures"])
+            SIGNALS.deferring = True
+            try:
+                errors = self.cleanup.close()
+            finally:
+                SIGNALS.deferring = False
             self.block["cleanup"] = {"order": self.cleanup.order, "errors": errors}
             self._mark("cleaned_up")
-        # A failed fault removal followed by a clean undeploy is disclosed;
-        # the namespaces are gone, so nothing of the fault is left.
-        removal = [e for e in errors if e.startswith("remove-faults:")]
-        if removal and "undeploy" in self.cleanup.order and len(removal) == len(errors):
-            self.block["disclosures"].append("REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN")
-            errors = []
         self.block["status"], self.block["reason"] = status, reason
         if interrupt is None and "summary_path" not in self.block:
             self._status_summary(status, reason)
+        if "summary_path" in self.block:
+            # A completed summary is frozen before the cleanup; its codes go here.
+            _write_json(
+                self.cfg.evidence_trial(self.scenario, self.trial) / "cleanup.json",
+                {"errors": errors, "disclosures": self.block["disclosures"][before:]},
+            )
+        if interrupt is None and SIGNALS.pending is not None:
+            # Signalled during a complete cleanup: the trial's record stands.
+            SIGNALS.fired = True
+            interrupt = DriverKilled(SIGNALS.pending)
+            self.block["signal_during_cleanup"] = interrupt.code
         _write_json(
             self.dir / "trial.json",
             {
@@ -901,12 +938,13 @@ class Trial:
         if cfg.scrape_namespace_patch:
             self._mark("settle_started")
             h.sleep(cfg.settle.total_seconds())
+            self._check_forwards()
         self._span_namespaces()
         if (
             cfg.scrape_namespace_patch
             and not self.block["span_metric_counts"]["span_metric_groups_app_namespace"]
         ):
-            raise TrialStop("SCRAPE_PATCH_NOT_EFFECTIVE")
+            raise HarnessFailure("SCRAPE_PATCH_NOT_EFFECTIVE")
         try:
             prefault = self._alerts()
         except alerts.AlertsUnreadable as error:
@@ -1326,8 +1364,13 @@ def unjudged(cfg: Config, scenario: str, trial: int) -> bool:
 
 
 def scored_ok(cfg: Config, scenario: str, trial: int) -> bool:
+    """Scored ``ok`` and, when judging is on, actually judged."""
     scores = _read_json(cfg.evidence_trial(scenario, trial) / "scores.json")
-    return isinstance(scores, Mapping) and scores.get("status") == "ok"
+    return (
+        isinstance(scores, Mapping)
+        and scores.get("status") == "ok"
+        and (not cfg.judge or bool(scores.get("judged")))
+    )
 
 
 def resolve_trials(spec: str) -> tuple[int, ...]:

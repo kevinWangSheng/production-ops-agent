@@ -546,6 +546,13 @@ def _cfg(tmp_path: Path) -> driver.Config:
 
 
 @pytest.fixture(autouse=True)
+def _signal_state() -> Any:
+    yield
+    driver.SIGNALS.deferring, driver.SIGNALS.pending = False, None
+    driver.SIGNALS.fired = False
+
+
+@pytest.fixture(autouse=True)
 def _ledger_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from scripts import lab_evidence
 
@@ -688,20 +695,59 @@ def test_failed_undeploy_aborts_round(tmp_path: Path) -> None:
     assert [a[4] for a in host.cli][-2:] == ["undeploy", "undeploy"]
 
 
-def test_undeploy_retried_once_and_failed_remove_disclosed(tmp_path: Path) -> None:
+def test_undeploy_retried_once_reaches_cleanup_evidence(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    entry = _alert("RequestErrorRate", "2026-11-24T10:03:00Z", service_name="cart")
+    host = FakeHost([_body(), _body(entry)])
+    _failing_cli(host, "undeploy", 1)
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "completed"
+    assert [a[4] for a in host.cli][-2:] == ["undeploy", "undeploy"]
+    # The completed summary is frozen before the cleanup; the codes land here.
+    cleanup = json.loads((cfg.evidence_trial("20", 1) / "cleanup.json").read_text())
+    assert cleanup == {
+        "errors": [], "disclosures": ["UNDEPLOY_RETRIED:ITBENCH_UNDEPLOY_FAILED"],
+    }  # fmt: skip
+
+
+def test_failed_remove_aborts_round_after_undeploy(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
     host = FakeHost([_body()])
     _failing_cli(host, "remove", 1)
-    _failing_cli(host, "undeploy", 1)
-    block = driver.Trial(cfg, host, "20", 1).run()
-    assert block["status"] == "stopped" and block["reason"] == "NO_ENTRY_ALERT"
-    assert [a[4] for a in host.cli][-3:] == ["remove", "undeploy", "undeploy"]
-    assert "UNDEPLOY_RETRIED:ITBENCH_UNDEPLOY_FAILED" in block["disclosures"]
-    assert "REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN" in block["disclosures"]
-    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
-    assert (
-        "REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN" in summary["itbench_live"]["disclosures"]
-    )
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "CLEANUP_FAILED" and "remove-faults" in str(info.value)
+    assert [a[4] for a in host.cli][-2:] == ["remove", "undeploy"]
+
+
+@pytest.mark.parametrize("command", ["remove", "undeploy"])
+def test_signal_during_cleanup_is_deferred(tmp_path: Path, command: str) -> None:
+    import signal
+
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    real, finished = host.run, []
+
+    def signalled(argv: Sequence[str], **kwargs: Any) -> Any:
+        if argv[4] == command:
+            os.kill(os.getpid(), signal.SIGTERM)
+            os.kill(os.getpid(), signal.SIGHUP)
+            finished.append(command)
+        return real(argv, **kwargs)
+
+    host.run = signalled
+    previous = driver.install_signal_handlers()
+    try:
+        with pytest.raises(driver.DriverKilled) as info:
+            driver.Trial(cfg, host, "20", 1).run()
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    assert info.value.code == "SIGNAL_SIGTERM" and finished == [command]
+    assert [a[4] for a in host.cli][-2:] == ["remove", "undeploy"]
+    trial = json.loads((cfg.trial_dir("20", 1) / "trial.json").read_text())
+    assert trial["cleanup"]["errors"] == [] and trial["reason"] == "NO_ENTRY_ALERT"
+    assert trial["signal_during_cleanup"] == "SIGNAL_SIGTERM"
 
 
 def _namespaces(host: FakeHost, present: Mapping[str, int]) -> list[str]:
@@ -1010,7 +1056,7 @@ def test_dead_port_forward_restarted_once_then_stops(tmp_path: Path) -> None:
     host = DyingForward([_body()], lives=1)
     block = driver.Trial(cfg, host, "23", 1).run()
     assert "PORT_FORWARD_RESTARTED:prometheus" in block["disclosures"]
-    assert block["status"] == "stopped" and block["reason"] == "PORT_FORWARD_DIED"
+    assert block["status"] == "infra_failed" and block["reason"] == "PORT_FORWARD_DIED"
     assert host.forwards == 3
 
 
@@ -1056,6 +1102,13 @@ def test_judge_subcommand_skips_scored_unless_forced(
     assert driver.main(argv, host) == 0 and len(host.jobs) == 1
     assert driver.main(argv, host) == 0 and len(host.jobs) == 1
     assert driver.main([*argv, "--force"], host) == 0 and len(host.jobs) == 2
+    # With judging on, an ok row that was not judged is judged again.
+    cfg.judge = True
+    path = cfg.evidence_trial("20", 1) / "scores.json"
+    path.write_text(json.dumps({**json.loads(path.read_text()), "judged": False}))
+    assert not driver.scored_ok(cfg, "20", 1)
+    path.write_text(json.dumps({**json.loads(path.read_text()), "judged": True}))
+    assert driver.scored_ok(cfg, "20", 1)
 
 
 def test_run_judge_timeout_is_a_failed_try(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1296,7 +1349,8 @@ def test_scrape_patch_refused_when_scrape_classes_present(tmp_path: Path) -> Non
     host = FakeHost([_body()])
     host.prometheus_cr = {"spec": {"scrapeClasses": [{"name": "upstream"}]}}
     block = driver.Trial(cfg, host, "20", 1).run()
-    assert block["status"] == "stopped" and block["reason"] == "SCRAPE_CLASSES_PRESENT"
+    assert block["status"] == "infra_failed"
+    assert block["reason"] == "SCRAPE_CLASSES_PRESENT"
     assert _patches(host) == [] and host.alert_reads == []
     assert driver.SCRAPE_PATCH_DISCLOSURE not in block["disclosures"]
     assert [a[4] for a in host.cli][-1] == "undeploy"
@@ -1308,6 +1362,7 @@ def test_scrape_patch_not_effective_stops_before_snapshot(tmp_path: Path) -> Non
     host.span_body = {"status": "success", "data": {"result": [
         {"metric": {"service_name": "cart", "exported_namespace": "otel-demo"}, "value": [1.0, "4"]}]}}  # fmt: skip
     block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "infra_failed"
     assert block["reason"] == "SCRAPE_PATCH_NOT_EFFECTIVE"
     assert host.alert_reads == [] and "inject" not in [a[4] for a in host.cli]
     summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
@@ -1337,3 +1392,30 @@ def test_scrape_patch_off_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         driver._config(SimpleNamespace(itbench=str(tmp_path))).scrape_namespace_patch
         is True
     )
+
+
+class DiesDuringSettle(FakeHost):
+    """The first Prometheus forward is dead by the end of the settle wait."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.forwards, self.forwards_at_span_query = 0, None
+
+    def _forward(self, ns: str, resource: str, local: int, *rest: Any) -> Started:
+        self.forwards += 1
+        first = self.forwards == 1
+        return Started(f"pf:{local}", lambda: None, alive=lambda: not first)
+
+    def _get(self, url: str) -> tuple[int, Any]:
+        if "traces_span_metrics_calls_total" in url:
+            self.forwards_at_span_query = self.forwards
+        return super()._get(url)
+
+
+def test_forwards_checked_after_settle(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = DiesDuringSettle([_body()])
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["reason"] == "NO_ENTRY_ALERT"
+    assert "PORT_FORWARD_RESTARTED:prometheus" in block["disclosures"]
+    assert host.forwards == 3 and host.forwards_at_span_query == 3
