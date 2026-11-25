@@ -101,8 +101,10 @@ PROMETHEUS_FORWARD = ("pod/prometheus-kube-prometheus-stack-prometheus-0", 9090)
 JAEGER_FORWARD = ("svc/jaeger-collector", 16686)
 JAEGER_BASES = ("", "/jaeger")
 JAEGER_V3_SERVICES = "/api/v3/services"
-#: The v1 query API (what the product's trace tools call) is absent and the
-#: v3 one answers: traces are "未集成" for this track (A564-9).
+#: An environment fact, not a product gap: the v1 query API is absent and the
+#: v3 one answers. Since #859 (PR #864) the product's trace tools fall back to
+#: ``/api/v3/services`` themselves; the Run's own tool results say whether
+#: they reached it.
 JAEGER_V3_ONLY = "JAEGER_V1_API_ABSENT_V3_ONLY"
 APP_READY_TIMEOUT_S = 900
 ALERT_WAIT = timedelta(minutes=20)
@@ -493,6 +495,10 @@ class Trial:
             "steps": {},
             "times": {},
         }
+        #: #866: environment alert timeline; ``trial.json`` only, counts in the summary.
+        self.timeline = alerts.AlertTimeline()
+        self.alert_range: list[dict[str, Any]] = []
+        self.span_rows: list[dict[str, str]] = []
 
     @property
     def admin_env(self) -> dict[str, str]:
@@ -567,7 +573,7 @@ class Trial:
                 self.block["jaeger_base"] = base
                 return base
         # Smoke 2026-11-24: upstream's Jaeger v2 (ClickHouse storage) serves
-        # only the v3 query API; the product's trace tools speak v1.
+        # only the v3 query API (the product's trace tools handle v3 since #859).
         status, body = self.h.get_json(
             f"http://127.0.0.1:{self.cfg.ports.jaeger}{JAEGER_V3_SERVICES}"
         )
@@ -596,7 +602,17 @@ class Trial:
         self.block["status"], self.block["reason"] = status, reason
         if "summary_path" not in self.block:
             self._status_summary(status, reason)
-        _write_json(self.dir / "trial.json", self.block)
+        _write_json(
+            self.dir / "trial.json",
+            {
+                **self.block,
+                "alert_diag": {
+                    **self.timeline.details(),
+                    "alerts_range": self.alert_range,
+                    "span_metrics_by_namespace": self.span_rows,
+                },
+            },
+        )
         if errors:
             raise RoundAbort("CLEANUP_FAILED", ",".join(errors))
         return self.block
@@ -663,10 +679,13 @@ class Trial:
 
         # 4. pre-fault state.
         try:
-            excluded = alerts.prefault_keys(self._alerts())
+            prefault = self._alerts()
         except alerts.AlertsUnreadable as error:
             raise TrialStop("PROMETHEUS_ALERTS_UNREADABLE", str(error)) from None
+        excluded = alerts.prefault_keys(prefault)
+        self.timeline.record_prefault(prefault, _iso(h.now()))
         self.block["prefault_alert_count"] = len(excluded)
+        self._span_namespaces()
         lists_before = self._lists(readonly)
 
         # 5. the fault (ITBench's own tooling); removal pushed before the call.
@@ -677,6 +696,7 @@ class Trial:
 
         # 6. the entry alert.
         entry = self._wait_entry(excluded)
+        self._alert_range(injected)
         if entry is None:
             raise TrialStop("NO_ENTRY_ALERT")
         self.block["entry_alert"] = alerts.summary_of(entry)
@@ -712,7 +732,9 @@ class Trial:
         while True:
             polls += 1
             try:
-                found = alerts.entry_alert(self._alerts(), excluded)
+                seen = self._alerts()
+                self.timeline.record_poll(polls, _iso(self.h.now()), seen)
+                found = alerts.entry_alert(seen, excluded)
             except alerts.AlertsUnreadable:
                 found = None
                 self.block["disclosures"].append("ALERTS_POLL_UNREADABLE")
@@ -724,6 +746,49 @@ class Trial:
                 self.block["alert_polls"] = polls
                 return None
             self.h.sleep(self.cfg.poll_seconds)
+
+    def _span_namespaces(self) -> None:
+        """#866: before the fault, whether span metrics carry ``namespace``
+        (the upstream request-level alert rules filter on it)."""
+        import urllib.parse
+
+        query = urllib.parse.urlencode({"query": alerts.SPAN_METRICS_BY_NAMESPACE})
+        status, body = self.h.get_json(
+            f"http://127.0.0.1:{self.cfg.ports.prometheus}/api/v1/query?{query}"
+        )
+        if status != 200:
+            self.block["disclosures"].append("SPAN_METRICS_QUERY_UNREADABLE")
+        self.span_rows = alerts.span_namespace_rows(body)
+        self.block["span_metric_counts"] = alerts.span_namespace_counts(
+            self.span_rows, APP_NAMESPACE
+        )
+
+    def _alert_range(self, injected: datetime) -> None:
+        """#866: Prometheus' ``ALERTS`` series from 10 minutes before
+        injection to now, so an alert that fired and resolved between two
+        polls is still seen; counts into the summary."""
+        import urllib.parse
+
+        end = self.h.now()
+        start = injected - timedelta(minutes=10)
+        query = urllib.parse.urlencode({
+            "query": alerts.ALERTS_SERIES, "start": f"{start.timestamp():.0f}",
+            "end": f"{end.timestamp():.0f}", "step": "15",
+        })  # fmt: skip
+        status, body = self.h.get_json(
+            f"http://127.0.0.1:{self.cfg.ports.prometheus}{alerts.QUERY_RANGE_PATH}?{query}"
+        )
+        if status != 200:
+            self.block["disclosures"].append("ALERTS_RANGE_UNREADABLE")
+        self.alert_range = alerts.range_series(body)
+        self.block["alert_diag_counts"] = {
+            **self.timeline.counts(),
+            **alerts.range_counts(
+                self.alert_range,
+                self.timeline.prefault,
+                injected.timestamp(),
+            ),
+        }
 
     def _product(
         self, entry: Mapping[str, Any], plan: EntryPlan, cluster_uid: str,
