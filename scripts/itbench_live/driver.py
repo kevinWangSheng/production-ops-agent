@@ -99,6 +99,10 @@ EVENT_ACTOR = "alertmanager"
 PROMETHEUS_FORWARD = ("pod/prometheus-kube-prometheus-stack-prometheus-0", 9090)
 JAEGER_FORWARD = ("svc/jaeger-collector", 16686)
 JAEGER_BASES = ("", "/jaeger")
+JAEGER_V3_SERVICES = "/api/v3/services"
+#: The v1 query API (what the product's trace tools call) is absent and the
+#: v3 one answers: traces are "未集成" for this track (A564-9).
+JAEGER_V3_ONLY = "JAEGER_V1_API_ABSENT_V3_ONLY"
 APP_READY_TIMEOUT_S = 900
 ALERT_WAIT = timedelta(minutes=20)
 TERMINAL_WAIT = timedelta(seconds=7200 + 600)  # RUN_WALL + 10 min, as Lite L-D10
@@ -551,7 +555,15 @@ class Trial:
             if status == 200 and isinstance(body, Mapping):
                 self.block["jaeger_base"] = base
                 return base
-        self.block["disclosures"].append("JAEGER_QUERY_UNANSWERED")
+        # Smoke 2026-11-24: upstream's Jaeger v2 (ClickHouse storage) serves
+        # only the v3 query API; the product's trace tools speak v1.
+        status, body = self.h.get_json(
+            f"http://127.0.0.1:{self.cfg.ports.jaeger}{JAEGER_V3_SERVICES}"
+        )
+        if status == 200 and isinstance(body, Mapping):
+            self.block["disclosures"].append(JAEGER_V3_ONLY)
+        else:
+            self.block["disclosures"].append("JAEGER_QUERY_UNANSWERED")
         return JAEGER_BASES[0]
 
     def run(self) -> dict[str, Any]:
@@ -665,9 +677,12 @@ class Trial:
 
         # 8. conversion inputs: lists after the Run, Jaeger services.
         lists_after = self._lists(readonly)
-        _, body = h.get_json(
-            f"http://127.0.0.1:{cfg.ports.jaeger}{jaeger_base}/api/services"
+        path = (
+            JAEGER_V3_SERVICES
+            if JAEGER_V3_ONLY in self.block["disclosures"]
+            else f"{jaeger_base}/api/services"
         )
+        _, body = h.get_json(f"http://127.0.0.1:{cfg.ports.jaeger}{path}")
         services_seen = vocabulary.jaeger_service_names(body)
         vocab = vocabulary.build([lists_before, lists_after], services_seen)
         kinds = vocabulary.build_kinds([lists_before, lists_after])

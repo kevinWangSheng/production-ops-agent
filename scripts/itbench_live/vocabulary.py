@@ -104,8 +104,11 @@ def build_kinds(
 
 
 def jaeger_service_names(body: object) -> list[str]:
-    """``/api/services`` -> ``data``; anything else is no names."""
-    data = body.get("data") if isinstance(body, Mapping) else None
+    """``/api/services`` -> ``data`` (v1) or ``/api/v3/services`` ->
+    ``services`` (v3); anything else is no names."""
+    data = None
+    if isinstance(body, Mapping):
+        data = body.get("data", body.get("services"))
     return [s for s in data if isinstance(s, str)] if isinstance(data, list) else []
 
 

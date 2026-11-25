@@ -691,3 +691,31 @@ def test_judge_env_excludes_product_keys(monkeypatch: pytest.MonkeyPatch) -> Non
         and env["ZAI_API_KEY"] == "z"
     )
     assert os.environ is not env
+
+
+class V3OnlyJaeger(FakeHost):
+    """Smoke 2026-11-24: Jaeger answers only the v3 query API."""
+
+    def _get(self, url: str) -> tuple[int, Any]:
+        if url.endswith("/api/v3/services"):
+            return 200, {"services": ["cart", "frontend-proxy"]}
+        if url.endswith("/api/services"):
+            return 404, None
+        return super()._get(url)
+
+
+def test_jaeger_v3_only_is_disclosed_and_feeds_vocabulary(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    entry = _alert(
+        "RequestErrorRate",
+        "2026-11-24T10:03:00Z",
+        namespace="otel-demo",
+        service_name="cart",
+    )
+    host = V3OnlyJaeger([_body(), _body(entry)])
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "completed"
+    assert driver.JAEGER_V3_ONLY in block["disclosures"]
+    assert "JAEGER_QUERY_UNANSWERED" not in block["disclosures"]
+    vocab = (cfg.trial_dir("20", 1) / "vocabulary.txt").read_text().split()
+    assert "frontend-proxy" in vocab
