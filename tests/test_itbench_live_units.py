@@ -10,7 +10,7 @@ import base64
 import json
 import os
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -174,7 +174,7 @@ def test_entry_alert_skips_baseline_and_prefault() -> None:
     pending = _alert(
         "Other", "2026-11-24T10:00:30Z", state="pending", namespace="otel-demo"
     )
-    excluded = alerts.prefault_keys(alerts.parse_alerts(_body(noise, pending)))
+    excluded = alerts.prefault_active(alerts.parse_alerts(_body(noise, pending)))
     assert len(excluded) == 2
     watchdog = _alert("Watchdog", "2026-11-24T09:00:00Z")
     late = _alert(
@@ -203,6 +203,25 @@ def test_entry_alert_skips_baseline_and_prefault() -> None:
     )
     with pytest.raises(alerts.AlertsUnreadable):
         alerts.parse_alerts({"status": "error"})
+
+
+def test_entry_alert_not_before_inject_and_reactivation() -> None:
+    """Alerts active before the inject command started are never the entry
+    (the snapshot-to-inject gap included); a pre-fault label set that
+    re-activates after injection, with a new activeAt, is eligible."""
+    inject = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+    old = _alert("Old", "2026-11-24T09:50:00Z", namespace="otel-demo")
+    prefault = alerts.prefault_active([old])
+    gap = _alert("Gap", "2026-11-24T09:59:59Z", namespace="otel-demo")
+    assert alerts.entry_alert([old, gap], prefault, inject) is None
+    # Without the floor the gap alert would have been chosen.
+    assert alerts.entry_alert([old, gap], prefault)["labels"]["alertname"] == "Gap"
+    again = dict(old, activeAt="2026-11-24T10:02:00Z")
+    later = _alert("Later", "2026-11-24T10:03:00Z", namespace="otel-demo")
+    chosen = alerts.entry_alert([again, gap, later], prefault, inject)
+    assert chosen is not None and chosen["labels"]["alertname"] == "Old"
+    at_mark = _alert("AtMark", "2026-11-24T10:00:00Z", namespace="otel-demo")
+    assert alerts.entry_alert([at_mark], prefault, inject) is not None
 
 
 def test_webhook_keeps_environment_active_at() -> None:
@@ -456,7 +475,9 @@ class FakeHost(driver.Host):
         env: Mapping[str, str],
         log: Path,
     ) -> Started:
-        return Started(f"pf:{local}", lambda: self.stopped.append(f"pf:{local}"))
+        started = Started(f"pf:{local}", lambda: self.stopped.append(f"pf:{local}"))
+        started.info = {"pid": 40000 + local % 1000}
+        return started
 
     def _get(self, url: str) -> tuple[int, Any]:
         if url.endswith("/api/v1/alerts"):
@@ -631,21 +652,129 @@ def test_can_i_mismatch_stops_before_fault(tmp_path: Path) -> None:
     assert [a[4] for a in host.cli] == ["configure", "deploy", "undeploy"]
 
 
-def test_failed_undeploy_aborts_round(tmp_path: Path) -> None:
-    cfg = _cfg(tmp_path)
-    host = FakeHost([_body()])
-    real = host.run
+def _failing_cli(host: FakeHost, command: str, times: int) -> None:
+    """The first ``times`` calls of one ITBench CLI command exit 1."""
+    real, left = host.run, [times]
 
     def failing(argv: Sequence[str], **kwargs: Any) -> Any:
         done = real(argv, **kwargs)
-        if "undeploy" in argv:
+        if argv[4] == command and left[0] > 0:
+            left[0] -= 1
             return subprocess.CompletedProcess(list(argv), 1, "", "")
         return done
 
     host.run = failing
+
+
+def test_failed_undeploy_aborts_round(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    _failing_cli(host, "undeploy", 2)
     with pytest.raises(driver.RoundAbort) as info:
         driver.Trial(cfg, host, "20", 1).run()
     assert info.value.code == "CLEANUP_FAILED"
+    assert [a[4] for a in host.cli][-2:] == ["undeploy", "undeploy"]
+
+
+def test_undeploy_retried_once_and_failed_remove_disclosed(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    _failing_cli(host, "remove", 1)
+    _failing_cli(host, "undeploy", 1)
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "stopped" and block["reason"] == "NO_ENTRY_ALERT"
+    assert [a[4] for a in host.cli][-3:] == ["remove", "undeploy", "undeploy"]
+    assert "UNDEPLOY_RETRIED:ITBENCH_UNDEPLOY_FAILED" in block["disclosures"]
+    assert "REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN" in block["disclosures"]
+    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
+    assert (
+        "REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN" in summary["itbench_live"]["disclosures"]
+    )
+
+
+def _namespaces(host: FakeHost, present: Mapping[str, int]) -> list[str]:
+    """``present[ns]``: how many namespace reads still find ``ns``."""
+    left, seen, original = dict(present), [], host.kubectl_fn
+
+    def kubectl(argv: Sequence[str], env: Mapping[str, str], timeout: float) -> Any:
+        if list(argv[1:3]) == ["get", "namespace"] and "--ignore-not-found" in argv:
+            seen.append(argv[3])
+            if left.get(argv[3], 0) != 0:
+                left[argv[3]] -= 1
+                return subprocess.CompletedProcess(
+                    list(argv), 0, f"namespace/{argv[3]}\n", ""
+                )
+            return subprocess.CompletedProcess(list(argv), 0, "", "")
+        return original(argv, env, timeout)
+
+    host.kubectl_fn = kubectl
+    return seen
+
+
+def test_deploy_retried_once(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    _failing_cli(host, "deploy", 1)
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert (
+        block["reason"] == "NO_ENTRY_ALERT" and "DEPLOY_RETRIED" in block["disclosures"]
+    )
+    assert [a[4] for a in host.cli][:3] == ["configure", "deploy", "deploy"]
+
+    host = FakeHost([_body()])
+    _failing_cli(host, "deploy", 2)
+    block = driver.Trial(cfg, host, "23", 1).run()
+    assert (
+        block["status"] == "infra_failed" and block["reason"] == "ITBENCH_DEPLOY_FAILED"
+    )
+    assert [a[4] for a in host.cli] == ["configure", "deploy", "deploy", "undeploy"]
+
+
+def test_dirty_cluster_aborts_round_before_configure(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    seen = _namespaces(host, {"itbench-observability": -1})
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "ENV_NOT_CLEAN"
+    assert set(seen) == {"otel-demo", "itbench-observability"}
+    assert host.cli == []
+    assert not (cfg.evidence_trial("20", 1) / "summary.json").exists()
+
+
+def _otel_demo_reads(host: FakeHost, present: Callable[[int], bool]) -> None:
+    """The n-th read (1-based) of namespace otel-demo finds it iff ``present(n)``."""
+    reads, real = [0], host.kubectl_fn
+
+    def kubectl(argv: Sequence[str], env: Mapping[str, str], timeout: float) -> Any:
+        if (
+            list(argv[1:4]) == ["get", "namespace", "otel-demo"]
+            and "--ignore-not-found" in argv
+        ):
+            reads[0] += 1
+            out = "namespace/otel-demo\n" if present(reads[0]) else ""
+            return subprocess.CompletedProcess(list(argv), 0, out, "")
+        return real(argv, env, timeout)
+
+    host.kubectl_fn = kubectl
+
+
+def test_namespace_wait_after_undeploy(tmp_path: Path) -> None:
+    # Read 1 is before configure; reads 2-3 (after undeploy) still find it.
+    cfg, host = _cfg(tmp_path / "a"), FakeHost([_body()])
+    _otel_demo_reads(host, lambda n: n in (2, 3))
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "stopped" and block["cleanup"]["errors"] == []
+
+    cfg, host = _cfg(tmp_path / "b"), FakeHost([_body()])
+    _otel_demo_reads(host, lambda n: n > 1)
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "CLEANUP_FAILED" and "undeploy" in str(info.value)
+    trial = json.loads((cfg.trial_dir("20", 1) / "trial.json").read_text())
+    cleaned = datetime.fromisoformat(trial["times"]["cleaned_up"])
+    injected = datetime.fromisoformat(trial["times"]["inject_done"])
+    assert cleaned - injected >= cfg.alert_wait + cfg.namespace_wait
 
 
 def test_preflight_refuses_other_kind_clusters(tmp_path: Path) -> None:
@@ -730,19 +859,251 @@ def test_jaeger_v3_only_is_disclosed_and_feeds_vocabulary(tmp_path: Path) -> Non
     assert "frontend-proxy" in vocab
 
 
-def test_missing_sandbox_taint_stops_before_deploy(tmp_path: Path) -> None:
+def test_missing_sandbox_taint_aborts_round_before_deploy(tmp_path: Path) -> None:
     """Smoke 2026-11-25: without ``itbench configure environment`` taking
-    effect, a scenario's inject stops at upstream's worker-node check."""
+    effect, a scenario's inject stops at upstream's worker-node check. It is
+    cluster-level: the round stops and the trial is not recorded as done."""
     cfg = _cfg(tmp_path)
     host = FakeHost([_body()])
     host.nodes = {"items": [{"metadata": {"name": "w"}, "spec": {"taints": [
         {"key": "itbench.io/sandbox", "value": "true", "effect": "NoExecute"}]}}]}  # fmt: skip
-    block = driver.Trial(cfg, host, "20", 1).run()
-    assert block["status"] == "infra_failed"
-    assert block["reason"] == "SANDBOX_TAINT_MISSING"
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "SANDBOX_TAINT_MISSING"
     assert [a[4] for a in host.cli] == ["configure"]
-    summary = json.loads((cfg.evidence_trial("20", 1) / "summary.json").read_text())
-    assert summary["reason"] == "SANDBOX_TAINT_MISSING"
+    assert not (cfg.evidence_trial("20", 1) / "summary.json").exists()
+    assert not driver.trial_done(cfg, "20", 1)
+    trial = json.loads((cfg.trial_dir("20", 1) / "trial.json").read_text())
+    assert trial["status"] == "round_aborted"
+
+
+def test_cluster_level_failures_abort_round(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    host.port_in_use = lambda port: port == cfg.ports.web
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "20", 1).run()
+    assert info.value.code == "PORT_BUSY" and host.cli == []
+    host = FakeHost([_body()])
+    _failing_cli(host, "configure", 1)
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.Trial(cfg, host, "23", 1).run()
+    assert info.value.code == "ITBENCH_CONFIGURE_FAILED"
+    assert not (cfg.evidence_trial("23", 1) / "summary.json").exists()
+
+
+class CrashingForward(FakeHost):
+    def _forward(self, *args: Any) -> Started:
+        raise RuntimeError("synthetic")
+
+
+def test_infra_failure_streak_aborts_round(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(driver, "prepare_round", lambda cfg, host: None)
+    host = CrashingForward([_body()])
+    with pytest.raises(driver.RoundAbort) as info:
+        driver.run_round(cfg, host, ["20", "23"], [1])
+    assert info.value.code == "INFRA_FAILURE_STREAK"
+    for sid in ("20", "23"):
+        summary = json.loads((cfg.evidence_trial(sid, 1) / "summary.json").read_text())
+        assert summary["status"] == "crashed"
+
+
+def test_killed_driver_unwinds_and_rerun_starts_fresh(tmp_path: Path) -> None:
+    """A signal mid-trial runs the cleanup, records no summary; the rerun
+    sets the old directory aside, so a fresh PG directory is created."""
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    real, partial = host.run, {}
+
+    def killed_at_inject(argv: Sequence[str], **kwargs: Any) -> Any:
+        if argv[4] == "inject":
+            partial.update(json.loads(
+                (cfg.trial_dir("20", 1) / "trial.json.partial").read_text()
+            ))  # fmt: skip
+            raise driver.DriverKilled(15)
+        return real(argv, **kwargs)
+
+    host.run = killed_at_inject
+    with pytest.raises(driver.DriverKilled):
+        driver.Trial(cfg, host, "20", 1).run()
+    started = {i["name"]: i["pid"] for i in partial["started"]}
+    assert started["port-forward:prometheus"] and "remove-faults" in started
+    assert [a[4] for a in host.cli][-2:] == ["remove", "undeploy"]
+    assert not (cfg.evidence_trial("20", 1) / "summary.json").exists()
+    old = json.loads((cfg.trial_dir("20", 1) / "trial.json").read_text())
+    assert old["status"] == "killed" and old["reason"] == "SIGNAL_SIGTERM"
+    assert not (cfg.trial_dir("20", 1) / "trial.json.partial").exists()
+
+    entry = _alert("RequestErrorRate", "2026-11-24T10:03:00Z", service_name="cart")
+    host = FakeHost([_body(), _body(entry)])
+    fresh = host.start_pg
+
+    def start_pg(directory: Path, port: int) -> Any:
+        assert not directory.exists(), "PG_DIRECTORY_EXISTS"
+        return fresh(directory, port)
+
+    host.start_pg = start_pg
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "completed"
+    (aside,) = cfg.trial_dir("20", 1).parent.glob("trial-1.aborted-*")
+    assert (aside / "trial.json").is_file()
+    assert f"PREVIOUS_ATTEMPT_SET_ASIDE:{aside.name}" in block["disclosures"]
+
+
+def test_signal_handler_raises_once() -> None:
+    import signal
+
+    previous = driver.install_signal_handlers()
+    try:
+        with pytest.raises(driver.DriverKilled) as info:
+            os.kill(os.getpid(), signal.SIGHUP)
+            for _ in range(100):
+                pass
+        assert info.value.code == "SIGNAL_SIGHUP"
+        os.kill(os.getpid(), signal.SIGTERM)  # ignored while unwinding
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+class DyingForward(FakeHost):
+    """Every forward reports dead after ``lives`` liveness checks."""
+
+    def __init__(self, *args: Any, lives: int, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.lives, self.forwards = lives, 0
+
+    def _forward(self, ns: str, resource: str, local: int, *rest: Any) -> Started:
+        self.forwards += 1
+        checks = [0]
+
+        def alive() -> bool:
+            checks[0] += 1
+            return "prometheus" not in resource or checks[0] <= self.lives
+
+        return Started(f"pf:{local}", lambda: None, alive=alive)
+
+
+def test_dead_port_forward_restarted_once_then_stops(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    entry = _alert("RequestErrorRate", "2026-11-24T10:03:00Z", service_name="cart")
+    host = DyingForward([_body(), _body(), _body(entry)], lives=10)
+    block = driver.Trial(cfg, host, "20", 1).run()
+    assert block["status"] == "completed" and host.forwards == 2
+    assert "PORT_FORWARD_RESTARTED:prometheus" not in block["disclosures"]
+
+    host = DyingForward([_body()], lives=1)
+    block = driver.Trial(cfg, host, "23", 1).run()
+    assert "PORT_FORWARD_RESTARTED:prometheus" in block["disclosures"]
+    assert block["status"] == "stopped" and block["reason"] == "PORT_FORWARD_DIED"
+    assert host.forwards == 3
+
+
+class UnreadableAlerts(FakeHost):
+    def _get(self, url: str) -> tuple[int, Any]:
+        if url.endswith("/api/v1/alerts") and len(self.alert_bodies) == 1:
+            return 503, None
+        return super()._get(url)
+
+
+def test_alerts_poll_unreadable_disclosed_once(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    block = driver.Trial(cfg, UnreadableAlerts([_body(), _body()]), "20", 1).run()
+    assert block["reason"] == "NO_ENTRY_ALERT" and block["alert_polls"] > 2
+    assert block["disclosures"].count("ALERTS_POLL_UNREADABLE") == 1
+    assert set(block["disk_before"]) == {"unit", "total", "used", "free"}
+
+
+def test_post_deploy_hook_runs_before_identity(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+    host = FakeHost([_body()])
+    at: dict[str, Any] = {}
+
+    class Hooked(driver.Trial):
+        def _post_deploy(self) -> None:
+            at["times"] = dict(self.block["times"])
+            at["can_i"] = any(a[1:3] == ["auth", "can-i"] for a in host.calls)
+
+    Hooked(cfg, host, "20", 1).run()
+    assert "environment_ready" in at["times"] and at["can_i"] is False
+
+
+def test_judge_subcommand_skips_scored_unless_forced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = _cfg(tmp_path)
+    entry = _alert("RequestErrorRate", "2026-11-24T10:03:00Z", service_name="cart")
+    host = FakeHost([_body(), _body(entry)])
+    assert driver.Trial(cfg, host, "20", 1).run()["status"] == "completed"
+    assert driver.unjudged(cfg, "20", 1)
+    monkeypatch.setattr(driver, "_config", lambda args: cfg)
+    argv = ["judge", "--round", "unit", "--itbench", str(cfg.itbench)]
+    assert driver.main(argv, host) == 0 and len(host.jobs) == 1
+    assert driver.main(argv, host) == 0 and len(host.jobs) == 1
+    assert driver.main([*argv, "--force"], host) == 0 and len(host.jobs) == 2
+
+
+def test_run_judge_timeout_is_a_failed_try(monkeypatch: pytest.MonkeyPatch) -> None:
+    def hung(argv: Sequence[str], **kwargs: Any) -> Any:
+        assert kwargs["timeout"] == driver.JUDGE_PROCESS_TIMEOUT_S
+        raise subprocess.TimeoutExpired(list(argv), kwargs["timeout"])
+
+    monkeypatch.setattr(driver.upstream, "run_group", hung)
+    job = {"ground_truth": "/g", "scenario": "20", "outputs": "/o", "trial": 1,
+           "work_dir": "/w", "out": "/s", "judge": True}  # fmt: skip
+    assert driver.run_judge(job) == 124
+
+
+def test_judge_trial_evaluator_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.itbench_lite import official_eval
+
+    gt_root = tmp_path / "gt"
+    (gt_root / "20").mkdir(parents=True)
+    (gt_root / "20" / "ground_truth.yaml").write_text("entities: []\n")
+    trial = tmp_path / "outputs" / "20" / "1"
+    (trial / "outputs").mkdir(parents=True)
+    (trial / "outputs" / "agent_output.json").write_text(json.dumps(_output()))
+    seen: dict[str, Any] = {}
+
+    def run(*args: Any, **kwargs: Any) -> Path:
+        seen.update(kwargs)
+        raise subprocess.TimeoutExpired(["evaluator"], kwargs["timeout"])
+
+    monkeypatch.setattr(official_eval, "report_present", lambda d: True)
+    monkeypatch.setattr(official_eval, "judge_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(official_eval, "evaluator_dir", lambda: tmp_path / "ev")
+    monkeypatch.setattr(official_eval, "run", run)
+    out = tmp_path / "scores.json"
+    code = judge_trial.main([
+        "--ground-truth", str(gt_root), "--scenario", "20",
+        "--outputs", str(tmp_path / "outputs"), "--trial", "1",
+        "--work-dir", str(tmp_path / "w"), "--out", str(out), "--judge",
+    ])  # fmt: skip
+    assert code == 3 and seen["timeout"] == judge_trial.JUDGE_TIMEOUT_S
+    assert json.loads(out.read_text())["judge_error"] == "TimeoutExpired"
+
+
+def test_run_group_kills_the_whole_group_on_timeout(tmp_path: Path) -> None:
+    pidfile = tmp_path / "child.pid"
+    script = f"sleep 30 & echo $! > {pidfile}; wait"
+    with pytest.raises(subprocess.TimeoutExpired):
+        upstream.run_group(["sh", "-c", script], timeout=1.0)
+    child = int(pidfile.read_text())
+    import time
+
+    for _ in range(40):
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("grandchild survived the timeout")
 
 
 def test_configure_argv() -> None:

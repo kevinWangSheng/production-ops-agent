@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import os
 import re
+import signal
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from scripts.itbench_lite.services import base_env
 
@@ -153,6 +155,49 @@ def cli_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def kill_group(proc: subprocess.Popen[Any], grace: float = 10.0) -> None:
+    """SIGTERM, then SIGKILL, to the child's whole process group (the child
+    leads its own session), so ``uv``'s own children go too."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            break
+        try:
+            proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            continue
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def run_group(
+    argv: Sequence[str],
+    *,
+    capture_output: bool = False,
+    check: bool = False,
+    timeout: float | None = None,
+    **kwargs: Any,
+) -> subprocess.CompletedProcess[Any]:
+    """``subprocess.run`` with the child in a new session; on a timeout or any
+    interruption (a signal raised in the driver) the whole group is killed,
+    not only the direct child."""
+    if capture_output:
+        kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
+    with subprocess.Popen(list(argv), start_new_session=True, **kwargs) as proc:
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except BaseException:
+            kill_group(proc)
+            raise
+    done = subprocess.CompletedProcess(list(argv), proc.returncode, out, err)
+    if check:
+        done.check_returncode()
+    return done
+
+
 @dataclass(frozen=True)
 class CliResult:
     command: str
@@ -168,7 +213,7 @@ def run_cli(
     log_path: Path,
     *,
     scenario: str | None = None,
-    run: Runner = subprocess.run,
+    run: Runner = run_group,
     clock: Callable[[], float] | None = None,
 ) -> CliResult:
     """One CLI step; its output goes to ``log_path`` only (answer-bearing)."""

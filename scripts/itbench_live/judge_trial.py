@@ -29,6 +29,9 @@ from scripts.itbench_lite import official_eval
 from scripts.itbench_lite.judge_trial import _load_gt, numeric, official_row
 from scripts.itbench_live import live_match
 
+#: One evaluator call; a hung judge is a failed try the driver retries.
+JUDGE_TIMEOUT_S = 1800.0
+
 
 def deterministic(
     agent_output: Mapping[str, object], gt: Mapping[str, object]
@@ -68,6 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.outputs,
                     args.work_dir,
                     config,
+                    timeout=JUDGE_TIMEOUT_S,
                 )
                 official = official_row(scores_file, args.scenario, args.trial)
                 labels = config.labels()

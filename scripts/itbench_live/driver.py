@@ -5,7 +5,7 @@ separate from ITBench-Lite (R8-1): own rounds, evidence and scores. One trial
 of one scenario, end to end, on the rental host's ``kind-environment``
 cluster (upstream ``clusters/kind``)::
 
-    ports free -> ITBench ``configure environment`` (sandbox taint on a worker,
+    ports free, both namespaces absent -> ITBench ``configure environment`` (sandbox taint on a worker,
     checked) -> ``deploy environment --scenario N`` (fresh environment)
     -> app Deployments available -> OpsPilot's read-only identity (the kind
     lab RBAC, get/list, no Secrets) + can-i probe (fails closed) + fresh token
@@ -15,7 +15,8 @@ cluster (upstream ``clusters/kind``)::
     -> fresh PG, target entry (A564-2), web, worker -> webhook v4 delivery
     -> Run terminal (or deadline) -> freeze -> object lists again -> answer
     conversion (Lite ``answer.convert``) -> stop the product and forwards
-    -> ITBench ``remove faults`` -> ``undeploy environment``
+    -> ITBench ``remove faults`` -> ``undeploy environment`` (retried once;
+    both namespaces gone, bounded wait)
     -> judging process (official evaluator, Z.ai judge; diagnosis metrics)
 
 Answer isolation: this process never opens anything under the ITBench
@@ -48,6 +49,7 @@ import json
 import re
 import secrets as _secrets
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -112,6 +114,15 @@ TERMINAL_WAIT = timedelta(seconds=7200 + 600)  # RUN_WALL + 10 min, as Lite L-D1
 POLL_S = 15.0
 RUN_POLL_S = 5.0
 JUDGE_TRIES = 3
+#: Backstop over the judging process; its evaluator call has its own
+#: ``judge_trial.JUDGE_TIMEOUT_S``. A timeout is a failed try (retried).
+JUDGE_PROCESS_TIMEOUT_S = 1800.0 + 300.0
+#: A fresh environment needs both namespaces absent before ``configure``,
+#: and again after ``undeploy`` (bounded wait for their deletion).
+CLEAN_NAMESPACES = (APP_NAMESPACE, OBSERVABILITY_NAMESPACE)
+NAMESPACE_WAIT = timedelta(minutes=10)
+#: Consecutive ``infra_failed``/``crashed`` trials that stop the round.
+INFRA_STREAK_LIMIT = 2
 MODEL_KEYS = ("DEEPSEEK_API_KEY",)
 LANGSMITH_KEYS = ("LANGSMITH_API_KEY", "LANGSMITH_ENDPOINT", "LANGSMITH_WORKSPACE_ID")
 _ROUND = re.compile(r"^[a-z0-9][a-z0-9.-]{0,40}$")
@@ -152,6 +163,7 @@ class Config:
     poll_seconds: float = POLL_S
     run_poll_seconds: float = RUN_POLL_S
     worker_settle_seconds: float = 5.0
+    namespace_wait: timedelta = NAMESPACE_WAIT
     git: dict[str, Any] = field(default_factory=dict)
     secrets_env: dict[str, str] = field(default_factory=dict)
 
@@ -255,17 +267,62 @@ def run_judge(job: Mapping[str, Any]) -> int:
         "--work-dir", str(job["work_dir"]),
         "--out", str(job["out"]),
     ] + (["--judge"] if job["judge"] else [])  # fmt: skip
-    return subprocess.run(
-        argv, cwd=ROOT, env=judge_env(),
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
-    ).returncode  # fmt: skip
+    try:
+        return upstream.run_group(
+            argv, cwd=ROOT, env=judge_env(), stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=JUDGE_PROCESS_TIMEOUT_S,
+        ).returncode  # fmt: skip
+    except subprocess.TimeoutExpired:
+        return 124
+
+
+def disk_reading(path: Path = ROOT) -> dict[str, Any] | None:
+    """Usage of the repository's filesystem (round and evidence dirs live there)."""
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return None
+    mib = 1024 * 1024
+    return {
+        "unit": "MiB", "total": usage.total // mib,
+        "used": usage.used // mib, "free": usage.free // mib,
+    }  # fmt: skip
+
+
+class DriverKilled(BaseException):
+    """SIGTERM/SIGHUP reached the driver: unwind through the trial's cleanup
+    (not an ``Exception``, so no trial status is recorded for it)."""
+
+    def __init__(self, signum: int) -> None:
+        self.signum = signum
+        self.code = f"SIGNAL_{signal.Signals(signum).name}"
+        super().__init__(self.code)
+
+
+def install_signal_handlers() -> dict[int, Any]:
+    """The first SIGTERM/SIGHUP raises ``DriverKilled``; later ones are
+    ignored so the cleanup it unwinds through can finish (SIGKILL still
+    works). Returns the previous handlers."""
+    fired: list[int] = []
+
+    def handler(signum: int, frame: Any) -> None:
+        if fired:
+            return
+        fired.append(signum)
+        raise DriverKilled(signum)
+
+    previous = {}
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        previous[sig] = signal.signal(sig, handler)
+    return previous
 
 
 @dataclass
 class Host:
     """Everything that touches the machine; tests replace any of these."""
 
-    run: Callable[..., Any] = subprocess.run
+    run: Callable[..., Any] = upstream.run_group
     kubectl_fn: Callable[[Sequence[str], Mapping[str, str], float], Any] = _kubectl
     port_forward: Callable[..., Started] = start_port_forward
     get_json: Callable[[str], tuple[int, Any]] = get_json
@@ -286,6 +343,7 @@ class Host:
     judge: Callable[[Mapping[str, Any]], int] = run_judge
     port_in_use: Callable[[int], bool] = services.port_in_use
     memory_reading: Callable[[], dict[str, Any] | None] = services.memory_reading
+    disk_reading: Callable[[], dict[str, Any] | None] = disk_reading
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     monotonic: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
@@ -499,6 +557,9 @@ class Trial:
         self.timeline = alerts.AlertTimeline()
         self.alert_range: list[dict[str, Any]] = []
         self.span_rows: list[dict[str, str]] = []
+        #: name -> (forward, (resource, remote, local)); restarted names.
+        self.forwards: dict[str, tuple[Started, tuple[str, int, int]]] = {}
+        self.restarted: set[str] = set()
 
     @property
     def admin_env(self) -> dict[str, str]:
@@ -508,6 +569,30 @@ class Trial:
         moment = self.h.now()
         self.block["times"][name] = _iso(moment)
         return moment
+
+    def _push(self, name: str, stop: Callable[[], None], pid: Any = None) -> None:
+        """Push onto the cleanup and record what was started, with its PID, in
+        ``trial.json.partial`` at once: a driver killed without unwinding
+        leaves the list of what may still be running."""
+        self.cleanup.push(name, stop)
+        self.block.setdefault("started", []).append({"name": name, "pid": pid})
+        partial = self.dir / "trial.json.partial"
+        tmp = self.dir / "trial.json.partial.tmp"
+        tmp.write_text(
+            json.dumps(self.block, ensure_ascii=False, indent=2, default=str)
+        )
+        tmp.replace(partial)
+
+    def _set_aside_unfinished(self) -> None:
+        """A trial directory without an evidence summary is a killed attempt:
+        rename it so the rerun starts from a fresh directory (fresh PG)."""
+        summary = self.cfg.evidence_trial(self.scenario, self.trial) / "summary.json"
+        if not self.dir.exists() or summary.is_file():
+            return
+        stamp = self.h.now().astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+        aside = self.dir.with_name(f"{self.dir.name}.aborted-{stamp}")
+        self.dir.rename(aside)
+        self.block["disclosures"].append(f"PREVIOUS_ATTEMPT_SET_ASIDE:{aside.name}")
 
     def _cli(self, command: str, *, scenario: str | None = None) -> None:
         result = upstream.run_cli(
@@ -530,14 +615,82 @@ class Trial:
         return str(done.stdout or "")
 
     def _check_sandbox_taint(self) -> None:
+        """Cluster-level: a miss stops the round, not just this scenario."""
+        done = self.h.kubectl(
+            ["kubectl", "get", "nodes", "-o", "json"], self.admin_env, 120.0
+        )
+        if done.returncode != 0:
+            raise RoundAbort("KUBECTL_FAILED", "get nodes")
         try:
-            nodes = json.loads(self._kubectl_ok("get", "nodes", "-o", "json"))
+            nodes = json.loads(done.stdout or "")
         except ValueError:
-            raise TrialStop("NODES_UNREADABLE") from None
+            raise RoundAbort("NODES_UNREADABLE") from None
         tainted = upstream.sandbox_tainted_nodes(nodes)
         self.block["sandbox_nodes"] = tainted
         if not tainted:
-            raise UpstreamError("SANDBOX_TAINT_MISSING")
+            raise RoundAbort("SANDBOX_TAINT_MISSING")
+
+    def _present_namespaces(self) -> list[str]:
+        """``CLEAN_NAMESPACES`` that exist (Terminating counts as present)."""
+        present = []
+        for namespace in CLEAN_NAMESPACES:
+            done = self.h.kubectl(
+                ["kubectl", "get", "namespace", namespace, "--ignore-not-found",
+                 "-o", "name"], self.admin_env, 60.0,
+            )  # fmt: skip
+            if done.returncode != 0:
+                raise RoundAbort("KUBECTL_FAILED", f"get namespace {namespace}")
+            if (done.stdout or "").strip():
+                present.append(namespace)
+        return present
+
+    def _require_clean(self) -> None:
+        present = self._present_namespaces()
+        if present:
+            raise RoundAbort("ENV_NOT_CLEAN", ",".join(present))
+
+    def _undeploy(self) -> None:
+        """Cleanup: undeploy, once more on failure, then wait (bounded) for
+        both namespaces to be gone; raises when the cluster is not clean."""
+        try:
+            self._cli("undeploy")
+        except UpstreamError as error:
+            self.block["disclosures"].append(f"UNDEPLOY_RETRIED:{error.code}")
+            self._cli("undeploy")
+        deadline = self.h.now() + self.cfg.namespace_wait
+        while present := self._present_namespaces():
+            if self.h.now() >= deadline:
+                raise UpstreamError("ENV_NOT_CLEAN_AFTER_UNDEPLOY", ",".join(present))
+            self.h.sleep(self.cfg.poll_seconds)
+
+    def _start_forward(self, name: str, resource: str, remote: int, local: int) -> None:
+        started = self.h.port_forward(
+            OBSERVABILITY_NAMESPACE, resource, local, remote, self.admin_env,
+            self.dir / f"port-forward-{name}.log",
+        )  # fmt: skip
+        self.forwards[name] = (started, (resource, remote, local))
+        self._push(f"port-forward:{name}", started.stop, started.info.get("pid"))
+
+    def _check_forwards(self) -> None:
+        """A dead forward is restarted once (disclosed); a second death stops
+        the trial."""
+        for name, (started, (resource, remote, local)) in list(self.forwards.items()):
+            if started.alive():
+                continue
+            started.stop()
+            if name in self.restarted:
+                raise TrialStop("PORT_FORWARD_DIED", name)
+            self.restarted.add(name)
+            self.block["disclosures"].append(f"PORT_FORWARD_RESTARTED:{name}")
+            try:
+                self._start_forward(name, resource, remote, local)
+            except ServiceError:
+                raise TrialStop("PORT_FORWARD_DIED", name) from None
+
+    def _post_deploy(self) -> None:
+        """Eval-side step after the environment is ready and before OpsPilot's
+        identity and the forwards (#866); none yet, records nothing."""
+        return None
 
     def _lists(self, kubeconfig: Path) -> dict[str, Any]:
         """Object lists with the read-only identity (``vocabulary.LIST_PLURALS``)."""
@@ -584,11 +737,19 @@ class Trial:
         return JAEGER_BASES[0]
 
     def run(self) -> dict[str, Any]:
-        """Every path writes a summary; cleanup failures stop the round."""
+        """Every trial path writes a summary; a ``RoundAbort`` (cluster-level)
+        or a signal writes none, so the trial runs again on resume; cleanup
+        failures stop the round."""
+        self._set_aside_unfinished()
         self.dir.mkdir(parents=True, exist_ok=True)
         status, reason = "completed", None
+        interrupt: RoundAbort | DriverKilled | None = None
         try:
             self._run()
+        except RoundAbort as abort:
+            interrupt, status, reason = abort, "round_aborted", abort.code
+        except DriverKilled as killed:
+            interrupt, status, reason = killed, "killed", killed.code
         except TrialStop as stop:
             status, reason = "stopped", stop.code
         except (UpstreamError, IdentityError, BoundaryError, ServiceError) as error:
@@ -599,8 +760,14 @@ class Trial:
             errors = self.cleanup.close()
             self.block["cleanup"] = {"order": self.cleanup.order, "errors": errors}
             self._mark("cleaned_up")
+        # A failed fault removal followed by a clean undeploy is disclosed;
+        # the namespaces are gone, so nothing of the fault is left.
+        removal = [e for e in errors if e.startswith("remove-faults:")]
+        if removal and "undeploy" in self.cleanup.order and len(removal) == len(errors):
+            self.block["disclosures"].append("REMOVE_FAULTS_FAILED_UNDEPLOY_CLEAN")
+            errors = []
         self.block["status"], self.block["reason"] = status, reason
-        if "summary_path" not in self.block:
+        if interrupt is None and "summary_path" not in self.block:
             self._status_summary(status, reason)
         _write_json(
             self.dir / "trial.json",
@@ -613,6 +780,9 @@ class Trial:
                 },
             },
         )
+        (self.dir / "trial.json.partial").unlink(missing_ok=True)
+        if interrupt is not None:
+            raise interrupt
         if errors:
             raise RoundAbort("CLEANUP_FAILED", ",".join(errors))
         return self.block
@@ -628,25 +798,37 @@ class Trial:
     def _run(self) -> None:
         cfg, h = self.cfg, self.h
         self.block["memory_before"] = h.memory_reading()
+        self.block["disk_before"] = h.disk_reading()
         busy = [n for n, p in cfg.ports.all().items() if h.port_in_use(p)]
         if busy:
-            raise TrialStop("PORT_BUSY", ",".join(busy))
+            raise RoundAbort("PORT_BUSY", ",".join(busy))
+        self._require_clean()
 
         # 1. a fresh environment (§5 item 3); undeploy is pushed first so it
         # runs last, also after a failed deploy.
         # 0. upstream cluster setup (smoke 2026-11-25, S23): ``itbench configure
         # environment`` taints the sandbox worker nodes; idempotent, so run
         # before every deploy, then check at least one node carries the taint.
-        self._cli("configure")
+        try:
+            self._cli("configure")
+        except UpstreamError as error:
+            raise RoundAbort(error.code, str(error)) from None
         self._check_sandbox_taint()
         self._mark("deploy_started")
-        self.cleanup.push("undeploy", lambda: self._cli("undeploy"))
-        self._cli("deploy", scenario=self.scenario)
+        self._push("undeploy", self._undeploy)
+        try:
+            self._cli("deploy", scenario=self.scenario)
+        except UpstreamError:
+            # Live 2026-11-25: a first deploy on a fresh cluster failed and an
+            # immediate rerun (idempotent) succeeded; no undeploy in between.
+            self.block["disclosures"].append("DEPLOY_RETRIED")
+            self._cli("deploy", scenario=self.scenario)
         self._kubectl_ok(
             "-n", APP_NAMESPACE, "wait", "--for=condition=Available", "deployment", "--all",
             f"--timeout={APP_READY_TIMEOUT_S}s", timeout=APP_READY_TIMEOUT_S + 60,
         )  # fmt: skip
         self._mark("environment_ready")
+        self._post_deploy()
 
         # 2. OpsPilot's own read-only identity (N4/R5); no ITBench agent kubeconfig.
         identity.apply_identity(h, cfg.kubeconfig)
@@ -665,16 +847,11 @@ class Trial:
         )
 
         # 3. observability forwards (facility side, admin kubeconfig).
-        env = self.admin_env
         for name, (resource, remote), local in (
             ("prometheus", PROMETHEUS_FORWARD, cfg.ports.prometheus),
             ("jaeger", JAEGER_FORWARD, cfg.ports.jaeger),
         ):
-            started = h.port_forward(
-                OBSERVABILITY_NAMESPACE, resource, local, remote, env,
-                self.dir / f"port-forward-{name}.log",
-            )  # fmt: skip
-            self.cleanup.push(f"port-forward:{name}", started.stop)
+            self._start_forward(name, resource, remote, local)
         jaeger_base = self._jaeger_base()
 
         # 4. pre-fault state.
@@ -682,20 +859,20 @@ class Trial:
             prefault = self._alerts()
         except alerts.AlertsUnreadable as error:
             raise TrialStop("PROMETHEUS_ALERTS_UNREADABLE", str(error)) from None
-        excluded = alerts.prefault_keys(prefault)
+        excluded = alerts.prefault_active(prefault)
         self.timeline.record_prefault(prefault, _iso(h.now()))
         self.block["prefault_alert_count"] = len(excluded)
         self._span_namespaces()
         lists_before = self._lists(readonly)
 
         # 5. the fault (ITBench's own tooling); removal pushed before the call.
-        self._mark("inject_started")
-        self.cleanup.push("remove-faults", lambda: self._cli("remove"))
+        inject_started = self._mark("inject_started")
+        self._push("remove-faults", lambda: self._cli("remove"))
         self._cli("inject", scenario=self.scenario)
         injected = self._mark("inject_done")
 
         # 6. the entry alert.
-        entry = self._wait_entry(excluded)
+        entry = self._wait_entry(excluded, inject_started)
         self._alert_range(injected)
         if entry is None:
             raise TrialStop("NO_ENTRY_ALERT")
@@ -726,18 +903,22 @@ class Trial:
         self.block["vocabulary_size"] = len(vocab)
         self._freeze(run_id, vocab, kinds, injected, delivered)
 
-    def _wait_entry(self, excluded: frozenset[str]) -> dict[str, Any] | None:
+    def _wait_entry(
+        self, prefault: Mapping[str, str], not_before: datetime
+    ) -> dict[str, Any] | None:
         deadline = self.h.now() + self.cfg.alert_wait
         polls = 0
         while True:
             polls += 1
+            self._check_forwards()
             try:
                 seen = self._alerts()
                 self.timeline.record_poll(polls, _iso(self.h.now()), seen)
-                found = alerts.entry_alert(seen, excluded)
+                found = alerts.entry_alert(seen, prefault, not_before)
             except alerts.AlertsUnreadable:
                 found = None
-                self.block["disclosures"].append("ALERTS_POLL_UNREADABLE")
+                if "ALERTS_POLL_UNREADABLE" not in self.block["disclosures"]:
+                    self.block["disclosures"].append("ALERTS_POLL_UNREADABLE")
             if found is not None:
                 self._mark("entry_alert_seen")
                 self.block["alert_polls"] = polls
@@ -799,7 +980,7 @@ class Trial:
             pg = h.start_pg(self.dir / "pg", cfg.ports.pg)
         except Exception as error:  # noqa: BLE001 - LabError codes
             raise TrialStop(getattr(error, "code", "PG_START_FAILED")) from None
-        self.cleanup.push("pg", lambda: h.stop_pg(pg))
+        self._push("pg", lambda: h.stop_pg(pg), _postmaster_pid(self.dir / "pg"))
         identities = self.dir / "target_identities.json"
         _write_json(identities, identities_entry(plan, cluster_uid))
         token = _secrets.token_urlsafe(24)
@@ -807,11 +988,11 @@ class Trial:
         kenv = worker_env(cfg, pg, target, jaeger_base)
         check_envs(cfg, wenv, kenv)
         web = h.start_web(wenv, cfg.ports.web, self.dir / "web.log")
-        self.cleanup.push("web", web.stop)
+        self._push("web", web.stop, web.info.get("pid"))
         worker = h.start_worker(
             kenv, self.dir / "worker.log", settle_seconds=cfg.worker_settle_seconds
         )
-        self.cleanup.push("worker", worker.stop)
+        self._push("worker", worker.stop, worker.info.get("pid"))
 
         body = alerts.webhook(entry, plan.match_labels)
         delivered = self._mark("delivered")
@@ -842,6 +1023,7 @@ class Trial:
                 raise TrialStop("WORKER_EXITED")
             if h.now() >= deadline:
                 break
+            self._check_forwards()
             h.sleep(cfg.run_poll_seconds)
         self._mark("run_terminal_seen")
         self.block["run_wait"] = {
@@ -879,6 +1061,14 @@ class Trial:
             },
         )  # fmt: skip
         self.block["summary_path"] = str(path)
+
+
+def _postmaster_pid(data_dir: Path) -> int | None:
+    """PG daemonizes (``pg_ctl``); its PID is the data directory's first line."""
+    try:
+        return int((data_dir / "postmaster.pid").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def diagnosis_times(
@@ -1041,7 +1231,9 @@ def run_round(
     cfg: Config, host: Host, scenarios: Sequence[str], trials: Sequence[int]
 ) -> list[dict[str, Any]]:
     """Scenarios in order, one trial at a time (§5 item 7); done trials are
-    skipped; a trial without a Run is recorded and not judged."""
+    skipped (a completed one without scores is judged now); a trial without
+    a Run is recorded and not judged; ``INFRA_STREAK_LIMIT`` consecutive
+    ``infra_failed``/``crashed`` trials stop the round."""
     for scenario in scenarios:
         try:
             upstream.check_scenario(cfg.itbench, scenario)
@@ -1049,9 +1241,12 @@ def run_round(
             raise RoundAbort(error.code, scenario) from None
     prepare_round(cfg, host)
     results = []
+    streak = 0
     for scenario in scenarios:
         for trial in trials:
             if trial_done(cfg, scenario, trial):
+                if unjudged(cfg, scenario, trial):
+                    judge_one(cfg, host, scenario, trial)
                 continue
             block = Trial(cfg, host, scenario, trial).run()
             entry: dict[str, Any] = {
@@ -1063,7 +1258,25 @@ def run_round(
                 entry["scores"] = judge_one(cfg, host, scenario, trial)["status"]
             results.append(entry)
             print(json.dumps(entry), flush=True)
+            streak = streak + 1 if block["status"] in ("infra_failed", "crashed") else 0
+            if streak >= INFRA_STREAK_LIMIT:
+                raise RoundAbort("INFRA_FAILURE_STREAK", f"{scenario}/{trial}")
     return results
+
+
+def unjudged(cfg: Config, scenario: str, trial: int) -> bool:
+    """A completed summary without scores (the driver stopped after freezing)."""
+    evidence = cfg.evidence_trial(scenario, trial)
+    summary = _read_json(evidence / "summary.json") or {}
+    return (
+        summary.get("status") == "completed"
+        and not (evidence / "scores.json").is_file()
+    )
+
+
+def scored_ok(cfg: Config, scenario: str, trial: int) -> bool:
+    scores = _read_json(cfg.evidence_trial(scenario, trial) / "scores.json")
+    return isinstance(scores, Mapping) and scores.get("status") == "ok"
 
 
 def resolve_trials(spec: str) -> tuple[int, ...]:
@@ -1128,6 +1341,9 @@ def main(argv: Sequence[str] | None = None, host: Host | None = None) -> int:
     p_judge = sub.add_parser("judge")
     common(p_judge, cluster=False)
     p_judge.add_argument("--round", required=True)
+    p_judge.add_argument(
+        "--force", action="store_true", help="re-judge trials already scored ok"
+    )
     p_scores = sub.add_parser("scores")
     p_scores.add_argument("--round", required=True)
     args = parser.parse_args(argv)
@@ -1151,17 +1367,23 @@ def main(argv: Sequence[str] | None = None, host: Host | None = None) -> int:
                 block = data.get("itbench_live") or {}
                 if data.get("status") == "completed":
                     scenario, trial = str(block["scenario"]), int(block["trial"])
+                    if not args.force and scored_ok(cfg, scenario, trial):
+                        continue
                     done.append({"scenario": scenario, "trial": trial,
                                  "scores": judge_one(cfg, host, scenario, trial)["status"]})  # fmt: skip
             print(json.dumps(done))
             return 0
         cfg.git = git_state(cfg.allow_dirty)
         cfg.secrets_env = load_secrets(cfg.env_file)
+        install_signal_handlers()
         run_round(cfg, host, args.scenarios, args.trials)
         return 0
     except RoundAbort as abort:
         print(json.dumps({"abort": abort.code, "detail": str(abort)}), file=sys.stderr)
         return 2
+    except DriverKilled as killed:
+        print(json.dumps({"abort": killed.code}), file=sys.stderr)
+        return 128 + killed.signum
 
 
 if __name__ == "__main__":
