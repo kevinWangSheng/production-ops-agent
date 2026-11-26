@@ -1,9 +1,9 @@
 # Cloud-OpsBench 接入与分层子集运行
 
-- 状态：进行中
+- 状态：子集两条线已跑完并冻结；待证据 PR 合并、用户 Destroy 租机
 - 更新日期：2026-11-26
 - 依据：issue #871；[合同决定表 r1](2026-11-26-cloudopsbench-contract.md)；先例 [ITBench-Lite 适配](2026-11-12-itbench-lite-adapter.md)、`scripts/sregym_eval/`
-- 工作区：分支 `chore/871-cloudopsbench`，worktree `../poa-871-cloudopsbench`（起点 `main` 565fe15f）
+- 工作区：适配已在 PR #872 合入（`main` c923eed2）；结果分支 `chore/cloudopsbench-871-results`，worktree `../poa-871-results`
 
 ## 目标与范围
 
@@ -53,6 +53,28 @@
 
 - 2026-11-26：预审完成（未参与实现的 Opus 子 Agent，只读）；用户裁决 U1–U8 按推荐，U9 推迟 → r1。
 - 2026-11-26：适配实现（执行 Agent，分支 `chore/871-cloudopsbench`）。本地离线核对，均未调模型：基准 MCP 服务（mcp 2.3.0，临时 venv）在 boutique/codedefect/1 与 trainticket/service/25 的视图上经产品 `ReadOnlyToolExecutor` 返回缓存结果，未录制查询返回合成 NotFound；不带 worker 的一次尝试走通视图、MCP、PG、web 收题（201）、冻结、清理与端口释放；基准 `evaluation.py` 读入转换后的答案（`top_level_final_answer`），失败题按 `unparsed` 计 0；对照入口在关闭端口上跑完 20 步，配置里不留 key。题面最长 6941 字符（TrainTicket）。
+- 2026-11-26：适配在 PR #872 合入（`main` c923eed2）。租机 Vultr 4 vCPU / 16 GB（Ubuntu 24.04，PG 17.12），两个 venv 按手册装好。
+- 2026-11-26 冒烟 `smoke-20261126`（两条线各 1 题 Boutique codedefect + 1 题 TrainTicket，都不在子集里）：U7 条件全部满足——调查正常结束、评分器读入答案、工具调用全部命中缓存、ledger 无答案标记、目录名与 web/worker 环境无题号、trace 可读回、A22 两题一致。冻结摘要 [opspilot](../evidence/cloudopsbench-smoke-20261126/opspilot/summary.json) / [control](../evidence/cloudopsbench-smoke-20261126/control/summary.json)。未改适配。
+- 2026-11-26 子集 `r20261126`（17:35–19:00 UTC，DeepSeek 闲时；OpsPilot 两路分片并行，对照一路）：两条线各 100 题全部跑完，无基础设施失败，`strata_check` 均为 match。冻结摘要 [opspilot](../evidence/cloudopsbench-r20261126/opspilot/summary.json) / [control](../evidence/cloudopsbench-r20261126/control/summary.json)，git c923eed2、未脏，模板与工具目录 sha256 与合并时一致。
+
+| 子集 100 题 | OpsPilot | 对照（自带 ReAct） |
+|---|---|---|
+| CA / FA / JRA 未加权 | 0.99 / 0.96 / 0.96 | 0.94 / 0.89 / 0.89 |
+| JRA 全集加权估计（U5） | 0.962 | 0.898 |
+| Boutique 74 题 JRA | 0.973 | 0.932 |
+| TrainTicket 26 题 JRA | 0.923 | 0.769 |
+| 平均步数 | 27.8 次工具调用；模型请求中位 11、最多 27（上限 100 未触及） | 6.6 步（上限 20，1 题触顶） |
+| 单题耗时 | 中位 63 s，最长 285 s | — |
+| 费用（token × 闲时单价 0.003 / 0.15 / 0.60） | $1.756 | $1.155（偏高：无缓存拆分，输入全按未命中计） |
+
+  - 两条线都错的 2 题；只 OpsPilot 错 2 题，只对照错 9 题。OpsPilot 的过程指标（MC/EOC/ECR/EE）来自 MCP 轨迹，是近似值（A4）；EE 低是因为它调用工具多，和对照不可直接比。
+  - 对照截断（A25）：706 步中 26 步输出到 4096 上限，涉及 19 题，其中 7 题答错；对照答错的 11 题里 7 题有截断。1 题触顶 20 步，最终答案未能解析（`unparsed_final_answer`，计 0）。基准默认就是 4096，DeepSeek 不传 thinking 参数时默认推理，这一项照实列为对照结果的限制。
+  - A22：100 题 agree 100、disagree 0。审查担心的调度/配额类对象误判在本轮未出现，U3 不需重提。
+  - 缓存：2681 次工具调用，2671 命中，not_found 10（7 题，都答对），adapter_error 0。
+  - 泄漏检查（A17）：2 题命中 `difficulty`，人工判定都是模型自己推理里的 "Given the difficulty, …"，快照里此词只在不对外提供的 metadata.json，不是真值泄漏。
+  - 冒烟另记：故障大类进 web/worker 环境变量只用于选工具集版本（codedefect 多两个看代码的工具），与基准自带服务做法相同，模型不可见；有的快照数据本身就透露故障（如配置开关名），两条线条件相同。
+  - 总费用约 $3.0（子集 $2.91 + 冒烟 $0.09），按 token × 单价，DeepSeek 余额是账户级，不做余额差对账。
+  - 对比口径：失败题计 0 入分母（A23）；OpsPilot 上限 100 次模型请求，对照 20 次迭代（U4）；单次运行、温度 0，未测重复运行方差。
 
 ## 租机运行手册
 
@@ -69,6 +91,6 @@
 
 ## 下一步与交接
 
-- 独立测试作者按合同写验收测试，独立审查后开 PR。
-- 代码就绪后请用户建租机，跑冒烟。
-- 未确认：发布成绩是否全集与每题次数；单题耗时与并发；DeepSeek 对照在不传 thinking 参数时的默认模式。
+- 证据 PR 合并后关 #871，更新 ROADMAP 行；用户 Destroy 租机并删主机上的 `rental.env`。
+- 简历口径（U9）等用户提起再谈。
+- 未确认：发布成绩是否全集与每题次数（引用论文对比前要核）。已确认：DeepSeek 对照不传 thinking 参数时默认推理（冒烟与子集轨迹）；单题耗时与并发见上。

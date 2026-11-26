@@ -1,0 +1,133 @@
+{
+ "schema": "cloudopsbench-round-1",
+ "round": "smoke-20261126",
+ "line": "control",
+ "frozen_at": "2026-11-26T17:34:32.919098+00:00",
+ "git": {
+  "commit": "c923eed25ea11573b5cb184c2f7a8d31ca32b0d0",
+  "dirty": false
+ },
+ "subset_sha256": "03af7e5cb537ef7bc1fb94ff95ad68a871b8b20bf7e8e10bfe21efd5ae01b1eb",
+ "question_template_sha256": "0d0f21085251a3c169983f18edb8c223a9e78f631eb580582c3f5fd0eefe919f",
+ "tool_catalog_sha256": "6a1927d306ff653dd0e65dcc3f6d5d7826f66a2e2b63ca6429dca2ef5805706f",
+ "conversion": "bundled agent's own Submit JSON",
+ "limits": {
+  "opspilot": "product default: 100 model requests per Run (U4)",
+  "control": "20 iterations, temperature 0 (U6)"
+ },
+ "process_metrics_note": "MC/EOC/ECR/EE of the OpsPilot line come from the MCP trace and are approximate (A4)",
+ "prices_per_million_usd": {
+  "cache_hit": 0.003,
+  "cache_miss": 0.15,
+  "output": 0.6
+ },
+ "cost_usd_total": 0.046355,
+ "count": 2,
+ "aggregate": {
+  "CA": {
+   "mean": 0.5,
+   "weighted_full_set": null
+  },
+  "FA": {
+   "mean": 0.5,
+   "weighted_full_set": null
+  },
+  "JRA": {
+   "mean": 0.5,
+   "weighted_full_set": null
+  },
+  "MC": {
+   "mean": 0.75
+  },
+  "EOC": {
+   "mean": 0.75
+  },
+  "ECR": {
+   "mean": 0.5
+  },
+  "EE": {
+   "mean": 0.5667
+  },
+  "steps": {
+   "mean": 9.5
+  },
+  "RAR": {
+   "mean": 0.0
+  },
+  "invalid_actions": {
+   "mean": 0.0
+  }
+ },
+ "by_system": {
+  "boutique": {
+   "n": 1,
+   "CA": 1.0,
+   "FA": 1.0,
+   "JRA": 1.0
+  },
+  "trainticket": {
+   "n": 1,
+   "CA": 0.0,
+   "FA": 0.0,
+   "JRA": 0.0
+  }
+ },
+ "object_agreement": null,
+ "cases": [
+  {
+   "seq": 1,
+   "case": "boutique/codedefect/1",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008042,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 46400,
+    "output_tokens": 1803
+   }
+  },
+  {
+   "seq": 2,
+   "case": "trainticket/performance/1",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.3333333333333333,
+    "steps": 13.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.038313,
+   "stop_reason": "submit",
+   "steps_used": 13,
+   "tool_calls": 12,
+   "tokens": {
+    "input_tokens": 190226,
+    "output_tokens": 16298
+   }
+  }
+ ],
+ "strata_check": "no_committed_strata"
+}
