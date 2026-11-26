@@ -34,7 +34,15 @@ VARIANTS = [
 
 
 def test_template_hash_is_pinned_and_recomputable():
-    blob = json.dumps([question.QUESTION_TEMPLATE, catalog.ROOT_CAUSE_LIST])
+    blob = json.dumps(
+        [
+            question.QUESTION_TEMPLATE,
+            catalog.ROOT_CAUSE_LIST,
+            catalog.VALID_NODES,
+            catalog.VALID_SERVICES,
+            catalog.VALID_NAMESPACES,
+        ]
+    )
     digest = hashlib.sha256(blob.encode()).hexdigest()
     assert digest == question.QUESTION_TEMPLATE_SHA256 == question.template_sha256()
 
@@ -159,23 +167,28 @@ def test_trace_counts_separate_recorded_answers_from_synthetic_not_found():
             }
         ),
         json.dumps(
-            {"tool_name": "GetAppYAML", "output": "Error: YAML ... not recorded."}
+            {
+                "tool_name": "GetAppYAML",
+                "output": "Error: YAML configuration for 'frontend' is not recorded.",
+            }
         ),
+        # Recorded output that happens to start with "Error" is a hit.
+        json.dumps({"tool_name": "GetRecentLogs", "output": "Error: dial tcp refused"}),
         json.dumps({"tool_name": "GetResources", "output": "bad", "is_error": True}),
         "not json",
     ]
     events = answer.read_trace(lines)
     assert answer.cache_stats(events) == {
-        "calls": 4,
-        "hit": 1,
+        "calls": 5,
+        "hit": 2,
         "not_found": 1,
         "not_recorded": 1,
         "adapter_error": 1,
-        "hit_rate": 0.25,
+        "hit_rate": 0.4,
     }
     steps = answer.trajectory_steps(events)
     assert [s["action_name"] for s in steps][:2] == ["GetAlerts", "DescribeResource"]
-    assert steps[3]["error"] == "bad"
+    assert steps[4]["error"] == "bad"
 
 
 # -- subset (U5) ------------------------------------------------------------------
@@ -322,3 +335,55 @@ def test_product_environments_refuse_a_dataset_path():
     with pytest.raises(driver.DriverError) as error:
         driver.check_product_env({"X": "/data/cob/benchmark"}, ["/data/cob"])
     assert error.value.code == "PRODUCT_ENV_LEAK"
+
+
+@pytest.mark.parametrize(
+    ("summary", "name", "agrees"),
+    [
+        (
+            "Root cause: pod_cpu_overload; fault object: app/frontend",
+            "frontend-1",
+            True,
+        ),
+        (
+            "Root cause: pod_cpu_overload; fault object: app/adservice",
+            "frontend-1",
+            False,
+        ),
+        ("Root cause: pod_cpu_overload", "frontend-1", None),
+    ],
+)
+def test_object_agreement_is_recorded_without_changing_precedence(
+    summary, name, agrees
+):
+    got = answer.convert(_report(summary, _rc("Pod", name)), "boutique")
+    assert got.fault_object == "app/frontend"  # root_cause still wins
+    record = answer.conversion_record(got)
+    assert record["object_agrees_with_summary"] is agrees
+    assert "frontend" not in json.dumps(record)
+
+
+def test_score_maps_records_by_the_case_they_recorded(tmp_path, monkeypatch):
+    monkeypatch.setattr(driver, "TMP_ROOT", tmp_path / "tmp")
+    cfg = driver.Config(round="t2", checkout=tmp_path, cob_python=Path("python3"))
+    for seq, case in ((1, "boutique/runtime/2"), (2, "boutique/runtime/1")):
+        path = cfg.round_dir / "opspilot" / f"c{seq:03d}" / driver.RECORD
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({"case": case, "seq": seq, "status": "ok"}))
+    records = driver._records(cfg, "opspilot", ["boutique/runtime/1"])
+    assert records["boutique/runtime/1"]["seq"] == 2
+
+
+def test_score_refuses_strata_that_differ_from_the_committed_file(tmp_path):
+    cases = ["boutique/runtime/1", "boutique/runtime/2"]
+    strata = dict(zip(cases, ["boutique/runtime/a", "boutique/runtime/b"], strict=True))
+    sub = tmp_path / "subset.json"
+    sub.write_text(json.dumps({"seed": 1, "target": 2, "cases": cases}))
+    assert driver.check_strata(sub, strata, cases) == "no_committed_strata"
+    _, weights = subset.frozen(strata, cases, seed=1, target=2)
+    (tmp_path / "strata.json").write_text(json.dumps(weights))
+    assert driver.check_strata(sub, strata, cases) == "match"
+    moved = {**strata, "boutique/runtime/2": "boutique/runtime/a"}
+    with pytest.raises(driver.DriverError) as error:
+        driver.check_strata(sub, moved, cases)
+    assert error.value.code == "STRATA_MISMATCH"

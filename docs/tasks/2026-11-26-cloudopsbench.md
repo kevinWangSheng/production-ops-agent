@@ -37,12 +37,17 @@
 - A13 提示变体沿用扩展档位的 `replay-candidate-k8s`（产品 K8s 调查指导原文），不新增提示词。
 - A14 工具结果按行放进 `lines`；超过 25k token 按产品规则拒绝（RESULT_TOO_LARGE），不截断；不注册证据分页工具。模型给可选参数传 null 时，产品网关按 INVALID_PARAMS 拒绝，这次调用不进 MCP 轨迹。
 - A15 转换细则（U3 的展开）：对象先看 `root_cause` 字段（Node→node，Namespace→namespace，ResourceQuota→其所在 namespace，其余 kind 按名字去 Pod/ReplicaSet 哈希后缀、再取最长的 List B 应用名前缀），其次 summary 里的 `fault object: kind/name`，再次 summary 里第一个 `kind/name`；标签先看 summary 的 `Root cause: <label>`，其次 summary 第一个标签，再次 fact/hypothesis 声明里第一个标签（不看 rejected_hypothesis、counter_evidence、recommendation）；标签整词匹配、不分大小写。冻结摘要只记用了哪条规则、找没找到，不记预测值。
-- A16 缓存计数按 MCP 轨迹的输出文本分四类：hit；not_found（`Error from server (NotFound)` 开头，A3 的合成答案）；not_recorded（`Error`、`An unexpected error` 开头）；adapter_error（服务端 isError，参数被拒）。
+- A16 缓存计数按 MCP 轨迹的输出文本分四类：hit；not_found（`Error from server (NotFound)` 开头，A3 的合成答案）；not_recorded（只认基准 `tools/snapshot.py` 自己的“未录制/查找出错”原文，如 `... is not recorded.`、`An unexpected error occurred during snapshot lookup ...`，清单见 `answer.NOT_RECORDED`）；adapter_error（服务端 isError，参数被拒）。其余文本（含以 `Error` 开头的已录制输出和参数错误提示）计 hit。
 - A17 隔离：尝试目录按清单序号命名（`c001`），不含题号（题号含故障大类）；题面、幂等键（`cob-<round>-c001-t1`）和 LangSmith 项目名都不含题号；web/worker 环境里出现数据集路径或题号即拒绝（`PRODUCT_ENV_LEAK`）；每个 Run 的原始 ledger 检查答案标记（metadata.json、milestone、fault_object 等），命中只记录不改分（U7 ④ 人工判定）。
 - A18 Trace：评测 web/worker 不设 `OPSPILOT_TOOL_PROFILE`，tracer 的 lab 检查按默认值通过；送出的数据是公开基准快照，属 U1 认定的 synthetic lab。
 - A19 对照在基准代码的临时副本里写配置，不写 checkout；API key 只在进程运行期间存在于 600 权限的配置文件里，结束即清空。其余参数用基准默认（`max_tokens` 4096、`timeout` 60，api_base `https://api.deepseek.com/v1`）。产品请求开 thinking，基准 ModelRunner 不传 thinking 参数，差异照实记录。
 - A20 评分：每个（系统, 大类）调用一次基准 `evaluation.py`，用它自己的 `case_split` 文件限定到子集；只读回逐题指标，评分器的明细文件（含标准答案）留在 `tmp/`。
 - A21 子集已冻结：种子 871、目标 100、58 层，[subset.json](../evidence/cloudopsbench-871/subset.json)（sha256 `cf14c665…48bd93`）与 [strata.json](../evidence/cloudopsbench-871/strata.json)（各层全集与子集题数）；题与层的对应不入库，评分时在租机上重算。
+- A22 转换诊断：冻结摘要另记 `root_cause` 对象与 summary 里显式 `fault object: kind/name` 是否一致（任一缺失为 null），轮摘要汇总 agree/disagree/not_comparable；只作诊断，U3 的优先顺序不变。
+- A23 评分口径：基准自带 `summarize` 只对有答案文件的题求平均；本适配两条线都给每题写答案文件，失败题按 0 计入分母。引用发布成绩对比时要写明这一口径差异。
+- A24 打分时按每条尝试记录里写下的题号对应记录（不按清单位置）；租机上重算的分层与入库的 `strata.json` 不一致即拒绝打分（`STRATA_MISMATCH`），只列两题的冒烟清单没有 `strata.json`，记 `no_committed_strata`。
+- A25 对照 `max_tokens` 4096 是基准默认；若 DeepSeek 在不传 thinking 参数时默认开思考，输出可能被截断，冒烟时检查对照轨迹的 stop_reason 与末步输出是否完整。
+- A26 冒烟另查：尝试目录名是 `c00N`（不含题号），web/worker 进程环境里没有题号与数据集路径（`/proc/<pid>/environ` 抽查）。
 
 ## 执行进展与证据
 

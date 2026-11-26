@@ -67,6 +67,10 @@ class Converted:
     #: ``summary_root_cause`` / ``summary_first`` / ``claims_first`` /
     #: ``not_found``.
     label_rule: str
+    #: Diagnostic only (it never changes the precedence above): whether the
+    #: object from ``root_cause`` equals the summary's explicit
+    #: ``fault object: kind/name``; ``None`` unless both yield a listed object.
+    object_agrees: bool | None = None
 
 
 def _services(system: str) -> tuple[str, ...]:
@@ -114,11 +118,18 @@ def object_from_root_cause(root_cause: Any, system: str) -> str | None:
     return f"app/{service}" if service else None
 
 
-def _object_in_text(text: str, system: str) -> tuple[str | None, str]:
+def _explicit_fault_object(text: str, system: str) -> str | None:
     for match in _FAULT_OBJECT_RE.finditer(text):
         found = _listed(match.group(1), match.group(2), system)
         if found:
-            return found, "summary_fault_object"
+            return found
+    return None
+
+
+def _object_in_text(text: str, system: str) -> tuple[str | None, str]:
+    explicit = _explicit_fault_object(text, system)
+    if explicit:
+        return explicit, "summary_fault_object"
     for match in _OBJECT_RE.finditer(text):
         found = _listed(match.group(1), match.group(2), system)
         if found:
@@ -149,28 +160,54 @@ def _label(report: Mapping[str, Any]) -> tuple[str | None, str]:
 
 def convert(report: Mapping[str, Any], system: str) -> Converted:
     """``report`` is the product's validated report (``ReportV2`` dumped)."""
+    summary = str(report.get("summary") or "")
     fault = object_from_root_cause(report.get("root_cause"), system)
+    explicit = _explicit_fault_object(summary, system)
+    agrees = None if fault is None or explicit is None else fault == explicit
     object_rule = "root_cause_field" if fault else "not_found"
     if fault is None:
-        fault, object_rule = _object_in_text(str(report.get("summary") or ""), system)
+        fault, object_rule = _object_in_text(summary, system)
     label, label_rule = _label(report)
-    return Converted(fault or "", label or "", object_rule, label_rule)
+    return Converted(fault or "", label or "", object_rule, label_rule, agrees)
 
 
 # -- the benchmark's per-case file ------------------------------------------------
 
 
+#: The backend's own texts for a query its snapshot does not hold, or a
+#: lookup that failed (Cloud-OpsBench ec1d4f3 ``tools/snapshot.py``).
+NOT_RECORDED: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(p, re.DOTALL)
+    for p in (
+        r"An unexpected error occurred during snapshot lookup for ",
+        r"An unexpected error occurred while reading source file ",
+        r"Error: Code file list for '.*' is not recorded\.$",
+        r"Error: Source file '.*' for '.*' is not found in this case\.$",
+        r"Error: YAML configuration for '.*' is not recorded\.$",
+        r"Error: Dependencies for '.*' not recorded in trace data\.$",
+        r"Error: The query result of GetRecentLogs was not found in records\.",
+        r"Error: Cluster configuration snapshot is not available in the dataset\.$",
+        r"Error: Cluster alerts is not available in the dataset\.$",
+        r"Error: Error logs for the specified service are not available\.$",
+        r"Error: Status information for cluster control plane components is not "
+        r"available in the dataset$",
+    )
+)
+
+
 def classify_output(output: str, is_error: bool) -> str:
     """One recorded tool answer: ``hit`` (a recorded result), ``not_found``
     (the snapshot's synthetic NotFound for an unrecorded query, A3),
-    ``not_recorded`` (another "not recorded"/error text of the backend) or
-    ``adapter_error`` (arguments the server refused)."""
+    ``not_recorded`` (one of the backend's own "not recorded" or lookup-error
+    texts, :data:`NOT_RECORDED`) or ``adapter_error`` (arguments the server
+    refused). Any other text, including recorded output that starts with
+    ``Error``, is ``hit``."""
     if is_error:
         return "adapter_error"
     text = output.strip()
     if text.startswith("Error from server (NotFound)"):
         return "not_found"
-    if text.startswith(("Error", "An unexpected error")):
+    if any(pattern.match(text) for pattern in NOT_RECORDED):
         return "not_recorded"
     return "hit"
 
@@ -252,4 +289,5 @@ def conversion_record(converted: Converted | None) -> dict[str, Any] | None:
         "label_rule": record["label_rule"],
         "object_found": bool(converted.fault_object),
         "label_found": bool(converted.root_cause),
+        "object_agrees_with_summary": record["object_agrees"],
     }

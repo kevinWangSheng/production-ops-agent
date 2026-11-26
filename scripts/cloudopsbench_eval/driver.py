@@ -677,6 +677,11 @@ def round_summary(
             },
         }
     costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
+    agreement = {"agree": 0, "disagree": 0, "not_comparable": 0}
+    for row in rows:
+        value = (row.get("conversion") or {}).get("object_agrees_with_summary")
+        key = "not_comparable" if value is None else "agree" if value else "disagree"
+        agreement[key] += 1
     return {
         "schema": SUMMARY_SCHEMA,
         "round": cfg.round,
@@ -701,6 +706,9 @@ def round_summary(
         "count": len(rows),
         "aggregate": aggregate,
         "by_system": by_system,
+        # Diagnostic (U3 precedence unchanged): root_cause object against the
+        # summary's explicit fault object, OpsPilot line only.
+        "object_agreement": agreement if line == LINE_OPSPILOT else None,
         "cases": rows,
     }
 
@@ -772,13 +780,44 @@ def _selected(args: argparse.Namespace) -> list[tuple[int, str]]:
 
 
 def _records(cfg: Config, line: str, cases: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Every attempt record of the line, keyed by the case it recorded at run
+    time (never by the position in the list being scored); when one case was
+    run more than once the newest record is used and ``records_for_case``
+    says how many there were."""
     folder = "opspilot" if line == LINE_OPSPILOT else "control"
+    found: dict[str, list[tuple[float, dict[str, Any]]]] = {}
+    for path in sorted((cfg.round_dir / folder).glob(f"c*/{RECORD}")):
+        rec = json.loads(path.read_text())
+        if isinstance(rec.get("case"), str):
+            found.setdefault(rec["case"], []).append((path.stat().st_mtime, rec))
     records = {}
-    for seq, case_id in enumerate(cases, 1):
-        path = cfg.round_dir / folder / f"c{seq:03d}" / RECORD
-        if path.is_file():
-            records[case_id] = json.loads(path.read_text())
+    for case_id in cases:
+        if case_id in found:
+            newest = max(found[case_id], key=lambda item: item[0])[1]
+            records[case_id] = {**newest, "records_for_case": len(found[case_id])}
     return records
+
+
+def check_strata(
+    subset_path: Path, strata: Mapping[str, str], cases: Sequence[str]
+) -> str:
+    """``match`` when the host's recomputed strata give the committed
+    ``strata.json`` next to the subset file, ``no_committed_strata`` when
+    there is none (a smoke list); a difference refuses the score step."""
+    committed_path = subset_path.with_name("strata.json")
+    if not committed_path.is_file():
+        return "no_committed_strata"
+    committed = json.loads(committed_path.read_text())
+    data = json.loads(subset_path.read_text())
+    _, weights = subset_mod.frozen(
+        strata, cases, seed=int(data["seed"]), target=int(data["target"])
+    )
+    same = weights["full_total"] == committed.get("full_total") and weights[
+        "strata"
+    ] == committed.get("strata")
+    if not same:
+        raise DriverError("STRATA_MISMATCH", str(committed_path))
+    return "match"
 
 
 def main(argv: Sequence[str] | None = None, backends: Backends | None = None) -> int:
@@ -832,6 +871,8 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
         if args.subset is None or args.line is None:
             raise DriverError("SCORE_NEEDS_SUBSET_AND_LINE")
         cases, digest = load_subset(args.subset)
+        strata = subset_mod.read_strata(cfg.checkout)
+        strata_check = check_strata(args.subset, strata, cases)
         line = LINE_OPSPILOT if args.line == LINE_OPSPILOT else CONTROL_MODEL
         scores = scoring.score(
             line=line,
@@ -852,10 +893,11 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
             cases=cases,
             scores=scores,
             records=_records(cfg, args.line, cases),
-            strata=subset_mod.read_strata(cfg.checkout),
+            strata=strata,
             prices=prices,
             subset_sha256=digest,
         )
+        summary["strata_check"] = strata_check
         out_path = (
             EVIDENCE_ROOT / f"cloudopsbench-{cfg.round}" / args.line / "summary.json"
         )

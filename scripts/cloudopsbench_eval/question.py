@@ -53,9 +53,13 @@ List B, in this form: "Root cause: <label>; fault object: <kind>/<name>" \
 (a node, for example, is written node/worker-01). \
 Set root_cause to that object.
 """
-#: sha256 of ``json.dumps([QUESTION_TEMPLATE, ROOT_CAUSE_LIST])``.
+#: sha256 over everything a question is made of except the case's ``query``
+#: and ``namespace``: ``json.dumps([QUESTION_TEMPLATE, ROOT_CAUSE_LIST,
+#: VALID_NODES, VALID_SERVICES, VALID_NAMESPACES])`` -- the template text and
+#: both closed lists (List A labels, List B names), so a change to either
+#: list moves the pin as an edit to the template does.
 QUESTION_TEMPLATE_SHA256 = (
-    "9e4d65af1883e2f68db818d7d45bc28fae3e196c87ebe495039403611ffe2c81"
+    "0d0f21085251a3c169983f18edb8c223a9e78f631eb580582c3f5fd0eefe919f"
 )
 
 
@@ -66,7 +70,15 @@ class QuestionError(ValueError):
 
 
 def template_sha256() -> str:
-    blob = json.dumps([QUESTION_TEMPLATE, catalog.ROOT_CAUSE_LIST])
+    blob = json.dumps(
+        [
+            QUESTION_TEMPLATE,
+            catalog.ROOT_CAUSE_LIST,
+            catalog.VALID_NODES,
+            catalog.VALID_SERVICES,
+            catalog.VALID_NAMESPACES,
+        ]
+    )
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
