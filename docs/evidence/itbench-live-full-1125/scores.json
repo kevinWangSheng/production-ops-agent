@@ -1,0 +1,458 @@
+{
+  "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
+  "trials": 24,
+  "scored": 19,
+  "rows": [
+    {
+      "scenario": "102",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 427.442,
+        "from_delivery_seconds": 180.341
+      },
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    },
+    {
+      "scenario": "105",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 497.422,
+        "from_delivery_seconds": 145.286
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "114",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 667.815,
+        "from_delivery_seconds": 405.745
+      },
+      "scored": true,
+      "root_cause_entity_f1": 0.0,
+      "root_cause_entity_pass": 0.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 0.0,
+      "det_any_hit": 0.0,
+      "det_f1": 0.0
+    },
+    {
+      "scenario": "116",
+      "trial": 1,
+      "status": "stopped",
+      "reason": "NO_ENTRY_ALERT",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    },
+    {
+      "scenario": "20",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 402.306,
+        "from_delivery_seconds": 80.181
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "23",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 432.255,
+        "from_delivery_seconds": 80.177
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "30",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 417.361,
+        "from_delivery_seconds": 140.284
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": null,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "31",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 367.273,
+        "from_delivery_seconds": 120.245
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 0.6666666666666666
+    },
+    {
+      "scenario": "33",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 427.25,
+        "from_delivery_seconds": 75.167
+      },
+      "scored": true,
+      "root_cause_entity_f1": 0.6666666666666666,
+      "root_cause_entity_pass": 0.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 0.6666666666666666
+    },
+    {
+      "scenario": "34",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 482.477,
+        "from_delivery_seconds": 205.396
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": null,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 0.5,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "39",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 497.378,
+        "from_delivery_seconds": 145.288
+      },
+      "scored": true,
+      "root_cause_entity_f1": 0.0,
+      "root_cause_entity_pass": 0.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 0.0,
+      "det_any_hit": 0.0,
+      "det_f1": 0.0
+    },
+    {
+      "scenario": "40",
+      "trial": 1,
+      "status": "infra_failed",
+      "reason": "ITBENCH_INJECT_FAILED",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    },
+    {
+      "scenario": "42",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 862.666,
+        "from_delivery_seconds": 255.489
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "43",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 412.336,
+        "from_delivery_seconds": 150.299
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "44",
+      "trial": 1,
+      "status": "stopped",
+      "reason": "NO_ENTRY_ALERT",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    },
+    {
+      "scenario": "45",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 447.379,
+        "from_delivery_seconds": 110.244
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "46",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 362.312,
+        "from_delivery_seconds": 115.235
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "49",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 417.247,
+        "from_delivery_seconds": 80.178
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "56",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 417.341,
+        "from_delivery_seconds": 95.215
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "57",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 362.283,
+        "from_delivery_seconds": 130.259
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "58",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 792.447,
+        "from_delivery_seconds": 125.266
+      },
+      "scored": true,
+      "root_cause_entity_f1": 1.0,
+      "root_cause_entity_pass": 1.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 1.0
+    },
+    {
+      "scenario": "59",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 462.299,
+        "from_delivery_seconds": 95.211
+      },
+      "scored": true,
+      "root_cause_entity_f1": 0.6666666666666666,
+      "root_cause_entity_pass": 0.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 0.6666666666666666
+    },
+    {
+      "scenario": "60",
+      "trial": 1,
+      "status": "completed",
+      "reason": null,
+      "diagnosis": {
+        "from_fault_start_proxy_seconds": 437.355,
+        "from_delivery_seconds": 160.309
+      },
+      "scored": true,
+      "root_cause_entity_f1": 0.5,
+      "root_cause_entity_pass": 0.0,
+      "propagation_chain": 0.0,
+      "fault_localization_component_identification": 0.0,
+      "root_cause_reasoning": 1.0,
+      "det_any_hit": 1.0,
+      "det_f1": 0.5
+    },
+    {
+      "scenario": "63",
+      "trial": 1,
+      "status": "infra_failed",
+      "reason": "ITBENCH_INJECT_FAILED",
+      "diagnosis": null,
+      "scored": false,
+      "root_cause_entity_f1": null,
+      "root_cause_entity_pass": null,
+      "propagation_chain": null,
+      "fault_localization_component_identification": null,
+      "root_cause_reasoning": null,
+      "det_any_hit": null,
+      "det_f1": null
+    }
+  ],
+  "means": {
+    "root_cause_entity_f1": {
+      "mean": 0.8333333333333334,
+      "n": 19
+    },
+    "root_cause_entity_pass": {
+      "mean": 0.7368421052631579,
+      "n": 19
+    },
+    "propagation_chain": {
+      "mean": 0.0,
+      "n": 17
+    },
+    "fault_localization_component_identification": {
+      "mean": 0.0,
+      "n": 19
+    },
+    "root_cause_reasoning": {
+      "mean": 0.868421052631579,
+      "n": 19
+    },
+    "det_any_hit": {
+      "mean": 0.8947368421052632,
+      "n": 19
+    },
+    "det_f1": {
+      "mean": 0.8157894736842105,
+      "n": 19
+    }
+  },
+  "not_applicable": "remediation metrics (read-only product)"
+}

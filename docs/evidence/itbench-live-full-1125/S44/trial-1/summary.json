@@ -1,0 +1,160 @@
+{
+  "schema": "itbench-live-trial-1",
+  "status": "stopped",
+  "reason": "NO_ENTRY_ALERT",
+  "frozen_at": "2026-11-26T00:02:42.878978+00:00",
+  "itbench_live": {
+    "round": "full-1125",
+    "scenario": "44",
+    "trial": 1,
+    "track": "ITBench 现场版 SRE（自托管，自测，不与官方榜单并列）",
+    "itbench_commit": "5ed31cc4bef041af7f61120811ebff7f36612e4b",
+    "git": {
+      "commit": "787718409a9a79246bcc49d49e0ce4ffaa4f6d1b",
+      "dirty": false,
+      "allow_dirty": false
+    },
+    "ports": {
+      "pg": 29610,
+      "web": 29680,
+      "prometheus": 29690,
+      "jaeger": 29686
+    },
+    "alert_path": "PROMETHEUS_ALERTS_FORWARDED_AS_WEBHOOK_V4",
+    "fault_start_proxy": "INJECT_COMMAND_END",
+    "disclosures": [
+      "EVAL_SCRAPE_NAMESPACE_PATCH",
+      "JAEGER_V1_API_ABSENT_V3_ONLY",
+      "LIST_FAILED:endpointslices",
+      "LIST_FAILED:limitranges"
+    ],
+    "steps": {
+      "configure": {
+        "returncode": 0,
+        "seconds": 0.816
+      },
+      "deploy": {
+        "returncode": 0,
+        "seconds": 418.168
+      },
+      "inject": {
+        "returncode": 0,
+        "seconds": 10.793
+      },
+      "remove": {
+        "returncode": 0,
+        "seconds": 4.073
+      },
+      "undeploy": {
+        "returncode": 0,
+        "seconds": 405.793
+      }
+    },
+    "times": {
+      "deploy_started": "2026-11-25T23:22:36.756416+00:00",
+      "environment_ready": "2026-11-25T23:29:37.625666+00:00",
+      "settle_started": "2026-11-25T23:29:40.129744+00:00",
+      "inject_started": "2026-11-25T23:35:41.720716+00:00",
+      "inject_done": "2026-11-25T23:35:52.513898+00:00",
+      "cleaned_up": "2026-11-26T00:02:42.878923+00:00"
+    },
+    "memory_before": {
+      "unit": "MiB",
+      "mem": {
+        "total": 32089,
+        "used": 3824,
+        "free": 8472,
+        "shared": 93,
+        "buff/cache": 20352,
+        "available": 28265
+      },
+      "swap": {
+        "total": 8191,
+        "used": 1,
+        "free": 8190
+      }
+    },
+    "disk_before": {
+      "unit": "MiB",
+      "total": 153062,
+      "used": 78068,
+      "free": 68381
+    },
+    "sandbox_nodes": [
+      "kind-environment-worker"
+    ],
+    "started": [
+      {
+        "name": "undeploy",
+        "pid": null
+      },
+      {
+        "name": "port-forward:prometheus",
+        "pid": 2500291
+      },
+      {
+        "name": "port-forward:jaeger",
+        "pid": 2500307
+      },
+      {
+        "name": "remove-faults",
+        "pid": null
+      }
+    ],
+    "can_i": {
+      "answers": {
+        "create deployments.apps": "no",
+        "patch deployments.apps": "no",
+        "delete deployments.apps": "no",
+        "create pods": "no",
+        "patch pods": "no",
+        "delete pods": "no",
+        "create configmaps": "no",
+        "patch configmaps": "no",
+        "delete configmaps": "no",
+        "get secrets": "no",
+        "list secrets": "no",
+        "create pods/exec": "no",
+        "create pods/portforward": "no",
+        "create serviceaccounts/token": "no",
+        "list pods": "yes",
+        "list deployments.apps": "yes",
+        "list events": "yes"
+      },
+      "mismatches": []
+    },
+    "span_metric_counts": {
+      "span_metric_groups": 20,
+      "span_metric_groups_with_namespace": 20,
+      "span_metric_groups_app_namespace": 20
+    },
+    "prefault_alert_count": 6,
+    "alert_polls": 81,
+    "alert_diag_counts": {
+      "prefault_sets": 6,
+      "prefault_pending_sets": 3,
+      "prefault_pending_turned_firing": 3,
+      "prefault_sets_reactivated": 0,
+      "prefault_sets_gone": 0,
+      "new_sets_seen": 11,
+      "new_sets_firing": 0,
+      "new_sets_firing_baseline_name": 0,
+      "new_sets_pending_only": 11,
+      "polls": 81,
+      "range_firing_series": 6,
+      "range_firing_first_after_inject": 3,
+      "range_firing_new_after_inject": 0
+    },
+    "cleanup": {
+      "order": [
+        "remove-faults",
+        "port-forward:jaeger",
+        "port-forward:prometheus",
+        "undeploy"
+      ],
+      "errors": []
+    },
+    "status": "stopped",
+    "reason": "NO_ENTRY_ALERT"
+  }
+}
