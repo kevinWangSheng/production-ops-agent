@@ -1,0 +1,931 @@
+{
+ "source": "Cloud-OpsBench ec1d4f3 cloudopsbench_mcp tools/list (mcp 2.3.0)",
+ "variants": {
+  "boutique": [
+   {
+    "description": "Simulates `kubectl get` to retrieve resource lists or current status details. IMPORTANT: `show_labels` and `output_wide` are mutually exclusive. `label_selector` may be combined with either of them. `show_labels` and `output_wide` are mutually exclusive.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "label_selector": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Filter by label (e.g., 'app=frontend'). Can be combined with `show_labels` or `output_wide`. Only simple selectors in the form `key=value` are supported. SUPPORTED ONLY FOR: pods, services, deployments, PVCs.",
+       "title": "Label Selector"
+      },
+      "name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Optional. The specific name of the resource to retrieve a single item. If omitted, returns a list.",
+       "title": "Name"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. **CRITICAL**: If the `resource_type` is a namespaced resource (e.g., 'pods', 'deployments', 'services'), you MUST provide the namespace (default is 'boutique'). However, if the `resource_type` is a cluster-scoped resource (e.g., 'nodes', 'persistentvolumes'), you may omit the `namespace` parameter; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "output_wide": {
+       "default": false,
+       "description": "If True, adds `-o wide`. MUTUALLY EXCLUSIVE with `show_labels`.",
+       "title": "Output Wide",
+       "type": "boolean"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to list. (e.g., 'pods', 'services', 'deployments', 'nodes').",
+       "title": "Resource Type",
+       "type": "string"
+      },
+      "show_labels": {
+       "default": false,
+       "description": "If True, adds `--show-labels`. MUTUALLY EXCLUSIVE with `output_wide`.",
+       "title": "Show Labels",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "resource_type"
+     ],
+     "title": "GetResourcesInput",
+     "type": "object"
+    },
+    "name": "GetResources"
+   },
+   {
+    "description": "Simulates `kubectl describe`. Retrieves detailed state, events, and conditions for a specific Kubernetes resource.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "description": "**REQUIRED**. The EXACT name of the specific resource to inspect.",
+       "title": "Name",
+       "type": "string"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. If resource is namespaced, provide namespace. If cluster-scoped, you may omit namespace; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to describe (e.g., 'pod', 'node', 'service', 'pvc').",
+       "title": "Resource Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "resource_type",
+      "name"
+     ],
+     "title": "DescribeResourceInput",
+     "type": "object"
+    },
+    "name": "DescribeResource"
+   },
+   {
+    "description": "Retrieves the raw YAML configuration file for a specific service. Returns static configuration details including resource limits, probes, env vars, and image tags.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The name of the microservice to inspect. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name"
+     ],
+     "title": "GetAppYAMLInput",
+     "type": "object"
+    },
+    "name": "GetAppYAML"
+   },
+   {
+    "description": "Retrieves raw recent container logs for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name, not the full pod name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetRecentLogsInput",
+     "type": "object"
+    },
+    "name": "GetRecentLogs"
+   },
+   {
+    "description": "Retrieves a statistical summary of application error logs grouped by error patterns for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetErrorLogsInput",
+     "type": "object"
+    },
+    "name": "GetErrorLogs"
+   },
+   {
+    "description": "Performs an active TCP connectivity check to the target service port from within the cluster. This tool can ONLY check internal cluster connectivity between the predefined microservices. It CANNOT check external DNS or external image registry connectivity.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "port": {
+       "description": "**REQUIRED**. The target TCP port number.",
+       "title": "Port",
+       "type": "integer"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The target Service DNS name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name",
+      "port",
+      "namespace"
+     ],
+     "title": "CheckServiceConnectivityInput",
+     "type": "object"
+    },
+    "name": "CheckServiceConnectivity"
+   },
+   {
+    "description": "Retrieves the service network topology, showing upstream and downstream communication relationships for a given service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "service_name": {
+       "description": "**REQUIRED**. The name of the service. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name"
+     ],
+     "title": "GetServiceDependenciesInput",
+     "type": "object"
+    },
+    "name": "GetServiceDependencies"
+   },
+   {
+    "description": "Retrieves a holistic health and configuration summary of all nodes in the cluster, including taints, conditions, allocatable resources, and labels.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetClusterConfiguration"
+   },
+   {
+    "description": "Retrieves active system alerts triggered by metric anomalies such as high latency, error rate spikes, or CPU/Memory saturation.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetAlerts"
+   },
+   {
+    "description": "Checks the operating status of critical Kubernetes infrastructure components on a specific node, such as kubelet, kube-proxy, and containerd.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "node_name": {
+       "description": "**REQUIRED**. The target Node Name.",
+       "enum": [
+        "master",
+        "worker-01",
+        "worker-02",
+        "worker-03"
+       ],
+       "title": "Node Name",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The system component name to inspect.",
+       "enum": [
+        "kube-scheduler",
+        "kubelet",
+        "kube-proxy",
+        "containerd"
+       ],
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "node_name",
+      "service_name"
+     ],
+     "title": "CheckNodeServiceStatusInput",
+     "type": "object"
+    },
+    "name": "CheckNodeServiceStatus"
+   },
+   {
+    "description": "Returns the business-code file list for a given microservice, including each file's service-relative path and brief role description.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The boutique microservice name. Allowed: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name"
+     ],
+     "title": "ListCodeFilesInput",
+     "type": "object"
+    },
+    "name": "ListCodeFiles"
+   },
+   {
+    "description": "Returns the source code of one selected file.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The boutique microservice name. Allowed: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      },
+      "file_path": {
+       "description": "**REQUIRED**. The file_path must exactly match a path returned by ListCodeFiles(app_name); bare filenames, absolute paths, and unlisted files are not accepted.",
+       "title": "File Path",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name",
+      "file_path"
+     ],
+     "title": "GetSourceCodeInput",
+     "type": "object"
+    },
+    "name": "GetSourceCode"
+   }
+  ],
+  "boutique-codedefect": [
+   {
+    "description": "Simulates `kubectl get` to retrieve resource lists or current status details. It supports `output_yaml=true` for list or named resources of these types: deployments, statefulsets, services, configmaps, secrets, ingresses, networkpolicies, and serviceaccounts. `show_labels` and `output_wide` are mutually exclusive.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Optional. The specific name of the resource to retrieve a single item. If omitted, returns a list.",
+       "title": "Name"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. **CRITICAL**: If the `resource_type` is a namespaced resource (e.g., 'pods', 'deployments', 'services'), you MUST provide the namespace (default is 'boutique'). However, if the `resource_type` is a cluster-scoped resource (e.g., 'nodes', 'persistentvolumes'), you may omit the `namespace` parameter; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "output_wide": {
+       "default": false,
+       "description": "If True, adds `-o wide`. MUTUALLY EXCLUSIVE with `show_labels`.",
+       "title": "Output Wide",
+       "type": "boolean"
+      },
+      "output_yaml": {
+       "default": false,
+       "description": "If True, returns the YAML snapshot, similar to `kubectl get <resource_type> [name] -o yaml`. Supported for list or named queries only for: deployments, statefulsets, services, configmaps, secrets, ingresses, networkpolicies, and serviceaccounts.",
+       "title": "Output Yaml",
+       "type": "boolean"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to list. (e.g., 'pods', 'services', 'deployments', 'nodes').",
+       "title": "Resource Type",
+       "type": "string"
+      },
+      "show_labels": {
+       "default": false,
+       "description": "If True, adds `--show-labels`. MUTUALLY EXCLUSIVE with `output_wide`.",
+       "title": "Show Labels",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "resource_type"
+     ],
+     "title": "GetResourcesV2Input",
+     "type": "object"
+    },
+    "name": "GetResources"
+   },
+   {
+    "description": "Simulates `kubectl describe`. Retrieves detailed state, events, and conditions for a specific Kubernetes resource.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "description": "**REQUIRED**. The EXACT name of the specific resource to inspect.",
+       "title": "Name",
+       "type": "string"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. If resource is namespaced, provide namespace. If cluster-scoped, you may omit namespace; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to describe (e.g., 'pod', 'node', 'service', 'pvc').",
+       "title": "Resource Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "resource_type",
+      "name"
+     ],
+     "title": "DescribeResourceInput",
+     "type": "object"
+    },
+    "name": "DescribeResource"
+   },
+   {
+    "description": "Retrieves the raw YAML configuration file for a specific service. Returns static configuration details including resource limits, probes, env vars, and image tags.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The name of the microservice to inspect. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name"
+     ],
+     "title": "GetAppYAMLInput",
+     "type": "object"
+    },
+    "name": "GetAppYAML"
+   },
+   {
+    "description": "Retrieves raw recent container logs for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name, not the full pod name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetRecentLogsInput",
+     "type": "object"
+    },
+    "name": "GetRecentLogs"
+   },
+   {
+    "description": "Retrieves a statistical summary of application error logs grouped by error patterns for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetErrorLogsInput",
+     "type": "object"
+    },
+    "name": "GetErrorLogs"
+   },
+   {
+    "description": "Performs an active TCP connectivity check to the target service port from within the cluster. This tool can ONLY check internal cluster connectivity between the predefined microservices. It CANNOT check external DNS or external image registry connectivity.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "port": {
+       "description": "**REQUIRED**. The target TCP port number.",
+       "title": "Port",
+       "type": "integer"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The target Service DNS name. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name",
+      "port",
+      "namespace"
+     ],
+     "title": "CheckServiceConnectivityInput",
+     "type": "object"
+    },
+    "name": "CheckServiceConnectivity"
+   },
+   {
+    "description": "Retrieves the service network topology, showing upstream and downstream communication relationships for a given service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "service_name": {
+       "description": "**REQUIRED**. The name of the service. Allowed for boutique: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, redis-cart, shippingservice.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name"
+     ],
+     "title": "GetServiceDependenciesInput",
+     "type": "object"
+    },
+    "name": "GetServiceDependencies"
+   },
+   {
+    "description": "Retrieves a holistic health and configuration summary of all nodes in the cluster, including taints, conditions, allocatable resources, and labels.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetClusterConfiguration"
+   },
+   {
+    "description": "Retrieves active system alerts triggered by metric anomalies such as high latency, error rate spikes, or CPU/Memory saturation.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetAlerts"
+   },
+   {
+    "description": "Checks the operating status of critical Kubernetes infrastructure components on a specific node, such as kubelet, kube-proxy, and containerd.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "node_name": {
+       "description": "**REQUIRED**. The target Node Name.",
+       "enum": [
+        "master",
+        "worker-01",
+        "worker-02",
+        "worker-03"
+       ],
+       "title": "Node Name",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The system component name to inspect.",
+       "enum": [
+        "kube-scheduler",
+        "kubelet",
+        "kube-proxy",
+        "containerd"
+       ],
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "node_name",
+      "service_name"
+     ],
+     "title": "CheckNodeServiceStatusInput",
+     "type": "object"
+    },
+    "name": "CheckNodeServiceStatus"
+   },
+   {
+    "description": "Returns the business-code file list for a given microservice, including each file's service-relative path and brief role description.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The boutique microservice name. Allowed: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name"
+     ],
+     "title": "ListCodeFilesInput",
+     "type": "object"
+    },
+    "name": "ListCodeFiles"
+   },
+   {
+    "description": "Returns the source code of one selected file.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The boutique microservice name. Allowed: adservice, cartservice, checkoutservice, currencyservice, emailservice, frontend, paymentservice, productcatalogservice, recommendationservice, shippingservice.",
+       "title": "App Name",
+       "type": "string"
+      },
+      "file_path": {
+       "description": "**REQUIRED**. The file_path must exactly match a path returned by ListCodeFiles(app_name); bare filenames, absolute paths, and unlisted files are not accepted.",
+       "title": "File Path",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name",
+      "file_path"
+     ],
+     "title": "GetSourceCodeInput",
+     "type": "object"
+    },
+    "name": "GetSourceCode"
+   }
+  ],
+  "train-ticket": [
+   {
+    "description": "Simulates `kubectl get` to retrieve resource lists or current status details. It supports `output_yaml=true` for list or named resources of these types: deployments, statefulsets, services, configmaps, secrets, ingresses, networkpolicies, and serviceaccounts. `show_labels` and `output_wide` are mutually exclusive.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Optional. The specific name of the resource to retrieve a single item. If omitted, returns a list.",
+       "title": "Name"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. **CRITICAL**: If the `resource_type` is a namespaced resource (e.g., 'pods', 'deployments', 'services'), you MUST provide the namespace (default is 'train-ticket'). However, if the `resource_type` is a cluster-scoped resource (e.g., 'nodes', 'persistentvolumes'), you may omit the `namespace` parameter; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "output_wide": {
+       "default": false,
+       "description": "If True, adds `-o wide`. MUTUALLY EXCLUSIVE with `show_labels`.",
+       "title": "Output Wide",
+       "type": "boolean"
+      },
+      "output_yaml": {
+       "default": false,
+       "description": "If True, returns the YAML snapshot, similar to `kubectl get <resource_type> [name] -o yaml`. Supported for list or named queries only for: deployments, statefulsets, services, configmaps, secrets, ingresses, networkpolicies, and serviceaccounts.",
+       "title": "Output Yaml",
+       "type": "boolean"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to list. (e.g., 'pods', 'services', 'deployments', 'nodes').",
+       "title": "Resource Type",
+       "type": "string"
+      },
+      "show_labels": {
+       "default": false,
+       "description": "If True, adds `--show-labels`. MUTUALLY EXCLUSIVE with `output_wide`.",
+       "title": "Show Labels",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "resource_type"
+     ],
+     "title": "GetResourcesV2Input",
+     "type": "object"
+    },
+    "name": "GetResources"
+   },
+   {
+    "description": "Simulates `kubectl describe`. Retrieves detailed state, events, and conditions for a specific Kubernetes resource.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "name": {
+       "description": "**REQUIRED**. The EXACT name of the specific resource to inspect.",
+       "title": "Name",
+       "type": "string"
+      },
+      "namespace": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "The Kubernetes namespace to query. If resource is namespaced, provide namespace. If cluster-scoped, you may omit namespace; the tool will automatically handle historical cache formats.",
+       "title": "Namespace"
+      },
+      "resource_type": {
+       "description": "**REQUIRED**. The type of resource to describe (e.g., 'pod', 'node', 'service', 'pvc').",
+       "title": "Resource Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "resource_type",
+      "name"
+     ],
+     "title": "DescribeResourceInput",
+     "type": "object"
+    },
+    "name": "DescribeResource"
+   },
+   {
+    "description": "Retrieves the raw YAML configuration file for a specific service. Returns static configuration details including resource limits, probes, env vars, and image tags.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "app_name": {
+       "description": "**REQUIRED**. The name of the microservice to inspect. Allowed for train-ticket: ts-assurance-service, ts-auth-service, ts-avatar-service, ts-basic-service, ts-cancel-service, ts-config-service, ts-consign-price-service, ts-consign-service, ts-contacts-service, ts-delivery-service, ts-execute-service, ts-food-delivery-service, ts-food-service, ts-gateway-service, ts-inside-payment-service, ts-news-service, ts-notification-service, ts-order-other-service, ts-order-service, ts-payment-service, ts-preserve-other-service, ts-preserve-service, ts-price-service, ts-rebook-service, ts-route-plan-service, ts-route-service, ts-seat-service, ts-security-service, ts-station-food-service, ts-station-service, ts-ticket-office-service, ts-train-food-service, ts-train-service, ts-travel-plan-service, ts-travel-service, ts-travel2-service, ts-ui-dashboard, ts-user-service, ts-verification-code-service, ts-voucher-service, ts-wait-order-service.",
+       "title": "App Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "app_name"
+     ],
+     "title": "GetAppYAMLInput",
+     "type": "object"
+    },
+    "name": "GetAppYAML"
+   },
+   {
+    "description": "Retrieves raw recent container logs for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name, not the full pod name. Allowed for train-ticket: ts-assurance-service, ts-auth-service, ts-avatar-service, ts-basic-service, ts-cancel-service, ts-config-service, ts-consign-price-service, ts-consign-service, ts-contacts-service, ts-delivery-service, ts-execute-service, ts-food-delivery-service, ts-food-service, ts-gateway-service, ts-inside-payment-service, ts-news-service, ts-notification-service, ts-order-other-service, ts-order-service, ts-payment-service, ts-preserve-other-service, ts-preserve-service, ts-price-service, ts-rebook-service, ts-route-plan-service, ts-route-service, ts-seat-service, ts-security-service, ts-station-food-service, ts-station-service, ts-ticket-office-service, ts-train-food-service, ts-train-service, ts-travel-plan-service, ts-travel-service, ts-travel2-service, ts-ui-dashboard, ts-user-service, ts-verification-code-service, ts-voucher-service, ts-wait-order-service, nacos, nacosdb-mysql, rabbitmq, tsdb-mysql.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetRecentLogsInput",
+     "type": "object"
+    },
+    "name": "GetRecentLogs"
+   },
+   {
+    "description": "Retrieves a statistical summary of application error logs grouped by error patterns for a specified Kubernetes service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The microservice name. Allowed for train-ticket: ts-assurance-service, ts-auth-service, ts-avatar-service, ts-basic-service, ts-cancel-service, ts-config-service, ts-consign-price-service, ts-consign-service, ts-contacts-service, ts-delivery-service, ts-execute-service, ts-food-delivery-service, ts-food-service, ts-gateway-service, ts-inside-payment-service, ts-news-service, ts-notification-service, ts-order-other-service, ts-order-service, ts-payment-service, ts-preserve-other-service, ts-preserve-service, ts-price-service, ts-rebook-service, ts-route-plan-service, ts-route-service, ts-seat-service, ts-security-service, ts-station-food-service, ts-station-service, ts-ticket-office-service, ts-train-food-service, ts-train-service, ts-travel-plan-service, ts-travel-service, ts-travel2-service, ts-ui-dashboard, ts-user-service, ts-verification-code-service, ts-voucher-service, ts-wait-order-service, nacos, nacosdb-mysql, rabbitmq, tsdb-mysql.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "namespace",
+      "service_name"
+     ],
+     "title": "GetErrorLogsInput",
+     "type": "object"
+    },
+    "name": "GetErrorLogs"
+   },
+   {
+    "description": "Performs an active TCP connectivity check to the target service port from within the cluster. This tool can ONLY check internal cluster connectivity between the predefined microservices. It CANNOT check external DNS or external image registry connectivity.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "namespace": {
+       "description": "**REQUIRED**. The Kubernetes namespace.",
+       "title": "Namespace",
+       "type": "string"
+      },
+      "port": {
+       "description": "**REQUIRED**. The target TCP port number.",
+       "title": "Port",
+       "type": "integer"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The target Service DNS name. Allowed for train-ticket: ts-assurance-service, ts-auth-service, ts-avatar-service, ts-basic-service, ts-cancel-service, ts-config-service, ts-consign-price-service, ts-consign-service, ts-contacts-service, ts-delivery-service, ts-execute-service, ts-food-delivery-service, ts-food-service, ts-gateway-service, ts-inside-payment-service, ts-news-service, ts-notification-service, ts-order-other-service, ts-order-service, ts-payment-service, ts-preserve-other-service, ts-preserve-service, ts-price-service, ts-rebook-service, ts-route-plan-service, ts-route-service, ts-seat-service, ts-security-service, ts-station-food-service, ts-station-service, ts-ticket-office-service, ts-train-food-service, ts-train-service, ts-travel-plan-service, ts-travel-service, ts-travel2-service, ts-ui-dashboard, ts-user-service, ts-verification-code-service, ts-voucher-service, ts-wait-order-service, nacos, nacosdb-mysql-leader, nacosdb-mysql-follower, rabbitmq, tsdb-mysql-leader, tsdb-mysql-follower.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name",
+      "port",
+      "namespace"
+     ],
+     "title": "CheckServiceConnectivityInput",
+     "type": "object"
+    },
+    "name": "CheckServiceConnectivity"
+   },
+   {
+    "description": "Retrieves the service network topology, showing upstream and downstream communication relationships for a given service.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "service_name": {
+       "description": "**REQUIRED**. The name of the service. Allowed for train-ticket: ts-assurance-service, ts-auth-service, ts-avatar-service, ts-basic-service, ts-cancel-service, ts-config-service, ts-consign-price-service, ts-consign-service, ts-contacts-service, ts-delivery-service, ts-execute-service, ts-food-delivery-service, ts-food-service, ts-gateway-service, ts-inside-payment-service, ts-news-service, ts-notification-service, ts-order-other-service, ts-order-service, ts-payment-service, ts-preserve-other-service, ts-preserve-service, ts-price-service, ts-rebook-service, ts-route-plan-service, ts-route-service, ts-seat-service, ts-security-service, ts-station-food-service, ts-station-service, ts-ticket-office-service, ts-train-food-service, ts-train-service, ts-travel-plan-service, ts-travel-service, ts-travel2-service, ts-ui-dashboard, ts-user-service, ts-verification-code-service, ts-voucher-service, ts-wait-order-service.",
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "service_name"
+     ],
+     "title": "GetServiceDependenciesInput",
+     "type": "object"
+    },
+    "name": "GetServiceDependencies"
+   },
+   {
+    "description": "Retrieves a holistic health and configuration summary of all nodes in the cluster, including taints, conditions, allocatable resources, and labels.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetClusterConfiguration"
+   },
+   {
+    "description": "Retrieves active system alerts triggered by metric anomalies such as high latency, error rate spikes, or CPU/Memory saturation.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {},
+     "type": "object"
+    },
+    "name": "GetAlerts"
+   },
+   {
+    "description": "Checks the operating status of critical Kubernetes infrastructure components on a specific node, such as kubelet, kube-proxy, and containerd.",
+    "inputSchema": {
+     "additionalProperties": false,
+     "properties": {
+      "node_name": {
+       "description": "**REQUIRED**. The target Node Name.",
+       "enum": [
+        "master",
+        "worker-01",
+        "worker-02",
+        "worker-03"
+       ],
+       "title": "Node Name",
+       "type": "string"
+      },
+      "service_name": {
+       "description": "**REQUIRED**. The system component name to inspect.",
+       "enum": [
+        "kube-scheduler",
+        "kubelet",
+        "kube-proxy",
+        "containerd"
+       ],
+       "title": "Service Name",
+       "type": "string"
+      }
+     },
+     "required": [
+      "node_name",
+      "service_name"
+     ],
+     "title": "CheckNodeServiceStatusInput",
+     "type": "object"
+    },
+    "name": "CheckNodeServiceStatus"
+   }
+  ]
+ }
+}

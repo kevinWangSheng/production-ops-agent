@@ -1,0 +1,297 @@
+{
+ "schema": "cloudopsbench-subset-1",
+ "seed": 871,
+ "full_total": 754,
+ "strata": [
+  {
+   "stratum": "boutique/admission/missing_service_account",
+   "full": 11,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/admission/namespace_cpu_quota_exceeded",
+   "full": 10,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/admission/namespace_memory_quota_exceeded",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/admission/namespace_pod_quota_exceeded",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/admission/namespace_service_quota_exceeded",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/admission/namespace_storage_quota_exceeded",
+   "full": 4,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/codedefect/code_artificial_delay",
+   "full": 6,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/codedefect/code_busy_loop",
+   "full": 16,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/codedefect/code_excessive_file_reads",
+   "full": 16,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/codedefect/code_excessive_file_writes",
+   "full": 13,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/codedefect/code_memory_leak",
+   "full": 4,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/codedefect/code_missing_parameter",
+   "full": 20,
+   "subset": 3
+  },
+  {
+   "stratum": "boutique/codedefect/code_wrong_argument_order",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/codedefect/code_wrong_return",
+   "full": 15,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/infrastructure/containerd_unavailable",
+   "full": 10,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/infrastructure/kube_proxy_unavailable",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/infrastructure/kube_scheduler_unavailable",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/infrastructure/kubelet_unavailable",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/performance/node_network_delay",
+   "full": 4,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/performance/node_network_packet_loss",
+   "full": 4,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/performance/pod_cpu_overload",
+   "full": 11,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/performance/pod_network_delay",
+   "full": 10,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/container_memory_limit_too_low",
+   "full": 9,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/liveness_probe_incorrect_port",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/liveness_probe_incorrect_protocol",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/liveness_probe_incorrect_timing",
+   "full": 5,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/readiness_probe_incorrect_port",
+   "full": 7,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/runtime/readiness_probe_incorrect_protocol",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/cpu_capacity_mismatch",
+   "full": 18,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/scheduling/memory_capacity_mismatch",
+   "full": 18,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/scheduling/node_affinity_mismatch",
+   "full": 24,
+   "subset": 3
+  },
+  {
+   "stratum": "boutique/scheduling/node_cordon_mismatch",
+   "full": 16,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/scheduling/node_selector_mismatch",
+   "full": 32,
+   "subset": 4
+  },
+  {
+   "stratum": "boutique/scheduling/pod_anti_affinity_conflict",
+   "full": 16,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/scheduling/pv_binding_occupied",
+   "full": 4,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/pvc_access_mode_mismatch",
+   "full": 3,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/pvc_capacity_mismatch",
+   "full": 3,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/pvc_selector_mismatch",
+   "full": 3,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/pvc_storage_class_mismatch",
+   "full": 3,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/scheduling/taint_toleration_mismatch",
+   "full": 24,
+   "subset": 3
+  },
+  {
+   "stratum": "boutique/service/service_env_var_address_mismatch",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/service/service_port_mapping_mismatch",
+   "full": 14,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/service/service_protocol_mismatch",
+   "full": 8,
+   "subset": 1
+  },
+  {
+   "stratum": "boutique/service/service_selector_mismatch",
+   "full": 24,
+   "subset": 3
+  },
+  {
+   "stratum": "boutique/startup/image_registry_dns_failure",
+   "full": 13,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/startup/incorrect_image_reference",
+   "full": 28,
+   "subset": 4
+  },
+  {
+   "stratum": "boutique/startup/missing_image_pull_secret",
+   "full": 18,
+   "subset": 2
+  },
+  {
+   "stratum": "boutique/startup/volume_mount_permission_denied",
+   "full": 3,
+   "subset": 1
+  },
+  {
+   "stratum": "trainticket/performance/pod_network_delay",
+   "full": 47,
+   "subset": 6
+  },
+  {
+   "stratum": "trainticket/runtime/db_connection_exhaustion",
+   "full": 5,
+   "subset": 1
+  },
+  {
+   "stratum": "trainticket/runtime/db_readonly_mode",
+   "full": 10,
+   "subset": 1
+  },
+  {
+   "stratum": "trainticket/runtime/deployment_zero_replicas",
+   "full": 17,
+   "subset": 2
+  },
+  {
+   "stratum": "trainticket/runtime/mysql_invalid_credentials",
+   "full": 24,
+   "subset": 3
+  },
+  {
+   "stratum": "trainticket/runtime/mysql_invalid_port",
+   "full": 22,
+   "subset": 3
+  },
+  {
+   "stratum": "trainticket/runtime/service_sidecar_port_conflict",
+   "full": 18,
+   "subset": 2
+  },
+  {
+   "stratum": "trainticket/service/gateway_misrouted",
+   "full": 19,
+   "subset": 3
+  },
+  {
+   "stratum": "trainticket/service/service_dns_resolution_failure",
+   "full": 18,
+   "subset": 2
+  },
+  {
+   "stratum": "trainticket/startup/missing_secret_binding",
+   "full": 24,
+   "subset": 3
+  }
+ ]
+}

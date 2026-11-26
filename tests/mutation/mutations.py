@@ -612,4 +612,22 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
     ),
+    # #871 (A2): killed by tests/safety/test_safety_cloudopsbench_tools.py.
+    # An evaluation-side boundary, kept here because the Cloud-OpsBench tool
+    # family is a model-input channel: the benchmark server's view must not
+    # hold the case's answer file.
+    Mutation(
+        "M68",
+        "answers: the Cloud-OpsBench snapshot view never copies metadata.json (#871)",
+        "scripts/cloudopsbench_eval/views.py",
+        'VIEW_FILES = ("tool_cache.json",)\n',
+        'VIEW_FILES = ("tool_cache.json", "metadata.json")\n',
+        more=(
+            (
+                "scripts/cloudopsbench_eval/views.py",
+                '    {"metadata.json", "milestone.json", "process-label", "golden-trajectory"}\n',
+                '    {"milestone.json", "process-label", "golden-trajectory"}\n',
+            ),
+        ),
+    ),
 )
