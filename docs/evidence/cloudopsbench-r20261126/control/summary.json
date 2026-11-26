@@ -1,0 +1,2779 @@
+{
+ "schema": "cloudopsbench-round-1",
+ "round": "r20261126",
+ "line": "control",
+ "frozen_at": "2026-11-26T19:01:30.110036+00:00",
+ "git": {
+  "commit": "c923eed25ea11573b5cb184c2f7a8d31ca32b0d0",
+  "dirty": false
+ },
+ "subset_sha256": "cf14c665a818c8376990fddc21bca0a39f8acc5f82d06d22e877e4fa2548bd93",
+ "question_template_sha256": "0d0f21085251a3c169983f18edb8c223a9e78f631eb580582c3f5fd0eefe919f",
+ "tool_catalog_sha256": "6a1927d306ff653dd0e65dcc3f6d5d7826f66a2e2b63ca6429dca2ef5805706f",
+ "conversion": "bundled agent's own Submit JSON",
+ "limits": {
+  "opspilot": "product default: 100 model requests per Run (U4)",
+  "control": "20 iterations, temperature 0 (U6)"
+ },
+ "process_metrics_note": "MC/EOC/ECR/EE of the OpsPilot line come from the MCP trace and are approximate (A4)",
+ "prices_per_million_usd": {
+  "cache_hit": 0.003,
+  "cache_miss": 0.15,
+  "output": 0.6
+ },
+ "cost_usd_total": 1.155166,
+ "count": 100,
+ "aggregate": {
+  "CA": {
+   "mean": 0.94,
+   "weighted_full_set": 0.9463
+  },
+  "FA": {
+   "mean": 0.89,
+   "weighted_full_set": 0.8977
+  },
+  "JRA": {
+   "mean": 0.89,
+   "weighted_full_set": 0.8977
+  },
+  "MC": {
+   "mean": 0.8027
+  },
+  "EOC": {
+   "mean": 0.7128
+  },
+  "ECR": {
+   "mean": 0.5
+  },
+  "EE": {
+   "mean": 0.6732
+  },
+  "steps": {
+   "mean": 6.6
+  },
+  "RAR": {
+   "mean": 0.0
+  },
+  "invalid_actions": {
+   "mean": 0.46
+  }
+ },
+ "by_system": {
+  "boutique": {
+   "n": 74,
+   "CA": 0.973,
+   "FA": 0.9324,
+   "JRA": 0.9324
+  },
+  "trainticket": {
+   "n": 26,
+   "CA": 0.8462,
+   "FA": 0.7692,
+   "JRA": 0.7692
+  }
+ },
+ "object_agreement": null,
+ "cases": [
+  {
+   "seq": 1,
+   "case": "boutique/admission/3",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.75,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004947,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 26691,
+    "output_tokens": 1573
+   }
+  },
+  {
+   "seq": 2,
+   "case": "boutique/admission/5",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.75,
+    "EOC": 0.75,
+    "ECR": 0.0,
+    "EE": 0.5714285714285714,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008045,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 43803,
+    "output_tokens": 2457
+   }
+  },
+  {
+   "seq": 3,
+   "case": "boutique/admission/15",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.75,
+    "EOC": 0.75,
+    "ECR": 0.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005823,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 32963,
+    "output_tokens": 1464
+   }
+  },
+  {
+   "seq": 4,
+   "case": "boutique/admission/23",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.75,
+    "EOC": 0.75,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007032,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 39921,
+    "output_tokens": 1740
+   }
+  },
+  {
+   "seq": 5,
+   "case": "boutique/admission/39",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007238,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 38580,
+    "output_tokens": 2419
+   }
+  },
+  {
+   "seq": 6,
+   "case": "boutique/admission/49",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.6,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005788,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 30002,
+    "output_tokens": 2146
+   }
+  },
+  {
+   "seq": 7,
+   "case": "boutique/admission/58",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8571428571428571,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.01434,
+   "stop_reason": "submit",
+   "steps_used": 9,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 49797,
+    "output_tokens": 11450
+   }
+  },
+  {
+   "seq": 8,
+   "case": "boutique/codedefect/6",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010516,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 60283,
+    "output_tokens": 2456
+   }
+  },
+  {
+   "seq": 9,
+   "case": "boutique/codedefect/13",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.8,
+    "EOC": 0.4,
+    "ECR": 0.0,
+    "EE": 0.3333333333333333,
+    "steps": 13.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.019828,
+   "stop_reason": "submit",
+   "steps_used": 13,
+   "tool_calls": 12,
+   "tokens": {
+    "input_tokens": 112647,
+    "output_tokens": 4885
+   }
+  },
+  {
+   "seq": 10,
+   "case": "boutique/codedefect/14",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.75,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010371,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 58702,
+    "output_tokens": 2610
+   }
+  },
+  {
+   "seq": 11,
+   "case": "boutique/codedefect/31",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.8,
+    "EOC": 0.4,
+    "ECR": 0.0,
+    "EE": 0.23529411764705882,
+    "steps": 18.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.050817,
+   "stop_reason": "submit",
+   "steps_used": 20,
+   "tool_calls": 17,
+   "tokens": {
+    "input_tokens": 240182,
+    "output_tokens": 24649
+   }
+  },
+  {
+   "seq": 12,
+   "case": "boutique/codedefect/39",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.4,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007379,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 42424,
+    "output_tokens": 1692
+   }
+  },
+  {
+   "seq": 13,
+   "case": "boutique/codedefect/43",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.6,
+    "EOC": 0.6,
+    "ECR": 0.0,
+    "EE": 0.17647058823529413,
+    "steps": 17.0,
+    "RAR": 0.0,
+    "invalid_actions": 3.0
+   },
+   "scorer_error": "unparsed_final_answer",
+   "cost_usd": 0.041395,
+   "stop_reason": "max_steps",
+   "steps_used": 20,
+   "tool_calls": 17,
+   "tokens": {
+    "input_tokens": 200996,
+    "output_tokens": 18743
+   }
+  },
+  {
+   "seq": 14,
+   "case": "boutique/codedefect/51",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.375,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.011579,
+   "stop_reason": "submit",
+   "steps_used": 9,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 60665,
+    "output_tokens": 4132
+   }
+  },
+  {
+   "seq": 15,
+   "case": "boutique/codedefect/52",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.013125,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 76562,
+    "output_tokens": 2734
+   }
+  },
+  {
+   "seq": 16,
+   "case": "boutique/codedefect/55",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.3076923076923077,
+    "steps": 14.0,
+    "RAR": 0.0,
+    "invalid_actions": 3.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.042881,
+   "stop_reason": "submit",
+   "steps_used": 17,
+   "tool_calls": 13,
+   "tokens": {
+    "input_tokens": 223347,
+    "output_tokens": 15631
+   }
+  },
+  {
+   "seq": 17,
+   "case": "boutique/codedefect/60",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00738,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 40646,
+    "output_tokens": 2139
+   }
+  },
+  {
+   "seq": 18,
+   "case": "boutique/codedefect/61",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008355,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 45462,
+    "output_tokens": 2559
+   }
+  },
+  {
+   "seq": 19,
+   "case": "boutique/codedefect/68",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.42857142857142855,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008713,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 49853,
+    "output_tokens": 2059
+   }
+  },
+  {
+   "seq": 20,
+   "case": "boutique/codedefect/78",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.4,
+    "steps": 11.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.016451,
+   "stop_reason": "submit",
+   "steps_used": 12,
+   "tool_calls": 10,
+   "tokens": {
+    "input_tokens": 77421,
+    "output_tokens": 8063
+   }
+  },
+  {
+   "seq": 21,
+   "case": "boutique/codedefect/88",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007217,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 39927,
+    "output_tokens": 2047
+   }
+  },
+  {
+   "seq": 22,
+   "case": "boutique/infrastructure/1",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00504,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 28989,
+    "output_tokens": 1152
+   }
+  },
+  {
+   "seq": 23,
+   "case": "boutique/infrastructure/11",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.3333333333333333,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010618,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 44822,
+    "output_tokens": 6491
+   }
+  },
+  {
+   "seq": 24,
+   "case": "boutique/infrastructure/20",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.6,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.006139,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 33161,
+    "output_tokens": 1942
+   }
+  },
+  {
+   "seq": 25,
+   "case": "boutique/infrastructure/34",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.375,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.01437,
+   "stop_reason": "submit",
+   "steps_used": 10,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 57825,
+    "output_tokens": 9493
+   }
+  },
+  {
+   "seq": 26,
+   "case": "boutique/performance/7",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.25,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.009934,
+   "stop_reason": "submit",
+   "steps_used": 9,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 54790,
+    "output_tokens": 2859
+   }
+  },
+  {
+   "seq": 27,
+   "case": "boutique/performance/13",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.35294117647058826,
+    "steps": 18.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.042407,
+   "stop_reason": "submit",
+   "steps_used": 20,
+   "tool_calls": 17,
+   "tokens": {
+    "input_tokens": 212811,
+    "output_tokens": 17476
+   }
+  },
+  {
+   "seq": 28,
+   "case": "boutique/performance/22",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.15384615384615385,
+    "steps": 14.0,
+    "RAR": 0.0,
+    "invalid_actions": 6.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.05724,
+   "stop_reason": "submit",
+   "steps_used": 20,
+   "tool_calls": 13,
+   "tokens": {
+    "input_tokens": 254087,
+    "output_tokens": 31879
+   }
+  },
+  {
+   "seq": 29,
+   "case": "boutique/performance/27",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.006392,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 18792,
+    "output_tokens": 5955
+   }
+  },
+  {
+   "seq": 30,
+   "case": "boutique/runtime/5",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003766,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20954,
+    "output_tokens": 1038
+   }
+  },
+  {
+   "seq": 31,
+   "case": "boutique/runtime/14",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004161,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20965,
+    "output_tokens": 1693
+   }
+  },
+  {
+   "seq": 32,
+   "case": "boutique/runtime/21",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007821,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 27369,
+    "output_tokens": 6193
+   }
+  },
+  {
+   "seq": 33,
+   "case": "boutique/runtime/29",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00355,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 18622,
+    "output_tokens": 1261
+   }
+  },
+  {
+   "seq": 34,
+   "case": "boutique/runtime/38",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002788,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14535,
+    "output_tokens": 1013
+   }
+  },
+  {
+   "seq": 35,
+   "case": "boutique/runtime/45",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002746,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14484,
+    "output_tokens": 955
+   }
+  },
+  {
+   "seq": 36,
+   "case": "boutique/scheduling/6",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004553,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 25140,
+    "output_tokens": 1303
+   }
+  },
+  {
+   "seq": 37,
+   "case": "boutique/scheduling/13",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00436,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20285,
+    "output_tokens": 2196
+   }
+  },
+  {
+   "seq": 38,
+   "case": "boutique/scheduling/27",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008547,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 34798,
+    "output_tokens": 5545
+   }
+  },
+  {
+   "seq": 39,
+   "case": "boutique/scheduling/31",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004483,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20844,
+    "output_tokens": 2261
+   }
+  },
+  {
+   "seq": 40,
+   "case": "boutique/scheduling/39",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004216,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20215,
+    "output_tokens": 1973
+   }
+  },
+  {
+   "seq": 41,
+   "case": "boutique/scheduling/52",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010968,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 38023,
+    "output_tokens": 8774
+   }
+  },
+  {
+   "seq": 42,
+   "case": "boutique/scheduling/55",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.7142857142857143,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.008011,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 44110,
+    "output_tokens": 2324
+   }
+  },
+  {
+   "seq": 43,
+   "case": "boutique/scheduling/66",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004897,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 26618,
+    "output_tokens": 1507
+   }
+  },
+  {
+   "seq": 44,
+   "case": "boutique/scheduling/72",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005459,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 30968,
+    "output_tokens": 1356
+   }
+  },
+  {
+   "seq": 45,
+   "case": "boutique/scheduling/77",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004805,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 26648,
+    "output_tokens": 1346
+   }
+  },
+  {
+   "seq": 46,
+   "case": "boutique/scheduling/83",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003757,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20089,
+    "output_tokens": 1240
+   }
+  },
+  {
+   "seq": 47,
+   "case": "boutique/scheduling/84",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003739,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20152,
+    "output_tokens": 1194
+   }
+  },
+  {
+   "seq": 48,
+   "case": "boutique/scheduling/88",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003641,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20138,
+    "output_tokens": 1034
+   }
+  },
+  {
+   "seq": 49,
+   "case": "boutique/scheduling/105",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00362,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20029,
+    "output_tokens": 1026
+   }
+  },
+  {
+   "seq": 50,
+   "case": "boutique/scheduling/117",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004125,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20577,
+    "output_tokens": 1731
+   }
+  },
+  {
+   "seq": 51,
+   "case": "boutique/scheduling/119",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004095,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 20654,
+    "output_tokens": 1662
+   }
+  },
+  {
+   "seq": 52,
+   "case": "boutique/scheduling/128",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.8,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005856,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 31739,
+    "output_tokens": 1826
+   }
+  },
+  {
+   "seq": 53,
+   "case": "boutique/scheduling/133",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.7142857142857143,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010724,
+   "stop_reason": "submit",
+   "steps_used": 9,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 49657,
+    "output_tokens": 5459
+   }
+  },
+  {
+   "seq": 54,
+   "case": "boutique/scheduling/134",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.75,
+    "EOC": 0.75,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003488,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 19741,
+    "output_tokens": 878
+   }
+  },
+  {
+   "seq": 55,
+   "case": "boutique/scheduling/137",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005038,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 25413,
+    "output_tokens": 2043
+   }
+  },
+  {
+   "seq": 56,
+   "case": "boutique/scheduling/142",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.75,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005544,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 26458,
+    "output_tokens": 2626
+   }
+  },
+  {
+   "seq": 57,
+   "case": "boutique/scheduling/145",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004247,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 19960,
+    "output_tokens": 2088
+   }
+  },
+  {
+   "seq": 58,
+   "case": "boutique/scheduling/151",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002518,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14118,
+    "output_tokens": 668
+   }
+  },
+  {
+   "seq": 59,
+   "case": "boutique/service/6",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 0.25,
+    "ECR": 1.0,
+    "EE": 0.46153846153846156,
+    "steps": 14.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.025927,
+   "stop_reason": "submit",
+   "steps_used": 14,
+   "tool_calls": 13,
+   "tokens": {
+    "input_tokens": 125897,
+    "output_tokens": 11738
+   }
+  },
+  {
+   "seq": 60,
+   "case": "boutique/service/10",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.006945,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 36879,
+    "output_tokens": 2356
+   }
+  },
+  {
+   "seq": 61,
+   "case": "boutique/service/12",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.5714285714285714,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007788,
+   "stop_reason": "submit",
+   "steps_used": 8,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 42389,
+    "output_tokens": 2382
+   }
+  },
+  {
+   "seq": 62,
+   "case": "boutique/service/28",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005329,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 24540,
+    "output_tokens": 2747
+   }
+  },
+  {
+   "seq": 63,
+   "case": "boutique/service/36",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.6,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005417,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 29798,
+    "output_tokens": 1579
+   }
+  },
+  {
+   "seq": 64,
+   "case": "boutique/service/40",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.6,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007334,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 34528,
+    "output_tokens": 3592
+   }
+  },
+  {
+   "seq": 65,
+   "case": "boutique/service/41",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003449,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 19808,
+    "output_tokens": 797
+   }
+  },
+  {
+   "seq": 66,
+   "case": "boutique/startup/2",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002581,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14467,
+    "output_tokens": 685
+   }
+  },
+  {
+   "seq": 67,
+   "case": "boutique/startup/10",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002718,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14674,
+    "output_tokens": 862
+   }
+  },
+  {
+   "seq": 68,
+   "case": "boutique/startup/20",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.002724,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14427,
+    "output_tokens": 933
+   }
+  },
+  {
+   "seq": 69,
+   "case": "boutique/startup/23",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.00256,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 14588,
+    "output_tokens": 620
+   }
+  },
+  {
+   "seq": 70,
+   "case": "boutique/startup/29",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003247,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 18729,
+    "output_tokens": 729
+   }
+  },
+  {
+   "seq": 71,
+   "case": "boutique/startup/40",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004371,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 20378,
+    "output_tokens": 2190
+   }
+  },
+  {
+   "seq": 72,
+   "case": "boutique/startup/46",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.75,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.006457,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 28126,
+    "output_tokens": 3731
+   }
+  },
+  {
+   "seq": 73,
+   "case": "boutique/startup/47",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.6,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.006191,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 31287,
+    "output_tokens": 2497
+   }
+  },
+  {
+   "seq": 74,
+   "case": "boutique/startup/62",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004574,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 23267,
+    "output_tokens": 1807
+   }
+  },
+  {
+   "seq": 75,
+   "case": "trainticket/performance/4",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.4444444444444444,
+    "steps": 10.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.029239,
+   "stop_reason": "submit",
+   "steps_used": 12,
+   "tool_calls": 9,
+   "tokens": {
+    "input_tokens": 129227,
+    "output_tokens": 16425
+   }
+  },
+  {
+   "seq": 76,
+   "case": "trainticket/performance/12",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.16666666666666666,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 3.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.024147,
+   "stop_reason": "submit",
+   "steps_used": 10,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 126635,
+    "output_tokens": 8587
+   }
+  },
+  {
+   "seq": 77,
+   "case": "trainticket/performance/15",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.2,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.020705,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 105018,
+    "output_tokens": 8254
+   }
+  },
+  {
+   "seq": 78,
+   "case": "trainticket/performance/20",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.625,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.018879,
+   "stop_reason": "submit",
+   "steps_used": 9,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 94022,
+    "output_tokens": 7959
+   }
+  },
+  {
+   "seq": 79,
+   "case": "trainticket/performance/30",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.1111111111111111,
+    "steps": 10.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.037944,
+   "stop_reason": "submit",
+   "steps_used": 10,
+   "tool_calls": 9,
+   "tokens": {
+    "input_tokens": 198636,
+    "output_tokens": 13581
+   }
+  },
+  {
+   "seq": 80,
+   "case": "trainticket/performance/37",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.375,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.016043,
+   "stop_reason": "submit",
+   "steps_used": 10,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 73704,
+    "output_tokens": 8312
+   }
+  },
+  {
+   "seq": 81,
+   "case": "trainticket/runtime/2",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.6666666666666666,
+    "EOC": 0.6666666666666666,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007094,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 35736,
+    "output_tokens": 2890
+   }
+  },
+  {
+   "seq": 82,
+   "case": "trainticket/runtime/8",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.6666666666666666,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.011049,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 63915,
+    "output_tokens": 2437
+   }
+  },
+  {
+   "seq": 83,
+   "case": "trainticket/runtime/25",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003568,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 20113,
+    "output_tokens": 919
+   }
+  },
+  {
+   "seq": 84,
+   "case": "trainticket/runtime/29",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.0,
+    "ECR": 0.0,
+    "EE": 0.25,
+    "steps": 9.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.022883,
+   "stop_reason": "submit",
+   "steps_used": 11,
+   "tool_calls": 8,
+   "tokens": {
+    "input_tokens": 122591,
+    "output_tokens": 7491
+   }
+  },
+  {
+   "seq": 85,
+   "case": "trainticket/runtime/37",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.25,
+    "EOC": 0.25,
+    "ECR": 0.0,
+    "EE": 0.5,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007505,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 40867,
+    "output_tokens": 2291
+   }
+  },
+  {
+   "seq": 86,
+   "case": "trainticket/runtime/41",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004933,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 27930,
+    "output_tokens": 1239
+   }
+  },
+  {
+   "seq": 87,
+   "case": "trainticket/runtime/53",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005305,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 31219,
+    "output_tokens": 1037
+   }
+  },
+  {
+   "seq": 88,
+   "case": "trainticket/runtime/57",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.8,
+    "EOC": 0.6,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 6.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.010483,
+   "stop_reason": "submit",
+   "steps_used": 6,
+   "tool_calls": 5,
+   "tokens": {
+    "input_tokens": 63068,
+    "output_tokens": 1704
+   }
+  },
+  {
+   "seq": 89,
+   "case": "trainticket/runtime/59",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.8,
+    "EOC": 0.6,
+    "ECR": 0.0,
+    "EE": 0.4,
+    "steps": 11.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.023596,
+   "stop_reason": "submit",
+   "steps_used": 12,
+   "tool_calls": 10,
+   "tokens": {
+    "input_tokens": 136124,
+    "output_tokens": 5295
+   }
+  },
+  {
+   "seq": 90,
+   "case": "trainticket/runtime/76",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.8,
+    "EOC": 0.6,
+    "ECR": 0.0,
+    "EE": 0.8333333333333334,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.012645,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 77877,
+    "output_tokens": 1606
+   }
+  },
+  {
+   "seq": 91,
+   "case": "trainticket/runtime/79",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.75,
+    "steps": 5.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.007954,
+   "stop_reason": "submit",
+   "steps_used": 5,
+   "tool_calls": 4,
+   "tokens": {
+    "input_tokens": 47093,
+    "output_tokens": 1484
+   }
+  },
+  {
+   "seq": 92,
+   "case": "trainticket/runtime/84",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 0.6666666666666666,
+    "ECR": 1.0,
+    "EE": 1.0,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.005777,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 32674,
+    "output_tokens": 1460
+   }
+  },
+  {
+   "seq": 93,
+   "case": "trainticket/service/3",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 0.0,
+    "FA": 0.0,
+    "JRA": 0.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.5714285714285714,
+    "steps": 8.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.017476,
+   "stop_reason": "submit",
+   "steps_used": 10,
+   "tool_calls": 7,
+   "tokens": {
+    "input_tokens": 85864,
+    "output_tokens": 7660
+   }
+  },
+  {
+   "seq": 94,
+   "case": "trainticket/service/9",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.3333333333333333,
+    "steps": 13.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.04149,
+   "stop_reason": "submit",
+   "steps_used": 15,
+   "tool_calls": 12,
+   "tokens": {
+    "input_tokens": 222742,
+    "output_tokens": 13465
+   }
+  },
+  {
+   "seq": 95,
+   "case": "trainticket/service/19",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.3125,
+    "steps": 17.0,
+    "RAR": 0.0,
+    "invalid_actions": 1.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.050965,
+   "stop_reason": "submit",
+   "steps_used": 18,
+   "tool_calls": 16,
+   "tokens": {
+    "input_tokens": 268253,
+    "output_tokens": 17879
+   }
+  },
+  {
+   "seq": 96,
+   "case": "trainticket/service/35",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.18181818181818182,
+    "steps": 12.0,
+    "RAR": 0.0,
+    "invalid_actions": 2.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.039802,
+   "stop_reason": "submit",
+   "steps_used": 14,
+   "tool_calls": 11,
+   "tokens": {
+    "input_tokens": 195541,
+    "output_tokens": 17452
+   }
+  },
+  {
+   "seq": 97,
+   "case": "trainticket/service/36",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.25,
+    "ECR": 0.0,
+    "EE": 0.3333333333333333,
+    "steps": 7.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.019099,
+   "stop_reason": "submit",
+   "steps_used": 7,
+   "tool_calls": 6,
+   "tokens": {
+    "input_tokens": 103540,
+    "output_tokens": 5946
+   }
+  },
+  {
+   "seq": 98,
+   "case": "trainticket/startup/8",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 0.6666666666666666,
+    "steps": 4.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.004785,
+   "stop_reason": "submit",
+   "steps_used": 4,
+   "tool_calls": 3,
+   "tokens": {
+    "input_tokens": 26643,
+    "output_tokens": 1315
+   }
+  },
+  {
+   "seq": 99,
+   "case": "trainticket/startup/11",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003563,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 20999,
+    "output_tokens": 688
+   }
+  },
+  {
+   "seq": 100,
+   "case": "trainticket/startup/23",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 0.5,
+    "EOC": 0.5,
+    "ECR": 0.0,
+    "EE": 1.0,
+    "steps": 3.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.003742,
+   "stop_reason": "submit",
+   "steps_used": 3,
+   "tool_calls": 2,
+   "tokens": {
+    "input_tokens": 20981,
+    "output_tokens": 992
+   }
+  }
+ ],
+ "strata_check": "match"
+}

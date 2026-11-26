@@ -1,0 +1,239 @@
+{
+ "schema": "cloudopsbench-round-1",
+ "round": "smoke-20261126",
+ "line": "opspilot",
+ "frozen_at": "2026-11-26T17:34:31.480321+00:00",
+ "git": {
+  "commit": "c923eed25ea11573b5cb184c2f7a8d31ca32b0d0",
+  "dirty": false
+ },
+ "subset_sha256": "03af7e5cb537ef7bc1fb94ff95ad68a871b8b20bf7e8e10bfe21efd5ae01b1eb",
+ "question_template_sha256": "0d0f21085251a3c169983f18edb8c223a9e78f631eb580582c3f5fd0eefe919f",
+ "tool_catalog_sha256": "6a1927d306ff653dd0e65dcc3f6d5d7826f66a2e2b63ca6429dca2ef5805706f",
+ "conversion": "scripts.cloudopsbench_eval.answer (U3 = a, deterministic)",
+ "limits": {
+  "opspilot": "product default: 100 model requests per Run (U4)",
+  "control": "20 iterations, temperature 0 (U6)"
+ },
+ "process_metrics_note": "MC/EOC/ECR/EE of the OpsPilot line come from the MCP trace and are approximate (A4)",
+ "prices_per_million_usd": {
+  "cache_hit": 0.003,
+  "cache_miss": 0.15,
+  "output": 0.6
+ },
+ "cost_usd_total": 0.046845,
+ "count": 2,
+ "aggregate": {
+  "CA": {
+   "mean": 1.0,
+   "weighted_full_set": null
+  },
+  "FA": {
+   "mean": 1.0,
+   "weighted_full_set": null
+  },
+  "JRA": {
+   "mean": 1.0,
+   "weighted_full_set": null
+  },
+  "MC": {
+   "mean": 1.0
+  },
+  "EOC": {
+   "mean": 1.0
+  },
+  "ECR": {
+   "mean": 1.0
+  },
+  "EE": {
+   "mean": 0.1589
+  },
+  "steps": {
+   "mean": 32.5
+  },
+  "RAR": {
+   "mean": 0.0
+  },
+  "invalid_actions": {
+   "mean": 0.0
+  }
+ },
+ "by_system": {
+  "boutique": {
+   "n": 1,
+   "CA": 1.0,
+   "FA": 1.0,
+   "JRA": 1.0
+  },
+  "trainticket": {
+   "n": 1,
+   "CA": 1.0,
+   "FA": 1.0,
+   "JRA": 1.0
+  }
+ },
+ "object_agreement": {
+  "agree": 2,
+  "disagree": 0,
+  "not_comparable": 0
+ },
+ "cases": [
+  {
+   "seq": 1,
+   "case": "boutique/codedefect/1",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.16,
+    "steps": 26.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.014123,
+   "run": {
+    "state": "completed",
+    "model_requests_used": 10,
+    "tool_requests": 25,
+    "tokens": {
+     "model_rounds_with_usage": 10,
+     "prompt_tokens": 268140,
+     "completion_tokens": 12450,
+     "total_tokens": 280590,
+     "prompt_cache_hit_tokens": 228352,
+     "prompt_cache_miss_tokens": 39788
+    },
+    "report_present": true,
+    "versions": {
+     "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+     "tool_schema_revision": "cloudopsbench-3c7d71529091",
+     "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    }
+   },
+   "cache": {
+    "calls": 25,
+    "hit": 25,
+    "not_found": 0,
+    "not_recorded": 0,
+    "adapter_error": 0,
+    "hit_rate": 1.0
+   },
+   "conversion": {
+    "object_rule": "root_cause_field",
+    "label_rule": "summary_root_cause",
+    "object_found": true,
+    "label_found": true,
+    "object_agrees_with_summary": true
+   },
+   "leak_check": {
+    "ledger_read": true,
+    "hits": []
+   },
+   "trace": {
+    "project": "opspilot-lab-cob-smoke-20261126",
+    "project_id": "96695e5c-7616-4b8d-9d2d-9f4d6a79a153",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+     {
+      "langsmith_run_id": "00000000-0000-0000-9382-8505c38a9d58",
+      "start_time": "2026-11-26T17:26:41.953550+00:00",
+      "end_time": "2026-11-26T17:27:40.357780+00:00",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/96695e5c-7616-4b8d-9d2d-9f4d6a79a153/r/00000000-0000-0000-9382-8505c38a9d58?poll=true"
+     }
+    ]
+   },
+   "run_wait": {
+    "terminal_state": "completed",
+    "timed_out": false,
+    "seconds": 60.102,
+    "worker_alive": true
+   }
+  },
+  {
+   "seq": 2,
+   "case": "trainticket/performance/1",
+   "status": "ok",
+   "failure": null,
+   "metrics": {
+    "CA": 1.0,
+    "FA": 1.0,
+    "JRA": 1.0,
+    "MC": 1.0,
+    "EOC": 1.0,
+    "ECR": 1.0,
+    "EE": 0.15789473684210525,
+    "steps": 39.0,
+    "RAR": 0.0,
+    "invalid_actions": 0.0
+   },
+   "scorer_error": null,
+   "cost_usd": 0.032722,
+   "run": {
+    "state": "completed",
+    "model_requests_used": 16,
+    "tool_requests": 38,
+    "tokens": {
+     "model_rounds_with_usage": 16,
+     "prompt_tokens": 663977,
+     "completion_tokens": 36749,
+     "total_tokens": 700726,
+     "prompt_cache_hit_tokens": 604928,
+     "prompt_cache_miss_tokens": 59049
+    },
+    "report_present": true,
+    "versions": {
+     "prompt_revision": "prompt-replay-candidate-k8s-068c56342888",
+     "tool_schema_revision": "cloudopsbench-797cbcf78db6",
+     "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    }
+   },
+   "cache": {
+    "calls": 38,
+    "hit": 38,
+    "not_found": 0,
+    "not_recorded": 0,
+    "adapter_error": 0,
+    "hit_rate": 1.0
+   },
+   "conversion": {
+    "object_rule": "root_cause_field",
+    "label_rule": "summary_root_cause",
+    "object_found": true,
+    "label_found": true,
+    "object_agrees_with_summary": true
+   },
+   "leak_check": {
+    "ledger_read": true,
+    "hits": []
+   },
+   "trace": {
+    "project": "opspilot-lab-cob-smoke-20261126",
+    "project_id": "96695e5c-7616-4b8d-9d2d-9f4d6a79a153",
+    "trace_tier": null,
+    "read_back": "found",
+    "roots": [
+     {
+      "langsmith_run_id": "00000000-0000-0000-09df-200eb1569cf8",
+      "start_time": "2026-11-26T17:28:14.077280+00:00",
+      "end_time": "2026-11-26T17:31:27.953383+00:00",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/96695e5c-7616-4b8d-9d2d-9f4d6a79a153/r/00000000-0000-0000-09df-200eb1569cf8?poll=true"
+     }
+    ]
+   },
+   "run_wait": {
+    "terminal_state": "completed",
+    "timed_out": false,
+    "seconds": 195.319,
+    "worker_alive": true
+   }
+  }
+ ],
+ "strata_check": "no_committed_strata"
+}
