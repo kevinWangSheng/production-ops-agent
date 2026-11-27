@@ -1,5 +1,7 @@
 # Upstream attribution
 
+English | [简体中文](upstream-attribution.zh-CN.md)
+
 What this project copies, adapts, compares against or runs. Checked against main as of 2026-11-10. This repository is licensed under the MIT License ([LICENSE](../../LICENSE)); the third-party material below keeps its own license.
 
 ## Copied or adapted into this repository

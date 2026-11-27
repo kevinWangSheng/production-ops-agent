@@ -23,7 +23,7 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 F1 第 1–4 步）；F1 第 5 步未达成，所以 F1 未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。
 
 - [feature_list.json](feature_list.json) 中 11 个功能有 9 个通过全部验收步骤（F2、F6、F7、F8、F9、F11、F12、F13、F14）；F1 未完成。F3 于 2026-10-25 通过，2026-11-16 改回未通过：换用后来的报告提示词后，两次受审 Run 中有一次在 summary 里把假设写成了事实（[#664](https://github.com/kevinWangSheng/production-ops-agent/issues/664)）。F8（持续运行）与 F9（交付）只凭 lab 证据通过，不是生产证明。
-- M3 的全部验收证据都在运行 OpenTelemetry Demo 的 kind 实验环境里测得：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-final-clean-host-2026-11-11/README.md)、[第 3 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)、[第 2、4 步](docs/evidence/f9-final2-2026-11-11/README.md)；限制见[限制](docs/portfolio/limitations.md)）。
+- M3 的全部验收证据都在运行 OpenTelemetry Demo 的 kind 实验环境里测得：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-final-clean-host-2026-11-11/README.md)、[第 3 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)、[第 2、4 步](docs/evidence/f9-final2-2026-11-11/README.md)；限制见[限制](docs/portfolio/limitations.zh-CN.md)）。
 - 版本由 release workflow 打 tag 并发布到 GHCR。最新是 `v0.1.1`（2026-11-10）；soak 与前两轮干净主机运行用的是 `v0.1.0`，[干净主机终轮](docs/evidence/f9-final-clean-host-2026-11-11/README.md)（2026-11-11）在钉住的 `v0.1.0` 与 `v0.1.1` digest 之间切换。`v0.1.0` 的 digest 是 `ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`。
 
 ### 评测结果（2026-11）
@@ -51,7 +51,7 @@ M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 
 - Cloud-OpsBench：两条线各跑 1 次（对照温度 0），没有测重复运行的方差。OpsPilot 保持默认的 100 次模型请求上限，对照用基准的 20 次迭代；对照有 19 题的输出被基准默认的 `max_tokens` 4096 截断。失败题按 0 计入分母，这与基准自带的 `summarize` 不同，后者只对有答案文件的题求平均。冻结摘要：[OpsPilot](docs/evidence/cloudopsbench-r20261126/opspilot/summary.json)、[对照](docs/evidence/cloudopsbench-r20261126/control/summary.json)。
 - 证据：[HolmesGPT 全量](docs/evidence/rental-2026-11-20/full/run.md)（分组见 `compare-*.md`）、[定向重跑](docs/evidence/rental-2026-11-20/rerun-2026-11-22/run.md)及其[逐题对照](docs/evidence/rental-2026-11-20/rerun-2026-11-22/compare.md)、[SREGym 分数](docs/evidence/rental-2026-11-20/full/sregym/sregym-lite-full/scores.json)、[ITBench-Lite 运行](docs/evidence/itbench-lite-sre-lite-full-r3/run.md)；汇总见[工具面拓展任务记录](docs/tasks/2026-11-12-tool-expansion.md)。
 
-导览见[作品集导览](docs/portfolio/README.md)（英文），证据不能说明的事见[限制](docs/portfolio/limitations.md)。工作顺序见 [ROADMAP.md](ROADMAP.md)。
+导览见[作品集导览](docs/portfolio/README.zh-CN.md)，证据不能说明的事见[限制](docs/portfolio/limitations.zh-CN.md)。工作顺序见 [ROADMAP.md](ROADMAP.md)。
 
 ## 用 Docker Compose 安装
 
@@ -230,7 +230,7 @@ deploy/compose/install.sh uninstall --purge-data     # 同时删除数据库；�
 
 ## 延伸阅读
 
-1. [作品集导览](docs/portfolio/README.md)：架构、威胁模型、运维、上游归属、评测结果与限制（英文）。
+1. [作品集导览](docs/portfolio/README.zh-CN.md)：架构、威胁模型、运维、上游归属、评测结果与限制。
 2. [PRD.md](PRD.md) 与 [feature_list.json](feature_list.json)：用户能力与验收步骤。
 3. [SPEC.md](SPEC.md)：范围、技术选型、实施门槛。
 4. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)：产品代码的运行时约束。
@@ -241,4 +241,4 @@ deploy/compose/install.sh uninstall --purge-data     # 同时删除数据库；�
 
 ## 许可证
 
-OpsPilot 以 [MIT 许可证](LICENSE) 发布。仓库中的第三方材料保留各自的许可证：内置的 DeepSeek tokenizer（MIT，`opspilot/tools/tokenizer/LICENSE`）和 HolmesGPT 文本摘录（Apache-2.0，`third_party/holmesgpt/LICENSE`）；复制了什么、放在哪里见[上游归属](docs/portfolio/upstream-attribution.md)（英文）。
+OpsPilot 以 [MIT 许可证](LICENSE) 发布。仓库中的第三方材料保留各自的许可证：内置的 DeepSeek tokenizer（MIT，`opspilot/tools/tokenizer/LICENSE`）和 HolmesGPT 文本摘录（Apache-2.0，`third_party/holmesgpt/LICENSE`）；复制了什么、放在哪里见[上游归属](docs/portfolio/upstream-attribution.zh-CN.md)。
