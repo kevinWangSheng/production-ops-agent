@@ -1,6 +1,6 @@
 # Cloud-OpsBench 接入与分层子集运行
 
-- 状态：子集两条线已跑完并冻结；待证据 PR 合并、用户 Destroy 租机
+- 状态：已完成（2026-11-26）。证据 PR #873 已合并、#871 已关闭，租机已由用户销毁
 - 更新日期：2026-11-26
 - 依据：issue #871；[合同决定表 r1](2026-11-26-cloudopsbench-contract.md)；先例 [ITBench-Lite 适配](2026-11-12-itbench-lite-adapter.md)、`scripts/sregym_eval/`
 - 工作区：适配已在 PR #872 合入（`main` c923eed2）；结果分支 `chore/cloudopsbench-871-results`，worktree `../poa-871-results`
