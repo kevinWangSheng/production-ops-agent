@@ -31,6 +31,7 @@ An older Chinese walkthrough of the M1 flow, including knowledge approval, is in
 
 - [Same-condition comparison with HolmesGPT](../results/f1-same-condition-comparison-2026-11.md). The setup was the same lab, faults, model, read-only proxy and budgets for both systems, with 3 attempts per scenario. The page reports dev and holdout results, the failures, what changed after the exam started, and why the judges count as uncalibrated. Its numbers come from the sealed [S10 evidence](../evidence/f1-s10-scoring-2026-11-06/).
 - [72-hour lab soak](../evidence/m3-soak-2026-11-07/README.md) (Chinese). It covers availability, missing observations, stuck work, resource use and cost under scheduled injected faults and drills. It is a lab soak, not production proof.
+- [Public benchmark results](../../README.md#benchmark-results-2026-11). The table lists every run with its evidence: HolmesGPT public evals against HolmesGPT on the same model and judge (163/171 vs 162/171 on 2026-11-23, with the HolmesGPT side partly carried over), SREGym Lite (38/51), ITBench-Lite offline snapshots (82/105), ITBench SRE live with real injected faults (14/24), and a Cloud-OpsBench 100-case subset against the benchmark's own agent on the same model (JRA 0.96 vs 0.89). Each row's limits are in the notes under the table; none of it is production evidence.
 
 ## 4. How it is operated and secured (4 min)
 
