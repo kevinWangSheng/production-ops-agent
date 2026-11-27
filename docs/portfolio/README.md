@@ -29,6 +29,8 @@ The same evidence page lists what this run did not cover. No human took a handof
 
 An older Chinese walkthrough of the M1 flow, including knowledge approval, is in [docs/demo/m1-end-to-end.md](../demo/m1-end-to-end.md).
 
+A later run on 2026-11-27, on a fresh rented host installed the same way, went from alert to approved postmortem with the redesigned workbench (the approval was clicked by the recording script, not a human review); screenshots are in the [README](../../README.md#one-incident-in-the-workbench) and the records in [its evidence](../evidence/workbench-live-2026-11-27/README.md).
+
 ## 3. How good is it (5 min)
 
 - [Same-condition comparison with HolmesGPT](../results/f1-same-condition-comparison-2026-11.md). The setup was the same lab, faults, model, read-only proxy and budgets for both systems, with 3 attempts per scenario. The page reports dev and holdout results, the failures, what changed after the exam started, and why the judges count as uncalibrated. Its numbers come from the sealed [S10 evidence](../evidence/f1-s10-scoring-2026-11-06/).

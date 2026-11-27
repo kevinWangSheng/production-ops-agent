@@ -18,6 +18,16 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 
 不做的事写在 [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)：不写生产、不做发布门、不执行恢复步骤。
 
+### 工作台里的一次事故
+
+下面是 2026-11-27 在 lab 里跑的一次（kind 上的 OpenTelemetry Demo，合成流量，lab 脚本注入 `paymentFailure` 故障；[证据](docs/evidence/workbench-live-2026-11-27/README.md)）。告警 04:23:04 UTC 触发，报告 04:24:47 发布，根因 `Deployment otel-demo/payment`；Observer 04:44:55 确认恢复；复盘草稿于 04:48:39 获批。这次批准是录制脚本以 `operator` 账号点的，不是人审阅草稿后的决定。
+
+| 调查中 | 报告 |
+|---|---|
+| ![调查进行中：已收集的证据](docs/assets/workbench/investigating.png) | ![已发布的报告：结论、根因与引用的证据](docs/assets/workbench/report.png) |
+| **恢复观察** | **复盘审核** |
+| ![调查日志与独立的恢复观察](docs/assets/workbench/recovery-watch.png) | ![复盘草稿：待核对的陈述与审核决定](docs/assets/workbench/postmortem-review.png) |
+
 ## 状态
 
 M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 F1 第 1–4 步）；F1 第 5 步未达成，所以 F1 未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。

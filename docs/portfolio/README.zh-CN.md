@@ -29,6 +29,8 @@
 
 更早的 M1 流程中文演示（含知识审批）见 [docs/demo/m1-end-to-end.md](../demo/m1-end-to-end.md)。
 
+2026-11-27 在另一台按同样方式安装的新租主机上又跑了一次，用重设计后的工作台从告警走到复盘获批（批准由录制脚本点击，不是人审阅后的决定）；截图见 [README](../../README.zh-CN.md#工作台里的一次事故)，记录见[该次证据](../evidence/workbench-live-2026-11-27/README.md)。
+
 ## 3. 效果如何（5 分钟）
 
 - [与 HolmesGPT 的同条件对比](../results/f1-same-condition-comparison-2026-11.md)（英文）。两个系统使用相同的 lab、故障、模型、只读代理和预算，每个场景 3 次尝试。该页给出 dev 与 holdout 结果、失败情况、考试开始后改动了什么，以及为什么 judge 算作未校准。数字来自封存的 [S10 证据](../evidence/f1-s10-scoring-2026-11-06/)。

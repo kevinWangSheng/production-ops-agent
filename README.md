@@ -18,6 +18,16 @@ Data sources, all read-only: Prometheus and Jaeger; with the `otel-demo-ext` too
 
 What it will not do is fixed in [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md): no production writes, no release gates, no execution of recovery steps.
 
+### One incident in the workbench
+
+Screenshots from one run on 2026-11-27 in the lab (OpenTelemetry Demo on kind, synthetic traffic, the `paymentFailure` fault injected by the lab script; [evidence](docs/evidence/workbench-live-2026-11-27/README.md)). The alert fired at 04:23:04 UTC, the report was published at 04:24:47 with the root cause `Deployment otel-demo/payment`, the Observer confirmed recovery at 04:44:55, and the postmortem draft was approved at 04:48:39. That approval was clicked by the recording script under the `operator` account, not by a person reviewing the draft.
+
+| Investigating | Report |
+|---|---|
+| ![Live investigation: evidence collected so far](docs/assets/workbench/investigating.png) | ![Published report: conclusion, root cause and cited evidence](docs/assets/workbench/report.png) |
+| **Recovery watch** | **Postmortem review** |
+| ![Investigation log and the independent recovery watch](docs/assets/workbench/recovery-watch.png) | ![Postmortem draft: flagged statements and the reviewer's decision](docs/assets/workbench/postmortem-review.png) |
+
 ## Status
 
 Milestone M3 (effect and delivery acceptance) has reached its completion line (all steps of F8, F9 and F14, plus F1 steps 1–4); F1 is not marked as passing because its step 5 is not achieved. This is a portfolio project built to production engineering standards; it has **never run in production**.
