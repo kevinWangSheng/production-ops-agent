@@ -1,9 +1,9 @@
 # 作品集宣传片（45 秒）
 
-- 状态：待开始
+- 状态：已完成（成片、GIF、4:5 版已交付，独立审查与理解测试通过）
 - 更新日期：2026-11-27
 - 依据：issue #892；作品集更新 #876 已完成（[任务记录](2026-11-26-portfolio-media.md)），本片与其中的演示录屏（#880）分开
-- 工作区：仓库外 `~/dev/AI/opspilot-portfolio/promo/`；README 嵌入另走 `chore/` 分支，开始执行时填写
+- 工作区：仓库外 `~/dev/AI/opspilot-portfolio/promo/`；README 嵌入走 `chore/promo-video-embed`（worktree `../production-ops-agent-promo`）
 
 ## 目标与范围
 
@@ -46,6 +46,16 @@ Agent 自定（一行理由）：
 ## 进展与证据
 
 - 2026-11-27：用户裁决 U1–U6；issue #892 已建。
+- 分镜 v1 → v2：用户看过关键帧后要求人物与物品更生动，v2 加入贯穿全片的同一位工程师（睡觉、困惑、伏案、头像）和场景道具；用户确认通过。
+- 音乐：Pixabay 拒绝自动下载（403 挑战页），改用 Mixkit「Minimal Emotion」（Stock Music Free License：商用与网络发布免费、无需署名，不得把原曲单独分发或混成纯音乐）；按 48 秒内响度最平稳选取（短时响度标准差 0.9 dB）。原始音轨只在仓库外 `promo/audio/`。
+- 第一轮独立逐帧审查（全新 Opus 5.5 上下文，只给评分标准、原始帧与冻结证据）：阻塞项为 4 条字幕停留 1–2 秒，不够读完；其余为工具计数中间顺序与真实调用顺序不同、气泡短暂遮住「Writes to your systems: none」等次要项。修复：字幕提前、相关镜头加长（48 秒 → 57 秒），计数按 `summary.json` 真实顺序，「Writes」行移到标题下。复审 6 项全部通过；3 条字幕被判临界（±0.5 秒采样误差），按代码帧数计算均达标（如「You stay in charge. Always.」完整显示 2.8 秒，要求 2.67 秒）。
+- 理解测试（另一全新上下文，只看 96 帧）：复述为只读调查、人修复、独立 Observer 确认恢复、复盘草稿待人审，数字与限定语全部复述正确；与事实相符。
+- 交付（仓库外 `~/dev/AI/opspilot-portfolio/promo/out/`）：`opspilot-promo.mp4` 57 秒 1920×1080 H.264 6.5 MB；`opspilot-promo-4x5.mp4` 29 秒 1080×1350 1.4 MB（LinkedIn 由用户自行发布）；`opspilot-promo-loop.gif` 12.5 秒 1.8 MB 入库于 `docs/assets/promo/`。完整版经 `gh issue comment --attach`（gh 升级到 2.106.0）发在 #892，README 与作品集导览链接该地址。
+
+## 与计划的出入
+
+- 时长 57 秒，超出「约 45 秒」：为满足字幕停留标准，按可读性优先取舍。
+- 片尾显示仓库地址，未链接 #880 演示录屏：录屏未公开发布（只在仓库外），无可链接地址。
 
 ## 待决
 

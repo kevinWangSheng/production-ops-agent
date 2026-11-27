@@ -2,6 +2,10 @@
 
 [English](README.md) | 简体中文
 
+[![OpsPilot 用 trace 证据排除两个假设，告警后 1 分 43 秒报告根因 Deployment otel-demo/payment](docs/assets/promo/opspilot-promo-loop.gif)](https://github.com/user-attachments/assets/dcbc0f35-e940-4afe-8495-aeac3e8a3395)
+
+*12 秒循环片段。[观看 57 秒完整版](https://github.com/user-attachments/assets/dcbc0f35-e940-4afe-8495-aeac3e8a3395)（英文字幕）。画面为插画；告警、时间与根因来自 2026-11-27 的一次 lab 运行，分数来自下文[评测结果](#评测结果2026-11)中的 Cloud-OpsBench 子集。*
+
 OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测数据，从不执行生产变更或修复。合格结论发布后，恢复观察（只读）可以自动授权；其余一切仍由人控制。
 
 本文与中文合同文档（[SPEC.md](SPEC.md)、[PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)、[C3 技术方案](docs/design/technical-proposal-2026-09-07.md)、任务记录）不一致时，以中文合同文档为准。

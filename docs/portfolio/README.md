@@ -4,6 +4,10 @@ English | [简体中文](README.zh-CN.md)
 
 A path through the project for a reviewer. Allow about 20 minutes. OpsPilot is a read-only incident investigator. It reads telemetry and writes evidence-backed reports. A separate process checks whether the service recovered. OpsPilot never executes production changes or remediation; recovery observation (read-only) can be authorized automatically after a qualifying conclusion, and everything else stays under human control. It was built and measured only against a lab with synthetic traffic and injected faults. It has never run in production ([limitations](limitations.md)).
 
+A 57-second illustrated overview (English captions; the strings and numbers on screen come from the 2026-11-27 lab run and the Cloud-OpsBench subset):
+
+https://github.com/user-attachments/assets/dcbc0f35-e940-4afe-8495-aeac3e8a3395
+
 ## 1. What it is and what it refuses to do (3 min)
 
 - [README](../../README.md): what it does, current status and how to install.

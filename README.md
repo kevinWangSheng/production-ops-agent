@@ -2,6 +2,10 @@
 
 English | [简体中文](README.zh-CN.md)
 
+[![OpsPilot rules out two hypotheses with trace evidence, then reports the root cause Deployment otel-demo/payment 1 min 43 s after the alert](docs/assets/promo/opspilot-promo-loop.gif)](https://github.com/user-attachments/assets/dcbc0f35-e940-4afe-8495-aeac3e8a3395)
+
+*12-second loop. [Watch the 57-second overview](https://github.com/user-attachments/assets/dcbc0f35-e940-4afe-8495-aeac3e8a3395). Illustrated; the alert, timings and root cause come from one lab run on 2026-11-27, and the score from the Cloud-OpsBench subset in [Benchmark results](#benchmark-results-2026-11).*
+
 OpsPilot is a continuously running agent for incident and post-release investigation. It reads telemetry and never executes production changes or remediation. Recovery observation (read-only) can be authorized automatically after a qualifying conclusion; everything else stays under human control.
 
 Internal process documents are written in Chinese. Where this README and the Chinese contract documents ([SPEC.md](SPEC.md), [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md), the [C3 technical design](docs/design/technical-proposal-2026-09-07.md), task records) disagree, the Chinese contract documents are authoritative.
