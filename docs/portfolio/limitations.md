@@ -35,11 +35,12 @@ All evidence pages mark themselves as integration runs, drills or a lab soak. No
 
 ## Acceptance status
 
-[feature_list.json](../../feature_list.json) shows 10 of 11 features passing. This one is still open:
+[feature_list.json](../../feature_list.json) shows 9 of 11 features passing. These two are open:
 
 | Feature | Open item | Evidence |
 |---|---|---|
 | F1 evaluation | Step 5 (calibrated judging) is not achieved | [results](../results/f1-same-condition-comparison-2026-11.md) |
+| F3 evidence-first investigation | Step 2: under the report prompt introduced in #646, one of two reviewed Runs wrote a hypothesis as fact in its summary; set back to open on 2026-11-16 | [#664](https://github.com/kevinWangSheng/production-ops-agent/issues/664) |
 
 F9 delivery passes on lab evidence only. An independent reviewer judged steps 1, 3 and 5 met and steps 2 and 4 met with limits. Evidence: step 1 [final clean-host run](../evidence/f9-final-clean-host-2026-11-11/README.md), step 3 [steps 2–4](../evidence/f9-steps-2-4-2026-11-10/README.md), steps 2 and 4 [second final run](../evidence/f9-final2-2026-11-11/README.md), step 5 this portfolio. The limits:
 
