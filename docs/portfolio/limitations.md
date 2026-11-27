@@ -1,5 +1,7 @@
 # Limitations
 
+English | [简体中文](limitations.zh-CN.md)
+
 What the evidence in this repository does and does not show, as of 2026-11-11, with the benchmark runs of 2026-11-17 to 2026-11-22 added under [Evaluation](#evaluation).
 
 ## No production observation
@@ -78,4 +80,4 @@ Closed as known limitations on 2026-11-24 and recorded in C3:
 
 ## Documentation language
 
-The contracts, task records and most evidence pages are in Chinese. The README, the results page and these portfolio pages are in English.
+The contracts, task records and most evidence pages are in Chinese. The README and these portfolio pages are available in English and Chinese; the results page is in English.

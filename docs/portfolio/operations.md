@@ -1,5 +1,7 @@
 # Operations
 
+English | [简体中文](operations.zh-CN.md)
+
 How to run a Compose install day to day. Install steps are in the [README](../../README.md#install-with-docker-compose); upgrade and rollback order is in [deploy/compose/UPGRADE.md](../../deploy/compose/UPGRADE.md). Every procedure below was exercised only in the kind lab (synthetic traffic, injected faults); the linked evidence says where and how often.
 
 All commands run from the checkout as the installing user. `install.sh compose ...` passes its arguments to `docker compose` with the right project, files and secrets directory.
