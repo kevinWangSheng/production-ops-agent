@@ -28,7 +28,7 @@ M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 
 
 ### 评测结果（2026-11）
 
-在租用主机上做的集成运行（kind 集群；ITBench-Lite 为回放的离线快照），模型是真实的 DeepSeek `deepseek-flash`，judge 用 Z.ai `glm-5.3-flashx`，与上游评测的 judge 不同。每个 trial 都计入，没有报告的 trial 记 0。这些都不是生产证据。
+在租用主机上做的集成运行（kind 集群；ITBench-Lite 和 Cloud-OpsBench 为回放的离线快照），模型是真实的 DeepSeek `deepseek-flash`，judge 用 Z.ai `glm-5.3-flashx`，与上游评测的 judge 不同；Cloud-OpsBench 用基准自带的确定性评分器，不用 judge。每个 trial 都计入，没有报告的 trial 记 0。这些都不是生产证据。
 
 | 评测 | 运行 | OpsPilot | 对照 |
 |---|---|---|---|
@@ -36,11 +36,19 @@ M3（效果与交付验收）已达到完成线（F8、F9、F14 全部步骤加 
 | 同上，修复 [#772](https://github.com/kevinWangSheng/production-ops-agent/pull/772)、[#775](https://github.com/kevinWangSheng/production-ops-agent/pull/775)、[#776](https://github.com/kevinWangSheng/production-ops-agent/pull/776) 后 | 只跑 OpsPilot 侧的定向重跑，2026-11-22 | 145/159，拼合值（见下） | HolmesGPT 未重跑 |
 | SREGym Lite 诊断 | 17 题 × 3 遍，2026-11-21 | 43/51 | — |
 | ITBench-Lite SRE，离线快照 | 35 个场景 × 3 遍，2026-11-18 | 82/105，官方根因 pass@1 | — |
+| HolmesGPT 公开评测集，同模型、同 judge | 57 题 × 3 遍（上面的 53 题加新增 4 题），全量 2026-11-23（[证据](docs/evidence/rental-2026-11-23/full/run.md)） | 163/171；同一 53 题 151/159 | HolmesGPT 162/171：新增 4 题本次跑（12/12），其余 53 题沿用 2026-11-21 的结果（150/159） |
+| SREGym Lite 诊断 | 17 题 × 3 遍，2026-11-23（[证据](docs/evidence/rental-2026-11-23/full/sregym/run.md)） | 38/51 | — |
+| ITBench SRE 现场版（在新部署的环境里注入故障，从告警开始调查） | 24 个场景 × 1 遍，2026-11-26（[证据](docs/evidence/itbench-live-full-1125/run.md)） | 官方根因通过 14/24；去掉 2 道注入失败题 14/22；有官方分的 14/19 | — |
+| Cloud-OpsBench（LLM4Ops；基于快照的 K8s 根因分析，754 题） | 分层抽样 100 题子集，跑 1 次，2026-11-26（[任务记录](docs/tasks/2026-11-26-cloudopsbench.md)） | JRA 0.96（全集加权估计 0.962）；Boutique 0.973，TrainTicket 0.923 | 基准自带 ReAct agent，同一模型：JRA 0.89（0.898）；Boutique 0.932，TrainTicket 0.769 |
 
 - HolmesGPT 评测集分组（全量 → 修复后，对 HolmesGPT）：数据库 21/21 对 16/21（HolmesGPT 丢的 5 遍是 pytest 报错或跳过、没有回答，是否为上游 harness 问题未确认）；Elasticsearch 与多集群 72/90 → 82/90 对 86/90；runbook/skill 10/18 → 12/18 对 18/18；Loki 与 VictoriaLogs 27/27 对 27/27；任务清单 3/3 对 3/3。HolmesGPT 按上游默认配置运行，其中包含 OpsPilot 按只读约束不提供的工具。
 - 145/159 不是单次全量。重跑 3 遍的题（12 道 Elasticsearch、6 道 runbook，以及追加 3 遍的 1 道 Loki 题）取重跑分；只重跑 1 遍的题保留全量分；235 题取隔离重跑的 3 遍（3/3），因为批量重跑时并行题的命名空间混进了它（若用那次受污染的 1/3，总分为 143）。
 - ITBench-Lite：分数是官方评测器的每个 trial `root_cause_entity_f1 == 1`，judge 用上面那个，不是官方示例的。按 OpsPilot 自己的确定性实体匹配（`det_pass`），同样 105 个 trial 是 22/105。结论偏向 `partial`：`supported` 22 份、`partial` 83 份。这套题没有跑 HolmesGPT。
-- 已知缺口：回看窗按设计固定为 24 小时，HolmesGPT 评测集里 185、280 两题 0/3 就归因于此（[#779](https://github.com/kevinWangSheng/production-ops-agent/issues/779)）；没有按目标常驻的操作员说明作为输入，而 162 题（0/3）依赖它（[#780](https://github.com/kevinWangSheng/production-ops-agent/issues/780)）；SREGym 第 p12 题（Valkey）0/3，因为它的目标没有可交给 Redis/Valkey 工具的只读账号（[#773](https://github.com/kevinWangSheng/production-ops-agent/issues/773)）。
+- 2026-11-21 那轮发现的已知缺口：回看窗当时按设计固定为 24 小时，HolmesGPT 评测集里 185、280 两题 0/3 就归因于此（[#779](https://github.com/kevinWangSheng/production-ops-agent/issues/779)）；没有按目标常驻的操作员说明作为输入，而 162 题（0/3）依赖它（[#780](https://github.com/kevinWangSheng/production-ops-agent/issues/780)）；SREGym 第 p12 题（Valkey）0/3，因为它的目标没有可交给 Redis/Valkey 工具的只读账号（[#773](https://github.com/kevinWangSheng/production-ops-agent/issues/773)）。
+- 2026-11-23 那轮（冻结提交 `51257e79`，含 30 天回看窗与报告合同修复）：HolmesGPT 侧只重跑了新增 4 题，其余 53 题是 2026-11-21 的结果，不是重新跑的。185、280 两题在 30 天回看窗下为 3/3；162 仍是 0/3（没有常驻操作员说明，[#780](https://github.com/kevinWangSheng/production-ops-agent/issues/780)）。运行途中 judge 余额耗尽，70 遍事后按保存的答案补判，judge 与口径不变。
+- SREGym 38/51 对之前的 43/51：没过的每一遍都提交了完整报告。2026-11-24 在同一提交上对下降的三题做了摆动补跑，得 8/9，与之前那轮相同，因此把这次下降看作运行间波动（这是推断，每题只有 6 遍；[#831](https://github.com/kevinWangSheng/production-ops-agent/issues/831)、[摆动补跑](docs/evidence/rental-2026-11-24/swing/run.md)）。p12 仍是 0/3。
+- ITBench 现场版：自托管、自测，不是榜单成绩。分数是官方评测器的 `root_cause_entity_f1 == 1`，judge 用上面那个。每个场景只跑 1 遍，单题结果可能波动。未得分的 5 个场景里，2 个上游注入故障失败，2 个没有出现入口告警，1 个 Run 正常完成但官方评测器重试 3 次都没给分；这 5 个在 24 里都计 0。评测侧打了一个 namespace 标签补丁，偏离上游默认。
+- Cloud-OpsBench：两条线各跑 1 次（对照温度 0），没有测重复运行的方差。OpsPilot 保持默认的 100 次模型请求上限，对照用基准的 20 次迭代；对照有 19 题的输出被基准默认的 `max_tokens` 4096 截断。失败题按 0 计入分母，这与基准自带的 `summarize` 不同，后者只对有答案文件的题求平均。冻结摘要：[OpsPilot](docs/evidence/cloudopsbench-r20261126/opspilot/summary.json)、[对照](docs/evidence/cloudopsbench-r20261126/control/summary.json)。
 - 证据：[HolmesGPT 全量](docs/evidence/rental-2026-11-20/full/run.md)（分组见 `compare-*.md`）、[定向重跑](docs/evidence/rental-2026-11-20/rerun-2026-11-22/run.md)及其[逐题对照](docs/evidence/rental-2026-11-20/rerun-2026-11-22/compare.md)、[SREGym 分数](docs/evidence/rental-2026-11-20/full/sregym/sregym-lite-full/scores.json)、[ITBench-Lite 运行](docs/evidence/itbench-lite-sre-lite-full-r3/run.md)；汇总见[工具面拓展任务记录](docs/tasks/2026-11-12-tool-expansion.md)。
 
 导览见[作品集导览](docs/portfolio/README.md)（英文），证据不能说明的事见[限制](docs/portfolio/limitations.md)。工作顺序见 [ROADMAP.md](ROADMAP.md)。
